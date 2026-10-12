@@ -1,0 +1,18 @@
+# Claude Code 프로젝트 지침
+
+공통 규칙과 Workflow의 유일한 원본은 `.ai/`이다. 모든 경로는 이 파일이 있는 프로젝트 루트를 기준으로 해석한다.
+
+프로젝트 전반의 핵심 원칙과 작업 권한은 다음 공통 문서를 적용한다.
+
+@.ai/rules/ai-collaboration.md
+
+- 코드 수정 시 `.ai/rules/code.md`, `.ai/rules/architecture.md`를 읽는다.
+- 테스트 작성·실행 시 `.ai/rules/testing.md`를 읽는다.
+
+관련 요청이 발생하면 아래 **프로젝트 로컬 Skill의 `SKILL.md`를 실제로 읽고 사용**한다. 동일 이름의 다른 Skill 대신 아래 경로를 선택한다. 상세 Workflow를 시작할 때 모두 import하거나 로드하지 않는다.
+
+| 요청 | Skill 경로 | 공통 문서 |
+| --- | --- | --- |
+| Commit Message 작성·실제 Commit | `.claude/skills/commit/SKILL.md` | `.ai/workflows/commit.md`, `.ai/rules/git.md` |
+| MR 설명·검토 준비·원격 생성 또는 수정 | `.claude/skills/merge-request/SKILL.md` | `.ai/workflows/merge-request.md`, `.ai/rules/git.md` |
+| 코드·변경사항·MR 리뷰 | `.claude/skills/code-review/SKILL.md` | `.ai/workflows/code-review.md`, `.ai/rules/code.md`, `.ai/rules/architecture.md`, `.ai/rules/testing.md` |
