@@ -1,0 +1,54 @@
+# Personal documents (repository root only)
+/personal-docs/
+
+# OS files
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Editor files
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# Local environment files (keep shareable examples)
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.sample
+!.env.*.sample
+!.env.template
+!.env.*.template
+
+# Logs
+*.log
+
+# Java / Spring Boot
+.gradle/
+build/
+target/
+*.class
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+
+# React / TypeScript
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+coverage/
