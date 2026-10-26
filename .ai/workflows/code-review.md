@@ -1,6 +1,6 @@
 # Code Review Workflow
 
-먼저 [AI 협업 규칙](../rules/ai-collaboration.md), [코드 규칙](../rules/code.md), [아키텍처 규칙](../rules/architecture.md), [테스트 규칙](../rules/testing.md)을 읽는다. API 변경이 있으면 [API 규칙](../rules/api.md)을, DB·Entity·Migration 변경이 있으면 [DB 규칙](../rules/database.md)을 함께 읽는다.
+먼저 [AI 협업 규칙](../rules/ai-collaboration.md), [코드 규칙](../rules/code.md), [아키텍처 규칙](../rules/architecture.md), [테스트 규칙](../rules/testing.md)을 읽는다. API 변경이 있으면 [API 규칙](../rules/api.md)을, DB·Entity·Migration 변경이 있으면 [DB 규칙](../rules/database.md)을, 인프라·배포 설정 변경이 있으면 [인프라 규칙](../rules/infra.md)을 함께 읽는다.
 
 ## Step 1. 변경 범위 분석
 
@@ -34,15 +34,19 @@ DB 관련 변경이 있을 때만 N+1, 불필요한 Query, Index, Transaction �
 
 보안에 관련된 변경과 영향을 확인한다. 인증, 인가, 입력 검증, Injection, 민감정보 노출, 권한 우회 가능성을 점검한다. 권한 검사가 서버에 있는지, 비밀값이나 토큰이 코드·로그에 들어가는지 확인한다.
 
-## Step 7. Testing
+## Step 7. Infra
+
+`infra/`, `Jenkinsfile`, `Dockerfile`, compose 파일, nginx 설정 변경이 있을 때만 확인한다. 인프라 규칙을 기준으로 포트가 `127.0.0.1`에만 열리는지, 이미지 버전이 고정되었는지, 비밀값이 파일에 직접 들어갔는지, 데이터 볼륨을 지우는 명령이 있는지, 헬스체크가 있는지 확인한다. `Jenkinsfile` 변경은 서버에서 실행될 명령과 그 영향을 확인한다.
+
+## Step 8. Testing
 
 변경사항을 검증하는 테스트 존재 여부, 정상 경로, 실패 경로, 경계값, 기존 동작 영향, 필요한 회귀 테스트를 확인한다. 실행 가능한 환경과 권한이 있으면 관련 테스트를 실행한다. 실행한 명령·결과와 실행하지 못한 검증을 구분한다.
 
-## Step 8. Convention
+## Step 9. Convention
 
 코드 규칙과 확정된 프로젝트 컨벤션을 적용한다. Formatter나 Linter가 검출할 수 있는 단순 스타일 문제는 우선순위를 낮춘다.
 
-## Step 9. Review Output
+## Step 10. Review Output
 
 | Severity | 기준 | 처리 |
 | --- | --- | --- |

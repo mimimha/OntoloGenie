@@ -1,6 +1,6 @@
 # DB 규칙
 
-팀 가이드 원본은 [C106 개발 가이드](../../docs/development-guide.md) 9절이다. DB Schema 변경과 데이터 삭제·마이그레이션의 실행 권한은 [AI 협업 규칙](ai-collaboration.md)을 따른다.
+팀 가이드 원본은 [C106 개발 가이드](../../docs/development-guide.md) 9절이다. DB Schema 변경과 데이터 삭제·마이그레이션의 실행 권한은 [AI 협업 규칙](ai-collaboration.md)을 따른다. ERD와 DDL 위치는 [기준 문서](../references.md)에 있다.
 
 ## 기본 원칙
 

@@ -1,6 +1,6 @@
 # API 규칙
 
-팀 가이드 원본은 [C106 개발 가이드](../../docs/development-guide.md) 8절이다. 계약의 기준 문서는 C106 OpenAPI 3.1 명세서다. 명세서의 경로와 형식이 이 문서보다 우선한다.
+팀 가이드 원본은 [C106 개발 가이드](../../docs/development-guide.md) 8절이다. 계약의 기준 문서는 C106 OpenAPI 3.1 명세서다. 명세서의 경로와 형식이 이 문서보다 우선한다. 명세서 위치는 [기준 문서](../references.md)에 있다.
 
 ## 경로와 Method
 
