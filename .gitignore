@@ -57,4 +57,5 @@ coverage/
 infra/certbot/
 infra/jenkins-data/
 infra/logs/
+infra/backup/
 *.pem
