@@ -1,0 +1,5 @@
+# 배치 컨테이너는 웹 서버 없이 실행하고, 스케줄 작업을 위해 프로세스를 유지한다.
+spring:
+  main:
+    web-application-type: none
+    keep-alive: true

@@ -38,7 +38,11 @@
 
 - 이름·중괄호·import는 Google Java Style Guide를 참고한다. 들여쓰기만 4칸으로 다르다.
 - 업무 예외를 `RuntimeException` 하나로 처리하지 않는다.
-- Entity에는 Lombok `@Data`를 쓰지 않는다.
+- 포맷은 Spotless + google-java-format(AOSP)으로 맞춘다. 코드를 고친 뒤 `backend/`에서 `./gradlew spotlessApply`를 실행한다.
+- Lombok은 `@Getter`, `@RequiredArgsConstructor`, `@Slf4j`, `@NoArgsConstructor`, `@Builder`만 쓴다. 나머지는 `backend/lombok.config`가 컴파일 오류로 막는다.
+  - `@NoArgsConstructor`는 Entity에만 `access = AccessLevel.PROTECTED`로 쓴다.
+  - `@Builder`는 생성자나 정적 메서드에만 붙이고, 필수 값 검사는 그 생성자 안에서 한다.
+  - Entity에 `@Data`, `@Setter`를 쓰지 않는다.
 
 ## Python · FastAPI
 
@@ -69,7 +73,6 @@
 
 다음 항목은 아직 미결정이다. 특정 도구나 관례를 팀 규칙으로 임의 확정하지 않는다.
 
-- Java Formatter (백엔드 프로젝트 구성 시 결정)
 - 주석 및 문서화 기준
 - Dependency 승인 기준의 세부 절차와 담당자
 - 코드 복잡도 기준
