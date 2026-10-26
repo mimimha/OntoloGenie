@@ -1,6 +1,6 @@
-# 공통 AI 협업 템플릿
+# C106 AI 협업 문서
 
-Claude Code와 Codex가 같은 규칙과 Workflow를 쓰도록 만든 프로젝트 로컬 문서 템플릿이다. 특정 언어, 프레임워크, 도메인, 아키텍처를 선택하지 않는다.
+Claude Code와 Codex가 같은 규칙과 Workflow를 쓰도록 만든 프로젝트 로컬 문서다. 공통 템플릿에 [C106 개발 가이드](../docs/development-guide.md)의 팀 결정을 반영했다.
 
 ## 구성
 
@@ -13,10 +13,13 @@ Claude Code와 Codex가 같은 규칙과 Workflow를 쓰도록 만든 프로젝�
 | `.claude/skills/` | Claude Code용 Skill. `.ai/` 문서만 가리킨다. |
 | `.agents/skills/` | Codex용 Skill. `.ai/` 문서만 가리킨다. |
 | `.gitlab/merge_request_templates/` | GitLab MR 본문 형식 |
+| `docs/development-guide.md` | 팀 개발 가이드 전문. Notion에도 같은 내용을 둔다. |
 
 ## 원본 관리
 
-- 규칙과 Workflow는 `.ai/`에서만 수정한다.
+- 팀 컨벤션의 결정은 개발 가이드에 기록한다. Notion과 저장소의 가이드를 함께 수정한다.
+- `.ai/rules/`에는 가이드 중 AI 작업에 필요한 규칙만 옮긴다. 가이드를 바꾸면 관련 규칙 문서도 같은 MR에서 수정한다.
+- AI 규칙과 Workflow는 `.ai/`에서만 수정한다.
 - 진입점과 Skill에는 상세 규칙을 복사하지 않는다.
 - Claude Code는 `CLAUDE.md`에서 [AI 협업 규칙](rules/ai-collaboration.md)만 import한다. 나머지 문서는 관련 작업 시 읽는다.
 - Codex는 import를 지원하지 않는다. 그래서 `AGENTS.md`에 핵심 원칙 요약을 둔다. AI 협업 규칙의 핵심 원칙을 바꾸면 이 요약도 함께 확인한다.
@@ -49,14 +52,17 @@ Skill 호출은 Commit·Push·원격 MR 작업의 승인이 아니다. 요청 �
 
 ## 팀 초기 설정
 
-각 규칙 문서의 `Team Decision Needed`를 팀 회의에서 정하고, 결정 내용을 그 문서에 기록한다. 합의 전까지는 미결정으로 둔다.
+각 규칙 문서의 `Team Decision Needed`에 남은 미결정 항목을 팀 회의에서 정한다. 결정 내용은 개발 가이드와 해당 규칙 문서에 함께 기록한다. 합의 전까지는 미결정으로 둔다.
 
 - [Git 규칙](rules/git.md)
 - [코드 규칙](rules/code.md)
 - [아키텍처 규칙](rules/architecture.md)
+- [API 규칙](rules/api.md)
+- [DB 규칙](rules/database.md)
 - [테스트 규칙](rules/testing.md)
+- [Jira 규칙](rules/jira.md)
 
-실제 테스트 명령과 실행 환경도 프로젝트에 맞게 기록한다.
+서비스 골격을 만들면 실제 테스트 명령과 실행 환경을 테스트 규칙에 기록한다.
 
 ## 제한
 

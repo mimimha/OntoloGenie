@@ -1,6 +1,6 @@
 # Code Review Workflow
 
-먼저 [AI 협업 규칙](../rules/ai-collaboration.md), [코드 규칙](../rules/code.md), [아키텍처 규칙](../rules/architecture.md), [테스트 규칙](../rules/testing.md)을 읽는다.
+먼저 [AI 협업 규칙](../rules/ai-collaboration.md), [코드 규칙](../rules/code.md), [아키텍처 규칙](../rules/architecture.md), [테스트 규칙](../rules/testing.md)을 읽는다. API 변경이 있으면 [API 규칙](../rules/api.md)을, DB·Entity·Migration 변경이 있으면 [DB 규칙](../rules/database.md)을 함께 읽는다.
 
 ## Step 1. 변경 범위 분석
 
@@ -22,23 +22,27 @@ Branch 리뷰에서는 확인된 Target을 기준으로 `git log <target>..HEAD 
 
 아키텍처 규칙을 기준으로 책임 분리, 의존성 방향, 불필요한 결합, 중복된 책임, 기존 설계 원칙 위반을 확인한다. 프로젝트에서 확정하지 않은 아키텍처를 강요하지 않는다.
 
-## Step 4. Database
+## Step 4. API
 
-DB 관련 변경이 있을 때만 N+1, 불필요한 Query, Index, Transaction 범위, Lock 범위, 대량 데이터 처리를 확인한다. 실제 근거 없는 성능 문제를 단정하지 않는다.
+API 변경이 있을 때만 확인한다. 경로·응답·오류 형식이 API 규칙과 OpenAPI 명세에 맞는지, 요청·응답 필드나 상태 코드가 바뀌었는지, Entity를 직접 반환하는지 확인한다. 계약이 바뀌었는데 명세 수정이 없으면 보고한다.
 
-## Step 5. Security
+## Step 5. Database
 
-보안에 관련된 변경과 영향을 확인한다. 인증, 인가, 입력 검증, Injection, 민감정보 노출, 권한 우회 가능성을 점검한다.
+DB 관련 변경이 있을 때만 N+1, 불필요한 Query, Index, Transaction 범위, Lock 범위, 대량 데이터 처리를 확인한다. 이미 실행된 Migration 파일 수정, `rowVersion` 충돌 검사 누락, DB 제약 조건 없이 애플리케이션 검사에만 의존하는 중복 방지도 확인한다. 실제 근거 없는 성능 문제를 단정하지 않는다.
 
-## Step 6. Testing
+## Step 6. Security
+
+보안에 관련된 변경과 영향을 확인한다. 인증, 인가, 입력 검증, Injection, 민감정보 노출, 권한 우회 가능성을 점검한다. 권한 검사가 서버에 있는지, 비밀값이나 토큰이 코드·로그에 들어가는지 확인한다.
+
+## Step 7. Testing
 
 변경사항을 검증하는 테스트 존재 여부, 정상 경로, 실패 경로, 경계값, 기존 동작 영향, 필요한 회귀 테스트를 확인한다. 실행 가능한 환경과 권한이 있으면 관련 테스트를 실행한다. 실행한 명령·결과와 실행하지 못한 검증을 구분한다.
 
-## Step 7. Convention
+## Step 8. Convention
 
 코드 규칙과 확정된 프로젝트 컨벤션을 적용한다. Formatter나 Linter가 검출할 수 있는 단순 스타일 문제는 우선순위를 낮춘다.
 
-## Step 8. Review Output
+## Step 9. Review Output
 
 | Severity | 기준 | 처리 |
 | --- | --- | --- |
