@@ -1,0 +1,44 @@
+services:
+  nginx:
+    image: nginx:1.30
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/html:/usr/share/nginx/html:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+    networks:
+      - axcore-net
+
+  certbot:
+    image: certbot/certbot:v4.1.1
+    profiles: ["tools"]
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+
+  jenkins:
+    build: ./jenkins
+    image: axcore-jenkins:2.580.1
+    container_name: jenkins
+    restart: unless-stopped
+    mem_limit: 3g
+    cpus: 2.0
+    environment:
+      JENKINS_OPTS: "--prefix=/jenkins"
+      JAVA_OPTS: "-Xmx2g -Duser.timezone=Asia/Seoul"
+    group_add:
+      - "988"
+    volumes:
+      - ./jenkins-data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - axcore-net
+
+networks:
+  axcore-net:
+    name: axcore-net
