@@ -1,0 +1,66 @@
+# 인프라 규칙
+
+팀 문서 원본은 [C106 개발 가이드](../../docs/development-guide.md) 11.3·13절, Notion [서버 작업 주의사항](https://app.notion.com/p/401bdf14d2d88073bd5ed8af56a8f2b0), [infra/README.md](../../infra/README.md)다. 서버 접속, 배포, 데이터 삭제의 실행 권한은 [AI 협업 규칙](ai-collaboration.md)을 따른다.
+
+## 적용 범위
+
+`infra/`, `Jenkinsfile`, 서비스별 `Dockerfile`, compose 파일, nginx 설정을 바꿀 때 적용한다.
+
+## 서버 반영
+
+- `infra/`는 메인 서버 `/home/ubuntu/axcore/`의 사본이다. 저장소 파일을 고쳐도 서버에 자동으로 반영되지 않는다. 적용 방법은 [infra/README.md](../../infra/README.md)를 따른다.
+- 서버 접속, 서버 파일 수정, 컨테이너 재시작은 외부 시스템에 영향을 주는 작업이다. 명시적 요청 없이 실행하지 않는다.
+- 서버에서 코드를 직접 고치지 않는다. 저장소에서 고치고 MR과 Jenkins를 거쳐 반영한다.
+- `Jenkinsfile`은 `develop` 병합 시 서버에서 실행된다. 바꾸면 서버에서 실행되는 명령과 영향을 보고한다.
+
+## 포트·네트워크
+
+- 컨테이너 포트는 `127.0.0.1:포트:포트`로만 연다. Docker는 ufw를 우회하고, 클라우드 방화벽은 1024~65535를 열어 두었기 때문이다.
+- 바깥에 여는 포트는 22, 80, 443뿐이다. 추가가 필요하면 팀과 먼저 상의한다.
+- DB 포트를 외부에 공개하지 않는다. 팀원은 SSH 터널로 접속한다.
+- DB와 내부 AI 서비스는 외부에 직접 노출하지 않는다.
+
+## 이미지·배포
+
+- 이미지에 `latest` 태그를 쓰지 않는다. 버전을 고정한다.
+- 배포 이미지에는 식별 가능한 버전 또는 커밋 SHA를 쓴다. 배포 실패 시 이전 정상 이미지로 되돌릴 수 있어야 한다.
+- DB 데이터는 영속 볼륨에 저장한다. 앱 컨테이너를 다시 만들어도 데이터가 유지되어야 한다.
+- 배포 전후에 헬스체크를 한다.
+
+## 비밀값
+
+- 실제 `.env`, `*.pem`, 토큰, 비밀번호를 저장소, compose 파일, `Jenkinsfile`, `Dockerfile`에 넣지 않는다. 서버 `.env`와 Jenkins Credentials로 관리한다.
+- `.env.example`에는 변수 이름과 설명만 둔다.
+- `certbot/`, `jenkins-data/`, `logs/`, `backup/`은 서버에만 둔다. 저장소에 올리지 않는다.
+- AI는 실제 `.env`, `*.pem`, 인증서, Jenkins 자격 증명 파일의 내용을 읽거나 출력하지 않는다. 필요한 변수 이름은 `.env.example`에서 확인한다.
+- 쉬운 비밀번호(`1234`, `postgres`, `admin`, `ssafy` 등)를 쓰지 않는다. Jenkins·Grafana를 기본 계정이나 비밀번호 없이 공개하지 않는다.
+
+## 데이터 보호
+
+다음 명령은 DB 데이터를 지운다. 명시적 승인 없이 실행하지 않는다. 제안할 때도 삭제되는 대상을 함께 알린다.
+
+- `docker compose down -v`
+- `docker volume rm`
+- `docker system prune --volumes`
+
+`rm -rf`는 대상 경로를 확인한 뒤에만 쓴다. DB 백업과 복구는 [infra/README.md](../../infra/README.md)의 `pg_dump` 절차를 따른다.
+
+## 서버 접속 보호
+
+메인 서버는 웹 콘솔이 없다. 접속이 막히면 복구할 수 없고 초기화만 가능하다. 서버 작업을 보조할 때 다음을 지킨다.
+
+- `ufw disable`을 실행하지 않는다. 22번 규칙을 지우지 않는다. 규칙을 지울 때는 `ufw status numbered`로 번호를 두 번 확인한다.
+- `~/.ssh`, `authorized_keys`, `~/.ssh_bak`, `/etc/ssh/sshd_config`를 수정하거나 지우지 않는다.
+- `/home`과 시스템 폴더의 권한을 바꾸지 않는다(`chmod -R 777` 등).
+- OS 버전 업그레이드(`do-release-upgrade`)를 하지 않는다.
+- 방화벽을 바꿀 때는 접속 창을 여러 개 열어 둔 상태에서 바꾸고, 새 창으로 접속되는지 확인한다.
+
+## 검증
+
+- nginx 설정은 `nginx -t`로 문법을 검사한다.
+- 서버와 저장소 사본이 같은지 `diff`로 확인한다.
+- 실행하지 못한 검증은 이유와 함께 보고한다.
+
+## 확인 필요
+
+- 서버 작업 주의사항은 서버 쪽 기본 포트(5432 등)를 바꿔 쓰라고 한다. 지금 `infra/compose.yaml`의 PostgreSQL은 `127.0.0.1:5432`를 쓴다. 어느 쪽을 따를지 팀이 정한다.
