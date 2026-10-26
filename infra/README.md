@@ -12,6 +12,7 @@
 | `nginx/html/index.html` | 기본 페이지 (nginx 동작 확인용) |
 | `jenkins/Dockerfile` | Jenkins 공식 이미지 + docker CLI · compose 플러그인 |
 | `scripts/renew-cert.sh` | 인증서 자동 갱신 + nginx reload (cron에서 매일 03:00 실행) |
+| `scripts/pg-backup.sh` | 플랫폼 DB `pg_dump` 백업 + 7일 지난 파일 삭제 (cron에서 매일 04:00 실행) |
 
 ## 저장소에 올리지 않는 것
 
@@ -19,7 +20,8 @@
 
 - `certbot/` — Let's Encrypt 인증서와 개인키
 - `jenkins-data/` — Jenkins 설정, 계정, 자격 증명
-- `logs/` — 갱신 로그
+- `logs/` — 갱신 · 백업 로그
+- `backup/` — DB 백업 파일 (7일 보관, 서버에만)
 - `.env`, `*.pem` — 비밀값과 접속 키
 
 ## 서버에 적용하는 방법
@@ -50,6 +52,42 @@ docker compose up -d                      # compose.yaml을 바꿨을 때
 4. `renew-cert.sh`를 crontab에 등록합니다. (`0 3 * * * /home/ubuntu/axcore/scripts/renew-cert.sh >> /home/ubuntu/axcore/logs/renew-cert.log 2>&1`)
 5. `.env`를 만듭니다. `cp .env.example .env` 후 값을 채우고 `chmod 600 .env`. DB 비밀번호는 `openssl rand -base64 24`로 생성합니다.
 6. PostgreSQL 데이터는 Docker 볼륨 `axcore-pg-data`에 있습니다. 서버를 옮길 때는 볼륨 복사가 아니라 `pg_dump` 백업 파일로 옮깁니다. 포트는 `127.0.0.1:5432`로만 열려 있어 바깥에서 접속할 수 없습니다.
+7. `pg-backup.sh`를 crontab에 등록합니다. (`0 4 * * * /home/ubuntu/axcore/scripts/pg-backup.sh >> /home/ubuntu/axcore/logs/pg-backup.log 2>&1`)
+
+## DB 백업 · 복구
+
+플랫폼 PostgreSQL(`axcore`)은 `scripts/pg-backup.sh`가 매일 04:00에 `pg_dump`로 백업합니다.
+
+- 백업 위치: 서버 `/home/ubuntu/axcore/backup/axcore_YYYYMMDD_HHMM.dump` (custom 형식, 압축)
+- 보관 기간: 7일. 더 오래된 파일은 스크립트가 삭제합니다.
+- 로그: `/home/ubuntu/axcore/logs/pg-backup.log` (실행 시각, 파일 이름, 크기, 남은 파일 수)
+- 비밀번호 불필요: 컨테이너 안에서 실행하므로 로컬 접속으로 인증됩니다.
+
+수동 백업:
+
+```bash
+~/axcore/scripts/pg-backup.sh
+```
+
+복구 테스트 (운영 DB를 건드리지 않고 별도 DB에 복구해 비교):
+
+```bash
+cd ~/axcore
+docker compose exec postgres psql -U axcore -d axcore -c "create database axcore_restore_test;"
+docker compose exec -T postgres pg_restore -U axcore -d axcore_restore_test < backup/<파일>.dump
+# 원본(axcore)과 복구본(axcore_restore_test)의 표 개수 · 줄 수를 비교한 뒤 정리
+docker compose exec postgres psql -U axcore -d axcore -c "drop database axcore_restore_test;"
+```
+
+운영 DB를 실제로 되돌려야 할 때 (장애 시에만, 현재 데이터를 백업 시점으로 덮어씀):
+
+```bash
+cd ~/axcore
+# 1. DB를 쓰는 앱 컨테이너를 먼저 멈춘다 (5단계 이후 backend 등)
+# 2. 백업 시점으로 되돌린다
+docker compose exec -T postgres pg_restore -U axcore -d axcore --clean --if-exists < backup/<파일>.dump
+# 3. 앱 컨테이너를 다시 켠다
+```
 
 ## 관련 문서
 
