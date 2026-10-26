@@ -6,7 +6,8 @@
 
 | 파일 | 역할 |
 | --- | --- |
-| `compose.yaml` | nginx · certbot · Jenkins 컨테이너 정의 (이미지 버전 고정, 내부망 `axcore-net`) |
+| `compose.yaml` | nginx · certbot · Jenkins · PostgreSQL 컨테이너 정의 (이미지 버전 고정, 내부망 `axcore-net`) |
+| `.env.example` | `compose.yaml`이 읽는 환경 변수 이름 목록 (실제 값은 서버의 `.env`에만) |
 | `nginx/conf.d/default.conf` | HTTP → HTTPS 리다이렉트, TLS 설정, `/jenkins/` 리버스 프록시 |
 | `nginx/html/index.html` | 기본 페이지 (nginx 동작 확인용) |
 | `jenkins/Dockerfile` | Jenkins 공식 이미지 + docker CLI · compose 플러그인 |
@@ -47,6 +48,8 @@ docker compose up -d                      # compose.yaml을 바꿨을 때
 2. `jenkins-data/` 폴더를 만들고 소유자를 uid 1000(컨테이너의 jenkins 사용자)으로 맞춥니다.
 3. 인증서는 certbot으로 새로 발급합니다. (`docker compose run --rm certbot certonly --webroot ...`)
 4. `renew-cert.sh`를 crontab에 등록합니다. (`0 3 * * * /home/ubuntu/axcore/scripts/renew-cert.sh >> /home/ubuntu/axcore/logs/renew-cert.log 2>&1`)
+5. `.env`를 만듭니다. `cp .env.example .env` 후 값을 채우고 `chmod 600 .env`. DB 비밀번호는 `openssl rand -base64 24`로 생성합니다.
+6. PostgreSQL 데이터는 Docker 볼륨 `axcore-pg-data`에 있습니다. 서버를 옮길 때는 볼륨 복사가 아니라 `pg_dump` 백업 파일로 옮깁니다. 포트는 `127.0.0.1:5432`로만 열려 있어 바깥에서 접속할 수 없습니다.
 
 ## 관련 문서
 
