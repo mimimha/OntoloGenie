@@ -7,7 +7,11 @@
 @.ai/rules/ai-collaboration.md
 
 - 코드 수정 시 `.ai/rules/code.md`, `.ai/rules/architecture.md`를 읽는다.
+- API 추가·변경 시 `.ai/rules/api.md`를 읽는다.
+- DB Schema·Entity·Migration 변경 시 `.ai/rules/database.md`를 읽는다.
 - 테스트 작성·실행 시 `.ai/rules/testing.md`를 읽는다.
+- Jira 이슈 작성·수정 시 `.ai/rules/jira.md`를 읽는다.
+- 팀 컨벤션 전문은 `docs/development-guide.md`이다. `.ai/rules/`와 내용이 다르면 임의로 고르지 말고 차이를 보고한다.
 
 관련 요청이 발생하면 아래 **프로젝트 로컬 Skill의 `SKILL.md`를 실제로 읽고 사용**한다. 동일 이름의 다른 Skill 대신 아래 경로를 선택한다. 상세 Workflow를 시작할 때 모두 import하거나 로드하지 않는다.
 
