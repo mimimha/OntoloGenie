@@ -1,0 +1,13 @@
+# 실행 모드는 프로필로 고른다: api(웹 서버), batch(배치 컨테이너), local(로컬 개발).
+# 예: SPRING_PROFILES_ACTIVE=api / SPRING_PROFILES_ACTIVE=local,api
+spring:
+  application:
+    name: platform
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate

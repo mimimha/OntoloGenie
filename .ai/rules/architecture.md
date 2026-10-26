@@ -16,7 +16,10 @@
 
 ## 백엔드 패키지
 
-도메인 중심으로 구성한다. 루트 패키지는 `com.axcore.platform`이다.
+도메인 중심으로 구성한다. 루트 패키지는 `com.axcore.platform`이다. 확정 기술 스택은 개발 가이드 6.2를 따른다.
+
+- 같은 프로세스를 여러 개 띄워도 맞게 동작해야 한다. 작업·잠금·카운터 같은 상태를 인스턴스 메모리에만 두지 않는다.
+- 실행 모드는 프로필로 나눈다: `api`(웹 서버), `batch`(배치 컨테이너), `local`(로컬 개발).
 
 - 도메인: `auth`, `account`, `ontology`, `source`, `mapping`, `analysis`, `review`, `check`, `issue`, `batch`, `action`, `agent`, `audit`
 - 공통: `global` (`config`, `error`, `security`, `response`)

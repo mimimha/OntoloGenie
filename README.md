@@ -27,7 +27,7 @@ ERP, MES, 현장 메모처럼 서로 다른 시스템에 저장된 데이터는 
 
 ## 2. 주요 기능
 
-기능은 최종 시나리오 기준으로 묶었습니다. 기능별 상세와 담당은 [기능 명세서](https://app.notion.com/p/3ffbdf14d2d88041be0ef1898eda8a60)에서 관리합니다.
+기능은 최종 시나리오 기준으로 묶었습니다. 기능별 상세와 담당은 [기능 명세서 통합 분석 및 역할 정리](https://app.notion.com/p/401bdf14d2d8810e932be5df0067f0df)에서 관리합니다.
 
 | 시나리오 | 내용 | 주요 기능 | 범위 |
 | --- | --- | --- | --- |
@@ -123,16 +123,20 @@ ERP, MES, 현장 메모처럼 서로 다른 시스템에 저장된 데이터는 
 
 | 영역 | 기술 | 상태 |
 | --- | --- | --- |
-| Backend | Java, Spring Boot, Spring Data JPA, Flyway | 확정 (버전은 프로젝트 구성 시 확정) |
+| Backend | Java 21, Spring Boot 4.1, Spring Data JPA, Flyway, Spring Security(JWT) | 확정 |
+| Batch | Spring Batch 6 (별도 컨테이너) | 확정 |
 | AI Agent | Spring AI 2.x | 확정 |
 | AI 분석·제안 | Python, FastAPI, Pydantic, pytest, Ruff | 확정 |
 | LLM | SSAFY GMS 제공 모델 | AI 분석·제안에 사용. Agent 모델은 미정 |
 | Frontend | React, TypeScript, ESLint, Prettier | 확정 |
-| Database | PostgreSQL | 확정 |
+| Database | PostgreSQL 18 | 확정 |
 | API 문서 | OpenAPI 3.1, Swagger | 확정 |
 | Infra | AWS Lightsail, Docker Compose, nginx, Let's Encrypt, Jenkins | 확정 |
 | 협업 | SSAFY GitLab(모노레포), Jira, Notion | 확정 |
-| 캐시·모니터링·배포 알림 | - | 미정 |
+| 모니터링 | Spring Boot Actuator, Prometheus | 백엔드 지표 노출 방식 확정. 수집·대시보드 구성 예정 |
+| 배포 알림 | - | 미정 |
+
+캐시(Redis)와 메시지 큐는 쓰지 않습니다. 오래 걸리는 작업은 DB의 실행 기록 테이블로 넘깁니다. 백엔드 세부 스택은 [개발 가이드 6.2](docs/development-guide.md#62-백엔드-기술-스택)에 있습니다.
 
 ## 6. 사용자 시나리오 (예시)
 
@@ -183,14 +187,24 @@ ERP, MES, 현장 메모처럼 서로 다른 시스템에 저장된 데이터는 
 
 ```text
 /
+├── backend/       # Spring Boot 백엔드 (API 서버·수집 배치 공용)
 ├── docs/          # 개발 가이드, 기획 자료
-├── infra/         # 메인 서버 배포 설정 (nginx, certbot, Jenkins)
+├── infra/         # 메인 서버 배포 설정 (nginx, certbot, Jenkins, PostgreSQL)
 ├── .gitlab/       # MR 템플릿
 ├── .ai/           # AI 도구 공통 규칙
 └── Jenkinsfile    # Jenkins 파이프라인
 ```
 
-서비스 코드(`backend/`, `ai/`, `frontend/`)는 각 서비스 구성이 끝나면 추가합니다. 실행 방법도 그때 서비스별로 추가합니다.
+AI 서비스와 프론트엔드 코드는 각 서비스 구성이 끝나면 추가합니다.
+
+**Backend 실행** (`backend/`, JDK 21·Docker 필요)
+
+```bash
+./gradlew build                                                   # 빌드·테스트·포맷 검사
+./gradlew bootTestRun --args='--spring.profiles.active=api'       # 로컬 DB 없이 실행 (Testcontainers)
+```
+
+실행 모드는 프로필로 고릅니다. `api`는 웹 서버, `batch`는 수집 배치 컨테이너입니다. 필요한 환경변수는 [backend/.env.example](backend/.env.example)에 있습니다.
 
 LLM API Key, DB 비밀번호 같은 민감 정보는 저장소에 커밋하지 않습니다. 서버 `.env`와 Jenkins Credentials로만 관리하고, `.env.example`에는 변수 이름과 설명만 둡니다.
 
@@ -202,7 +216,7 @@ LLM API Key, DB 비밀번호 같은 민감 정보는 저장소에 커밋하지 �
 | 인프라 설정 | [infra/README.md](infra/README.md) |
 | 시스템 구조 | [Notion](https://app.notion.com/p/3f1bdf14d2d88111b3f1d420ead2dce1) |
 | 최종 시나리오 | [Notion](https://app.notion.com/p/3ffbdf14d2d88054aba3d559f0f989d6) |
-| 기능 명세서 | [Notion](https://app.notion.com/p/3ffbdf14d2d88041be0ef1898eda8a60) |
+| 기능 명세서 (최종본) | [Notion](https://app.notion.com/p/401bdf14d2d8810e932be5df0067f0df) |
 | ERD | [Notion](https://app.notion.com/p/3ffbdf14d2d880fc95bafcb1c85df893) |
 | API 명세서 | [Notion](https://app.notion.com/p/3ffbdf14d2d88087a083ec2d51922bcc) |
 

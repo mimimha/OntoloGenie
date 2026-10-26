@@ -17,10 +17,10 @@
 | 저장소 | SSAFY GitLab 모노레포 |
 | 개발 통합·배포 브랜치 | `develop` |
 | 배포 | GitLab → Jenkins → Docker Compose |
-| 백엔드 | Java · Spring Boot |
+| 백엔드 | Java 21 · Spring Boot 4.1 (세부 스택은 6.2) |
 | AI | Python · FastAPI |
 | 프론트엔드 | React · TypeScript |
-| DB | PostgreSQL |
+| DB | PostgreSQL 18 |
 | DB Migration | Flyway |
 | API 문서 | OpenAPI 3.1 · Swagger |
 | 업무 관리 | Jira (프로젝트 키 `S15P31C106`) |
@@ -372,6 +372,46 @@ action/
 
 기능과 관계없는 범용 코드를 `global`에 넣지 않는다. 여러 도메인이 실제로 사용하는 코드만 공통화한다.
 
+### 6.2 백엔드 기술 스택
+
+2026-10-26 확정했다. 버전을 적지 않은 라이브러리는 Spring Boot BOM이 관리하는 버전을 쓴다.
+
+| 영역 | 기술 |
+|---|---|
+| 언어·프레임워크 | Java 21, Spring Boot 4.1.x |
+| 빌드 | Gradle(Wrapper), 프로젝트 1개·Docker 이미지 1개 |
+| 실행 모드 | 프로필 `api`(웹 서버), `batch`(배치 컨테이너, 웹 서버 없음), `local`(로컬 개발) |
+| 웹 | Spring MVC, Bean Validation, `@RestControllerAdvice` 공통 오류 처리 |
+| API 문서 | springdoc-openapi 3.x (OpenAPI 3.1, Swagger UI) |
+| 데이터 | PostgreSQL 18, Spring Data JPA(`@Version`, jsonb), JdbcClient(대량 upsert), Flyway |
+| 원천 DB | 읽기 전용 HikariCP 커넥션 풀을 따로 둔다. |
+| CSV | Jackson CSV |
+| 오래 걸리는 작업 | 실행 기록 테이블에 요청을 넣고 202를 응답한다. 작업자가 `FOR UPDATE SKIP LOCKED`로 가져가 처리한다. 여러 인스턴스 운영을 기준으로 한다. |
+| 배치 | Spring Batch 6(JDBC JobRepository) + `@Scheduled`. 주기 실행은 배치 컨테이너에만 둔다. |
+| 인증 | Spring Security, OAuth2 Resource Server(JWT), BCrypt |
+| 외부 호출 | RestClient (시간 제한 필수) |
+| AI Agent | Spring AI 2.0.x (GMS 연결) |
+| 운영 | Actuator, Micrometer Prometheus |
+| 코드 품질 | Spotless + google-java-format(AOSP), Lombok(7.2 허용 범위) |
+| 테스트 | JUnit, Mockito, Spring MVC Test, Testcontainers(PostgreSQL 18) |
+
+사용하지 않는 것: Redis, 메시지 큐, WebFlux·SSE, QueryDSL, Spring AI 기본 대화 메모리(대화는 플랫폼 DB에 저장한다).
+
+- 같은 프로세스를 여러 개 띄워도 맞게 동작해야 한다. 작업·잠금·카운터 같은 상태를 인스턴스 메모리에만 두지 않는다.
+- 의존성은 그 기능을 구현하는 이슈에서 설정과 함께 추가한다.
+
+**백엔드 명령** (`backend/`에서 실행)
+
+| 목적 | 명령 |
+|---|---|
+| 빌드·테스트·포맷 검사 | `./gradlew build` |
+| 테스트 | `./gradlew test` |
+| 포맷 적용 | `./gradlew spotlessApply` |
+| 포맷 검사 | `./gradlew spotlessCheck` |
+| 로컬 DB 없이 실행 (Testcontainers) | `./gradlew bootTestRun --args='--spring.profiles.active=api'` |
+
+테스트와 `bootTestRun`은 Docker가 실행 중이어야 한다.
+
 ---
 
 ## 7. 코드 스타일
@@ -402,7 +442,19 @@ action/
 
 Google Java Style Guide의 이름·중괄호·import 원칙을 참고한다. 들여쓰기 4칸은 C106 결정이며 Google 규칙과 동일하지 않다.
 
-Java Formatter는 아직 정하지 않았다. 백엔드 프로젝트 구성 시 결정한다.
+포맷은 Spotless + google-java-format(AOSP 스타일, 4칸)으로 맞춘다. 커밋 전에 `./gradlew spotlessApply`를 실행한다. `./gradlew build`는 포맷이 맞지 않으면 실패한다.
+
+Lombok은 아래 5개만 쓴다. 다른 Lombok 기능은 `backend/lombok.config`에서 컴파일 오류로 막는다.
+
+| 기능 | 조건 |
+|---|---|
+| `@Getter` | - |
+| `@RequiredArgsConstructor` | 생성자 주입에 쓴다. |
+| `@Slf4j` | 로거는 이것 하나로 통일한다. |
+| `@NoArgsConstructor` | Entity에만, `access = AccessLevel.PROTECTED`로 쓴다. |
+| `@Builder` | 생성자나 정적 메서드에만 붙인다. 클래스에 붙이지 않는다. 필수 값 검사와 기본값은 그 생성자 안에서 처리한다. |
+
+위치와 접근 수준 조건은 설정 파일로 검사할 수 없으므로 리뷰에서 확인한다.
 
 **이름 예시**
 
@@ -421,7 +473,7 @@ findActiveObject()
 - 단순 Entity 조회만 수행하는 Service를 불필요하게 분리하지 않는다.
 - 외부 AI 호출이나 원천 DB 조회를 장시간 DB 트랜잭션 안에서 실행하지 않는다.
 - 업무 예외를 `RuntimeException` 하나로 처리하지 않는다.
-- Lombok을 사용하더라도 Entity의 `@Data` 사용은 피한다.
+- Entity에는 `@Data`, `@Setter`를 쓰지 않는다. DTO는 record로 만든다.
 
 ### 7.3 Python · FastAPI
 
@@ -935,13 +987,13 @@ Definition of Done은 작업을 완료했다고 판단하는 공통 기준이다
 
 **백엔드**
 - [ ] 패키지 구조 확정
-- [ ] Java Formatter 결정 및 코드 포맷 통일
+- [x] Java Formatter 결정 및 코드 포맷 통일
 - [ ] 공통 API 응답 구현
 - [ ] 공통 예외 처리 구현
 - [ ] Bean Validation 적용
 - [ ] 인증·권한 공통 처리
 - [ ] Flyway 적용
-- [ ] Testcontainers 기본 테스트 구성
+- [x] Testcontainers 기본 테스트 구성
 
 **AI·프론트엔드**
 - [ ] FastAPI 요청·응답 모델 확정
