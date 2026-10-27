@@ -19,7 +19,7 @@ AI 작업에서 확인할 팀 문서의 위치다. 저장소 밖 문서는 Notio
 
 | 문서 | 링크 | 쓰임 |
 | --- | --- | --- |
-| 기능 명세서 (최종본) | [기능 명세서 통합 분석 및 역할 정리](https://app.notion.com/p/401bdf14d2d8810e932be5df0067f0df) | 기능 ID(`FN-...`), 담당, MVP 범위 |
+| 기능 명세서 (최종본) | [기능 명세서](https://app.notion.com/p/3ffbdf14d2d88041be0ef1898eda8a60) | 기능 ID(`FN-...`), 담당, MVP 범위 |
 | 최종 시나리오 | [최종 시나리오](https://app.notion.com/p/3ffbdf14d2d88054aba3d559f0f989d6) | 시나리오 S1~S7의 업무 흐름 |
 | API 명세서 | [API 명세서](https://app.notion.com/p/3ffbdf14d2d88087a083ec2d51922bcc) · [C106 API 관리 DB](https://app.notion.com/p/fb5c0ebaff7d446991d1c5adb0fdc5a8) | API별 경로·요청·응답·오류 |
 | ERD | [ERD](https://app.notion.com/p/3ffbdf14d2d880fc95bafcb1c85df893) · [온톨로지 MVP ERD v2](https://app.notion.com/p/402bdf14d2d880048f4fd8ee1f1d540b) · [운영 ERD v1](https://app.notion.com/p/402bdf14d2d880d19014c967ea8f6fa3) | 테이블·제약 조건. DDL(`ddl.sql`, `ddl_ops.sql`)은 각 페이지에 첨부 |

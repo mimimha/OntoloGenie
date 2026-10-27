@@ -388,7 +388,7 @@ action/
 | CSV | Jackson CSV |
 | 오래 걸리는 작업 | 실행 기록 테이블에 요청을 넣고 202를 응답한다. 작업자가 `FOR UPDATE SKIP LOCKED`로 가져가 처리한다. 여러 인스턴스 운영을 기준으로 한다. |
 | 배치 | Spring Batch 6(JDBC JobRepository) + `@Scheduled`. 주기 실행은 배치 컨테이너에만 둔다. |
-| 인증 | Spring Security, OAuth2 Resource Server(JWT), BCrypt |
+| 인증 | Spring Security(세션 인증), Spring Session JDBC(세션을 플랫폼 DB에 저장), BCrypt |
 | 외부 호출 | RestClient (시간 제한 필수) |
 | AI Agent | Spring AI 2.0.x (GMS 연결) |
 | 운영 | Actuator, Micrometer Prometheus |
@@ -724,13 +724,34 @@ AI가 생성한 객체 유형이나 연결 규칙은 곧바로 활성 데이터�
 
 ### 11.1 인증
 
-- 인증이 필요한 API는 Bearer 토큰을 사용한다.
+2026-10-27 JWT 대신 서버 세션 방식으로 정했다. 잠긴 계정과 바뀐 역할을 바로 반영하고, Redis 없이 여러 인스턴스에서 같은 세션을 쓰기 위해서다.
+
+**세션**
+
+- 로그인하면 서버가 세션을 만들고 세션 쿠키를 발급한다. 이후 요청은 이 쿠키로 인증한다.
+- 세션은 Spring Session JDBC로 플랫폼 DB에 저장한다.
+- 세션 쿠키에는 `HttpOnly`와 `Secure`를 붙인다.
+- 요청이 없는 상태로 30분이 지나면 세션이 만료된다.
+- 로그아웃하면 서버의 세션을 지운다.
+- 같은 계정으로 여러 곳에서 동시에 로그인할 수 있다.
+
+**세션 끊기**
+
+- 비밀번호를 바꾸면 그 계정의 다른 세션을 모두 끊는다. 지금 쓰는 세션만 남긴다.
+- 관리자가 계정을 잠그거나 비활성화하거나 역할을 바꾸면 그 계정의 세션을 모두 끊는다.
+
+**CSRF 방어**
+
+- 상태를 바꾸는 요청(POST·PATCH·DELETE)은 CSRF 토큰을 검사한다.
+- 서버는 토큰을 `XSRF-TOKEN` 쿠키로 보낸다. 화면은 같은 값을 `X-XSRF-TOKEN` 요청 헤더에 넣는다.
+
+**공통**
+
+- nginx 뒤에서도 `Secure` 쿠키와 HTTPS 주소가 맞도록 Spring Boot의 forward headers 설정(`server.forward-headers-strategy`)을 켠다.
 - 인증 실패와 권한 부족을 구분한다.
 - 비활성화하거나 잠긴 계정은 인증할 수 없다.
 - 비밀번호는 복원할 수 없는 해시로 저장한다.
-- 토큰·비밀번호·인증 헤더를 로그에 남기지 않는다.
-- 브라우저의 토큰 보관 방식은 인증 구현과 함께 확정한다.
-- 비밀번호 변경 후 기존 인증을 어떻게 처리할지 정책을 정한다.
+- 세션 ID·쿠키·비밀번호·인증 헤더를 로그에 남기지 않는다.
 
 ### 11.2 권한
 
@@ -753,7 +774,6 @@ GitLab에 다음 정보를 저장하지 않는다.
 
 - 실제 `.env`
 - DB 비밀번호
-- JWT 서명 키
 - AI API 키
 - GitLab Access Token
 - SSH 개인 키
