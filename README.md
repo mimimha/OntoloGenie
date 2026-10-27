@@ -27,7 +27,7 @@ ERP, MES, 현장 메모처럼 서로 다른 시스템에 저장된 데이터는 
 
 ## 2. 주요 기능
 
-기능은 최종 시나리오 기준으로 묶었습니다. 기능별 상세와 담당은 [기능 명세서 통합 분석 및 역할 정리](https://app.notion.com/p/401bdf14d2d8810e932be5df0067f0df)에서 관리합니다.
+기능은 최종 시나리오 기준으로 묶었습니다. 기능별 상세와 담당은 [기능 명세서](https://app.notion.com/p/3ffbdf14d2d88041be0ef1898eda8a60)에서 관리합니다.
 
 | 시나리오 | 내용 | 주요 기능 | 범위 |
 | --- | --- | --- | --- |
@@ -123,7 +123,7 @@ ERP, MES, 현장 메모처럼 서로 다른 시스템에 저장된 데이터는 
 
 | 영역 | 기술 | 상태 |
 | --- | --- | --- |
-| Backend | Java 21, Spring Boot 4.1, Spring Data JPA, Flyway, Spring Security(JWT) | 확정 |
+| Backend | Java 21, Spring Boot 4.1, Spring Data JPA, Flyway, Spring Security(세션 인증), Spring Session JDBC | 확정 |
 | Batch | Spring Batch 6 (별도 컨테이너) | 확정 |
 | AI Agent | Spring AI 2.x | 확정 |
 | AI 분석·제안 | Python, FastAPI, Pydantic, pytest, Ruff | 확정 |
@@ -216,7 +216,7 @@ LLM API Key, DB 비밀번호 같은 민감 정보는 저장소에 커밋하지 �
 | 인프라 설정 | [infra/README.md](infra/README.md) |
 | 시스템 구조 | [Notion](https://app.notion.com/p/3f1bdf14d2d88111b3f1d420ead2dce1) |
 | 최종 시나리오 | [Notion](https://app.notion.com/p/3ffbdf14d2d88054aba3d559f0f989d6) |
-| 기능 명세서 (최종본) | [Notion](https://app.notion.com/p/401bdf14d2d8810e932be5df0067f0df) |
+| 기능 명세서 (최종본) | [Notion](https://app.notion.com/p/3ffbdf14d2d88041be0ef1898eda8a60) |
 | ERD | [Notion](https://app.notion.com/p/3ffbdf14d2d880fc95bafcb1c85df893) |
 | API 명세서 | [Notion](https://app.notion.com/p/3ffbdf14d2d88087a083ec2d51922bcc) |
 
