@@ -6,13 +6,21 @@
 
 | 파일 | 역할 |
 | --- | --- |
-| `compose.yaml` | nginx · certbot · Jenkins · PostgreSQL 컨테이너 정의 (이미지 버전 고정, 내부망 `axcore-net`) |
+| `compose.yaml` | nginx · certbot · Jenkins · PostgreSQL 18 컨테이너 정의 (이미지 버전 고정, 내부망 `axcore-net`) |
 | `.env.example` | `compose.yaml`이 읽는 환경 변수 이름 목록 (실제 값은 서버의 `.env`에만) |
 | `nginx/conf.d/default.conf` | HTTP → HTTPS 리다이렉트, TLS 설정, `/jenkins/` 리버스 프록시 |
 | `nginx/html/index.html` | 기본 페이지 (nginx 동작 확인용) |
 | `jenkins/Dockerfile` | Jenkins 공식 이미지 + docker CLI · compose 플러그인 |
 | `scripts/renew-cert.sh` | 인증서 자동 갱신 + nginx reload (cron에서 매일 03:00 실행) |
 | `scripts/pg-backup.sh` | 플랫폼 DB `pg_dump` 백업 + 7일 지난 파일 삭제 (cron에서 매일 04:00 실행) |
+
+## 포트 규칙
+
+SSAFY 클라우드 방화벽은 tcp · udp 1024~65535를 열어 두므로, 서버의 ufw와 `127.0.0.1` 바인딩이 유일한 방어선입니다. Docker의 `ports:`는 ufw를 우회하므로 아래 규칙을 지킵니다.
+
+- 바깥(`0.0.0.0`)에 여는 포트는 nginx의 80 · 443뿐입니다.
+- 나머지 서비스는 호스트 포트를 열지 않거나 `127.0.0.1:1xxxx`(비기본값)로만 엽니다. 컨테이너 안 포트는 기본값을 유지합니다.
+- 현재 할당: PostgreSQL `127.0.0.1:15432` (컨테이너 안 5432). 앞으로 backend 18080 · ai 18000 · grafana 13000 예정.
 
 ## 저장소에 올리지 않는 것
 
@@ -51,7 +59,7 @@ docker compose up -d                      # compose.yaml을 바꿨을 때
 3. 인증서는 certbot으로 새로 발급합니다. (`docker compose run --rm certbot certonly --webroot ...`)
 4. `renew-cert.sh`를 crontab에 등록합니다. (`0 3 * * * /home/ubuntu/axcore/scripts/renew-cert.sh >> /home/ubuntu/axcore/logs/renew-cert.log 2>&1`)
 5. `.env`를 만듭니다. `cp .env.example .env` 후 값을 채우고 `chmod 600 .env`. DB 비밀번호는 `openssl rand -base64 24`로 생성합니다.
-6. PostgreSQL 데이터는 Docker 볼륨 `axcore-pg-data`에 있습니다. 서버를 옮길 때는 볼륨 복사가 아니라 `pg_dump` 백업 파일로 옮깁니다. 포트는 `127.0.0.1:5432`로만 열려 있어 바깥에서 접속할 수 없습니다.
+6. PostgreSQL 데이터는 Docker 볼륨 `axcore-pg-data-18`에 있습니다. (컨테이너 안 `/var/lib/postgresql`, PostgreSQL 18 이미지는 그 아래 `18/docker`를 데이터 폴더로 씀) 서버를 옮길 때는 볼륨 복사가 아니라 `pg_dump` 백업 파일로 옮깁니다. 호스트 포트는 `127.0.0.1:15432`로만 열려 있어 바깥에서 접속할 수 없습니다.
 7. `pg-backup.sh`를 crontab에 등록합니다. (`0 4 * * * /home/ubuntu/axcore/scripts/pg-backup.sh >> /home/ubuntu/axcore/logs/pg-backup.log 2>&1`)
 
 ## DB 백업 · 복구
@@ -88,6 +96,30 @@ cd ~/axcore
 docker compose exec -T postgres pg_restore -U axcore -d axcore --clean --if-exists < backup/<파일>.dump
 # 3. 앱 컨테이너를 다시 켠다
 ```
+
+## PostgreSQL 메이저 업그레이드 절차 (17.11 → 18.6, 2026-10-27 수행)
+
+메이저 버전(17 → 18)은 데이터 파일 형식이 달라 `image:` 숫자만 바꾸면 컨테이너가 켜지지 않습니다. 백업 → 새 볼륨으로 새 버전 기동 → 복구 순서로 진행합니다. 데이터가 적을 때 하는 것이 가장 쉽습니다.
+
+```bash
+cd ~/axcore
+# 1. 새 버전 숫자 확인, 이전용 백업 확보
+docker run --rm postgres:18 postgres --version
+./scripts/pg-backup.sh
+# 2. 옛 컨테이너 삭제 (볼륨은 남음), compose 수정 전 사본
+docker compose rm -sf postgres
+cp compose.yaml compose.yaml.bak-17
+# 3. compose.yaml: image 숫자, 새 볼륨 이름(pg-data-18 / axcore-pg-data-18), 마운트 경로 /var/lib/postgresql, 호스트 포트
+# 4. 새 버전 기동 → 초기화 후 비어 있는 DB에 백업 복구
+docker compose up -d postgres
+docker compose exec -T postgres pg_restore -U axcore -d axcore < backup/<이전용 백업>.dump
+# 5. 표 개수 · 줄 수 비교 (DB 백업 · 복구 절 참고), 포트 확인
+sudo ss -tlnp | grep 15432
+```
+
+- 되돌리기: `cp compose.yaml.bak-17 compose.yaml && docker compose up -d postgres` (옛 볼륨이 그대로라 이전 버전으로 복귀)
+- 옛 볼륨은 2~3일 뒤 문제 없으면 삭제: `docker volume rm axcore-pg-data`
+- `pg-backup.sh`는 컨테이너 이름으로 접속하므로 버전 · 포트 변경에 영향 없음
 
 ## 관련 문서
 
