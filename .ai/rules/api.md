@@ -9,6 +9,7 @@
 - GET은 조회, POST는 생성 또는 명시적인 실행 요청, PATCH는 일부 수정에 쓴다.
 - DELETE는 명세된 삭제 작업에만 쓴다.
 - 구현 편의만을 이유로 명세된 경로를 바꾸지 않는다.
+- Swagger UI(`/swagger-ui.html`)는 `api` 프로필에서만 열린다. 확인용이며 계약의 원본은 API 명세서다.
 
 ## 응답 형식
 
@@ -41,7 +42,8 @@ API별 실제 상태 코드는 OpenAPI 명세에 기록한다.
 
 - Java 필드와 JSON 필드는 camelCase를 쓴다.
 - ID는 DB bigint에 대응하며, 현재 OpenAPI는 JSON 숫자로 정의한다.
-- 시각은 시간대 정보가 있는 ISO 8601 문자열을 쓴다.
+- 시각은 시간대 정보가 있는 ISO 8601 문자열을 쓴다. DTO는 `Instant`를 쓰고, 응답은 UTC(`Z`)로 나간다. 시간대가 없는 입력은 400으로 거절된다.
+- 현재 시각은 주입받은 `Clock`으로 구한다(`Instant.now(clock)`).
 - 필수 입력과 선택 입력을 명확히 구분한다.
 - 목록 조회는 `page`, `size` 등 명세된 파라미터를 쓴다.
 - 입력값 검사는 Controller 진입 시점부터 한다.

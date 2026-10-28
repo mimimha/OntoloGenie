@@ -332,7 +332,8 @@ com.axcore.platform
 │   ├── config
 │   ├── error
 │   ├── security
-│   └── response
+│   ├── response
+│   └── entity
 ├── auth
 ├── account
 ├── ontology
@@ -527,6 +528,8 @@ GET   /api/v1/action-executions/{id}
 
 기존 API 명세서의 경로가 우선한다. 구현 편의만을 이유로 경로를 바꾸지 않는다.
 
+API 문서(springdoc)는 `api` 프로필에서만 열린다. Swagger UI는 `/swagger-ui.html`, OpenAPI 문서는 `/v3/api-docs`이다. 코드에서 만든 문서는 확인용이다. 계약의 원본은 OpenAPI 명세서(Notion API 명세서)다.
+
 ### 8.2 성공 응답
 
 기존 API 명세서의 `data`, `meta` 구조를 사용한다.
@@ -666,6 +669,9 @@ throw new BusinessException(
 - ID는 DB의 bigint와 대응한다.
 - 현재 OpenAPI는 ID를 JSON 숫자로 정의한다.
 - 시각은 시간대 정보가 있는 ISO 8601 문자열을 사용한다.
+  - DTO의 시각 필드는 `Instant`를 쓴다. 응답은 UTC로 나간다. 예: `2026-10-28T03:15:30Z`
+  - 요청은 시간대가 붙은 값만 받는다. `2026-10-28T12:15:30+09:00`은 받고, 시간대가 없는 `2026-10-28T12:15:30`은 400(`VALIDATION_FAILED`)으로 거절한다.
+  - 현재 시각은 `Instant.now()` 대신 주입받은 `Clock`으로 구한다(`Instant.now(clock)`). 테스트에서 시각을 고정할 수 있다.
 - 선택적인 입력과 필수 입력을 명확히 구분한다.
 - 목록 조회는 `page`, `size` 등 명세된 파라미터를 사용한다.
 - 입력값 검사는 Controller 진입 시점부터 수행한다.
@@ -725,6 +731,18 @@ Migration은 DB 변경 SQL을 버전별로 실행하는 방식이다.
 - 조회 화면에 필요한 값만 가져온다.
 - N+1 문제가 발생할 수 있는 조회는 테스트로 확인한다.
 - Fetch Join, DTO 조회 등은 실제 조회 요구에 따라 선택한다.
+
+공통 Entity (`global.entity`):
+
+| 테이블의 컬럼 | 상속할 클래스 | 자동으로 채우는 값 |
+|---|---|---|
+| `created_at`, `updated_at` | `BaseTimeEntity` | 생성·수정 시각 |
+| 위 컬럼 + `created_by`, `updated_by` | `BaseAuditEntity` | 생성·수정 시각, 생성·수정 계정 ID |
+
+- `timestamptz` 컬럼은 Java `Instant`로 매핑한다.
+- 생성·수정 계정은 로그인한 계정 ID다. 로그인 사용자가 없는 작업(배치, AI 제안)에서는 NULL로 남는다.
+- 위 표에 맞지 않는 테이블(예: `created_at`만 있음)은 공통 Entity를 상속하지 않는다. 필드를 직접 선언한다.
+- `row_version`은 공통 Entity에 없다. 컬럼이 있는 Entity가 `@Version`으로 직접 선언한다.
 
 ### 9.4 동시성
 

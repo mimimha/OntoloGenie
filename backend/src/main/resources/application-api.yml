@@ -1,3 +1,12 @@
 spring:
   main:
     web-application-type: servlet
+
+# API 문서는 웹 서버(api 프로필)에서만 연다. 배치 컨테이너는 웹 서버가 없어 열지 않는다.
+# 내부 오류 경로(/error, ApiErrorController)는 업무 API가 아니라 문서에서 뺀다.
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+  paths-to-exclude: /error

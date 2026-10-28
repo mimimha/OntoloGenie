@@ -24,6 +24,8 @@
 - 연관 관계는 필요한 방향만 정의한다. 모든 연관 관계를 양방향으로 만들지 않는다.
 - 조회에 필요한 값만 가져온다.
 - N+1이 생길 수 있는 조회는 테스트로 확인한다. Fetch Join, DTO 조회 등은 실제 조회 요구에 따라 고른다.
+- `created_at`·`updated_at`이 있는 테이블은 `BaseTimeEntity`를, `created_by`·`updated_by`까지 있으면 `BaseAuditEntity`를 상속한다. 맞지 않는 테이블은 필드를 직접 선언한다. 자세한 내용은 [C106 개발 가이드](../../docs/development-guide.md) 9.3이다.
+- `timestamptz` 컬럼은 `Instant`로 매핑한다. `row_version`은 각 Entity가 `@Version`으로 선언한다.
 
 ## 동시성과 제약 조건
 
