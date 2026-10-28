@@ -8,7 +8,7 @@
 | --- | --- |
 | `compose.yaml` | nginx · certbot · Jenkins · PostgreSQL 18 컨테이너 정의 (이미지 버전 고정, 내부망 `axcore-net`) |
 | `.env.example` | `compose.yaml`이 읽는 환경 변수 이름 목록 (실제 값은 서버의 `.env`에만) |
-| `nginx/conf.d/default.conf` | HTTP → HTTPS 리다이렉트, TLS 설정, `/jenkins/` 리버스 프록시 |
+| `nginx/conf.d/default.conf` | HTTP → HTTPS 리다이렉트, TLS 설정, `/jenkins/` 리버스 프록시, `/api/` → backend (스트리밍 대비 buffering off) |
 | `nginx/html/index.html` | 기본 페이지 (nginx 동작 확인용) |
 | `jenkins/Dockerfile` | Jenkins 공식 이미지 + docker CLI · compose 플러그인 |
 | `scripts/renew-cert.sh` | 인증서 자동 갱신 + nginx reload (cron에서 매일 03:00 실행) |
@@ -22,6 +22,16 @@ SSAFY 클라우드 방화벽은 tcp · udp 1024~65535를 열어 두므로, 서�
 - 바깥(`0.0.0.0`)에 여는 포트는 nginx의 80 · 443뿐입니다.
 - 나머지 서비스는 호스트 포트를 열지 않거나 `127.0.0.1:1xxxx`(비기본값)로만 엽니다. 컨테이너 안 포트는 기본값을 유지합니다.
 - 현재 할당: PostgreSQL `127.0.0.1:15432` (컨테이너 안 5432). 앞으로 backend 18080 · ai 18000 · grafana 13000 예정.
+
+## nginx 경로 (바깥에서 보이는 주소)
+
+| 경로 | 가는 곳 | 비고 |
+| --- | --- | --- |
+| `/` | nginx 기본 페이지 | 5단계 frontend 배포 시 React로 교체 |
+| `/api/` | backend:8080 (경로 그대로) | 로그인 전 요청은 backend가 401로 응답. `X-Forwarded-Proto` 전달(세션 Secure 쿠키), `proxy_buffering off` + `proxy_read_timeout 300s`(Agent 스트리밍), 업로드 상한 20m |
+| `/jenkins/` | jenkins:8080 | 팀원 Read 권한 |
+
+바깥에 열지 않는 것: backend `/actuator/*`(헬스체크·지표는 내부망만), Swagger `/swagger-ui.html` · `/v3/api-docs`(노출 여부 결정 대기). `/api/`로 시작하지 않으므로 nginx가 넘기지 않는다.
 
 ## 저장소에 올리지 않는 것
 
