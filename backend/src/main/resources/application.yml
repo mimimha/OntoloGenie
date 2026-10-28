@@ -11,3 +11,8 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+
+# 로그 줄마다 요청 추적 ID(RequestIdFilter)를 붙인다. 요청 밖의 로그는 빈 칸이다.
+logging:
+  pattern:
+    correlation: "[%X{requestId:-}] "

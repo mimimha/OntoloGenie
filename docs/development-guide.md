@@ -554,6 +554,13 @@ GET   /api/v1/action-executions/{id}
 }
 ```
 
+Controller는 `global.response.ApiResponse`로 감싸서 반환한다. `meta`는 목록 응답에만 나간다.
+
+```java
+return ApiResponse.of(SourceResponse.from(source));   // 단건
+return ApiResponse.ofPage(page.map(SourceResponse::from)); // 목록(Spring Data Page)
+```
+
 ### 8.3 오류 응답
 
 모든 API는 같은 오류 구조를 사용한다.
@@ -574,6 +581,65 @@ GET   /api/v1/action-executions/{id}
 - `details`: 필요한 추가 정보다.
 - `requestId`: 서버 로그에서 해당 요청을 찾는 식별자다.
 
+**requestId**
+
+- 서버가 요청마다 새로 만든다. 클라이언트가 보낸 값은 쓰지 않는다.
+- 같은 값을 응답 헤더 `X-Request-Id`, 오류 응답의 `requestId`, 그 요청의 모든 로그 줄에 남긴다.
+- Action 실행 요청 본문의 `requestId`(API 091)는 중복 실행을 막는 키로, 이 추적 ID와 다른 값이다.
+
+**공통 오류 코드**
+
+| code | 상태 | 쓰는 경우 | details 예 |
+|---|---|---|---|
+| `VALIDATION_FAILED` | 400 | 입력값 검사 실패, JSON 형식 오류, 파라미터 형식·누락 | `field`, `reason`, `errors[]` |
+| `UNAUTHENTICATED` | 401 | 로그인하지 않았거나 세션이 끝남 | - |
+| `FORBIDDEN` | 403 | 권한 부족 | `requiredPermission` |
+| `RESOURCE_NOT_FOUND` | 404 | 대상이나 경로가 없음 | `resource` |
+| `METHOD_NOT_ALLOWED` | 405 | 경로에 없는 HTTP Method | - |
+| `CONFLICT` | 409 | 중복·상태 충돌, 처리하지 못한 DB 제약 위반 | - |
+| `VERSION_CONFLICT` | 409 | `rowVersion` 불일치 | `field`, `expected`, `actual` |
+| `IN_USE` | 409 | 다른 데이터가 참조하고 있어 삭제·변경할 수 없음 | `references[]`(`tableName`, `count`, `ids`) |
+| `BUSINESS_RULE_VIOLATION` | 422 | 형식은 맞지만 업무 규칙에 맞지 않음 | `field`, `reason` |
+| `INTERNAL_ERROR` | 500 | 그 밖의 모든 오류. 내부 내용은 응답에 넣지 않는다. | - |
+
+입력값 오류가 여러 개면 첫 번째 오류를 `field`·`reason`에, 전체 목록을 `errors`에 담는다.
+
+```json
+"details": {
+  "field": "name",
+  "reason": "공백일 수 없습니다",
+  "errors": [
+    { "field": "name", "reason": "공백일 수 없습니다" },
+    { "field": "size", "reason": "널이어서는 안됩니다" }
+  ]
+}
+```
+
+**예외 처리 구현**
+
+`global.error.GlobalExceptionHandler`가 모든 예외를 위 형식으로 바꾼다. Controller와 Service에서 오류 응답을 직접 만들지 않는다.
+
+- 업무 규칙 위반은 `BusinessException`을 던진다. 오류 코드와 `details`를 담는다.
+- 메시지는 오류 코드의 기본 문구를 쓴다. API 명세서가 그 API에 맞는 문구를 정해 두었으면 그 문구를 넘긴다. 예: `new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "미리보기 결과가 없거나 만료되었습니다. 다시 요청해 주세요.", Map.of())`
+- 도메인 전용 오류 코드는 그 도메인 패키지에 `ErrorCode`를 구현한 enum으로 만든다. `CommonErrorCode`에 도메인 코드를 넣지 않는다.
+
+```java
+// issue/domain/IssueErrorCode.java
+public enum IssueErrorCode implements ErrorCode {
+    REVERIFICATION_REQUIRED(
+            HttpStatus.UNPROCESSABLE_CONTENT, "해결로 변경하려면 이 문제의 재검증 통과 기록이 필요합니다.");
+    // code(), status(), message() 구현
+}
+
+throw new BusinessException(
+        IssueErrorCode.REVERIFICATION_REQUIRED,
+        Map.of("field", "status", "reason", "재검증 통과 기록이 없습니다."));
+```
+
+- JPA 버전 충돌(`OptimisticLockingFailureException`)은 자동으로 `VERSION_CONFLICT`가 된다.
+- DB 제약 위반(`DataIntegrityViolationException`)은 자동으로 `CONFLICT`가 된다. 중복처럼 예상할 수 있는 경우는 Service에서 먼저 확인하고 구체적인 코드로 던진다.
+- 컨트롤러 밖(필터 등)에서 난 오류도 `/error`에서 같은 형식으로 응답한다.
+
 **HTTP 상태 코드**
 
 | 코드 | 사용 기준 |
@@ -586,6 +652,7 @@ GET   /api/v1/action-executions/{id}
 | 401 | 인증 필요·인증 실패 |
 | 403 | 권한 부족 |
 | 404 | 대상 없음 |
+| 405 | 지원하지 않는 HTTP Method |
 | 409 | 중복·상태 충돌·버전 충돌 |
 | 422 | 유효한 형식이지만 업무 조건 위반 |
 | 500 | 서버 내부 오류 |

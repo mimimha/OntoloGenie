@@ -14,6 +14,10 @@
 
 - 성공 응답은 `data`로 감싼다. 목록 조회는 `meta`에 `page`, `size`, `totalElements`, `hasNext`를 넣는다.
 - 오류 응답은 모든 API가 `error` 객체에 `code`, `message`, `details`, `requestId`를 담는다.
+- 성공 응답은 `ApiResponse`로 감싸고, 오류는 `BusinessException`을 던져 `GlobalExceptionHandler`가 응답을 만들게 한다. 공통 오류 코드 표와 도메인 오류 코드 작성법은 [C106 개발 가이드](../../docs/development-guide.md) 8.3을 따른다.
+- 도메인 전용 오류 코드는 그 도메인 패키지에 `ErrorCode`를 구현한 enum으로 만든다. `CommonErrorCode`에 넣지 않는다. 공통 코드(`IN_USE`, `BUSINESS_RULE_VIOLATION` 등)로 표현되면 새 코드를 만들지 않는다.
+- 오류 메시지는 API 명세서에 그 API 전용 문구가 있으면 그 문구를 쓴다. 없으면 오류 코드의 기본 문구를 쓴다.
+- 오류 응답의 `requestId`는 서버가 만든 추적 ID다. 응답 헤더 `X-Request-Id`와 같은 값이다.
 - Entity를 응답으로 직접 반환하지 않는다. 화면에 값이 필요하다는 이유로 Entity 전체를 반환하지 않는다.
 
 | 상태 코드 | 사용 기준 |
@@ -26,6 +30,7 @@
 | 401 | 인증 필요·인증 실패 |
 | 403 | 권한 부족 |
 | 404 | 대상 없음 |
+| 405 | 지원하지 않는 HTTP Method |
 | 409 | 중복·상태 충돌·버전 충돌 |
 | 422 | 형식은 맞지만 업무 조건 위반 |
 | 500 | 서버 내부 오류 |
