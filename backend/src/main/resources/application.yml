@@ -7,6 +7,12 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    # 모든 테이블은 스키마 platform 하나에 둔다. 연결의 search_path를 platform으로 맞춘다.
+    hikari:
+      schema: platform
+  # 스키마는 Flyway가 만들고 db/migration의 V*.sql을 순서대로 적용한다. 이미 적용한 파일은 고치지 않는다.
+  flyway:
+    schemas: platform
   jpa:
     open-in-view: false
     hibernate:
