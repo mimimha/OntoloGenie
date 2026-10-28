@@ -109,6 +109,7 @@ docker compose exec -T postgres pg_restore -U axcore -d axcore --clean --if-exis
 - DB 접속은 compose 안에서 `postgres:5432` (컨테이너 이름 · 컨테이너 포트). 호스트 포트 15432는 SSH 터널용
 - 표는 Flyway가 `platform` 스키마에 만든다: `\dt platform.*`
 - batch 컨테이너는 같은 이미지를 `SPRING_PROFILES_ACTIVE=batch`로 띄운다 (ERP·MES 접속 정보 확정 후 추가)
+- 헬스체크: `docker compose ps`에서 backend `(healthy)` 확인. 컨테이너 안에서 30초마다 `/actuator/health`를 두드리며, DB가 내려가면 약 90초 뒤 `(unhealthy)`로 바뀐다 (자동 재시작은 하지 않음. 5-7 배포 검증과 7-4 알림에서 사용)
 
 ## PostgreSQL 메이저 업그레이드 절차 (17.11 → 18.6, 2026-10-27 수행)
 
