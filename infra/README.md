@@ -125,3 +125,4 @@ sudo ss -tlnp | grep 15432
 
 - 노션 Infra > 할 일 리스트
 - 노션 Infra > Jenkins 설치 가이드
+- 노션 Infra > 할 일 리스트 5-0 (MR 검증 파이프라인)
