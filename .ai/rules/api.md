@@ -53,7 +53,9 @@ API별 실제 상태 코드는 OpenAPI 명세에 기록한다.
 - 인증은 서버 세션으로 한다. 인증이 필요한 API는 세션 쿠키로 사용자를 확인한다. Bearer 토큰을 쓰지 않는다.
 - 상태를 바꾸는 요청(POST·PATCH·DELETE)은 CSRF 토큰을 검사한다. 서버는 `XSRF-TOKEN` 쿠키로 토큰을 주고, 화면은 `X-XSRF-TOKEN` 헤더로 보낸다.
 - 세션 만료, 로그아웃, 세션을 끊는 경우는 [C106 개발 가이드](../../docs/development-guide.md) 11.1을 따른다.
-- 인증 실패(401)와 권한 부족(403)을 구분한다.
+- 인증 실패(401)와 권한 부족(403)을 구분한다. 보안 필터에서 막힌 요청도 공통 오류 형식으로 응답한다(`global.security.SecurityErrorResponder`).
+- 로그인 사용자는 `@AuthenticationPrincipal LoginAccount`로 받는다. 공개 경로를 늘리려면 `SecurityConfig`를 고치고 리뷰를 받는다.
+- 임시 비밀번호 상태에서는 002·003·099만 쓸 수 있다. 계정의 세션을 끊을 때는 `AccountSessionService`를 쓴다. 자세한 내용은 [C106 개발 가이드](../../docs/development-guide.md) 11.1이다.
 - 모든 권한은 서버에서 검사한다. 세부 권한은 최종 권한 매트릭스를 따른다.
 
 ## 계약 변경

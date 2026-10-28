@@ -10,6 +10,9 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration;
+import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterAutoConfiguration;
+import org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -21,7 +24,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 시각은 시간대가 붙은 ISO 8601 문자열로 주고받는다 (개발 가이드 8.4). */
-@WebMvcTest(controllers = TimeFormatTests.TestController.class)
+// 응답 형식만 본다. 로그인·CSRF 검사는 AuthApiTests가 실제 보안 설정으로 확인한다.
+@WebMvcTest(
+        controllers = TimeFormatTests.TestController.class,
+        excludeAutoConfiguration = {
+            SecurityAutoConfiguration.class,
+            ServletWebSecurityAutoConfiguration.class,
+            SecurityFilterAutoConfiguration.class
+        })
 @Import(TimeFormatTests.TestController.class)
 class TimeFormatTests {
 

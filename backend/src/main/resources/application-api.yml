@@ -2,6 +2,14 @@ spring:
   main:
     web-application-type: servlet
 
+# 세션 인증(개발 가이드 11.1). 요청이 없으면 30분 뒤 만료한다. 세션 쿠키 속성은 SessionCookieConfig에 있다.
+# nginx가 보낸 X-Forwarded-* 헤더로 HTTPS 주소와 XSRF-TOKEN 쿠키의 Secure를 맞춘다.
+server:
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      timeout: 30m
+
 # API 문서는 웹 서버(api 프로필)에서만 연다. 배치 컨테이너는 웹 서버가 없어 열지 않는다.
 # 내부 오류 경로(/error, ApiErrorController)는 업무 API가 아니라 문서에서 뺀다.
 springdoc:
