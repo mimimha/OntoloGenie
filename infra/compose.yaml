@@ -75,6 +75,9 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
       TZ: Asia/Seoul
+      # 첫 관리자 계정 (관리자가 없을 때 한 번만 사용). 값은 서버 .env에만. 비어 있으면 경고 로그만 남긴다.
+      AXCORE_INITIAL_ADMIN_LOGIN_ID: ${AXCORE_INITIAL_ADMIN_LOGIN_ID:-}
+      AXCORE_INITIAL_ADMIN_PASSWORD: ${AXCORE_INITIAL_ADMIN_PASSWORD:-}
     ports:
       - "127.0.0.1:18080:8080"
     depends_on:
@@ -82,16 +85,17 @@ services:
         condition: service_healthy
     networks:
       - axcore-net
+    # 컨테이너 안에서 자기 문(8080)을 두드린다. DB까지 포함한 전체 상태라 DB가 죽으면 unhealthy가 된다.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
 
 networks:
   axcore-net:
     name: axcore-net
-healthcheck:
-  test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
-  interval: 30s
-  timeout: 5s
-  retries: 3
-  start_period: 40s
 
 volumes:
   pg-data-18:
