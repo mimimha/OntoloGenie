@@ -2,6 +2,8 @@ package com.axcore.platform.auth.controller;
 
 import com.axcore.platform.account.dto.AccountResponse;
 import com.axcore.platform.auth.dto.LoginRequest;
+import com.axcore.platform.auth.dto.PasswordChangeRequest;
+import com.axcore.platform.auth.service.AccountSessionService;
 import com.axcore.platform.auth.service.AuthService;
 import com.axcore.platform.global.response.ApiResponse;
 import com.axcore.platform.global.security.LoginAccount;
@@ -9,6 +11,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,20 +22,24 @@ import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+// 세션 저장소(AccountSessionService)가 웹 서버에만 있어 배치 컨테이너에서는 만들지 않는다.
 @RestController
 @RequestMapping("/api/v1/auth")
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @RequiredArgsConstructor
 public class AuthController {
 
     private final AuthService authService;
     private final SecurityContextRepository securityContextRepository;
     private final CsrfTokenRepository csrfTokenRepository;
+    private final AccountSessionService accountSessionService;
 
     /** API 001. 세션 쿠키와 XSRF-TOKEN 쿠키를 새로 발급한다. */
     @PostMapping("/login")
@@ -64,17 +71,37 @@ public class AuthController {
         csrfTokenRepository.saveToken(null, request, response);
     }
 
+    /** API 003. 이 세션은 남기고 같은 계정의 다른 세션을 끊는다. 임시 비밀번호 상태는 이 세션에서 바로 풀린다. */
+    @PatchMapping("/password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePassword(
+            @AuthenticationPrincipal LoginAccount loginAccount,
+            @Valid @RequestBody PasswordChangeRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
+        LoginAccount changed =
+                authService.changePassword(
+                        loginAccount, request.currentPassword(), request.newPassword());
+        saveLoginAccount(changed, httpRequest, httpResponse);
+        accountSessionService.expireOthers(changed.id(), httpRequest.getSession().getId());
+    }
+
     private void startSession(
             LoginAccount loginAccount, HttpServletRequest request, HttpServletResponse response) {
         // 로그인 전에 쓰던 세션 ID는 버린다(세션 고정 방지).
         if (request.getSession(false) != null) {
             request.changeSessionId();
         }
+        saveLoginAccount(loginAccount, request, response);
+        csrfTokenRepository.saveToken(
+                csrfTokenRepository.generateToken(request), request, response);
+    }
+
+    private void saveLoginAccount(
+            LoginAccount loginAccount, HttpServletRequest request, HttpServletResponse response) {
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(loginAccount.toAuthentication());
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, request, response);
-        csrfTokenRepository.saveToken(
-                csrfTokenRepository.generateToken(request), request, response);
     }
 }

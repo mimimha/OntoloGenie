@@ -846,6 +846,8 @@ AI가 생성한 객체 유형이나 연결 규칙은 곧바로 활성 데이터�
 - 계정의 세션을 끊을 때는 `auth.service.AccountSessionService`를 쓴다. 비밀번호 변경은 `expireOthers`, 잠금·비활성화·역할 변경·비밀번호 초기화는 `expireAll`이다.
 - 로그인 요청은 CSRF 검사에서 뺀다. 로그인에 성공하면 세션 ID를 새로 만들고 `XSRF-TOKEN` 쿠키를 준다. `GET /api/v1/auth/me`도 쿠키가 없으면 다시 준다.
 - 로그인 실패 횟수와 마지막 로그인 시각은 관리자 수정이 아니라서 `row_version`을 올리지 않는다.
+- 사용자가 정하는 비밀번호는 `account.service.PasswordPolicy`로 검사한다. 8자 이상, 영문·숫자·특수문자 모두 포함, 로그인 ID와 다름, 72바이트 이하(BCrypt 한계)다. 비밀번호 변경(003)은 현재 비밀번호와 같은 값도 거절한다.
+- Service에서 찾은 입력 오류는 `BusinessException.invalidField(field, reason)`으로 던진다. 응답은 Bean Validation 오류와 같은 400 형식이다.
 - 세션 테이블은 Flyway `V4__create_spring_session.sql`이 만든다.
 
 **첫 관리자**

@@ -2,6 +2,7 @@ package com.axcore.platform.global.error;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.Getter;
 
@@ -27,5 +28,15 @@ public class BusinessException extends RuntimeException {
         super(message);
         this.errorCode = errorCode;
         this.details = Collections.unmodifiableMap(new LinkedHashMap<>(details));
+    }
+
+    /** Service가 찾은 입력 오류(400). details는 Bean Validation 오류와 같은 {field, reason, errors[]} 형식이다. */
+    public static BusinessException invalidField(String field, String reason) {
+        Map<String, Object> error = new LinkedHashMap<>();
+        error.put("field", field);
+        error.put("reason", reason);
+        Map<String, Object> details = new LinkedHashMap<>(error);
+        details.put("errors", List.of(error));
+        return new BusinessException(CommonErrorCode.VALIDATION_FAILED, details);
     }
 }

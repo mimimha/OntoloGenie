@@ -64,6 +64,13 @@ public class Account extends BaseAuditEntity {
         return new Account(loginId, displayName, passwordHash, role);
     }
 
+    /** 비밀번호를 바꾸면 임시 비밀번호 상태가 끝난다(D03). */
+    public void changePassword(String passwordHash, Instant changedAt) {
+        this.passwordHash = passwordHash;
+        this.mustChangePassword = false;
+        this.passwordChangedAt = changedAt;
+    }
+
     public boolean isActive() {
         return status == AccountStatus.ACTIVE;
     }

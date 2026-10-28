@@ -49,11 +49,14 @@ public class AuthService {
             throw unauthenticated(INACTIVE_ACCOUNT_MESSAGE);
         }
         accountService.recordLoginSuccess(account.getId());
-        return new LoginAccount(
-                account.getId(),
-                account.getLoginId(),
-                account.getRole().getCode().name(),
-                account.isMustChangePassword());
+        return toLoginAccount(account);
+    }
+
+    /** API 003. 바뀐 계정 정보(임시 비밀번호 상태가 풀림)를 돌려준다. 세션 갱신은 호출한 쪽이 한다. */
+    public LoginAccount changePassword(
+            LoginAccount loginAccount, String currentPassword, String newPassword) {
+        return toLoginAccount(
+                accountService.changePassword(loginAccount.id(), currentPassword, newPassword));
     }
 
     /** 세션의 계정을 DB에서 다시 읽는다 (API 002). 계정이 없어졌으면 인증 실패로 본다. */
@@ -61,6 +64,14 @@ public class AuthService {
         return accountService
                 .findAccount(loginAccount.id())
                 .orElseThrow(() -> unauthenticated(CommonErrorCode.UNAUTHENTICATED.message()));
+    }
+
+    private static LoginAccount toLoginAccount(Account account) {
+        return new LoginAccount(
+                account.getId(),
+                account.getLoginId(),
+                account.getRole().getCode().name(),
+                account.isMustChangePassword());
     }
 
     private static BusinessException unauthenticated(String message) {
