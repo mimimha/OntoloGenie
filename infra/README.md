@@ -111,7 +111,34 @@ docker compose exec -T postgres pg_restore -U axcore -d axcore --clean --if-exis
 # 3. 앱 컨테이너를 다시 켠다
 ```
 
-## 백엔드 수동 배포 (5-7 자동 배포 전까지)
+## 자동 배포 (develop 머지 → Jenkins axcore-deploy)
+
+`Jenkinsfile`의 배포 단계는 Job `axcore-deploy`에서만 켜진다 (MR 검증 Job은 배포하지 않는다).
+
+1. develop 머지 → GitLab Webhook → `axcore-deploy` 실행
+2. `git diff HEAD~1 HEAD -- backend/` 로 backend 변경 여부 확인. 변경 없으면 배포 건너뜀 (`FORCE_DEPLOY` 파라미터로 강제 가능)
+3. `docker build -t axcore-backend:<커밋 SHA> backend`
+4. `scripts/pg-backup.sh` 1회 (마이그레이션 대비)
+5. `.env`의 `BACKEND_TAG`를 새 SHA로 바꾸고 `docker compose -f /home/ubuntu/axcore/compose.yaml up -d backend`
+6. 최대 90초 동안 `(healthy)` 대기. 실패하면 **직전 태그로 자동 롤백**하고 빌드를 실패로 표시
+7. backend 이미지는 최근 3개 태그만 보관, 3일 지난 빌드 캐시 삭제
+8. 결과는 GitLab 커밋 상태 + Mattermost DM(머지한 사람). 배포가 있으면 `backend 배포 <이전> → <새 SHA>` 또는 `롤백됨`이 붙는다
+
+Jenkins 컨테이너는 가게 폴더를 같은 경로(`/home/ubuntu/axcore`)로 마운트한다. compose의 상대 경로(`./nginx/...`)가 호스트 기준으로 풀리므로 경로가 같아야 한다.
+
+**손으로 롤백할 때** (자동 롤백이 안 됐거나, 배포 뒤 문제가 늦게 발견된 경우):
+
+```bash
+cd ~/axcore
+docker images axcore-backend              # 남아 있는 태그 확인 (최근 3개)
+nano .env                                 # BACKEND_TAG=<되돌릴 SHA>
+docker compose up -d backend
+docker compose ps                         # (healthy) 확인
+```
+
+DB 마이그레이션까지 되돌려야 하면 "DB 백업 · 복구"의 운영 DB 복구 절차로 배포 직전 백업(`backup/`)을 되살린다.
+
+## 백엔드 수동 배포 (자동 배포가 안 될 때의 비상 절차)
 
 1. Jenkins 작업 폴더에 develop이 받아져 있다: `~/axcore/jenkins-data/workspace/axcore-deploy`
 2. 커밋 번호 확인: `git -C ~/axcore/jenkins-data/workspace/axcore-deploy rev-parse --short HEAD`

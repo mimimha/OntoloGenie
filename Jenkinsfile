@@ -1,9 +1,8 @@
 // Jenkins 파이프라인 정의. Job 1(axcore-mr-check)과 Job 2(axcore-deploy)가 같은 파일을 쓴다.
-// - Job 1: MR이 열리거나 MR 브랜치에 push되면 실행. gitlabSourceBranch = MR 원본 브랜치.
-// - Job 2: develop에 push(머지)되면 실행. gitlabSourceBranch = develop.
-// 이 파일(설명서)은 항상 develop에서 읽고, 검사할 코드는 Checkout 단계에서 받는다.
+// - Job 1: MR이 열리거나 MR 브랜치에 push되면 실행. gitlabSourceBranch = MR 원본 브랜치. 검사만 한다.
+// - Job 2: develop에 push(머지)되면 실행. 바뀐 서비스를 빌드해 서버에 배포한다 (5-7).
+// 이 파일(지시서)은 항상 develop에서 읽고, 검사할 코드는 Checkout 단계에서 받는다.
 // 결과는 GitLab(MR 화면 ✅/❌)과 Mattermost(빌드를 일으킨 사람에게 DM)로 알린다.
-// 5-7에서 실제 앱 빌드·배포 단계로 확장한다.
 pipeline {
     agent any
 
@@ -14,6 +13,14 @@ pipeline {
         gitLabConnection('ssafy-gitlab')
     }
 
+    parameters {
+        // Webhook이 채워 주는 값. 사람이 직접 돌릴 때만 의미 있다.
+        string(name: 'gitlabSourceBranch', defaultValue: 'develop', description: '검사·배포할 브랜치')
+        string(name: 'gitlabTargetBranch', defaultValue: 'develop', description: 'MR 대상 브랜치')
+        // backend가 안 바뀐 머지여도 강제로 배포하고 싶을 때 (수동 실행 전용)
+        booleanParam(name: 'FORCE_DEPLOY', defaultValue: false, description: 'backend 변경이 없어도 배포')
+    }
+
     environment {
         // Webhook으로 시작된 빌드는 GitLab 플러그인이 gitlabSourceBranch를 채워 준다.
         // 사람이 직접 돌린 빌드는 값이 없으므로 develop을 검사한다.
@@ -21,6 +28,10 @@ pipeline {
         // Mattermost Incoming Webhook 주소. Jenkins 관리 → Credentials의 Secret text (ID: mm-webhook).
         // 로그에는 ****로 가려진다. 없으면 빌드가 시작하자마자 실패하니 먼저 등록할 것.
         MM_WEBHOOK = credentials('mm-webhook')
+        // 가게 폴더. Jenkins 컨테이너에 같은 주소로 연결돼 있다 (compose.yaml의 jenkins volumes).
+        DEPLOY_DIR = '/home/ubuntu/axcore'
+        // 배포 단계는 Job 2(axcore-deploy)에서만 켠다. MR 검증(Job 1)은 절대 배포하지 않는다.
+        IS_DEPLOY_JOB = "${env.JOB_NAME == 'axcore-deploy' ? 'true' : 'false'}"
     }
 
     stages {
@@ -37,6 +48,8 @@ pipeline {
                 ])
                 sh 'git log -1 --oneline'
                 script {
+                    // 이미지 태그로 쓸 커밋 번호 7자리 (개발 가이드 13.2: 이미지에 커밋 SHA)
+                    env.GIT_SHA = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
                     // Webhook 빌드일 때만 GitLab에 "검사 중" 상태를 올린다. (수동 빌드는 대상 커밋이 없음)
                     if (env.gitlabActionType) {
                         updateGitlabCommitStatus name: 'jenkins', state: 'running'
@@ -45,24 +58,94 @@ pipeline {
             }
         }
 
-        stage('Hello') {
-            steps {
-                echo "Hello World from axcore CI (build #${env.BUILD_NUMBER}, branch ${env.CHECK_BRANCH})"
-            }
-        }
-
         stage('Docker build test') {
+            // MR 검증(Job 1)에서만 도는 시험 굽기. 5-0c에서 gradlew build로 바뀔 예정.
+            when { expression { env.IS_DEPLOY_JOB != 'true' } }
             steps {
-                // Jenkins 컨테이너가 docker.sock으로 서버의 Docker를 쓸 수 있는지 확인한다.
                 sh 'docker build -t axcore-ci-test:${BUILD_NUMBER} infra/ci-test'
                 sh 'docker run --rm axcore-ci-test:${BUILD_NUMBER}'
             }
         }
 
-        stage('Disk usage') {
+        stage('Detect changes') {
+            // 이번 머지(HEAD)와 바로 전 develop(HEAD~1) 사이에 backend/ 가 바뀌었는지 본다.
+            // 바뀐 서비스만 배포한다 (개발 가이드 13.1). FORCE_DEPLOY면 무조건 배포.
+            when { expression { env.IS_DEPLOY_JOB == 'true' } }
             steps {
-                // 빌드 이미지가 디스크를 얼마나 쓰는지 매번 기록한다.
-                sh 'docker system df'
+                script {
+                    def changed = sh(returnStatus: true, script: 'git diff --quiet HEAD~1 HEAD -- backend/') != 0
+                    env.DEPLOY_BACKEND = (changed || params.FORCE_DEPLOY) ? 'true' : 'false'
+                    echo "backend 변경: ${changed}, FORCE_DEPLOY: ${params.FORCE_DEPLOY} → 배포: ${env.DEPLOY_BACKEND}"
+                }
+            }
+        }
+
+        stage('Build backend image') {
+            when { expression { env.DEPLOY_BACKEND == 'true' } }
+            steps {
+                // 작업 폴더의 backend/ 로 굽는다. 태그 = 커밋 번호. (수동 배포 절차 3번과 동일)
+                sh 'docker build -t axcore-backend:${GIT_SHA} backend'
+            }
+        }
+
+        stage('Backup DB') {
+            when { expression { env.DEPLOY_BACKEND == 'true' } }
+            steps {
+                // 새 버전의 Flyway 마이그레이션이 DB를 바꿀 수 있으니 직전 상태를 남긴다. (4-3 스크립트 재사용)
+                sh '${DEPLOY_DIR}/scripts/pg-backup.sh'
+            }
+        }
+
+        stage('Deploy backend') {
+            when { expression { env.DEPLOY_BACKEND == 'true' } }
+            steps {
+                script {
+                    // 되돌릴 때 쓸 직전 태그를 기억한다.
+                    env.PREV_TAG = sh(returnStdout: true, script: "grep '^BACKEND_TAG=' ${env.DEPLOY_DIR}/.env | cut -d= -f2").trim()
+                    echo "backend ${env.PREV_TAG} → ${env.GIT_SHA}"
+                    try {
+                        // .env의 BACKEND_TAG를 새 번호로 바꾸고 backend만 새로 띄운다. (수동 배포 절차 4·5번)
+                        sh """
+                            sed -i 's/^BACKEND_TAG=.*/BACKEND_TAG=${env.GIT_SHA}/' ${env.DEPLOY_DIR}/.env
+                            docker compose -f ${env.DEPLOY_DIR}/compose.yaml up -d backend
+                        """
+                        // 최대 90초(5초 × 18번) 동안 (healthy)가 될 때까지 기다린다. 5-3 헬스체크를 그대로 쓴다.
+                        sh '''
+                            for i in $(seq 1 18); do
+                                s=$(docker inspect --format '{{.State.Health.Status}}' backend 2>/dev/null || echo none)
+                                echo "health: $s ($i/18)"
+                                [ "$s" = healthy ] && exit 0
+                                sleep 5
+                            done
+                            echo "헬스체크 실패: 90초 안에 healthy가 되지 않음"
+                            docker compose -f "$DEPLOY_DIR/compose.yaml" logs --tail 50 backend
+                            exit 1
+                        '''
+                    } catch (e) {
+                        // 롤백: 직전 태그로 되돌리고 다시 띄운다. 그 뒤 빌드를 실패로 표시해 DM이 가게 한다.
+                        echo "배포 실패 → ${env.PREV_TAG} 로 롤백"
+                        sh """
+                            sed -i 's/^BACKEND_TAG=.*/BACKEND_TAG=${env.PREV_TAG}/' ${env.DEPLOY_DIR}/.env
+                            docker compose -f ${env.DEPLOY_DIR}/compose.yaml up -d backend
+                        """
+                        env.ROLLED_BACK = 'true'
+                        throw e
+                    }
+                }
+            }
+        }
+
+        stage('Cleanup images') {
+            when { expression { env.IS_DEPLOY_JOB == 'true' } }
+            steps {
+                // backend 이미지는 최근 3개 태그만 남긴다 (지금 것 + 롤백용 2개). 쓰는 중인 이미지는 지워지지 않는다.
+                // 빌드 캐시는 3일 지난 것만 지운다.
+                sh '''
+                    docker images axcore-backend --format '{{.Tag}} {{.CreatedAt}}' | sort -k2 -r | awk 'NR>3 {print $1}' \
+                        | xargs -r -I{} docker rmi axcore-backend:{} || true
+                    docker builder prune -f --filter until=72h >/dev/null || true
+                    docker system df
+                '''
             }
         }
     }
@@ -70,7 +153,7 @@ pipeline {
     post {
         success {
             script {
-                // GitLab MR 화면에 성공 표시
+                // GitLab MR 화면/커밋에 성공 표시
                 if (env.gitlabActionType) {
                     updateGitlabCommitStatus name: 'jenkins', state: 'success'
                 }
@@ -79,7 +162,7 @@ pipeline {
         }
         failure {
             script {
-                // GitLab MR 화면에 실패 표시. 클릭하면 이 빌드 로그로 온다.
+                // GitLab MR 화면/커밋에 실패 표시. 클릭하면 이 빌드 로그로 온다.
                 if (env.gitlabActionType) {
                     updateGitlabCommitStatus name: 'jenkins', state: 'failed'
                 }
@@ -94,8 +177,8 @@ pipeline {
             }
         }
         always {
-            // 테스트 이미지는 매번 지워서 디스크에 쌓이지 않게 한다.
-            sh 'docker rmi axcore-ci-test:${BUILD_NUMBER} || true'
+            // 시험 이미지는 매번 지워서 디스크에 쌓이지 않게 한다.
+            sh 'docker rmi axcore-ci-test:${BUILD_NUMBER} 2>/dev/null || true'
         }
     }
 }
@@ -111,7 +194,14 @@ def notifyMattermost(String result) {
     def what = env.gitlabMergeRequestIid
         ? "MR !${env.gitlabMergeRequestIid} (${env.gitlabSourceBranch} → ${env.gitlabTargetBranch})"
         : 'develop 머지 반영'
-    def text = "${result} ${env.JOB_NAME} #${env.BUILD_NUMBER} · ${what}\n로그: ${env.BUILD_URL}console"
+    // 배포가 있었으면 어떤 버전으로 바뀌었는지(또는 롤백됐는지) 한 줄 더 붙인다.
+    def deploy = ''
+    if (env.DEPLOY_BACKEND == 'true') {
+        deploy = env.ROLLED_BACK == 'true'
+            ? "\nbackend 배포 실패 → ${env.PREV_TAG} 로 롤백됨"
+            : "\nbackend 배포 ${env.PREV_TAG} → ${env.GIT_SHA}"
+    }
+    def text = "${result} ${env.JOB_NAME} #${env.BUILD_NUMBER} · ${what}${deploy}\n로그: ${env.BUILD_URL}console"
     def payload = groovy.json.JsonOutput.toJson([channel: "@${who}", text: text])
     echo "Mattermost DM → @${who}"
     // 비밀값(MM_WEBHOOK)은 Groovy 문자열에 섞지 않고 셸 환경변수로만 읽는다. 알림 실패가 빌드 결과를 바꾸면 안 되므로 || echo.
