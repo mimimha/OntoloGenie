@@ -13,6 +13,7 @@
 | `jenkins/Dockerfile` | Jenkins 공식 이미지 + docker CLI · compose 플러그인 |
 | `scripts/renew-cert.sh` | 인증서 자동 갱신 + nginx reload (cron에서 매일 03:00 실행) |
 | `scripts/pg-backup.sh` | 플랫폼 DB `pg_dump` 백업 + 7일 지난 파일 삭제 (cron에서 매일 04:00 실행) |
+| backend | Spring Boot 백엔드 (api 모드) · `backend/Dockerfile` · 호스트 `127.0.0.1:18080` · 이미지 태그 `.env`의 `BACKEND_TAG` |
 
 ## 포트 규칙
 
@@ -96,6 +97,18 @@ cd ~/axcore
 docker compose exec -T postgres pg_restore -U axcore -d axcore --clean --if-exists < backup/<파일>.dump
 # 3. 앱 컨테이너를 다시 켠다
 ```
+
+## 백엔드 수동 배포 (5-7 자동 배포 전까지)
+
+1. Jenkins 작업 폴더에 develop이 받아져 있다: `~/axcore/jenkins-data/workspace/axcore-deploy`
+2. 커밋 번호 확인: `git -C ~/axcore/jenkins-data/workspace/axcore-deploy rev-parse --short HEAD`
+3. 이미지 빌드: `docker build -t axcore-backend:<sha> ~/axcore/jenkins-data/workspace/axcore-deploy/backend`
+4. `.env`의 `BACKEND_TAG=<sha>` 갱신
+5. `docker compose up -d backend` → `curl -s 127.0.0.1:18080/actuator/health` → `{"status":"UP"}`
+
+- DB 접속은 compose 안에서 `postgres:5432` (컨테이너 이름 · 컨테이너 포트). 호스트 포트 15432는 SSH 터널용
+- 표는 Flyway가 `platform` 스키마에 만든다: `\dt platform.*`
+- batch 컨테이너는 같은 이미지를 `SPRING_PROFILES_ACTIVE=batch`로 띄운다 (ERP·MES 접속 정보 확정 후 추가)
 
 ## PostgreSQL 메이저 업그레이드 절차 (17.11 → 18.6, 2026-10-27 수행)
 
