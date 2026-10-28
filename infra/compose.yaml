@@ -61,6 +61,28 @@ services:
       timeout: 5s
       retries: 5
 
+  # 플랫폼 백엔드 (Spring Boot, api 모드). 이미지 태그는 .env의 BACKEND_TAG (= 커밋 SHA).
+  # 같은 이미지를 batch 모드로 한 번 더 띄우는 건 6-6(ERP·MES 접속 정보) 뒤에 추가한다.
+  backend:
+    image: axcore-backend:${BACKEND_TAG}
+    container_name: backend
+    restart: unless-stopped
+    mem_limit: 2g
+    environment:
+      SPRING_PROFILES_ACTIVE: api
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+      TZ: Asia/Seoul
+    ports:
+      - "127.0.0.1:18080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - axcore-net
+
 networks:
   axcore-net:
     name: axcore-net
