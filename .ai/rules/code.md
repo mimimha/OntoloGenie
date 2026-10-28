@@ -1,26 +1,78 @@
 # 코드 규칙
 
+팀 가이드 원본은 [C106 개발 가이드](../../docs/development-guide.md) 7·11·14절이다.
+
 ## 기본 원칙
 
 - 기존 코드 스타일과 프로젝트 구조를 우선한다.
 - 의미 없는 중복 코드를 만들지 않는다.
-- 역할과 의도가 드러나는 이름을 사용한다.
+- 역할과 의도가 드러나는 이름을 사용한다. 약어는 널리 쓰이는 경우에만 쓴다.
 - 불필요한 주석을 추가하지 않는다.
+- 사용하지 않는 import와 변수를 남기지 않는다.
 - 변경 범위를 불필요하게 넓히지 않는다. 요청하지 않은 리팩터링을 추가하지 않는다.
 - 단순 포맷 변경과 기능 변경을 가능하면 분리한다.
 - Formatter와 Linter가 처리할 수 있는 항목은 프로젝트에 설정된 해당 도구를 우선한다.
 - 새로운 Dependency는 필요성과 영향을 확인하고, 추가 권한은 [AI 협업 규칙](ai-collaboration.md)을 따른다.
 - 예외 상황과 실패 경로를 고려한다.
+- 중요한 업무 조건은 코드나 테스트에서 확인할 수 있게 작성한다.
 - 변경에 따른 기존 기능의 영향을 확인한다.
+
+## 공통 형식
+
+- UTF-8을 쓴다.
+- 들여쓰기는 탭 대신 공백을 쓴다.
+- 줄 끝은 LF로 통일한다.
+
+## Java · Spring Boot
+
+| 항목 | 규칙 |
+| --- | --- |
+| 클래스 | PascalCase |
+| 메서드·변수 | camelCase |
+| 상수 | UPPER_SNAKE_CASE |
+| 패키지 | 소문자 |
+| 들여쓰기 | 공백 4칸 |
+| import | 와일드카드 import 금지 |
+| 의존성 주입 | 생성자 주입 |
+| DTO | 단순 데이터에는 record 사용 가능 |
+
+- 이름·중괄호·import는 Google Java Style Guide를 참고한다. 들여쓰기만 4칸으로 다르다.
+- 업무 예외를 `RuntimeException` 하나로 처리하지 않는다.
+- 포맷은 Spotless + google-java-format(AOSP)으로 맞춘다. 코드를 고친 뒤 `backend/`에서 `./gradlew spotlessApply`를 실행한다.
+- Lombok은 `@Getter`, `@RequiredArgsConstructor`, `@Slf4j`, `@NoArgsConstructor`, `@Builder`만 쓴다. 나머지는 `backend/lombok.config`가 컴파일 오류로 막는다.
+  - `@NoArgsConstructor`는 Entity에만 `access = AccessLevel.PROTECTED`로 쓴다.
+  - `@Builder`는 생성자나 정적 메서드에만 붙이고, 필수 값 검사는 그 생성자 안에서 한다.
+  - Entity에 `@Data`, `@Setter`를 쓰지 않는다.
+
+## Python · FastAPI
+
+- PEP 8을 따른다. 들여쓰기는 공백 4칸이다.
+- 함수·변수는 snake_case, 클래스는 PascalCase를 쓴다.
+- 공개 함수의 입력과 반환 타입을 명시한다.
+- 요청·응답 형식은 Pydantic 모델로 정의한다.
+- 포맷과 정적 검사는 Ruff를 쓴다.
+- 복잡한 모델 호출과 데이터 변환은 API 라우터에서 분리한다.
+
+## React · TypeScript
+
+- TypeScript를 쓴다.
+- 컴포넌트는 PascalCase, 함수·변수는 camelCase를 쓴다. Hook은 `use` 접두사를 붙인다.
+- API 호출 코드를 화면 컴포넌트에서 분리한다.
+- 서버 응답 형식은 공통 TypeScript 타입으로 관리한다.
+- 모든 요청에서 로딩·실패 상태를 구분한다.
+- 스타일은 ESLint와 Prettier로 통일한다.
+
+## 보안·로그
+
+- 실제 `.env`, DB 비밀번호, AI API 키, Access Token, SSH 개인 키, 원천 DB 접속 비밀값을 코드나 저장소에 넣지 않는다. `.env.example`에는 변수 이름과 설명만 둔다.
+- 권한은 서버에서 검사한다. 화면에서 버튼을 숨기는 것으로 대신하지 않는다.
+- 비밀번호, 토큰, 세션 ID·쿠키, 인증 헤더, 개인정보 원문을 로그에 남기지 않는다.
+- 기술 로그에는 요청 식별자, 작업명, 처리 상태, 소요 시간, 실패 원인을 남긴다.
 
 ## Team Decision Needed
 
-다음 항목은 아직 미결정이다. 특정 언어나 도구의 관례를 팀 규칙으로 임의 확정하지 않는다.
+다음 항목은 아직 미결정이다. 특정 도구나 관례를 팀 규칙으로 임의 확정하지 않는다.
 
-- 언어별 Naming Convention
-- Formatter
-- Linter
-- Code Style
 - 주석 및 문서화 기준
 - Dependency 승인 기준의 세부 절차와 담당자
 - 코드 복잡도 기준

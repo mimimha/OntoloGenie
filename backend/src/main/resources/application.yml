@@ -1,0 +1,45 @@
+# 실행 모드는 프로필로 고른다: api(웹 서버), batch(배치 컨테이너), local(로컬 개발).
+# 예: SPRING_PROFILES_ACTIVE=api / SPRING_PROFILES_ACTIVE=local,api
+spring:
+  application:
+    name: platform
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    # 모든 테이블은 스키마 platform 하나에 둔다. 연결의 search_path를 platform으로 맞춘다.
+    hikari:
+      schema: platform
+  # 스키마는 Flyway가 만들고 db/migration의 V*.sql을 순서대로 적용한다. 이미 적용한 파일은 고치지 않는다.
+  flyway:
+    schemas: platform
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  # 계정은 account 테이블에서 읽는다. 기본 메모리 사용자(로그에 임시 비밀번호를 찍는다)를 만들지 않는다.
+  autoconfigure:
+    exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
+  # 세션 테이블은 Flyway(V4)가 만든다.
+  session:
+    jdbc:
+      initialize-schema: never
+
+# API 문서(Swagger UI)는 기본으로 닫고 api 프로필에서 연다.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+# 관리자가 한 명도 없을 때 서버 시작 시 만드는 첫 관리자(D02). 값은 환경변수로만 넣는다.
+axcore:
+  initial-admin:
+    login-id: ${AXCORE_INITIAL_ADMIN_LOGIN_ID:}
+    password: ${AXCORE_INITIAL_ADMIN_PASSWORD:}
+    display-name: 관리자
+
+# 로그 줄마다 요청 추적 ID(RequestIdFilter)를 붙인다. 요청 밖의 로그는 빈 칸이다.
+logging:
+  pattern:
+    correlation: "[%X{requestId:-}] "
