@@ -22,7 +22,7 @@
 - 실행 모드는 프로필로 나눈다: `api`(웹 서버), `batch`(배치 컨테이너), `local`(로컬 개발).
 
 - 도메인: `auth`, `account`, `ontology`, `source`, `mapping`, `analysis`, `review`, `check`, `issue`, `batch`, `action`, `agent`, `audit`
-- 공통: `global` (`config`, `error`, `security`, `response`)
+- 공통: `global` (`config`, `error`, `security`, `response`, `entity`)
 - 도메인 안은 필요한 계층만 둔다: `controller`, `dto`, `service`, `domain`, `repository`, `handler`
 
 `global`에는 여러 도메인이 실제로 쓰는 코드만 둔다. 기능과 관계없는 범용 코드를 넣지 않는다.

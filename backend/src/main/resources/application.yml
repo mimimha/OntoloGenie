@@ -18,6 +18,13 @@ spring:
     hibernate:
       ddl-auto: validate
 
+# API 문서(Swagger UI)는 기본으로 닫고 api 프로필에서 연다.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 # 로그 줄마다 요청 추적 ID(RequestIdFilter)를 붙인다. 요청 밖의 로그는 빈 칸이다.
 logging:
   pattern:
