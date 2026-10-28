@@ -53,7 +53,9 @@ src/
 │  ├─ explorer/      업무 데이터 탐색
 │  └─ agent/         AI 업무 도우미
 ├─ components/       두 개 이상의 기능이 같이 쓰는 공통 부품
-│  └─ AppLayout.tsx  모든 화면의 공통 틀 (헤더, 주 메뉴)
+│  ├─ AppLayout.tsx        모든 화면의 공통 틀 (헤더, 주 메뉴)
+│  ├─ PagePlaceholder.tsx  아직 만들지 않은 화면 자리
+│  └─ NotFoundPage.tsx     없는 주소 안내
 ├─ api/              모든 기능이 같이 쓰는 API 공통 코드
 │  ├─ client.ts      요청 보내기 (`/api/v1` 주소, 오류 응답 처리)
 │  └─ types.ts       공통 응답 형식 (`data`, `meta`, `error`)
@@ -75,6 +77,25 @@ src/
 6. **파일 이름**: 컴포넌트는 `PascalCase.tsx`(`ObjectCard.tsx`), 그 밖의 코드는 `camelCase.ts`(`handlers.ts`, `types.ts`)로 씁니다.
 7. **가짜 응답은 `mocks/handlers.ts`에 모읍니다.** 개발 서버와 테스트가 같은 응답을 씁니다. 파일이 커지면 `mocks/handlers/<기능>.ts`로 나눕니다.
 8. **API 호출은 기능 폴더의 `api.ts`에 모읍니다.** 화면 컴포넌트에서 `fetch`를 직접 쓰지 않고, `api/client.ts`를 거쳐 호출합니다. 가짜 응답과 타입은 [C106 API 관리 DB](https://app.notion.com/p/fb5c0ebaff7d446991d1c5adb0fdc5a8?v=405bdf14d2d881c58c39000c1d8d12b0)의 명세와 같은 모양으로 맞춥니다.
+
+## 화면 주소
+
+`App.tsx`에 연결된 주소입니다. 준비 중인 화면은 `PagePlaceholder`로 자리만 잡아 두었고, 담당자가 화면을 만들면 해당 줄의 `element`를 실제 화면으로 바꿉니다.
+
+| 주소              | 화면                  | 메뉴 위치        | 관련 이슈      |
+| ----------------- | --------------------- | ---------------- | -------------- |
+| `/login`          | 로그인 (공통 틀 밖)   | 없음             | S15P31C106-103 |
+| `/`               | `/explorer`로 이동    | 없음             |                |
+| `/explorer`       | 업무 데이터           | 주 메뉴          | S15P31C106-154 |
+| `/agent`          | AI 업무 도우미        | 주 메뉴          | S15P31C106-149 |
+| `/admin/sources`  | 데이터 연결           | 주 메뉴 (관리자) | S15P31C106-105 |
+| `/admin/rules`    | 연결 규칙             | 주 메뉴 (관리자) | S15P31C106-110 |
+| `/audit`          | 실행 이력             | 헤더             | S15P31C106-237 |
+| `/admin/accounts` | 계정·권한             | 헤더 (관리자)    | S15P31C106-226 |
+| 그 밖의 주소      | 페이지를 찾을 수 없음 | 없음             |                |
+
+- 관리자 화면은 `/admin/` 아래에 둡니다. 역할에 따라 메뉴를 숨기고 접근을 막는 것은 S15P31C106-104에서 처리합니다.
+- 운영 서버에서 하위 주소를 새로고침해도 화면이 뜨려면 nginx가 모르는 주소를 `index.html`로 돌려줘야 합니다(S15P31C106-53).
 
 ## 코드 모양 (Prettier)
 
