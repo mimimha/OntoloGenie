@@ -30,8 +30,11 @@ SSAFY 클라우드 방화벽은 tcp · udp 1024~65535를 열어 두므로, 서�
 | `/` | nginx 기본 페이지 | 5단계 frontend 배포 시 React로 교체 |
 | `/api/` | backend:8080 (경로 그대로) | 로그인 전 요청은 backend가 401로 응답. `X-Forwarded-Proto` 전달(세션 Secure 쿠키), `proxy_buffering off` + `proxy_read_timeout 300s`(Agent 스트리밍), 업로드 상한 20m |
 | `/jenkins/` | jenkins:8080 | 팀원 Read 권한 |
+| `/swagger-ui.html` · `/swagger-ui/` · `/v3/api-docs` | backend:8080 | nginx Basic Auth (아이디 · 비밀번호는 서버 `nginx/htpasswd`, 팀 DM으로 공유). 백엔드 로그인과 별개 |
 
-바깥에 열지 않는 것: backend `/actuator/*`(헬스체크·지표는 내부망만), Swagger `/swagger-ui.html` · `/v3/api-docs`(노출 여부 결정 대기). `/api/`로 시작하지 않으므로 nginx가 넘기지 않는다.
+바깥에 열지 않는 것: backend `/actuator/*`(헬스체크·지표는 내부망만). `/api/`로 시작하지 않으므로 nginx가 넘기지 않는다.
+
+Swagger 열쇠 파일 만들기 (서버): `echo "swagger:$(openssl passwd -apr1)" > ~/axcore/nginx/htpasswd && chmod 644 ~/axcore/nginx/htpasswd` (비밀번호 두 번 입력. 파일에는 해시만 저장되고 저장소에는 올리지 않음. nginx 일꾼 사용자가 읽어야 하므로 644)
 
 ## 저장소에 올리지 않는 것
 
