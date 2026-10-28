@@ -28,6 +28,9 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration;
+import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterAutoConfiguration;
+import org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -46,7 +49,14 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 // 테스트 클래스 안의 컨트롤러는 컴포넌트 스캔에서 빠지므로 직접 등록한다.
-@WebMvcTest(controllers = {GlobalApiResponseTests.TestController.class, ApiErrorController.class})
+// 응답 형식만 본다. 로그인·CSRF 검사는 AuthApiTests가 실제 보안 설정으로 확인한다.
+@WebMvcTest(
+        controllers = {GlobalApiResponseTests.TestController.class, ApiErrorController.class},
+        excludeAutoConfiguration = {
+            SecurityAutoConfiguration.class,
+            ServletWebSecurityAutoConfiguration.class,
+            SecurityFilterAutoConfiguration.class
+        })
 @Import(GlobalApiResponseTests.TestController.class)
 class GlobalApiResponseTests {
 

@@ -838,6 +838,24 @@ AI가 생성한 객체 유형이나 연결 규칙은 곧바로 활성 데이터�
 - 비밀번호는 복원할 수 없는 해시로 저장한다.
 - 세션 ID·쿠키·비밀번호·인증 헤더를 로그에 남기지 않는다.
 
+**구현에서 쓰는 방법**
+
+- 로그인 사용자는 Controller에서 `@AuthenticationPrincipal LoginAccount`로 받는다. 계정 ID, 로그인 ID, 역할 코드, 임시 비밀번호 여부가 들어 있다.
+- 로그인 없이 부를 수 있는 경로는 로그인(`POST /api/v1/auth/login`), API 문서(`/swagger-ui/**`, `/v3/api-docs/**`), `/actuator/health`뿐이다. 새 공개 경로가 필요하면 `global.security.SecurityConfig`를 고치고 리뷰를 받는다.
+- 임시 비밀번호 상태(`mustChangePassword=true`)에서는 내 계정 조회, 로그아웃, 비밀번호 변경만 쓸 수 있다. 나머지는 403이다.
+- 계정의 세션을 끊을 때는 `auth.service.AccountSessionService`를 쓴다. 비밀번호 변경은 `expireOthers`, 잠금·비활성화·역할 변경·비밀번호 초기화는 `expireAll`이다.
+- 로그인 요청은 CSRF 검사에서 뺀다. 로그인에 성공하면 세션 ID를 새로 만들고 `XSRF-TOKEN` 쿠키를 준다. `GET /api/v1/auth/me`도 쿠키가 없으면 다시 준다.
+- 로그인 실패 횟수와 마지막 로그인 시각은 관리자 수정이 아니라서 `row_version`을 올리지 않는다.
+- 세션 테이블은 Flyway `V4__create_spring_session.sql`이 만든다.
+
+**첫 관리자**
+
+공개 가입이 없으므로 관리자가 한 명도 없으면 서버(`api` 프로필)가 시작할 때 첫 관리자를 만든다.
+
+- 환경변수 `AXCORE_INITIAL_ADMIN_LOGIN_ID`, `AXCORE_INITIAL_ADMIN_PASSWORD`로 값을 넣는다. 값이 없으면 만들지 않고 경고 로그만 남긴다.
+- 만든 계정은 임시 비밀번호 상태다. 첫 로그인 뒤 비밀번호를 바꿔야 업무 API를 쓸 수 있다.
+- 관리자가 이미 있으면 환경변수가 있어도 아무것도 하지 않는다.
+
 ### 11.2 권한
 
 모든 권한은 서버에서 검사한다. 화면의 버튼을 숨기는 것은 보안 검사를 대신하지 않는다.

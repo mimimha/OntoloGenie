@@ -16,7 +16,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
-/** ERD의 온톨로지(V1)·운영(V2)·교차 FK(V3) migration이 PostgreSQL 18에 그대로 적용되는지 확인한다. */
+/** ERD의 온톨로지(V1)·운영(V2)·교차 FK(V3)와 세션(V4) migration이 PostgreSQL 18에 그대로 적용되는지 확인한다. */
 @SpringBootTest
 @ActiveProfiles("api")
 @Import(TestcontainersConfiguration.class)
@@ -24,6 +24,7 @@ class DatabaseMigrationTests {
 
     private static final int ONTOLOGY_TABLES = 18;
     private static final int OPERATION_TABLES = 23;
+    private static final int SESSION_TABLES = 2;
 
     @Autowired Flyway flyway;
 
@@ -38,7 +39,7 @@ class DatabaseMigrationTests {
                         .toArray(MigrationInfo[]::new);
 
         assertThat(Arrays.stream(applied).map(info -> info.getVersion().getVersion()))
-                .containsExactly("1", "2", "3");
+                .containsExactly("1", "2", "3", "4");
         assertThat(applied).allMatch(info -> info.getState() == MigrationState.SUCCESS);
         assertThat(flyway.info().pending()).isEmpty();
     }
@@ -56,7 +57,7 @@ class DatabaseMigrationTests {
                         .query(Integer.class)
                         .single();
 
-        assertThat(tables).isEqualTo(ONTOLOGY_TABLES + OPERATION_TABLES);
+        assertThat(tables).isEqualTo(ONTOLOGY_TABLES + OPERATION_TABLES + SESSION_TABLES);
     }
 
     @Test
