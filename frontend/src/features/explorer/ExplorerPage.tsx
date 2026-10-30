@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { fetchObjects } from './api'
 import { objectTypeLabel } from './labels'
@@ -12,11 +12,13 @@ function ExplorerPage() {
   const {
     data: objectPage,
     isPending,
+    isFetching,
     isError,
     error,
   } = useQuery({
     queryKey: ['objects', searchWord],
     queryFn: () => fetchObjects(searchWord),
+    placeholderData: keepPreviousData,
   })
 
   if (isPending) {
@@ -36,6 +38,9 @@ function ExplorerPage() {
         <div className="flex items-baseline gap-2">
           <h1 className="text-xl font-semibold text-slate-900">객체 목록</h1>
           <span className="text-sm text-slate-500">{totalCount}건</span>
+          {isFetching && (
+            <span className="text-sm text-slate-400">검색 중…</span>
+          )}
         </div>
         <form
           className="flex gap-2"
