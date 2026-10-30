@@ -14,17 +14,19 @@ pipeline {
     }
 
     parameters {
-        // Webhook이 채워 주는 값. 사람이 직접 돌릴 때만 의미 있다.
-        string(name: 'gitlabSourceBranch', defaultValue: 'develop', description: '검사·배포할 브랜치')
-        string(name: 'gitlabTargetBranch', defaultValue: 'develop', description: 'MR 대상 브랜치')
+        // gitlabSourceBranch·gitlabTargetBranch를 파라미터로 선언하지 않는다 (2026-10-30 제거).
+        // 선언하면 기본값 'develop'이 GitLab 플러그인이 넣어 주는 환경변수를 덮어써서 MR 검사가 develop을 받았다.
         // backend가 안 바뀐 머지여도 강제로 배포하고 싶을 때 (수동 실행 전용)
         booleanParam(name: 'FORCE_DEPLOY', defaultValue: false, description: 'backend 변경이 없어도 배포')
     }
 
     environment {
-        // Webhook으로 시작된 빌드는 GitLab 플러그인이 gitlabSourceBranch를 채워 준다.
+        // Webhook으로 시작된 빌드는 GitLab 플러그인이 gitlabSourceBranch·gitlabMergeRequestLastCommit을 채워 준다.
         // 사람이 직접 돌린 빌드는 값이 없으므로 develop을 검사한다.
         CHECK_BRANCH = "${env.gitlabSourceBranch ?: 'develop'}"
+        // 실제로 받을 대상. MR 검사면 GitLab이 알려 준 MR 커밋 자체를 받는다 (브랜치 이름이 비거나 틀려도 정확한 코드).
+        // develop 머지(배포)나 수동 빌드는 MR 커밋이 없으므로 브랜치로 받는다.
+        CHECK_REF = "${env.gitlabMergeRequestLastCommit ?: ('origin/' + (env.gitlabSourceBranch ?: 'develop'))}"
         // Mattermost Incoming Webhook 주소. Jenkins 관리 → Credentials의 Secret text (ID: mm-webhook).
         // 로그에는 ****로 가려진다. 없으면 빌드가 시작하자마자 실패하니 먼저 등록할 것.
         MM_WEBHOOK = credentials('mm-webhook')
@@ -37,10 +39,12 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                // 검사할 브랜치를 받는다. MR 검증이면 MR 원본 브랜치, develop 머지면 develop.
+                // 진단: GitLab 플러그인이 이 빌드에 넣어 준 변수 목록. 검사 대상이 엉뚱하면 여기부터 본다. (이메일은 가린다)
+                sh 'env | grep "^gitlab" | grep -vi email | sort || echo "(gitlab 변수 없음: 수동 빌드)"'
+                // 검사할 코드를 받는다. MR 검증이면 MR 커밋, develop 머지면 develop. (CHECK_REF 설명 참고)
                 checkout([
                     $class: 'GitSCM',
-                    branches: [[name: "origin/${env.CHECK_BRANCH}"]],
+                    branches: [[name: env.CHECK_REF]],
                     userRemoteConfigs: [[
                         url: 'https://lab.ssafy.com/s15-final/S15P31C106.git',
                         credentialsId: 'gitlab-clone'
@@ -50,6 +54,21 @@ pipeline {
                 script {
                     // 이미지 태그로 쓸 커밋 번호 7자리 (개발 가이드 13.2: 이미지에 커밋 SHA)
                     env.GIT_SHA = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+                    echo "검사 대상: ${env.CHECK_REF} @ ${env.GIT_SHA} (브랜치=${env.CHECK_BRANCH}, 트리거=${env.gitlabActionType ?: '수동'})"
+
+                    // 안전망 (5-0c): MR 검사인데 받은 코드가 MR 코드가 아니면 멈춘다. 그대로 두면 develop을 검사하고 MR에 거짓 ✅가 찍힌다.
+                    // 2026-10-30 실제 발생: MR 검사 빌드가 전부 develop을 받아 13초 만에 "전부 최신"으로 ✅를 찍었다.
+                    if (env.IS_DEPLOY_JOB != 'true' && env.gitlabActionType) {
+                        def head = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
+                        if (env.gitlabMergeRequestLastCommit) {
+                            if (head != env.gitlabMergeRequestLastCommit) {
+                                error "검사한 커밋이 MR 커밋과 다릅니다. HEAD=${head}, MR=${env.gitlabMergeRequestLastCommit}"
+                            }
+                        } else if (env.CHECK_BRANCH == 'develop') {
+                            error "MR 검사인데 GitLab이 MR 커밋도 브랜치 이름도 주지 않아 develop을 받았습니다. 위의 gitlab 변수 목록을 확인하세요."
+                        }
+                    }
+
                     // Webhook 빌드일 때만 GitLab에 "검사 중" 상태를 올린다. (수동 빌드는 대상 커밋이 없음)
                     if (env.gitlabActionType) {
                         updateGitlabCommitStatus name: 'jenkins', state: 'running'
