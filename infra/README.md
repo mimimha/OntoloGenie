@@ -113,6 +113,16 @@ docker compose exec -T postgres pg_restore -U axcore -d axcore --clean --if-exis
 # 3. 앱 컨테이너를 다시 켠다
 ```
 
+## MR 검증 (MR 생성·갱신 → Jenkins axcore-mr-check)
+
+MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 브랜치를 받아 `backend/`에서 `./gradlew --no-daemon spotlessCheck build`를 돌린다 (스타일 검사 → 컴파일 → 테스트). 결과는 GitLab MR 화면 ✅/❌와 Mattermost DM으로, 깨진 테스트 목록은 Jenkins 빌드 화면(Test Result)으로 본다.
+
+- 테스트는 Testcontainers로 테스트용 PostgreSQL 컨테이너를 띄운다. Jenkins 컨테이너의 docker.sock을 쓰며, 그 컨테이너는 기본 bridge에 뜨고 서버 포트로 열리므로 Jenkins 컨테이너에서는 axcore-net 게이트웨이(=서버)로 닿는다. 그 주소가 compose의 `TESTCONTAINERS_HOST_OVERRIDE`다. axcore-net을 지웠다 다시 만들면 게이트웨이가 바뀔 수 있으니 `docker network inspect axcore-net -f '{{(index .IPAM.Config 0).Gateway}}'`로 다시 확인한다.
+- gradle 캐시는 `jenkins-data/.gradle`에 남아 두 번째부터 빠르다. 첫 실행은 Gradle 배포판과 의존성을 받느라 몇 분 걸린다.
+- 메모리: Jenkins 2g + gradle 1g(`GRADLE_OPTS`) + 테스트 JVM 몫으로 compose `mem_limit: 5g`. 빌드 중 `docker stats --no-stream jenkins`로 상한 대비 사용량을 본다.
+- `junit` 단계는 Jenkins의 JUnit 플러그인이 있어야 돈다 (초기 추천 플러그인에 포함).
+- 보안 메모: MR 브랜치의 `build.gradle`이 docker.sock이 있는 Jenkins 컨테이너 안에서 실행된다. 팀원 GitLab 계정을 신뢰하는 구성이다. 분리(docker.sock 없는 일회용 컨테이너 + 외부 테스트 DB)는 보안 후속 과제로 둔다.
+
 ## 자동 배포 (develop 머지 → Jenkins axcore-deploy)
 
 `Jenkinsfile`의 배포 단계는 Job `axcore-deploy`에서만 켜진다 (MR 검증 Job은 배포하지 않는다).

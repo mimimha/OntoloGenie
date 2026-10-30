@@ -58,12 +58,22 @@ pipeline {
             }
         }
 
-        stage('Docker build test') {
-            // MR 검증(Job 1)에서만 도는 시험 굽기. 5-0c에서 gradlew build로 바뀔 예정.
+        stage('Backend check') {
+            // MR 검증(Job 1)에서만. 스타일 검사 → 컴파일 → 테스트를 한 번에 돌린다 (개발 가이드 13.1, 5-0c).
+            // 테스트의 Testcontainers가 docker.sock으로 테스트용 PostgreSQL을 띄운다. 주소는 compose의 TESTCONTAINERS_HOST_OVERRIDE.
+            // --no-daemon: 빌드가 끝나면 gradle JVM을 바로 내려 Jenkins 컨테이너 메모리를 돌려준다.
+            // 주의: MR 브랜치의 build.gradle이 docker.sock이 있는 이 컨테이너에서 실행된다(팀원 계정을 신뢰). 분리는 보안 후속.
             when { expression { env.IS_DEPLOY_JOB != 'true' } }
             steps {
-                sh 'docker build -t axcore-ci-test:${BUILD_NUMBER} infra/ci-test'
-                sh 'docker run --rm axcore-ci-test:${BUILD_NUMBER}'
+                dir('backend') {
+                    sh './gradlew --no-daemon spotlessCheck build'
+                }
+            }
+            post {
+                always {
+                    // 테스트 결과를 Jenkins에 올려 어느 테스트가 깨졌는지 빌드 화면에서 보이게 한다. 결과 파일이 없으면(컴파일 실패 등) 비워 둔다.
+                    junit allowEmptyResults: true, testResults: 'backend/build/test-results/test/*.xml'
+                }
             }
         }
 
@@ -175,10 +185,6 @@ pipeline {
                     updateGitlabCommitStatus name: 'jenkins', state: 'canceled'
                 }
             }
-        }
-        always {
-            // 시험 이미지는 매번 지워서 디스크에 쌓이지 않게 한다.
-            sh 'docker rmi axcore-ci-test:${BUILD_NUMBER} 2>/dev/null || true'
         }
     }
 }
