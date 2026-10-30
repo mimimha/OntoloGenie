@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
 import { expect, test } from 'vitest'
+import { server } from '../../mocks/node'
 import ExplorerPage from './ExplorerPage'
 
 function renderExplorerPage() {
@@ -36,4 +38,33 @@ test('객체를 고르면 상세 API로 받은 정보를 보여준다', async ()
   expect(screen.getByText('설비 / #301')).toBeInTheDocument()
   expect(screen.getByText('MES · mes.equipment')).toBeInTheDocument()
   expect(screen.getByText('equipment_code')).toBeInTheDocument()
+})
+
+test('검색 결과가 없으면 안내 문구를 보여준다', async () => {
+  server.use(
+    http.get('/api/v1/objects', () =>
+      HttpResponse.json({
+        data: [],
+        meta: { page: 0, size: 20, totalElements: 0, hasNext: false },
+      }),
+    ),
+  )
+  renderExplorerPage()
+
+  expect(
+    await screen.findByText('조건에 맞는 객체가 없습니다.'),
+  ).toBeInTheDocument()
+  expect(screen.getByText('0건')).toBeInTheDocument()
+})
+
+test('검색어로 검색하면 맞는 객체만 보여준다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+
+  await user.type(await screen.findByLabelText('객체 검색어'), '프레스')
+  await user.click(screen.getByRole('button', { name: '검색' }))
+
+  expect(await screen.findByText('3건')).toBeInTheDocument()
+  expect(screen.getByText('프레스 작업')).toBeInTheDocument()
+  expect(screen.queryByText('야간 인수인계')).not.toBeInTheDocument()
 })

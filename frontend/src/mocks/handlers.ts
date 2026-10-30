@@ -123,14 +123,19 @@ const sourceMappings: Record<number, SourceLocation> = {
 
 export const handlers = [
   // 076 권한 범위 객체 검색
-  http.get('/api/v1/objects', async () => {
+  http.get('/api/v1/objects', async ({ request }) => {
     await delay()
+    const q = new URL(request.url).searchParams.get('q') ?? ''
+    const matched = objects.filter((item) => {
+      const numbers = Object.values(item.sourceKey ?? {}).map(String)
+      return [item.displayName, ...numbers].some((text) => text.includes(q))
+    })
     return HttpResponse.json({
-      data: objects,
+      data: matched,
       meta: {
         page: 0,
         size: 20,
-        totalElements: objects.length,
+        totalElements: matched.length,
         hasNext: false,
       },
     })

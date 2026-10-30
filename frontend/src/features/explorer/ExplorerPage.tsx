@@ -7,14 +7,16 @@ import ObjectDetail from './ObjectDetail'
 
 function ExplorerPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [keyword, setKeyword] = useState('')
+  const [searchWord, setSearchWord] = useState('')
   const {
     data: objectPage,
     isPending,
     isError,
     error,
   } = useQuery({
-    queryKey: ['objects'],
-    queryFn: fetchObjects,
+    queryKey: ['objects', searchWord],
+    queryFn: () => fetchObjects(searchWord),
   })
 
   if (isPending) {
@@ -35,15 +37,41 @@ function ExplorerPage() {
           <h1 className="text-xl font-semibold text-slate-900">객체 목록</h1>
           <span className="text-sm text-slate-500">{totalCount}건</span>
         </div>
-        {objects.map((item) => (
-          <ObjectCard
-            key={item.id}
-            name={item.displayName}
-            typeLabel={objectTypeLabel(item)}
-            selected={item.id === selectedId}
-            onSelect={() => setSelectedId(item.id)}
+        <form
+          className="flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            setSearchWord(keyword.trim())
+          }}
+        >
+          <input
+            type="search"
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="이름이나 번호로 검색"
+            aria-label="객체 검색어"
+            className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
           />
-        ))}
+          <button
+            type="submit"
+            className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
+          >
+            검색
+          </button>
+        </form>
+        {objects.length === 0 ? (
+          <p className="text-sm text-slate-500">조건에 맞는 객체가 없습니다.</p>
+        ) : (
+          objects.map((item) => (
+            <ObjectCard
+              key={item.id}
+              name={item.displayName}
+              typeLabel={objectTypeLabel(item)}
+              selected={item.id === selectedId}
+              onSelect={() => setSelectedId(item.id)}
+            />
+          ))
+        )}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6">
