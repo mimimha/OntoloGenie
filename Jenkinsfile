@@ -2,7 +2,7 @@
 // - Job 1: MR이 열리거나 MR 브랜치에 push되면 실행. gitlabSourceBranch = MR 원본 브랜치. 검사만 한다.
 // - Job 2: develop에 push(머지)되면 실행. 바뀐 서비스를 빌드해 서버에 배포한다 (5-7).
 // 이 파일(지시서)은 항상 develop에서 읽고, 검사할 코드는 Checkout 단계에서 받는다.
-// 결과는 GitLab(MR 화면 ✅/❌)과 Mattermost(빌드를 일으킨 사람에게 DM)로 알린다.
+// 결과는 GitLab(MR 화면 ✅/❌)과 Mattermost DM으로 알린다. DM은 배포 결과(성공·실패)와 MR 검사 실패에만 보낸다.
 pipeline {
     agent any
 
@@ -211,7 +211,10 @@ pipeline {
                 if (env.gitlabActionType) {
                     updateGitlabCommitStatus name: 'jenkins', state: 'success'
                 }
-                notifyMattermost(':white_check_mark: 성공')
+                // 성공 DM은 배포 Job만 보낸다. MR 검사 성공은 GitLab MR 화면의 ✅로 충분하다 (2026-10-30 결정). 실패는 둘 다 DM.
+                if (env.IS_DEPLOY_JOB == 'true') {
+                    notifyMattermost(':white_check_mark: 성공')
+                }
             }
         }
         failure {
