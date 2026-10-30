@@ -115,7 +115,7 @@ docker compose exec -T postgres pg_restore -U axcore -d axcore --clean --if-exis
 
 ## MR 검증 (MR 생성·갱신 → Jenkins axcore-mr-check)
 
-MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 브랜치를 받아 `backend/`에서 `./gradlew --no-daemon spotlessCheck build`를 돌린다 (스타일 검사 → 컴파일 → 테스트). 결과는 GitLab MR 화면 ✅/❌와 Mattermost DM으로, 깨진 테스트 목록은 Jenkins 빌드 화면(Test Result)으로 본다.
+MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 브랜치를 받아 `backend/`에서 `./gradlew --no-daemon spotlessCheck build`를 돌린다 (스타일 검사 → 컴파일 → 테스트). 결과는 GitLab MR 화면 ✅/❌와 Mattermost DM으로, 깨진 테스트 목록은 Jenkins 빌드 화면(Test Result)으로 본다. develop과 갈라진 뒤 `backend/`가 바뀌지 않은 MR(문서·인프라만 고친 MR)은 gradle을 건너뛰고 바로 ✅다. 수동 실행(Build with Parameters)은 develop을 받아 항상 전체를 돌린다 (develop 재검사 용도).
 
 - 테스트는 Testcontainers로 테스트용 PostgreSQL 컨테이너를 띄운다. Jenkins 컨테이너의 docker.sock을 쓰며, 그 컨테이너는 기본 bridge에 뜨고 서버 포트로 열리므로 Jenkins 컨테이너에서는 axcore-net 게이트웨이(=서버)로 닿는다. 그 주소가 compose의 `TESTCONTAINERS_HOST_OVERRIDE`다. axcore-net을 지웠다 다시 만들면 게이트웨이가 바뀔 수 있으니 `docker network inspect axcore-net -f '{{(index .IPAM.Config 0).Gateway}}'`로 다시 확인한다.
 - gradle 캐시는 `jenkins-data/.gradle`에 남아 두 번째부터 빠르다. 첫 실행은 Gradle 배포판과 의존성을 받느라 몇 분 걸린다.
@@ -129,7 +129,7 @@ MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 브랜
 `Jenkinsfile`의 배포 단계는 Job `axcore-deploy`에서만 켜진다 (MR 검증 Job은 배포하지 않는다).
 
 1. develop 머지 → GitLab Webhook → `axcore-deploy` 실행
-2. `git diff HEAD~1 HEAD -- backend/` 로 backend 변경 여부 확인. 변경 없으면 배포 건너뜀 (`FORCE_DEPLOY` 파라미터로 강제 가능)
+2. 서버 `.env`의 `BACKEND_TAG`(지금 배포된 커밋)와 develop 사이에 `backend/` 변경이 있는지 확인. 변경 없으면 배포 건너뜀 (`FORCE_DEPLOY` 파라미터로 강제 가능). 직전 커밋과 비교하지 않는 이유: 머지가 연달아 쌓이면 앞 머지의 backend 변경을 놓친다. 배포 Job은 GitLab이 어떤 변수를 보내든 항상 `origin/develop`만 받는다
 3. `docker build -t axcore-backend:<커밋 SHA> backend`
 4. `scripts/pg-backup.sh` 1회 (마이그레이션 대비)
 5. `.env`의 `BACKEND_TAG`를 새 SHA로 바꾸고 `docker compose -f /home/ubuntu/axcore/compose.yaml up -d backend`
