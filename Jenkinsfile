@@ -24,9 +24,10 @@ pipeline {
         // Webhook으로 시작된 빌드는 GitLab 플러그인이 gitlabSourceBranch·gitlabMergeRequestLastCommit을 채워 준다.
         // 사람이 직접 돌린 빌드는 값이 없으므로 develop을 검사한다.
         CHECK_BRANCH = "${env.gitlabSourceBranch ?: 'develop'}"
-        // 실제로 받을 대상. MR 검사면 GitLab이 알려 준 MR 커밋 자체를 받는다 (브랜치 이름이 비거나 틀려도 정확한 코드).
-        // develop 머지(배포)나 수동 빌드는 MR 커밋이 없으므로 브랜치로 받는다.
-        CHECK_REF = "${env.gitlabMergeRequestLastCommit ?: ('origin/' + (env.gitlabSourceBranch ?: 'develop'))}"
+        // 실제로 받을 대상.
+        // - 배포 Job(axcore-deploy)은 무조건 origin/develop. GitLab이 MR 변수를 보내더라도(트리거 설정 실수 등) 머지 안 된 코드를 배포하지 않는다.
+        // - MR 검사는 GitLab이 알려 준 MR 커밋 자체를 받는다 (브랜치 이름이 비거나 틀려도 정확한 코드). 수동 빌드는 MR 커밋이 없으므로 브랜치로.
+        CHECK_REF = "${env.JOB_NAME == 'axcore-deploy' ? 'origin/develop' : (env.gitlabMergeRequestLastCommit ?: ('origin/' + (env.gitlabSourceBranch ?: 'develop')))}"
         // Mattermost Incoming Webhook 주소. Jenkins 관리 → Credentials의 Secret text (ID: mm-webhook).
         // 로그에는 ****로 가려진다. 없으면 빌드가 시작하자마자 실패하니 먼저 등록할 것.
         MM_WEBHOOK = credentials('mm-webhook')
@@ -69,6 +70,18 @@ pipeline {
                         }
                     }
 
+                    // MR 검사에서 backend 검사를 돌릴지 정한다. develop과 갈라진 뒤 backend/ 가 바뀐 MR만 돌린다 (문서만 고친 MR에 gradle 몇 분을 쓰지 않는다).
+                    // 수동 빌드는 항상 돌린다 (develop 전체를 다시 검사하는 용도).
+                    if (env.IS_DEPLOY_JOB != 'true') {
+                        if (!env.gitlabActionType) {
+                            env.CHECK_BACKEND = 'true'
+                        } else {
+                            def backendChanged = sh(returnStatus: true, script: 'git diff --quiet origin/develop...HEAD -- backend/') != 0
+                            env.CHECK_BACKEND = backendChanged ? 'true' : 'false'
+                            echo "backend/ 변경: ${backendChanged} → Backend check ${backendChanged ? '실행' : '건너뜀'}"
+                        }
+                    }
+
                     // Webhook 빌드일 때만 GitLab에 "검사 중" 상태를 올린다. (수동 빌드는 대상 커밋이 없음)
                     if (env.gitlabActionType) {
                         updateGitlabCommitStatus name: 'jenkins', state: 'running'
@@ -82,7 +95,8 @@ pipeline {
             // 테스트의 Testcontainers가 docker.sock으로 테스트용 PostgreSQL을 띄운다. 주소는 compose의 TESTCONTAINERS_HOST_OVERRIDE.
             // --no-daemon: 빌드가 끝나면 gradle JVM을 바로 내려 Jenkins 컨테이너 메모리를 돌려준다.
             // 주의: MR 브랜치의 build.gradle이 docker.sock이 있는 이 컨테이너에서 실행된다(팀원 계정을 신뢰). 분리는 보안 후속.
-            when { expression { env.IS_DEPLOY_JOB != 'true' } }
+            // backend/ 가 안 바뀐 MR은 건너뛴다 (Checkout 단계의 CHECK_BACKEND).
+            when { expression { env.IS_DEPLOY_JOB != 'true' && env.CHECK_BACKEND == 'true' } }
             steps {
                 dir('backend') {
                     sh './gradlew --no-daemon spotlessCheck build'
@@ -97,14 +111,25 @@ pipeline {
         }
 
         stage('Detect changes') {
-            // 이번 머지(HEAD)와 바로 전 develop(HEAD~1) 사이에 backend/ 가 바뀌었는지 본다.
+            // 서버에 지금 배포된 backend(.env의 BACKEND_TAG = 커밋 번호)와 지금 develop 사이에 backend/ 가 바뀌었는지 본다.
+            // 직전 커밋(HEAD~1)과 비교하면 머지가 연달아 쌓여 빌드가 한 번만 돌 때 앞 머지의 backend 변경을 놓친다 (2026-10-30 발견).
             // 바뀐 서비스만 배포한다 (개발 가이드 13.1). FORCE_DEPLOY면 무조건 배포.
             when { expression { env.IS_DEPLOY_JOB == 'true' } }
             steps {
                 script {
-                    def changed = sh(returnStatus: true, script: 'git diff --quiet HEAD~1 HEAD -- backend/') != 0
+                    def deployed = sh(returnStdout: true, script: "grep '^BACKEND_TAG=' ${env.DEPLOY_DIR}/.env | cut -d= -f2").trim()
+                    def changed
+                    if (!deployed) {
+                        echo "배포된 backend 태그가 없다 → 배포한다 (첫 배포)"
+                        changed = true
+                    } else if (sh(returnStatus: true, script: "git cat-file -e '${deployed}^{commit}'") != 0) {
+                        echo "배포된 태그 ${deployed}가 저장소의 커밋이 아니다 → 비교할 수 없어 배포한다"
+                        changed = true
+                    } else {
+                        changed = sh(returnStatus: true, script: "git diff --quiet ${deployed} HEAD -- backend/") != 0
+                    }
                     env.DEPLOY_BACKEND = (changed || params.FORCE_DEPLOY) ? 'true' : 'false'
-                    echo "backend 변경: ${changed}, FORCE_DEPLOY: ${params.FORCE_DEPLOY} → 배포: ${env.DEPLOY_BACKEND}"
+                    echo "배포된 backend: ${deployed ?: '없음'}, 지금 develop: ${env.GIT_SHA}. backend 변경: ${changed}, FORCE_DEPLOY: ${params.FORCE_DEPLOY} → 배포: ${env.DEPLOY_BACKEND}"
                 }
             }
         }
@@ -210,8 +235,9 @@ pipeline {
 
 // Mattermost DM 전송. 받는 사람 = 이 빌드를 일으킨 GitLab 사용자(MR 작성자, 또는 develop에 머지한 사람).
 // SSAFY GitLab 아이디와 Mattermost 아이디가 같아서 "@아이디"로 바로 보낸다. 채널에는 올리지 않는다.
+// 아이디 변수는 이벤트마다 다르다: push(배포)는 gitlabUserUsername, MR 이벤트(검사)는 gitlabMergedByUser (2026-10-30 빌드 #44 로그로 확인).
 def notifyMattermost(String result) {
-    def who = env.gitlabUserUsername
+    def who = env.gitlabUserUsername ?: env.gitlabMergedByUser
     if (!who) {
         echo 'Mattermost 알림 생략: 수동 빌드라 받는 사람이 없음'
         return
