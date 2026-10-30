@@ -9,6 +9,7 @@ import com.axcore.platform.ontology.dto.ObjectTypeResponse;
 import com.axcore.platform.ontology.dto.ObjectTypeUpdateRequest;
 import com.axcore.platform.ontology.repository.DefinitionReferenceRepository;
 import com.axcore.platform.ontology.repository.ObjectTypeRepository;
+import com.axcore.platform.ontology.repository.PropertyDefinitionRepository;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ObjectTypeService {
 
     private final ObjectTypeRepository objectTypeRepository;
+    private final PropertyDefinitionRepository propertyDefinitionRepository;
     private final DefinitionReferenceRepository referenceRepository;
 
     /** API 021. q가 비어 있으면 전체를 돌려준다. */
@@ -69,7 +71,7 @@ public class ObjectTypeService {
                         : objectType.getDisplayPropertyId();
         if (displayPropertyId != null
                 && !displayPropertyId.equals(objectType.getDisplayPropertyId())
-                && !referenceRepository.isPropertyOf(displayPropertyId, id)) {
+                && !propertyDefinitionRepository.existsByIdAndObjectTypeId(displayPropertyId, id)) {
             throw new BusinessException(
                     CommonErrorCode.BUSINESS_RULE_VIOLATION,
                     "대표 속성은 같은 객체 유형의 속성이어야 합니다.",
