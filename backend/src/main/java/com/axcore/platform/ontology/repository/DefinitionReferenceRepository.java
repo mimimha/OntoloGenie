@@ -43,6 +43,16 @@ public class DefinitionReferenceRepository {
                                     select code from property_definition where id = :id)), 'null') <> 'null'
                             """));
 
+    /**
+     * 관계 유형을 막는 참조 (API 032·033). 조건의 :id는 관계 유형 ID다. 지난 규칙 개정본(RETIRED)·비활성 연결(INACTIVE)·처리된 보류 건도
+     * 이력이므로 막는다.
+     */
+    private static final List<ReferenceSource> LINK_TYPE_REFERENCES =
+            List.of(
+                    new ReferenceSource("link_mapping", "link_type_id = :id"),
+                    new ReferenceSource("object_link", "link_type_id = :id"),
+                    new ReferenceSource("held_item", "link_type_id = :id"));
+
     private final JdbcClient jdbcClient;
 
     public List<DefinitionReference> findObjectTypeReferences(Long objectTypeId) {
@@ -51,6 +61,10 @@ public class DefinitionReferenceRepository {
 
     public List<DefinitionReference> findPropertyReferences(Long propertyId) {
         return findReferences(PROPERTY_REFERENCES, propertyId);
+    }
+
+    public List<DefinitionReference> findLinkTypeReferences(Long linkTypeId) {
+        return findReferences(LINK_TYPE_REFERENCES, linkTypeId);
     }
 
     private List<DefinitionReference> findReferences(List<ReferenceSource> sources, Long id) {
