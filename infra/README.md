@@ -9,12 +9,11 @@
 | `compose.yaml` | nginx · certbot · Jenkins · PostgreSQL 18 컨테이너 정의 (이미지 버전 고정, 내부망 `axcore-net`) |
 | `.env.example` | `compose.yaml`이 읽는 환경 변수 이름 목록 (실제 값은 서버의 `.env`에만) |
 | `nginx/conf.d/default.conf` | HTTP → HTTPS 리다이렉트, TLS 설정, `/jenkins/` 리버스 프록시, `/api/` → backend (스트리밍 대비 buffering off) |
-| `nginx/html/index.html` | 기본 페이지 (nginx 동작 확인용) |
 | `jenkins/Dockerfile` | Jenkins 공식 이미지 + docker CLI · compose 플러그인 |
 | `scripts/renew-cert.sh` | 인증서 자동 갱신 + nginx reload (cron에서 매일 03:00 실행) |
 | `scripts/pg-backup.sh` | 플랫폼 DB `pg_dump` 백업 + 7일 지난 파일 삭제 (cron에서 매일 04:00 실행) |
 | backend | Spring Boot 백엔드 (api 모드) · `backend/Dockerfile` · 호스트 `127.0.0.1:18080` · 이미지 태그 `.env`의 `BACKEND_TAG` |
-| frontend | React 정적 파일 · `frontend/Dockerfile`(node 24.18.0로 빌드 → `nginx:1.30-alpine`이 dist 서빙, SPA fallback은 `frontend/nginx.conf`) · 컨테이너 포트 80 · compose 추가와 메인 nginx `/` 연결은 5-2 · 5-4 (아직) |
+| frontend | React 정적 파일 · `frontend/Dockerfile`(node 24.18.0로 빌드 → `nginx:1.30-alpine`이 dist 서빙, SPA fallback은 `frontend/nginx.conf`) · 호스트 `127.0.0.1:10080`(컨테이너 80) · 이미지 태그 `.env`의 `FRONTEND_TAG` · 메인 nginx `/` → frontend |
 
 ## 포트 규칙
 
@@ -22,13 +21,13 @@ SSAFY 클라우드 방화벽은 tcp · udp 1024~65535를 열어 두므로, 서�
 
 - 바깥(`0.0.0.0`)에 여는 포트는 nginx의 80 · 443뿐입니다.
 - 나머지 서비스는 호스트 포트를 열지 않거나 `127.0.0.1:1xxxx`(비기본값)로만 엽니다. 컨테이너 안 포트는 기본값을 유지합니다.
-- 현재 할당: PostgreSQL `127.0.0.1:15432` (컨테이너 안 5432). 앞으로 backend 18080 · ai 18000 · grafana 13000 예정.
+- 현재 할당: PostgreSQL `127.0.0.1:15432` (컨테이너 안 5432) · backend `18080` (8080) · frontend `10080` (80). 앞으로 ai 18000 · grafana 13000 예정.
 
 ## nginx 경로 (바깥에서 보이는 주소)
 
 | 경로 | 가는 곳 | 비고 |
 | --- | --- | --- |
-| `/` | nginx 기본 페이지 | 5단계 frontend 배포 시 React로 교체 |
+| `/` | frontend:80 (React 정적 파일) | resolver + 변수 proxy_pass(frontend 재시작 중에도 nginx 유지). SPA fallback은 frontend 컨테이너 안 nginx가 처리. 이미지 태그 `.env`의 `FRONTEND_TAG`, 호스트 `127.0.0.1:10080`(디버그용) |
 | `/api/` | backend:8080 (경로 그대로) | 로그인 전 요청은 backend가 401로 응답. `X-Forwarded-Proto` 전달(세션 Secure 쿠키), `proxy_buffering off` + `proxy_read_timeout 300s`(Agent 스트리밍), 업로드 상한 20m |
 | `/jenkins/` | jenkins:8080 | 팀원 Read 권한 |
 | `/swagger-ui.html` · `/swagger-ui/` · `/v3/api-docs` | backend:8080 | nginx Basic Auth (아이디 · 비밀번호는 서버 `nginx/htpasswd`, 팀 DM으로 공유). 백엔드 로그인과 별개 |
