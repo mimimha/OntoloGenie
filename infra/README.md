@@ -136,18 +136,19 @@ frontend · ai 컨테이너에는 docker.sock을 붙이지 않는다. 작업 폴
 
 `Jenkinsfile`의 배포 단계는 Job `axcore-deploy`에서만 켜진다 (MR 검증 Job은 배포하지 않는다).
 
-1. develop 머지 → GitLab Webhook → `axcore-deploy` 실행
-2. 서버 `.env`의 `BACKEND_TAG`(지금 배포된 커밋)와 develop 사이에 `backend/` 변경이 있는지 확인. 변경 없으면 배포 건너뜀 (`FORCE_DEPLOY` 파라미터로 강제 가능). 직전 커밋과 비교하지 않는 이유: 머지가 연달아 쌓이면 앞 머지의 backend 변경을 놓친다. 배포 Job은 GitLab이 어떤 변수를 보내든 항상 `origin/develop`만 받는다
-3. `docker build -t axcore-backend:<커밋 SHA> backend`
-4. `scripts/pg-backup.sh` 1회 (마이그레이션 대비)
-5. `.env`의 `BACKEND_TAG`를 새 SHA로 바꾸고 `docker compose -f /home/ubuntu/axcore/compose.yaml up -d backend`
-6. 최대 90초 동안 `(healthy)` 대기. 실패하면 **직전 태그로 자동 롤백**하고 빌드를 실패로 표시
-7. backend 이미지는 최근 3개 태그만 보관, 3일 지난 빌드 캐시 삭제
-8. 결과는 GitLab 커밋 상태 + Mattermost DM(머지한 사람). 배포가 있으면 `backend 배포 <이전> → <새 SHA>` 또는 `롤백됨`이 붙는다
+배포 대상은 backend와 frontend 두 서비스다 (2026-11-01 frontend 추가). 서비스마다 같은 절차를 `deployService` 함수가 돌린다.
+
+1. develop 머지 → GitLab Webhook → `axcore-deploy` 실행. 배포 Job은 GitLab이 어떤 변수를 보내든 항상 `origin/develop`만 받는다
+2. 서비스마다 서버 `.env`의 태그(`BACKEND_TAG` · `FRONTEND_TAG` = 지금 배포된 커밋)와 develop 사이에 그 폴더(`backend/` · `frontend/`) 변경이 있는지 확인. 변경 없으면 그 서비스는 건너뜀 (`FORCE_DEPLOY` 파라미터면 전부 배포). 직전 커밋과 비교하지 않는 이유: 머지가 연달아 쌓이면 앞 머지의 변경을 놓친다
+3. backend: `docker build -t axcore-backend:<커밋 SHA> backend` → `scripts/pg-backup.sh` 1회(마이그레이션 대비) → `.env`의 `BACKEND_TAG` 갱신 + `docker compose up -d backend` → 최대 90초 `(healthy)` 대기 → 실패하면 **직전 태그로 자동 롤백**
+4. frontend: `docker build -t axcore-frontend:<커밋 SHA> frontend` → `.env`의 `FRONTEND_TAG` 갱신 + `docker compose up -d frontend` → 90초 `(healthy)` 대기 → 실패하면 롤백. (DB 백업은 없음)
+5. 한 서비스가 실패해도 다음 서비스 배포는 계속한다(`catchError`). 빌드는 실패로 표시되고 어느 서비스가 실패했는지는 단계 화면과 DM에 나온다
+6. backend · frontend 이미지는 각각 최근 3개 태그만 보관, 3일 지난 빌드 캐시 삭제
+7. 결과는 GitLab 커밋 상태 + Mattermost DM(머지한 사람). 서비스마다 `backend 배포 <이전> → <새 SHA>` / `frontend 배포 실패 → <이전> 로 롤백됨` 한 줄씩, 둘 다 안 바뀌면 `배포: 변경 없음`
 
 Jenkins 컨테이너는 가게 폴더를 같은 경로(`/home/ubuntu/axcore`)로 마운트한다. compose의 상대 경로(`./nginx/...`)가 호스트 기준으로 풀리므로 경로가 같아야 한다.
 
-**손으로 롤백할 때** (자동 롤백이 안 됐거나, 배포 뒤 문제가 늦게 발견된 경우):
+**손으로 롤백할 때** (자동 롤백이 안 됐거나, 배포 뒤 문제가 늦게 발견된 경우). frontend는 `backend`를 `frontend`로, `BACKEND_TAG`를 `FRONTEND_TAG`로 바꿔 같은 절차:
 
 ```bash
 cd ~/axcore

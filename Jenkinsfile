@@ -154,25 +154,30 @@ pipeline {
         }
 
         stage('Detect changes') {
-            // 서버에 지금 배포된 backend(.env의 BACKEND_TAG = 커밋 번호)와 지금 develop 사이에 backend/ 가 바뀌었는지 본다.
-            // 직전 커밋(HEAD~1)과 비교하면 머지가 연달아 쌓여 빌드가 한 번만 돌 때 앞 머지의 backend 변경을 놓친다 (2026-10-30 발견).
-            // 바뀐 서비스만 배포한다 (개발 가이드 13.1). FORCE_DEPLOY면 무조건 배포.
+            // 서비스마다, 서버에 지금 배포된 태그(.env의 <서비스>_TAG = 커밋 번호)와 지금 develop 사이에 그 폴더가 바뀌었는지 본다.
+            // 직전 커밋(HEAD~1)과 비교하면 머지가 연달아 쌓여 빌드가 한 번만 돌 때 앞 머지의 변경을 놓친다 (2026-10-30 발견).
+            // 바뀐 서비스만 배포한다 (개발 가이드 13.1). FORCE_DEPLOY면 전부 배포.
             when { expression { env.IS_DEPLOY_JOB == 'true' } }
             steps {
                 script {
-                    def deployed = sh(returnStdout: true, script: "grep '^BACKEND_TAG=' ${env.DEPLOY_DIR}/.env | cut -d= -f2").trim()
-                    def changed
-                    if (!deployed) {
-                        echo "배포된 backend 태그가 없다 → 배포한다 (첫 배포)"
-                        changed = true
-                    } else if (sh(returnStatus: true, script: "git cat-file -e '${deployed}^{commit}'") != 0) {
-                        echo "배포된 태그 ${deployed}가 저장소의 커밋이 아니다 → 비교할 수 없어 배포한다"
-                        changed = true
-                    } else {
-                        changed = sh(returnStatus: true, script: "git diff --quiet ${deployed} HEAD -- backend/") != 0
+                    def detect = { String tagVar, String dir ->
+                        def deployed = sh(returnStdout: true, script: "grep '^${tagVar}=' ${env.DEPLOY_DIR}/.env | cut -d= -f2").trim()
+                        def changed
+                        if (!deployed) {
+                            echo "배포된 ${dir} 태그가 없다 → 배포한다 (첫 배포)"
+                            changed = true
+                        } else if (sh(returnStatus: true, script: "git cat-file -e '${deployed}^{commit}'") != 0) {
+                            echo "배포된 ${dir} 태그 ${deployed}가 저장소의 커밋이 아니다 → 비교할 수 없어 배포한다"
+                            changed = true
+                        } else {
+                            changed = sh(returnStatus: true, script: "git diff --quiet ${deployed} HEAD -- ${dir}/") != 0
+                        }
+                        echo "배포된 ${dir}: ${deployed ?: '없음'}, 지금 develop: ${env.GIT_SHA}, ${dir}/ 변경: ${changed}"
+                        return changed
                     }
-                    env.DEPLOY_BACKEND = (changed || params.FORCE_DEPLOY) ? 'true' : 'false'
-                    echo "배포된 backend: ${deployed ?: '없음'}, 지금 develop: ${env.GIT_SHA}. backend 변경: ${changed}, FORCE_DEPLOY: ${params.FORCE_DEPLOY} → 배포: ${env.DEPLOY_BACKEND}"
+                    env.DEPLOY_BACKEND = (detect('BACKEND_TAG', 'backend') || params.FORCE_DEPLOY) ? 'true' : 'false'
+                    env.DEPLOY_FRONTEND = (detect('FRONTEND_TAG', 'frontend') || params.FORCE_DEPLOY) ? 'true' : 'false'
+                    echo "FORCE_DEPLOY: ${params.FORCE_DEPLOY} → backend 배포: ${env.DEPLOY_BACKEND}, frontend 배포: ${env.DEPLOY_FRONTEND}"
                 }
             }
         }
@@ -196,38 +201,27 @@ pipeline {
         stage('Deploy backend') {
             when { expression { env.DEPLOY_BACKEND == 'true' } }
             steps {
-                script {
-                    // 되돌릴 때 쓸 직전 태그를 기억한다.
-                    env.PREV_TAG = sh(returnStdout: true, script: "grep '^BACKEND_TAG=' ${env.DEPLOY_DIR}/.env | cut -d= -f2").trim()
-                    echo "backend ${env.PREV_TAG} → ${env.GIT_SHA}"
-                    try {
-                        // .env의 BACKEND_TAG를 새 번호로 바꾸고 backend만 새로 띄운다. (수동 배포 절차 4·5번)
-                        sh """
-                            sed -i 's/^BACKEND_TAG=.*/BACKEND_TAG=${env.GIT_SHA}/' ${env.DEPLOY_DIR}/.env
-                            docker compose -f ${env.DEPLOY_DIR}/compose.yaml up -d backend
-                        """
-                        // 최대 90초(5초 × 18번) 동안 (healthy)가 될 때까지 기다린다. 5-3 헬스체크를 그대로 쓴다.
-                        sh '''
-                            for i in $(seq 1 18); do
-                                s=$(docker inspect --format '{{.State.Health.Status}}' backend 2>/dev/null || echo none)
-                                echo "health: $s ($i/18)"
-                                [ "$s" = healthy ] && exit 0
-                                sleep 5
-                            done
-                            echo "헬스체크 실패: 90초 안에 healthy가 되지 않음"
-                            docker compose -f "$DEPLOY_DIR/compose.yaml" logs --tail 50 backend
-                            exit 1
-                        '''
-                    } catch (e) {
-                        // 롤백: 직전 태그로 되돌리고 다시 띄운다. 그 뒤 빌드를 실패로 표시해 DM이 가게 한다.
-                        echo "배포 실패 → ${env.PREV_TAG} 로 롤백"
-                        sh """
-                            sed -i 's/^BACKEND_TAG=.*/BACKEND_TAG=${env.PREV_TAG}/' ${env.DEPLOY_DIR}/.env
-                            docker compose -f ${env.DEPLOY_DIR}/compose.yaml up -d backend
-                        """
-                        env.ROLLED_BACK = 'true'
-                        throw e
-                    }
+                // 배포 로직은 아래 deployService 함수 (태그 갱신 → up -d → 90초 헬스체크 → 실패 시 롤백).
+                // catchError: 실패해도 파이프라인을 멈추지 않는다. 이 단계와 빌드는 실패로 표시하고(DM 감) 다음 서비스 배포는 계속한다.
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    script { deployService('backend', 'BACKEND_TAG') }
+                }
+            }
+        }
+
+        stage('Build frontend image') {
+            when { expression { env.DEPLOY_FRONTEND == 'true' } }
+            steps {
+                // 작업 폴더의 frontend/ 로 굽는다 (frontend/Dockerfile: node 빌드 → nginx 정적 서빙). 태그 = 커밋 번호.
+                sh 'docker build -t axcore-frontend:${GIT_SHA} frontend'
+            }
+        }
+
+        stage('Deploy frontend') {
+            when { expression { env.DEPLOY_FRONTEND == 'true' } }
+            steps {
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    script { deployService('frontend', 'FRONTEND_TAG') }
                 }
             }
         }
@@ -235,11 +229,13 @@ pipeline {
         stage('Cleanup images') {
             when { expression { env.IS_DEPLOY_JOB == 'true' } }
             steps {
-                // backend 이미지는 최근 3개 태그만 남긴다 (지금 것 + 롤백용 2개). 쓰는 중인 이미지는 지워지지 않는다.
+                // 서비스 이미지는 최근 3개 태그만 남긴다 (지금 것 + 롤백용 2개). 쓰는 중인 이미지는 지워지지 않는다.
                 // 빌드 캐시는 3일 지난 것만 지운다.
                 sh '''
-                    docker images axcore-backend --format '{{.Tag}} {{.CreatedAt}}' | sort -k2 -r | awk 'NR>3 {print $1}' \
-                        | xargs -r -I{} docker rmi axcore-backend:{} || true
+                    for img in axcore-backend axcore-frontend; do
+                        docker images $img --format '{{.Tag}} {{.CreatedAt}}' | sort -k2 -r | awk 'NR>3 {print $1}' \
+                            | xargs -r -I{} docker rmi $img:{} || true
+                    done
                     docker builder prune -f --filter until=72h >/dev/null || true
                     docker system df
                 '''
@@ -291,12 +287,21 @@ def notifyMattermost(String result) {
     def what = env.gitlabMergeRequestIid
         ? "MR !${env.gitlabMergeRequestIid} (${env.gitlabSourceBranch} → ${env.gitlabTargetBranch})"
         : 'develop 머지 반영'
-    // 배포가 있었으면 어떤 버전으로 바뀌었는지(또는 롤백됐는지) 한 줄 더 붙인다.
+    // 배포가 있었으면 서비스마다 어떤 버전으로 바뀌었는지(또는 롤백됐는지) 한 줄씩 붙인다. 값은 deployService가 env에 남긴다.
     def deploy = ''
-    if (env.DEPLOY_BACKEND == 'true') {
-        deploy = env.ROLLED_BACK == 'true'
-            ? "\nbackend 배포 실패 → ${env.PREV_TAG} 로 롤백됨"
-            : "\nbackend 배포 ${env.PREV_TAG} → ${env.GIT_SHA}"
+    for (p in [['backend', 'BACKEND'], ['frontend', 'FRONTEND']]) {
+        def svc = p[0]
+        def key = p[1]
+        if (env."DEPLOY_${key}" != 'true') {
+            continue
+        }
+        def prev = env."${key}_PREV_TAG" ?: '없음'
+        deploy += env."${key}_ROLLED_BACK" == 'true'
+            ? "\n${svc} 배포 실패 → ${prev} 로 롤백됨"
+            : "\n${svc} 배포 ${prev} → ${env.GIT_SHA}"
+    }
+    if (env.IS_DEPLOY_JOB == 'true' && !deploy) {
+        deploy = '\n배포: 변경 없음'
     }
     def text = "${result} ${env.JOB_NAME} #${env.BUILD_NUMBER} · ${what}${deploy}\n로그: ${env.BUILD_URL}console"
     def payload = groovy.json.JsonOutput.toJson([channel: "@${who}", text: text])
@@ -304,5 +309,48 @@ def notifyMattermost(String result) {
     // 비밀값(MM_WEBHOOK)은 Groovy 문자열에 섞지 않고 셸 환경변수로만 읽는다. 알림 실패가 빌드 결과를 바꾸면 안 되므로 || echo.
     withEnv(["MM_PAYLOAD=${payload}"]) {
         sh 'curl -sS -f -X POST -H "Content-Type: application/json" -d "$MM_PAYLOAD" "$MM_WEBHOOK" > /dev/null || echo "Mattermost 알림 실패"'
+    }
+}
+
+// 서비스 하나를 새 태그(GIT_SHA)로 띄우고 healthy를 기다린다. 실패하면 직전 태그로 되돌리고 예외를 던진다.
+// svc = compose 서비스 이름(= 컨테이너 이름), tagVar = .env의 태그 변수 이름 (BACKEND_TAG / FRONTEND_TAG).
+// 결과는 env.<KEY>_PREV_TAG · env.<KEY>_ROLLED_BACK 에 남겨 DM 문구에서 쓴다 (KEY = BACKEND / FRONTEND).
+// 손으로 하던 절차와 같다: .env 태그 갱신 → docker compose up -d <svc> → docker compose ps (healthy).
+def deployService(String svc, String tagVar) {
+    def key = tagVar.replace('_TAG', '')
+    // 되돌릴 때 쓸 직전 태그를 기억한다.
+    def prev = sh(returnStdout: true, script: "grep '^${tagVar}=' ${env.DEPLOY_DIR}/.env | cut -d= -f2").trim()
+    env."${key}_PREV_TAG" = prev
+    echo "${svc} ${prev ?: '없음'} → ${env.GIT_SHA}"
+    try {
+        // .env의 태그를 새 번호로 바꾸고(줄이 없으면 만들고) 그 서비스만 새로 띄운다.
+        sh """
+            grep -q '^${tagVar}=' ${env.DEPLOY_DIR}/.env || echo '${tagVar}=' >> ${env.DEPLOY_DIR}/.env
+            sed -i 's/^${tagVar}=.*/${tagVar}=${env.GIT_SHA}/' ${env.DEPLOY_DIR}/.env
+            docker compose -f ${env.DEPLOY_DIR}/compose.yaml up -d ${svc}
+        """
+        // 최대 90초(5초 × 18번) 동안 (healthy)가 될 때까지 기다린다. compose의 healthcheck를 그대로 쓴다.
+        sh """
+            for i in \$(seq 1 18); do
+                s=\$(docker inspect --format '{{.State.Health.Status}}' ${svc} 2>/dev/null || echo none)
+                echo "health: \$s (\$i/18)"
+                [ "\$s" = healthy ] && exit 0
+                sleep 5
+            done
+            echo "헬스체크 실패: 90초 안에 healthy가 되지 않음"
+            docker compose -f ${env.DEPLOY_DIR}/compose.yaml logs --tail 50 ${svc}
+            exit 1
+        """
+    } catch (e) {
+        // 롤백: 직전 태그로 되돌리고 다시 띄운다. 첫 배포(직전 태그 없음)면 되돌릴 게 없어 그대로 둔다.
+        echo "${svc} 배포 실패 → ${prev ?: '(직전 태그 없음)'} 로 롤백"
+        if (prev) {
+            sh """
+                sed -i 's/^${tagVar}=.*/${tagVar}=${prev}/' ${env.DEPLOY_DIR}/.env
+                docker compose -f ${env.DEPLOY_DIR}/compose.yaml up -d ${svc}
+            """
+        }
+        env."${key}_ROLLED_BACK" = 'true'
+        throw e
     }
 }
