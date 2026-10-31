@@ -115,7 +115,15 @@ docker compose exec -T postgres pg_restore -U axcore -d axcore --clean --if-exis
 
 ## MR 검증 (MR 생성·갱신 → Jenkins axcore-mr-check)
 
-MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 브랜치를 받아 `backend/`에서 `./gradlew --no-daemon spotlessCheck build`를 돌린다 (스타일 검사 → 컴파일 → 테스트). 결과는 GitLab MR 화면 ✅/❌로 보고, 실패했을 때만 MR 작성자에게 Mattermost DM이 간다(성공 DM은 배포 Job만). 깨진 테스트 목록은 Jenkins 빌드 화면(Test Result)으로 본다. develop과 갈라진 뒤 `backend/`가 바뀌지 않은 MR(문서·인프라만 고친 MR)은 gradle을 건너뛰고 바로 ✅다. 수동 실행(Build with Parameters)은 develop을 받아 항상 전체를 돌린다 (develop 재검사 용도).
+MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 커밋을 받아, develop과 갈라진 뒤 **바뀐 폴더의 검사만** 돌린다. 결과는 GitLab MR 화면 ✅/❌로 보고, 실패했을 때만 MR 작성자에게 Mattermost DM이 간다(성공 DM은 배포 Job만). 깨진 테스트 목록은 Jenkins 빌드 화면(Test Result)으로 본다. 문서·인프라만 고친 MR은 검사 없이 바로 ✅다. 수동 실행(Build with Parameters)은 develop을 받아 세 서비스를 전부 돌린다 (develop 재검사 용도).
+
+| 폴더 | 검사 | 어디서 | 비고 |
+| --- | --- | --- | --- |
+| `backend/` | `./gradlew --no-daemon spotlessCheck build` (스타일 → 컴파일 → 테스트) | Jenkins 컨테이너 안 | Testcontainers가 docker.sock으로 테스트 DB를 띄움. gradle 캐시 `jenkins-data/.gradle` |
+| `frontend/` | `npm ci` → `npm run lint` → `vitest run` → `npm run build` | 일회용 `node:24.18.0-alpine` 컨테이너 | Node 버전은 프론트 담당 기준(24.18.0). npm 캐시 볼륨 `axcore-npm-cache` |
+| `ai/` | `pip install -r requirements-dev.txt` → `ruff check .` → `pytest` | 일회용 `python:3.11-slim` 컨테이너 | pip 캐시 볼륨 `axcore-pip-cache` |
+
+frontend · ai 컨테이너에는 docker.sock을 붙이지 않는다. 작업 폴더는 호스트 경로(`/home/ubuntu/axcore/jenkins-data/workspace/axcore-mr-check/...`)로 마운트한다(Jenkins 컨테이너의 `/var/jenkins_home`이 호스트의 `jenkins-data`). 컨테이너가 만든 `node_modules` · `dist` · `.pytest_cache`는 root 소유로 작업 폴더에 남지만 다음 검사도 같은 방식이라 문제없다. 지워야 하면 `docker run --rm -v /home/ubuntu/axcore/jenkins-data/workspace/axcore-mr-check/frontend:/app alpine rm -rf /app/node_modules /app/dist`.
 
 - 테스트는 Testcontainers로 테스트용 PostgreSQL 컨테이너를 띄운다. Jenkins 컨테이너의 docker.sock을 쓰며, 그 컨테이너는 기본 bridge에 뜨고 서버 포트로 열리므로 Jenkins 컨테이너에서는 axcore-net 게이트웨이(=서버)로 닿는다. 그 주소가 compose의 `TESTCONTAINERS_HOST_OVERRIDE`다. axcore-net을 지웠다 다시 만들면 게이트웨이가 바뀔 수 있으니 `docker network inspect axcore-net -f '{{(index .IPAM.Config 0).Gateway}}'`로 다시 확인한다.
 - gradle 캐시는 `jenkins-data/.gradle`에 남아 두 번째부터 빠르다. 첫 실행은 Gradle 배포판과 의존성을 받느라 몇 분 걸린다.

@@ -70,16 +70,20 @@ pipeline {
                         }
                     }
 
-                    // MR 검사에서 backend 검사를 돌릴지 정한다. develop과 갈라진 뒤 backend/ 가 바뀐 MR만 돌린다 (문서만 고친 MR에 gradle 몇 분을 쓰지 않는다).
-                    // 수동 빌드는 항상 돌린다 (develop 전체를 다시 검사하는 용도).
+                    // MR 검사에서 어느 서비스 검사를 돌릴지 정한다. develop과 갈라진 뒤 그 폴더가 바뀐 MR만 돌린다 (문서만 고친 MR에 gradle 몇 분을 쓰지 않는다).
+                    // 수동 빌드는 폴더가 있는 서비스를 전부 돌린다 (develop 전체를 다시 검사하는 용도).
                     if (env.IS_DEPLOY_JOB != 'true') {
                         if (!env.gitlabActionType) {
                             env.CHECK_BACKEND = 'true'
+                            env.CHECK_FRONTEND = fileExists('frontend/package.json') ? 'true' : 'false'
+                            env.CHECK_AI = fileExists('ai/requirements-dev.txt') ? 'true' : 'false'
                         } else {
-                            def backendChanged = sh(returnStatus: true, script: 'git diff --quiet origin/develop...HEAD -- backend/') != 0
-                            env.CHECK_BACKEND = backendChanged ? 'true' : 'false'
-                            echo "backend/ 변경: ${backendChanged} → Backend check ${backendChanged ? '실행' : '건너뜀'}"
+                            def changed = { String dir -> sh(returnStatus: true, script: "git diff --quiet origin/develop...HEAD -- ${dir}/") != 0 }
+                            env.CHECK_BACKEND = changed('backend') ? 'true' : 'false'
+                            env.CHECK_FRONTEND = changed('frontend') ? 'true' : 'false'
+                            env.CHECK_AI = changed('ai') ? 'true' : 'false'
                         }
+                        echo "검사 대상 서비스: backend=${env.CHECK_BACKEND}, frontend=${env.CHECK_FRONTEND}, ai=${env.CHECK_AI} (true = 실행, false = 건너뜀)"
                     }
 
                     // Webhook 빌드일 때만 GitLab에 "검사 중" 상태를 올린다. (수동 빌드는 대상 커밋이 없음)
@@ -106,6 +110,45 @@ pipeline {
                 always {
                     // 테스트 결과를 Jenkins에 올려 어느 테스트가 깨졌는지 빌드 화면에서 보이게 한다. 결과 파일이 없으면(컴파일 실패 등) 비워 둔다.
                     junit allowEmptyResults: true, testResults: 'backend/build/test-results/test/*.xml'
+                }
+            }
+        }
+
+        // frontend · ai 검사는 Jenkins 이미지에 Node · Python이 없어 일회용 컨테이너에서 돌린다.
+        // 이 컨테이너에는 docker.sock을 붙이지 않으므로 MR 코드가 서버 권한을 얻지 못한다 (backend와 달리 안전한 방식).
+        // 작업 폴더는 호스트 경로로 마운트한다: Jenkins 컨테이너의 /var/jenkins_home = 호스트 /home/ubuntu/axcore/jenkins-data (compose volumes).
+        // 컨테이너 안에서 만든 파일(node_modules · dist · .pytest_cache)은 root 소유로 남지만 다음 검사도 같은 방식이라 문제없다.
+        stage('Frontend check') {
+            when { expression { env.IS_DEPLOY_JOB != 'true' && env.CHECK_FRONTEND == 'true' } }
+            steps {
+                sh '''
+                    HOST_WS=$(echo "$WORKSPACE" | sed 's#^/var/jenkins_home#/home/ubuntu/axcore/jenkins-data#')
+                    docker run --rm --memory 2g \
+                        -e CI=true \
+                        -v "$HOST_WS/frontend:/app" -w /app \
+                        -v axcore-npm-cache:/root/.npm \
+                        node:24.18.0-alpine \
+                        sh -c "npm ci --no-audit --no-fund && npm run lint && npx vitest run && npm run build"
+                '''
+            }
+        }
+
+        stage('AI check') {
+            when { expression { env.IS_DEPLOY_JOB != 'true' && env.CHECK_AI == 'true' } }
+            steps {
+                sh '''
+                    HOST_WS=$(echo "$WORKSPACE" | sed 's#^/var/jenkins_home#/home/ubuntu/axcore/jenkins-data#')
+                    docker run --rm --memory 1g \
+                        -e CI=true \
+                        -v "$HOST_WS/ai:/app" -w /app \
+                        -v axcore-pip-cache:/root/.cache/pip \
+                        python:3.11-slim \
+                        sh -c "pip install -q -r requirements-dev.txt && ruff check . && pytest -q --junitxml=test-results/pytest.xml"
+                '''
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'ai/test-results/*.xml'
                 }
             }
         }
