@@ -113,8 +113,9 @@ services:
     networks:
       - axcore-net
     # 컨테이너 안에서 자기 문(80)을 두드린다. 응답 없으면 unhealthy. nginx:alpine에는 wget(busybox)이 들어 있다.
+    # 주소는 localhost가 아니라 127.0.0.1: 알파인에서 localhost는 IPv6(::1)로 먼저 풀리는데 컨테이너 nginx는 IPv4만 듣는다 (2026-11-01 unhealthy 원인).
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/ > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ > /dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
