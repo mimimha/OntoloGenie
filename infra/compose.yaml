@@ -27,8 +27,8 @@ services:
     image: axcore-jenkins:2.580.1
     container_name: jenkins
     restart: unless-stopped
-    # 5-0c: MR 검사(gradle 빌드·테스트)가 이 컨테이너 안에서 돌므로 Jenkins 2g + gradle 1g + 테스트 JVM 몫을 더해 5g.
-    mem_limit: 5g
+    # 5-0c: MR 검사(gradle 빌드·테스트)가 이 컨테이너 안에서 돈다. 2026-11-01 실측: 평소 0.9GiB, gradle 전체 빌드·테스트 중 최고 2.0GiB → 4g면 여유 2배.
+    mem_limit: 4g
     cpus: 2.0
     environment:
       JENKINS_OPTS: "--prefix=/jenkins"

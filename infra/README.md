@@ -127,7 +127,7 @@ frontend · ai 컨테이너에는 docker.sock을 붙이지 않는다. 작업 폴
 
 - 테스트는 Testcontainers로 테스트용 PostgreSQL 컨테이너를 띄운다. Jenkins 컨테이너의 docker.sock을 쓰며, 그 컨테이너는 기본 bridge에 뜨고 서버 포트로 열리므로 Jenkins 컨테이너에서는 axcore-net 게이트웨이(=서버)로 닿는다. 그 주소가 compose의 `TESTCONTAINERS_HOST_OVERRIDE`다. axcore-net을 지웠다 다시 만들면 게이트웨이가 바뀔 수 있으니 `docker network inspect axcore-net -f '{{(index .IPAM.Config 0).Gateway}}'`로 다시 확인한다.
 - gradle 캐시는 `jenkins-data/.gradle`에 남아 두 번째부터 빠르다. 첫 실행은 Gradle 배포판과 의존성을 받느라 몇 분 걸린다.
-- 메모리: Jenkins 2g + gradle 1g(`GRADLE_OPTS`) + 테스트 JVM 몫으로 compose `mem_limit: 5g`. 빌드 중 `docker stats --no-stream jenkins`로 상한 대비 사용량을 본다.
+- 메모리: compose `mem_limit: 4g`. 2026-11-01 실측(gradle 결과 폴더를 지우고 수동 실행해 컴파일·테스트 전부 돌림): 평소 0.9GiB, 빌드 중 최고 2.0GiB, 끝나면 0.9GiB로 복귀. 다시 재려면 `docker compose exec jenkins rm -rf /var/jenkins_home/workspace/axcore-mr-check/backend/build` 뒤 수동 실행하고 `docker stats --no-stream --format '{{.MemUsage}}' jenkins`를 10초 간격으로 찍는다.
 - `junit` 단계는 Jenkins의 JUnit 플러그인이 있어야 돈다 (초기 추천 플러그인에 포함).
 - 검사 대상은 GitLab이 알려 준 MR 커밋(`gitlabMergeRequestLastCommit`) 자체를 받는다. 빌드 로그 첫머리의 `gitlab*` 변수 목록과 "검사 대상:" 줄로 어떤 코드를 검사했는지 확인한다. MR 검사인데 develop을 받으면 빌드가 실패하도록 안전망이 있다 (2026-10-30, Jenkinsfile 파라미터 `gitlabSourceBranch`의 기본값이 플러그인 변수를 덮어써 develop을 검사하던 문제).
 - 보안 메모: MR 브랜치의 `build.gradle`이 docker.sock이 있는 Jenkins 컨테이너 안에서 실행된다. 팀원 GitLab 계정을 신뢰하는 구성이다. 분리(docker.sock 없는 일회용 컨테이너 + 외부 테스트 DB)는 보안 후속 과제로 둔다.
