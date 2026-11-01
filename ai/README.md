@@ -63,6 +63,7 @@ develop에 머지되면 Jenkins `axcore-deploy`가 서버의 `AI_TAG`와 현재 
 - 처리: 서버 `AI_TAG` 갱신 → compose 기동 → 최대 90초 healthy 대기
 - 실패 시 이전 태그가 있으면 롤백 시도
 - backend·frontend도 각각 변경이 있을 때만 배포 (`FORCE_DEPLOY`는 세 서비스 모두 배포)
+- AI에는 backend에 대한 `depends_on`이 없어 단독 기동할 수 있습니다. backend 주소와 내부 네트워크 설정은 유지하며, 실제 backend 호출 시에는 해당 서비스가 응답할 수 있어야 합니다.
 - AI 이미지는 최근 3개 태그 보관 대상
 - 결과는 GitLab 커밋 상태와 Mattermost DM으로 확인
 

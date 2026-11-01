@@ -6,14 +6,15 @@
 
 | 파일 | 역할 |
 | --- | --- |
-| `compose.yaml` | nginx · certbot · Jenkins · PostgreSQL 18 컨테이너 정의 (이미지 버전 고정, 내부망 `axcore-net`) |
+| `compose.yaml` | nginx · Jenkins · PostgreSQL 18 · backend · AI · frontend 및 도구 프로필 certbot 정의 (이미지 버전 고정, 내부망 `axcore-net`) |
 | `.env.example` | `compose.yaml`이 읽는 환경 변수 이름 목록 (실제 값은 서버의 `.env`에만) |
-| `nginx/conf.d/default.conf` | HTTP → HTTPS 리다이렉트, TLS 설정, `/jenkins/` 리버스 프록시, `/api/` → backend (스트리밍 대비 buffering off) |
+| `nginx/conf.d/default.conf` | HTTP → HTTPS 리다이렉트, TLS 설정, `/jenkins/` 리버스 프록시, `/api/` → backend, `/` → frontend, Swagger Basic Auth |
 | `jenkins/Dockerfile` | Jenkins 공식 이미지 + docker CLI · compose 플러그인 |
 | `scripts/renew-cert.sh` | 인증서 자동 갱신 + nginx reload (cron에서 매일 03:00 실행) |
 | `scripts/pg-backup.sh` | 플랫폼 DB `pg_dump` 백업 + 7일 지난 파일 삭제 (cron에서 매일 04:00 실행) |
 | backend | Spring Boot 백엔드 (api 모드) · `backend/Dockerfile` · 호스트 `127.0.0.1:18080` · 이미지 태그 `.env`의 `BACKEND_TAG` |
 | frontend | React 정적 파일 · `frontend/Dockerfile`(node 24.18.0로 빌드 → `nginx:1.30-alpine`이 dist 서빙, SPA fallback은 `frontend/nginx.conf`) · 호스트 `127.0.0.1:10080`(컨테이너 80) · 이미지 태그 `.env`의 `FRONTEND_TAG` · 메인 nginx `/` → frontend |
+| AI | FastAPI · `ai/Dockerfile`(Python 3.11 slim, 비 root 실행) · 호스트 `127.0.0.1:18000`(컨테이너 8000) · 이미지 태그 `.env`의 `AI_TAG` · nginx 외부 경로 없음 |
 
 ## 포트 규칙
 
@@ -21,7 +22,7 @@ SSAFY 클라우드 방화벽은 tcp · udp 1024~65535를 열어 두므로, 서�
 
 - 바깥(`0.0.0.0`)에 여는 포트는 nginx의 80 · 443뿐입니다.
 - 나머지 서비스는 호스트 포트를 열지 않거나 `127.0.0.1:1xxxx`(비기본값)로만 엽니다. 컨테이너 안 포트는 기본값을 유지합니다.
-- 현재 할당: PostgreSQL `127.0.0.1:15432` (컨테이너 안 5432) · backend `18080` (8080) · frontend `10080` (80). 앞으로 ai 18000 · grafana 13000 예정.
+- 현재 할당: PostgreSQL `127.0.0.1:15432` (컨테이너 안 5432) · backend `18080` (8080) · frontend `10080` (80) · AI `18000` (8000). Grafana `13000`은 예정.
 
 ## nginx 경로 (바깥에서 보이는 주소)
 
@@ -32,7 +33,7 @@ SSAFY 클라우드 방화벽은 tcp · udp 1024~65535를 열어 두므로, 서�
 | `/jenkins/` | jenkins:8080 | 팀원 Read 권한 |
 | `/swagger-ui.html` · `/swagger-ui/` · `/v3/api-docs` | backend:8080 | nginx Basic Auth (아이디 · 비밀번호는 서버 `nginx/htpasswd`, 팀 DM으로 공유). 백엔드 로그인과 별개 |
 
-바깥에 열지 않는 것: backend `/actuator/*`(헬스체크·지표는 내부망만). `/api/`로 시작하지 않으므로 nginx가 넘기지 않는다.
+바깥에 열지 않는 것: backend `/actuator/*`와 AI 서비스. backend Actuator 전용 nginx 프록시 경로는 없으며, AI도 nginx에 외부 경로를 추가하지 않는다. 현재 backend 헬스체크는 `/actuator/health`를 사용하고 Prometheus 지표 수집은 후속 모니터링 작업이다.
 
 공통 보호: 모든 HTTPS 응답에 보안 헤더 3개(HSTS 1주 · `X-Content-Type-Options nosniff` · `X-Frame-Options SAMEORIGIN`). 로그인 `/api/v1/auth/login`만 IP별 요청 제한(20회 즉시 통과, 이후 분당 30회, 초과 시 429). 교육장은 팀이 공인 IP 하나를 같이 쓰므로 느슨하게 둔다.
 
@@ -50,7 +51,9 @@ Swagger 열쇠 파일 만들기 (서버): `echo "swagger:$(openssl passwd -apr1)
 
 ## 서버에 적용하는 방법
 
-아직 Jenkins 자동 배포 전이라 사람이 직접 반영합니다. 노트북에서 저장소 루트 기준으로 실행합니다.
+backend · AI · frontend 이미지는 develop 머지 시 Jenkins가 서비스별 변경을 감지해 자동 배포합니다. 상세 흐름은 아래 "자동 배포" 절을 참고합니다.
+
+`infra/compose.yaml` · nginx 설정 · 스크립트 같은 서버 설정 파일은 자동 복사되지 않습니다. 저장소에서 수정·리뷰·머지한 설정을 서버 파일과 비교하고, 기존 파일을 백업한 뒤 필요한 파일만 수동 반영합니다. 아래는 머지된 nginx 설정을 노트북의 저장소 루트에서 복사하는 예시입니다.
 
 ```bash
 # 1. 바뀐 파일을 서버로 복사 (예: nginx 설정)
@@ -61,10 +64,14 @@ ssh -i ~/.ssh/K15C106T.pem ubuntu@k15c106.p.ssafy.io
 cd ~/axcore
 docker compose exec nginx nginx -t        # nginx 설정 문법 검사
 docker compose exec nginx nginx -s reload # 설정만 바꿨을 때
-docker compose up -d                      # compose.yaml을 바꿨을 때
+# compose.yaml을 바꿨을 때는 설정 검사 후 변경한 서비스만 적용
+docker compose config --quiet
+# 예: AI 설정 변경 (AI_TAG에 지정한 이미지가 서버에 있어야 함)
+docker compose up -d ai
+docker compose ps
 ```
 
-반대로 서버에서 먼저 고친 경우에는 같은 방법으로 노트북에 받아 커밋합니다. 서버와 저장소의 내용이 같은지 `diff`로 확인합니다.
+서버 `.env`·인증서·자격 증명은 덮어쓰거나 저장소로 복사하지 않습니다. 반영 전후에 설정 사본을 `diff`로 비교하고 서비스 상태·응답을 확인합니다. 긴급한 서버 변경이 있었다면 비밀값을 제외한 설정 변경을 저장소의 리뷰 절차에도 반영합니다.
 
 ## 새 서버에 처음 세팅할 때 필요한 것
 
@@ -115,7 +122,9 @@ docker compose exec -T postgres pg_restore -U axcore -d axcore --clean --if-exis
 
 ## MR 검증 (MR 생성·갱신 → Jenkins axcore-mr-check)
 
-MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 커밋을 받아, develop과 갈라진 뒤 **바뀐 폴더의 검사만** 돌린다. 결과는 GitLab MR 화면 ✅/❌로 보고, 실패했을 때만 MR 작성자에게 Mattermost DM이 간다(성공 DM은 배포 Job만). 깨진 테스트 목록은 Jenkins 빌드 화면(Test Result)으로 본다. 문서·인프라만 고친 MR은 검사 없이 바로 ✅다. 수동 실행(Build with Parameters)은 develop을 받아 세 서비스를 전부 돌린다 (develop 재검사 용도).
+MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 커밋을 받아, develop과 갈라진 뒤 **바뀐 폴더의 검사만** 돌린다. 결과는 GitLab MR 화면 ✅/❌로 보고, 실패했을 때만 MR 작성자에게 Mattermost DM이 간다(성공 DM은 배포 Job만). backend·AI의 JUnit 결과는 Jenkins 빌드 화면(Test Result)에서 확인한다. `backend/` · `ai/` · `frontend/` 밖의 파일만 바꾸면 서비스 검사는 생략된다. 각 서비스 폴더 안의 README 변경은 해당 서비스 검사를 실행한다. 수동 실행(Build with Parameters)은 develop을 받아 폴더가 있는 서비스를 전부 검사한다.
+
+Job은 develop의 Jenkinsfile로 검사 절차를 읽고, Checkout 단계에서 MR 코드를 받는다. 따라서 Jenkinsfile만 변경한 MR의 성공 표시가 새 Jenkinsfile의 문법·실행 검증을 의미하지는 않는다.
 
 | 폴더 | 검사 | 어디서 | 비고 |
 | --- | --- | --- | --- |
@@ -141,9 +150,9 @@ frontend · ai 컨테이너에는 docker.sock을 붙이지 않는다. 작업 폴
 1. develop 머지 → GitLab Webhook → `axcore-deploy` 실행. 배포 Job은 GitLab이 어떤 변수를 보내든 항상 `origin/develop`만 받는다
 2. 서비스마다 서버 `.env`의 태그(`BACKEND_TAG` · `AI_TAG` · `FRONTEND_TAG` = 지금 배포된 커밋)와 develop 사이에 해당 폴더(`backend/` · `ai/` · `frontend/`) 변경이 있는지 확인. 변경 없으면 그 서비스는 건너뜀 (`FORCE_DEPLOY` 파라미터면 세 서비스 모두 배포). 직전 커밋과 비교하지 않는 이유: 머지가 연달아 쌓이면 앞 머지의 변경을 놓친다
 3. backend: `docker build -t axcore-backend:<커밋 SHA> backend` → `scripts/pg-backup.sh` 1회(마이그레이션 대비) → `.env`의 `BACKEND_TAG` 갱신 + `docker compose up -d backend` → 최대 90초 `(healthy)` 대기 → 실패하면 **직전 태그로 자동 롤백**
-4. AI: `docker build -t axcore-ai:<커밋 SHA> ai` → `.env`의 `AI_TAG` 갱신 + `docker compose up -d ai` → 최대 90초 `(healthy)` 대기 → 실패하면 롤백. DB 백업은 없음. compose의 backend healthy 기동 의존성을 적용하며, AI `/health` 응답은 실제 LLM 호출·분석 연동 성공을 의미하지 않는다
+4. AI: `docker build -t axcore-ai:<커밋 SHA> ai` → `.env`의 `AI_TAG` 갱신 + `docker compose up -d ai` → 최대 90초 `(healthy)` 대기 → 실패하면 롤백. DB 백업은 없음. AI에는 backend에 대한 `depends_on`이 없어 backend 기동 상태를 기다리지 않고 단독 기동한다. AI `/health` 응답은 실제 LLM 호출·분석 연동 성공을 의미하지 않는다
 5. frontend: `docker build -t axcore-frontend:<커밋 SHA> frontend` → `.env`의 `FRONTEND_TAG` 갱신 + `docker compose up -d frontend` → 90초 `(healthy)` 대기 → 실패하면 롤백. DB 백업은 없음
-6. 서비스의 **배포 단계** 실패는 `catchError`로 처리해 이후 서비스 단계를 계속한다. 빌드는 실패로 표시된다. 이미지 빌드·DB 백업 단계는 이 처리 밖에 있어 실패하면 이후 단계가 중단될 수 있다. backend 배포 실패 후에도 AI 단계는 진행될 수 있으며, 실제 기동에는 compose의 backend healthy 조건이 필요하다
+6. 서비스의 **배포 단계** 실패는 `catchError`로 처리해 이후 서비스 단계를 계속한다. 빌드는 실패로 표시된다. 이미지 빌드·DB 백업 단계는 이 처리 밖에 있어 실패하면 이후 단계가 중단될 수 있다. backend 배포 실패 후에도 AI 단계는 진행될 수 있다. backend → AI → frontend는 동시에 변경된 서비스의 처리 순서이며, AI 기동에 backend 배포 성공이 필요한 것은 아니다
 7. backend · AI · frontend 이미지는 각각 최근 3개 태그만 보관, 3일 지난 빌드 캐시 삭제
 8. 결과는 GitLab 커밋 상태 + Mattermost DM(머지한 사람). 서비스마다 `ai 배포 <이전> → <새 SHA>` / `ai 배포 실패 → <이전> 로 롤백됨` 등의 결과를 표시하며, 세 서비스 모두 변경이 없으면 `배포: 변경 없음`. 배포 대상 목록을 기준으로 메시지를 만들기 때문에 빌드 실패 등으로 배포 단계에 도달하지 못한 경우에는 Jenkins 단계 로그도 함께 확인한다
 

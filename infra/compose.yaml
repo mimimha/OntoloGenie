@@ -138,9 +138,6 @@ services:
       TZ: Asia/Seoul
     ports:
       - "127.0.0.1:18000:8000"
-    depends_on:
-      backend:
-        condition: service_healthy
     networks:
       - axcore-net
     healthcheck:
