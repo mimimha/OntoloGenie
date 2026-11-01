@@ -1,5 +1,10 @@
 import { apiGet } from '../../api/client'
-import type { ObjectInstance, ObjectInstanceDetail, ObjectLink } from './types'
+import type {
+  ModelGraph,
+  ObjectInstance,
+  ObjectInstanceDetail,
+  ObjectLink,
+} from './types'
 
 export const OBJECT_PAGE_SIZE = 20
 
@@ -31,4 +36,10 @@ export async function fetchObject(id: number) {
 // 078 확정 관계·원천 근거 조회
 export function fetchObjectLinks(id: number) {
   return apiGet<ObjectLink[]>(`/objects/${id}/links`)
+}
+
+// 042 객체 유형 관계도
+export async function fetchModelGraph() {
+  const body = await apiGet<ModelGraph>('/ontology/model-graph')
+  return body.data
 }

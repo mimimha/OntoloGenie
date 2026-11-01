@@ -1,7 +1,10 @@
 import { delay, http, HttpResponse } from 'msw'
 import type { Execution } from '../features/audit/types'
-import type { ObjectInstance, ObjectLink } from '../features/explorer/types'
-import type { ModelGraph } from '../features/ontology/types'
+import type {
+  ModelGraph,
+  ObjectInstance,
+  ObjectLink,
+} from '../features/explorer/types'
 
 const objects: ObjectInstance[] = [
   {

@@ -1,17 +1,21 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { lazy, Suspense, useState } from 'react'
 import Pagination from '../../components/Pagination'
-import { fetchModelGraph } from '../ontology/api'
-import TypeRelations from '../ontology/TypeRelations'
-import { fetchObjects, OBJECT_PAGE_SIZE, type ObjectFilters } from './api'
+import {
+  fetchModelGraph,
+  fetchObjects,
+  OBJECT_PAGE_SIZE,
+  type ObjectFilters,
+} from './api'
 import ObjectCard from './ObjectCard'
 import ObjectDetail from './ObjectDetail'
 import ObjectGraph from './ObjectGraph'
 import ObjectSearchBar from './ObjectSearchBar'
+import TypeRelations from './TypeRelations'
 import { formatObjectCode } from './format'
 
 // 유형 관계도는 그래프 라이브러리(React Flow)가 커서, 처음 화면에 그릴 때 따로 받아 온다.
-const ModelGraph = lazy(() => import('../ontology/ModelGraph'))
+const ModelGraph = lazy(() => import('./ModelGraph'))
 
 function ExplorerPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
