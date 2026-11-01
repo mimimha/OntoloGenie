@@ -1,12 +1,19 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchObject } from './api'
-import { objectTypeLabel, statusLabels } from './labels'
+import { statusLabels } from './labels'
 
 function formatDateTime(value: string | null | undefined) {
   if (!value) {
     return '-'
   }
   return new Date(value).toLocaleString('ko-KR')
+}
+
+function formatPropertyValue(value: unknown) {
+  if (value === null || value === undefined) {
+    return '-'
+  }
+  return String(value)
 }
 
 type ObjectDetailProps = {
@@ -51,7 +58,7 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
   return (
     <div>
       <p className="text-sm text-slate-500">
-        {objectTypeLabel(object)} / #{object.id}
+        {object.objectTypeName} / #{object.id}
       </p>
       <h2 className="mt-1 text-lg font-semibold text-slate-900">
         {object.displayName}
@@ -75,8 +82,14 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
       <dl className="mt-2 divide-y divide-slate-100 text-sm">
         {Object.entries(object.properties).map(([code, value]) => (
           <div key={code} className="flex gap-4 py-2">
-            <dt className="w-40 shrink-0 font-mono text-slate-500">{code}</dt>
-            <dd className="text-slate-900">{String(value)}</dd>
+            <dt className="w-40 shrink-0 text-slate-500">
+              {object.propertyNames[code] ?? code}
+            </dt>
+            {object.restrictedPropertyCodes.includes(code) ? (
+              <dd className="text-slate-400">권한 없음</dd>
+            ) : (
+              <dd className="text-slate-900">{formatPropertyValue(value)}</dd>
+            )}
           </div>
         ))}
       </dl>

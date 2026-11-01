@@ -1,7 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { fetchObjects } from './api'
-import { objectTypeLabel } from './labels'
 import ObjectCard from './ObjectCard'
 import ObjectDetail from './ObjectDetail'
 
@@ -71,7 +70,7 @@ function ExplorerPage() {
             <ObjectCard
               key={item.id}
               name={item.displayName}
-              typeLabel={objectTypeLabel(item)}
+              typeLabel={item.objectTypeName}
               selected={item.id === selectedId}
               onSelect={() => setSelectedId(item.id)}
             />
