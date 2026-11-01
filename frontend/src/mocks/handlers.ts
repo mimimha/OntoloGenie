@@ -353,6 +353,8 @@ export const handlers = [
     await delay()
     const params = new URL(request.url).searchParams
     const q = params.get('q') ?? ''
+    const page = Number(params.get('page') ?? 0)
+    const size = Number(params.get('size') ?? 20)
     const objectTypeId = Number(params.get('objectTypeId'))
     const matched = objects.filter((item) => {
       const numbers = Object.values(item.sourceKey ?? {}).map(String)
@@ -362,13 +364,14 @@ export const handlers = [
         [item.displayName, ...numbers].some((text) => text.includes(q))
       )
     })
+    const start = page * size
     return HttpResponse.json({
-      data: matched,
+      data: matched.slice(start, start + size),
       meta: {
-        page: 0,
-        size: 20,
+        page,
+        size,
         totalElements: matched.length,
-        hasNext: false,
+        hasNext: start + size < matched.length,
       },
     })
   }),

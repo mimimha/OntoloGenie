@@ -1,14 +1,18 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { fetchObjects, type ObjectFilters } from './api'
+import Pagination from '../../components/Pagination'
+import { fetchObjects, OBJECT_PAGE_SIZE, type ObjectFilters } from './api'
 import ObjectCard from './ObjectCard'
 import ObjectDetail from './ObjectDetail'
 import ObjectGraph from './ObjectGraph'
 import ObjectSearchBar from './ObjectSearchBar'
+import { formatObjectCode } from './format'
 
 function ExplorerPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [filters, setFilters] = useState<ObjectFilters>({})
+  const [page, setPage] = useState(0)
+
   const {
     data: objectPage,
     isPending,
@@ -16,14 +20,14 @@ function ExplorerPage() {
     isError,
     error,
   } = useQuery({
-    queryKey: ['objects', filters],
-    queryFn: () => fetchObjects(filters),
+    queryKey: ['objects', filters, page],
+    queryFn: () => fetchObjects(filters, page),
     placeholderData: keepPreviousData,
   })
 
   // 일반 사용자용 객체 유형 목록 API가 없어서, 조건 없이 받은 목록에 나온 유형으로 선택지를 만든다.
   const { data: allObjects } = useQuery({
-    queryKey: ['objects', {}],
+    queryKey: ['objects', {}, 0],
     queryFn: () => fetchObjects({}),
   })
   const objectTypes = [
@@ -33,6 +37,11 @@ function ExplorerPage() {
       ),
     ),
   ].map(([id, name]) => ({ id, name }))
+
+  function handleSearch(nextFilters: ObjectFilters) {
+    setFilters(nextFilters)
+    setPage(0)
+  }
 
   const totalCount = objectPage?.meta?.totalElements ?? objectPage?.data.length
 
@@ -49,6 +58,7 @@ function ExplorerPage() {
     listContent = objectPage.data.map((item) => (
       <ObjectCard
         key={item.id}
+        code={formatObjectCode(item.id)}
         name={item.displayName}
         typeLabel={item.objectTypeName}
         selected={item.id === selectedId}
@@ -71,7 +81,7 @@ function ExplorerPage() {
         </p>
       </header>
 
-      <ObjectSearchBar objectTypes={objectTypes} onSearch={setFilters} />
+      <ObjectSearchBar objectTypes={objectTypes} onSearch={handleSearch} />
 
       <div className="mt-4 grid gap-6 xl:grid-cols-[minmax(200px,0.7fr)_minmax(480px,1.5fr)_minmax(280px,1fr)]">
         <section aria-label="객체 목록" className="flex flex-col gap-2">
@@ -85,6 +95,15 @@ function ExplorerPage() {
             )}
           </div>
           {listContent}
+
+          {objectPage && objectPage.data.length > 0 && (
+            <Pagination
+              page={page}
+              size={OBJECT_PAGE_SIZE}
+              totalElements={totalCount ?? 0}
+              onChange={setPage}
+            />
+          )}
         </section>
 
         <section

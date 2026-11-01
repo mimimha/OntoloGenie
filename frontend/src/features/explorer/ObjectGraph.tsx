@@ -1,3 +1,4 @@
+import { formatObjectCode, withAndParticle } from './format'
 import { useQuery } from '@tanstack/react-query'
 import { fetchObject, fetchObjectLinks } from './api'
 import { arrowLine, labelStyle, placeRelatedNodes } from './graphLayout'
@@ -49,6 +50,10 @@ function ObjectGraphContent({ objectId, onSelect }: ObjectGraphContentProps) {
 
   return (
     <div>
+      <h2 className="mb-3 text-lg font-semibold text-slate-900">
+        {withAndParticle(object.displayName)} 연결된 정보
+      </h2>
+
       <div className="relative h-[440px] overflow-hidden bg-[radial-gradient(#d8dce1_1px,transparent_1px)] bg-[length:16px_16px]">
         <svg className="absolute inset-0 h-full w-full" aria-hidden="true">
           <defs>
@@ -92,6 +97,9 @@ function ObjectGraphContent({ objectId, onSelect }: ObjectGraphContentProps) {
         ))}
 
         <div className="absolute left-1/2 top-1/2 w-24 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-slate-900 bg-slate-900 px-2 py-2 text-center text-xs ring-4 ring-slate-200">
+          <span className="block text-slate-300">
+            {formatObjectCode(object.id)}
+          </span>
           <strong className="block text-white">{object.displayName}</strong>
           <span className="text-slate-300">{object.objectTypeName}</span>
         </div>
@@ -104,6 +112,10 @@ function ObjectGraphContent({ objectId, onSelect }: ObjectGraphContentProps) {
             className="absolute w-24 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-xs hover:border-slate-900"
             style={{ left: `${node.x}%`, top: `${node.y}%` }}
           >
+            <span className="block text-slate-500">
+              {formatObjectCode(node.link.relatedObject.id)}
+            </span>
+
             <strong className="block text-slate-900">
               {node.link.relatedObject.displayName}
             </strong>
