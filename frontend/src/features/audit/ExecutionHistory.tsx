@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { formatPropertyValue, formatSourceKey } from '../explorer/format'
 import {
-  fetchMyExecutions,
+  fetchAuditExecutions,
   fetchObjectExecutions,
   type ExecutionFilters,
 } from './api'
@@ -12,7 +12,12 @@ import {
   eventKindLabels,
   executionStatusLabels,
 } from './labels'
-import type { EntityChange, Execution, ExecutionStatus } from './types'
+import type {
+  EntityChange,
+  Execution,
+  ExecutionScope,
+  ExecutionStatus,
+} from './types'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -52,6 +57,19 @@ function targetText(execution: Execution) {
 function actorLabel(execution: Execution) {
   const actor = execution.actorId ? ` · 사용자 #${execution.actorId}` : ''
   return `${actorTypeLabels[execution.actorType]}${actor}`
+}
+
+function scopeText(objectId: number | undefined, scope?: ExecutionScope) {
+  if (objectId !== undefined) {
+    return '조회 범위: 관리자는 이 객체의 전체 실행, 그 밖의 역할은 본인 실행'
+  }
+  if (scope === 'ALL') {
+    return '조회 범위: 관리자에게 허용된 전체 실행 이력'
+  }
+  if (scope === 'MINE') {
+    return '조회 범위: 현재 계정의 실행 이력'
+  }
+  return '조회 범위: 권한에 따라 볼 수 있는 실행 이력'
 }
 
 type EntityChangeTableProps = {
@@ -144,7 +162,7 @@ function ExecutionDetail({ execution }: ExecutionDetailProps) {
   )
 }
 
-// objectId가 있으면 그 객체의 이력(080), 없으면 내 실행 이력(104)을 보여 준다.
+// objectId가 있으면 그 객체의 이력(080), 없으면 권한에 따른 실행 이력(096)을 보여 준다.
 type ExecutionHistoryProps = {
   objectId?: number
   targetLabel?: string
@@ -164,11 +182,11 @@ function ExecutionHistory({ objectId, targetLabel }: ExecutionHistoryProps) {
   } = useQuery({
     queryKey:
       objectId === undefined
-        ? ['me', 'executions', filters]
+        ? ['audit', 'actions', filters]
         : ['objects', objectId, 'executions', filters],
     queryFn: () =>
       objectId === undefined
-        ? fetchMyExecutions(filters)
+        ? fetchAuditExecutions(filters)
         : fetchObjectExecutions(objectId, filters),
     placeholderData: keepPreviousData,
   })
@@ -322,9 +340,7 @@ function ExecutionHistory({ objectId, targetLabel }: ExecutionHistoryProps) {
         </p>
       )}
       <p className="mt-2 text-xs text-slate-500">
-        {objectId === undefined
-          ? '조회 범위: 현재 계정의 실행 이력 · Agent 조회 기록은 제외됩니다.'
-          : '조회 범위: 관리자는 이 객체의 전체 실행, 그 밖의 역할은 본인 실행 · Agent 조회 기록은 제외됩니다.'}
+        {`${scopeText(objectId, executionPage?.meta?.scope)} · Agent 조회 기록은 제외됩니다.`}
       </p>
       {executionPage && (
         <p className="mt-3 text-xs text-slate-500">

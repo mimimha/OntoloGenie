@@ -3,7 +3,8 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { expect, test } from 'vitest'
+import { afterEach, expect, test } from 'vitest'
+import { mockUser } from '../../mocks/handlers'
 import { server } from '../../mocks/node'
 import AuditPage from './AuditPage'
 
@@ -23,6 +24,10 @@ function renderAuditPage(path: string) {
     </QueryClientProvider>,
   )
 }
+
+afterEach(() => {
+  mockUser.roleCode = 'PLANNER'
+})
 
 test('객체 번호가 있으면 그 객체의 실행 이력을 보여준다', async () => {
   renderAuditPage('/audit?objectId=301')
@@ -44,6 +49,45 @@ test('객체 번호가 없으면 내 실행 이력을 보여준다', async () =>
   expect(await screen.findByText('4건')).toBeInTheDocument()
   expect(screen.getByText('sync_run #77')).toBeInTheDocument()
   expect(screen.queryByLabelText('대상')).not.toBeInTheDocument()
+  expect(
+    screen.getByText(
+      '조회 범위: 현재 계정의 실행 이력 · Agent 조회 기록은 제외됩니다.',
+    ),
+  ).toBeInTheDocument()
+})
+
+test('관리자는 같은 실행 이력에서 다른 사람의 실행과 변경 전후도 본다', async () => {
+  mockUser.roleCode = 'ADMIN'
+  renderAuditPage('/audit')
+
+  expect(await screen.findByText('5건')).toBeInTheDocument()
+  expect(
+    screen.getByText(
+      '조회 범위: 관리자에게 허용된 전체 실행 이력 · Agent 조회 기록은 제외됩니다.',
+    ),
+  ).toBeInTheDocument()
+  expect(screen.getByText('사용자 · 사용자 #1')).toBeInTheDocument()
+  expect(screen.getByText('object_type #3')).toBeInTheDocument()
+  expect(screen.getByText('object_type · id: 3 · 수정')).toBeInTheDocument()
+})
+
+test('서버가 조회 범위를 주지 않으면 권한에 따른 범위라고 안내한다', async () => {
+  server.use(
+    http.get('/api/v1/audit/actions', () =>
+      HttpResponse.json({
+        data: [],
+        meta: { page: 0, size: 20, totalElements: 0, hasNext: false },
+      }),
+    ),
+  )
+  renderAuditPage('/audit')
+
+  expect(await screen.findByText('0건')).toBeInTheDocument()
+  expect(
+    screen.getByText(
+      '조회 범위: 권한에 따라 볼 수 있는 실행 이력 · Agent 조회 기록은 제외됩니다.',
+    ),
+  ).toBeInTheDocument()
 })
 
 test('결과로 검색하고 초기화하면 다시 전체를 보여준다', async () => {
@@ -88,7 +132,7 @@ test('시작일이 종료일보다 늦으면 검색하지 않고 안내한다', 
 
 test('실행 이력 조회가 실패하면 오류 안내를 보여준다', async () => {
   server.use(
-    http.get('/api/v1/me/executions', () =>
+    http.get('/api/v1/audit/actions', () =>
       HttpResponse.json(
         {
           error: {

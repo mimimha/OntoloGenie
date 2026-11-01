@@ -1,6 +1,16 @@
+import type { PageMeta } from '../../api/types'
+
 export type ExecutionStatus = 'RUNNING' | 'SUCCEEDED' | 'BLOCKED' | 'FAILED'
 
-// 080·104 실행 하나가 바꾼 행의 전후 내용
+// 096이 이번 조회를 전체(ALL)로 했는지 본인 실행(MINE)으로 했는지
+export type ExecutionScope = 'ALL' | 'MINE'
+
+// 080·096 응답의 meta. scope는 실행 이력 화면을 하나로 합치면서 백엔드에 요청할 값이다.
+export type ExecutionPageMeta = PageMeta & {
+  scope?: ExecutionScope
+}
+
+// 080·096 실행 하나가 바꾼 행의 전후 내용
 export type EntityChange = {
   tableName: string
   rowKey: Record<string, unknown>
@@ -9,7 +19,7 @@ export type EntityChange = {
   afterData?: Record<string, unknown> | null
 }
 
-// 080 객체 관련 실행 이력·104 내 실행 이력 응답의 실행 하나 (096과 같은 로그 구조)
+// 080 객체 관련 실행 이력·096 실행·감사 이력 응답의 실행 하나
 export type Execution = {
   id: number
   requestId: string
