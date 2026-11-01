@@ -20,24 +20,38 @@ function ExplorerPage() {
     placeholderData: keepPreviousData,
   })
 
+  const totalCount = objectPage?.meta?.totalElements ?? objectPage?.data.length
+
+  let listContent
   if (isPending) {
-    return <p className="text-slate-500">불러오는 중…</p>
+    listContent = <p className="text-slate-500">불러오는 중…</p>
+  } else if (isError) {
+    listContent = <p className="text-red-600">{error.message}</p>
+  } else if (objectPage.data.length === 0) {
+    listContent = (
+      <p className="text-sm text-slate-500">조건에 맞는 객체가 없습니다.</p>
+    )
+  } else {
+    listContent = objectPage.data.map((item) => (
+      <ObjectCard
+        key={item.id}
+        name={item.displayName}
+        typeLabel={item.objectTypeName}
+        selected={item.id === selectedId}
+        onSelect={() => setSelectedId(item.id)}
+      />
+    ))
   }
-
-  if (isError) {
-    return <p className="text-red-600">{error.message}</p>
-  }
-
-  const objects = objectPage.data
-  const totalCount = objectPage.meta?.totalElements ?? objects.length
 
   return (
     <div className="grid gap-6 md:grid-cols-[20rem_1fr]">
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline gap-2">
           <h1 className="text-xl font-semibold text-slate-900">객체 목록</h1>
-          <span className="text-sm text-slate-500">{totalCount}건</span>
-          {isFetching && (
+          {totalCount !== undefined && (
+            <span className="text-sm text-slate-500">{totalCount}건</span>
+          )}
+          {isFetching && !isPending && (
             <span className="text-sm text-slate-400">검색 중…</span>
           )}
         </div>
@@ -63,19 +77,7 @@ function ExplorerPage() {
             검색
           </button>
         </form>
-        {objects.length === 0 ? (
-          <p className="text-sm text-slate-500">조건에 맞는 객체가 없습니다.</p>
-        ) : (
-          objects.map((item) => (
-            <ObjectCard
-              key={item.id}
-              name={item.displayName}
-              typeLabel={item.objectTypeName}
-              selected={item.id === selectedId}
-              onSelect={() => setSelectedId(item.id)}
-            />
-          ))
-        )}
+        {listContent}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6">

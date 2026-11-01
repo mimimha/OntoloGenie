@@ -8,7 +8,11 @@ import ExplorerPage from './ExplorerPage'
 
 function renderExplorerPage() {
   render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
       <ExplorerPage />
     </QueryClientProvider>,
   )
@@ -107,4 +111,57 @@ test('검색어로 검색하면 맞는 객체만 보여준다', async () => {
   expect(await screen.findByText('3건')).toBeInTheDocument()
   expect(screen.getByText('프레스 작업')).toBeInTheDocument()
   expect(screen.queryByText('야간 인수인계')).not.toBeInTheDocument()
+})
+
+test('검색이 실패해도 오류와 함께 검색창을 보여준다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+  await screen.findByText('6건')
+
+  server.use(
+    http.get('/api/v1/objects', () =>
+      HttpResponse.json(
+        {
+          error: {
+            code: 'INTERNAL_ERROR',
+            message: '서버 내부 오류',
+            details: {},
+            requestId: 'mock-request-id',
+          },
+        },
+        { status: 500 },
+      ),
+    ),
+  )
+  await user.type(screen.getByLabelText('객체 검색어'), '프레스')
+  await user.click(screen.getByRole('button', { name: '검색' }))
+
+  expect(await screen.findByText('서버 내부 오류')).toBeInTheDocument()
+  expect(screen.getByLabelText('객체 검색어')).toBeInTheDocument()
+})
+
+test('상세 조회 권한이 없으면 서버가 준 안내를 보여준다', async () => {
+  server.use(
+    http.get('/api/v1/objects/:id', () =>
+      HttpResponse.json(
+        {
+          error: {
+            code: 'FORBIDDEN',
+            message: '요청을 실행할 권한이 없습니다.',
+            details: {},
+            requestId: 'mock-request-id',
+          },
+        },
+        { status: 403 },
+      ),
+    ),
+  )
+  const user = userEvent.setup()
+  renderExplorerPage()
+
+  await user.click(await screen.findByRole('button', { name: /프레스 3호기/ }))
+
+  expect(
+    await screen.findByText('요청을 실행할 권한이 없습니다.'),
+  ).toBeInTheDocument()
 })
