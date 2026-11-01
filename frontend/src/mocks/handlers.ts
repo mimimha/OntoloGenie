@@ -351,10 +351,16 @@ export const handlers = [
   // 076 권한 범위 객체 검색
   http.get('/api/v1/objects', async ({ request }) => {
     await delay()
-    const q = new URL(request.url).searchParams.get('q') ?? ''
+    const params = new URL(request.url).searchParams
+    const q = params.get('q') ?? ''
+    const objectTypeId = Number(params.get('objectTypeId'))
     const matched = objects.filter((item) => {
       const numbers = Object.values(item.sourceKey ?? {}).map(String)
-      return [item.displayName, ...numbers].some((text) => text.includes(q))
+      const matchesType = !objectTypeId || item.objectTypeId === objectTypeId
+      return (
+        matchesType &&
+        [item.displayName, ...numbers].some((text) => text.includes(q))
+      )
     })
     return HttpResponse.json({
       data: matched,

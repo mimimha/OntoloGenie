@@ -1,9 +1,21 @@
 import { apiGet } from '../../api/client'
 import type { ObjectInstance, ObjectInstanceDetail, ObjectLink } from './types'
 
+export type ObjectFilters = {
+  q?: string
+  objectTypeId?: number
+}
+
 // 076 권한 범위 객체 검색
-export function fetchObjects(q: string) {
-  const query = q ? `?${new URLSearchParams({ q })}` : ''
+export function fetchObjects(filters: ObjectFilters) {
+  const params = new URLSearchParams()
+  if (filters.q) {
+    params.set('q', filters.q)
+  }
+  if (filters.objectTypeId) {
+    params.set('objectTypeId', String(filters.objectTypeId))
+  }
+  const query = params.toString() ? `?${params}` : ''
   return apiGet<ObjectInstance[]>(`/objects${query}`)
 }
 

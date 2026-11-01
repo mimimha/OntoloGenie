@@ -27,7 +27,11 @@ test('객체 목록 API로 받은 객체를 보여준다', async () => {
   expect(screen.getByText('불러오는 중…')).toBeInTheDocument()
   expect(await screen.findByText('프레스 3호기')).toBeInTheDocument()
   expect(screen.getByText('6건')).toBeInTheDocument()
-  expect(screen.getAllByText('설비')).toHaveLength(2)
+  expect(
+    within(screen.getByRole('region', { name: '객체 목록' })).getAllByText(
+      '설비',
+    ),
+  ).toHaveLength(2)
   expect(
     screen.getByText('왼쪽 목록에서 객체를 선택해 주세요.'),
   ).toBeInTheDocument()
@@ -107,12 +111,49 @@ test('검색어로 검색하면 맞는 객체만 보여준다', async () => {
   const user = userEvent.setup()
   renderExplorerPage()
 
-  await user.type(await screen.findByLabelText('객체 검색어'), '프레스')
+  await user.type(await screen.findByLabelText('ID · 이름 검색'), '프레스')
   await user.click(screen.getByRole('button', { name: '검색' }))
 
   expect(await screen.findByText('3건')).toBeInTheDocument()
   expect(screen.getByText('프레스 작업')).toBeInTheDocument()
   expect(screen.queryByText('야간 인수인계')).not.toBeInTheDocument()
+})
+
+test('객체 유형을 고르고 검색하면 그 유형의 객체만 보여준다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+  await screen.findByText('6건')
+
+  await user.selectOptions(screen.getByLabelText('객체 유형'), '설비')
+  await user.click(screen.getByRole('button', { name: '검색' }))
+
+  expect(await screen.findByText('2건')).toBeInTheDocument()
+  expect(screen.getByText('프레스 1호기')).toBeInTheDocument()
+  expect(screen.queryByText('프레스 작업')).not.toBeInTheDocument()
+})
+
+test('초기화하면 검색 조건을 비우고 전체 목록을 보여준다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+  await screen.findByText('6건')
+
+  await user.selectOptions(screen.getByLabelText('객체 유형'), '설비')
+  await user.type(screen.getByLabelText('ID · 이름 검색'), '3호기')
+  await user.click(screen.getByRole('button', { name: '검색' }))
+  expect(await screen.findByText('1건')).toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: '초기화' }))
+
+  expect(await screen.findByText('6건')).toBeInTheDocument()
+  expect(screen.getByLabelText('객체 유형')).toHaveValue('')
+  expect(screen.getByLabelText('ID · 이름 검색')).toHaveValue('')
+})
+
+test('속성 조건 검색은 백엔드 지원 전이라 막아 둔다', () => {
+  renderExplorerPage()
+
+  expect(screen.getByLabelText('속성 조건')).toBeDisabled()
+  expect(screen.getByLabelText('속성 값 · 포함 검색')).toBeDisabled()
 })
 
 test('검색이 실패해도 오류와 함께 검색창을 보여준다', async () => {
@@ -135,11 +176,11 @@ test('검색이 실패해도 오류와 함께 검색창을 보여준다', async 
       ),
     ),
   )
-  await user.type(screen.getByLabelText('객체 검색어'), '프레스')
+  await user.type(screen.getByLabelText('ID · 이름 검색'), '프레스')
   await user.click(screen.getByRole('button', { name: '검색' }))
 
   expect(await screen.findByText('서버 내부 오류')).toBeInTheDocument()
-  expect(screen.getByLabelText('객체 검색어')).toBeInTheDocument()
+  expect(screen.getByLabelText('ID · 이름 검색')).toBeInTheDocument()
 })
 
 test('상세 조회 권한이 없으면 서버가 준 안내를 보여준다', async () => {

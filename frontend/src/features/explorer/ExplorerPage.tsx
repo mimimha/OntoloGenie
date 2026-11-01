@@ -1,14 +1,14 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { fetchObjects } from './api'
+import { fetchObjects, type ObjectFilters } from './api'
 import ObjectCard from './ObjectCard'
 import ObjectDetail from './ObjectDetail'
 import ObjectGraph from './ObjectGraph'
+import ObjectSearchBar from './ObjectSearchBar'
 
 function ExplorerPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [keyword, setKeyword] = useState('')
-  const [searchWord, setSearchWord] = useState('')
+  const [filters, setFilters] = useState<ObjectFilters>({})
   const {
     data: objectPage,
     isPending,
@@ -16,10 +16,23 @@ function ExplorerPage() {
     isError,
     error,
   } = useQuery({
-    queryKey: ['objects', searchWord],
-    queryFn: () => fetchObjects(searchWord),
+    queryKey: ['objects', filters],
+    queryFn: () => fetchObjects(filters),
     placeholderData: keepPreviousData,
   })
+
+  // 일반 사용자용 객체 유형 목록 API가 없어서, 조건 없이 받은 목록에 나온 유형으로 선택지를 만든다.
+  const { data: allObjects } = useQuery({
+    queryKey: ['objects', {}],
+    queryFn: () => fetchObjects({}),
+  })
+  const objectTypes = [
+    ...new Map(
+      allObjects?.data.map(
+        (item) => [item.objectTypeId, item.objectTypeName] as const,
+      ),
+    ),
+  ].map(([id, name]) => ({ id, name }))
 
   const totalCount = objectPage?.meta?.totalElements ?? objectPage?.data.length
 
@@ -45,52 +58,46 @@ function ExplorerPage() {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(200px,0.7fr)_minmax(480px,1.5fr)_minmax(280px,1fr)]">
-      <section className="flex flex-col gap-2">
-        <div className="flex items-baseline gap-2">
-          <h1 className="text-xl font-semibold text-slate-900">객체 목록</h1>
-          {totalCount !== undefined && (
-            <span className="text-sm text-slate-500">{totalCount}건</span>
-          )}
-          {isFetching && !isPending && (
-            <span className="text-sm text-slate-400">검색 중…</span>
-          )}
-        </div>
-        <form
-          className="flex gap-2"
-          onSubmit={(event) => {
-            event.preventDefault()
-            setSearchWord(keyword.trim())
-          }}
+    <div>
+      <header className="mb-6">
+        <p className="text-xs font-semibold tracking-widest text-slate-500">
+          WORKSPACE
+        </p>
+        <h1 className="mt-1 text-xl font-semibold text-slate-900">
+          업무 데이터
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          흩어진 업무 데이터를 연결하고, 객체 간 관계를 한눈에 탐색하세요.
+        </p>
+      </header>
+
+      <ObjectSearchBar objectTypes={objectTypes} onSearch={setFilters} />
+
+      <div className="mt-4 grid gap-6 xl:grid-cols-[minmax(200px,0.7fr)_minmax(480px,1.5fr)_minmax(280px,1fr)]">
+        <section aria-label="객체 목록" className="flex flex-col gap-2">
+          <div className="flex items-baseline gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">객체 목록</h2>
+            {totalCount !== undefined && (
+              <span className="text-sm text-slate-500">{totalCount}건</span>
+            )}
+            {isFetching && !isPending && (
+              <span className="text-sm text-slate-400">검색 중…</span>
+            )}
+          </div>
+          {listContent}
+        </section>
+
+        <section
+          aria-label="관계도"
+          className="rounded-xl border border-slate-200 bg-white p-4"
         >
-          <input
-            type="search"
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            placeholder="이름이나 번호로 검색"
-            aria-label="객체 검색어"
-            className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-          />
-          <button
-            type="submit"
-            className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
-          >
-            검색
-          </button>
-        </form>
-        {listContent}
-      </section>
+          <ObjectGraph objectId={selectedId} onSelect={setSelectedId} />
+        </section>
 
-      <section
-        aria-label="관계도"
-        className="rounded-xl border border-slate-200 bg-white p-4"
-      >
-        <ObjectGraph objectId={selectedId} onSelect={setSelectedId} />
-      </section>
-
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
-        <ObjectDetail objectId={selectedId} />
-      </section>
+        <section className="rounded-xl border border-slate-200 bg-white p-6">
+          <ObjectDetail objectId={selectedId} />
+        </section>
+      </div>
     </div>
   )
 }
