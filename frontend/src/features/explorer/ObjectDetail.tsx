@@ -16,6 +16,17 @@ function formatPropertyValue(value: unknown) {
   return String(value)
 }
 
+function formatSourceKey(
+  sourceKey: Record<string, unknown> | null | undefined,
+) {
+  if (!sourceKey) {
+    return '-'
+  }
+  return Object.entries(sourceKey)
+    .map(([column, value]) => `${column}: ${String(value)}`)
+    .join(', ')
+}
+
 type ObjectDetailProps = {
   objectId: number | null
 }
@@ -70,6 +81,8 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
       <dl className="mt-4 grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
         <dt className="text-slate-500">출처</dt>
         <dd className="text-slate-900">{source}</dd>
+        <dt className="text-slate-500">원천 행</dt>
+        <dd className="text-slate-900">{formatSourceKey(object.sourceKey)}</dd>
         <dt className="text-slate-500">기준 시점</dt>
         <dd className="text-slate-900">{formatDateTime(object.dataAsOf)}</dd>
         <dt className="text-slate-500">최근 동기화</dt>

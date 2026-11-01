@@ -38,6 +38,7 @@ test('객체를 고르면 상세 API로 받은 정보를 보여준다', async ()
   expect(screen.getByText('설비 / #301')).toBeInTheDocument()
   expect(screen.getByText('MES · mes.equipment')).toBeInTheDocument()
   expect(screen.getByText('설비 코드')).toBeInTheDocument()
+  expect(screen.getByText('equipment_code: PR-03')).toBeInTheDocument()
 })
 
 test('권한으로 가린 속성은 권한 없음, 값이 없는 속성은 -로 보여준다', async () => {
