@@ -9,11 +9,11 @@
 | `compose.yaml` | nginx · certbot · Jenkins · PostgreSQL 18 컨테이너 정의 (이미지 버전 고정, 내부망 `axcore-net`) |
 | `.env.example` | `compose.yaml`이 읽는 환경 변수 이름 목록 (실제 값은 서버의 `.env`에만) |
 | `nginx/conf.d/default.conf` | HTTP → HTTPS 리다이렉트, TLS 설정, `/jenkins/` 리버스 프록시, `/api/` → backend (스트리밍 대비 buffering off) |
-| `nginx/html/index.html` | 기본 페이지 (nginx 동작 확인용) |
 | `jenkins/Dockerfile` | Jenkins 공식 이미지 + docker CLI · compose 플러그인 |
 | `scripts/renew-cert.sh` | 인증서 자동 갱신 + nginx reload (cron에서 매일 03:00 실행) |
 | `scripts/pg-backup.sh` | 플랫폼 DB `pg_dump` 백업 + 7일 지난 파일 삭제 (cron에서 매일 04:00 실행) |
 | backend | Spring Boot 백엔드 (api 모드) · `backend/Dockerfile` · 호스트 `127.0.0.1:18080` · 이미지 태그 `.env`의 `BACKEND_TAG` |
+| frontend | React 정적 파일 · `frontend/Dockerfile`(node 24.18.0로 빌드 → `nginx:1.30-alpine`이 dist 서빙, SPA fallback은 `frontend/nginx.conf`) · 호스트 `127.0.0.1:10080`(컨테이너 80) · 이미지 태그 `.env`의 `FRONTEND_TAG` · 메인 nginx `/` → frontend |
 
 ## 포트 규칙
 
@@ -21,13 +21,13 @@ SSAFY 클라우드 방화벽은 tcp · udp 1024~65535를 열어 두므로, 서�
 
 - 바깥(`0.0.0.0`)에 여는 포트는 nginx의 80 · 443뿐입니다.
 - 나머지 서비스는 호스트 포트를 열지 않거나 `127.0.0.1:1xxxx`(비기본값)로만 엽니다. 컨테이너 안 포트는 기본값을 유지합니다.
-- 현재 할당: PostgreSQL `127.0.0.1:15432` (컨테이너 안 5432). 앞으로 backend 18080 · ai 18000 · grafana 13000 예정.
+- 현재 할당: PostgreSQL `127.0.0.1:15432` (컨테이너 안 5432) · backend `18080` (8080) · frontend `10080` (80). 앞으로 ai 18000 · grafana 13000 예정.
 
 ## nginx 경로 (바깥에서 보이는 주소)
 
 | 경로 | 가는 곳 | 비고 |
 | --- | --- | --- |
-| `/` | nginx 기본 페이지 | 5단계 frontend 배포 시 React로 교체 |
+| `/` | frontend:80 (React 정적 파일) | resolver + 변수 proxy_pass(frontend 재시작 중에도 nginx 유지). SPA fallback은 frontend 컨테이너 안 nginx가 처리. 이미지 태그 `.env`의 `FRONTEND_TAG`, 호스트 `127.0.0.1:10080`(디버그용) |
 | `/api/` | backend:8080 (경로 그대로) | 로그인 전 요청은 backend가 401로 응답. `X-Forwarded-Proto` 전달(세션 Secure 쿠키), `proxy_buffering off` + `proxy_read_timeout 300s`(Agent 스트리밍), 업로드 상한 20m |
 | `/jenkins/` | jenkins:8080 | 팀원 Read 권한 |
 | `/swagger-ui.html` · `/swagger-ui/` · `/v3/api-docs` | backend:8080 | nginx Basic Auth (아이디 · 비밀번호는 서버 `nginx/htpasswd`, 팀 DM으로 공유). 백엔드 로그인과 별개 |
@@ -115,11 +115,19 @@ docker compose exec -T postgres pg_restore -U axcore -d axcore --clean --if-exis
 
 ## MR 검증 (MR 생성·갱신 → Jenkins axcore-mr-check)
 
-MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 브랜치를 받아 `backend/`에서 `./gradlew --no-daemon spotlessCheck build`를 돌린다 (스타일 검사 → 컴파일 → 테스트). 결과는 GitLab MR 화면 ✅/❌로 보고, 실패했을 때만 MR 작성자에게 Mattermost DM이 간다(성공 DM은 배포 Job만). 깨진 테스트 목록은 Jenkins 빌드 화면(Test Result)으로 본다. develop과 갈라진 뒤 `backend/`가 바뀌지 않은 MR(문서·인프라만 고친 MR)은 gradle을 건너뛰고 바로 ✅다. 수동 실행(Build with Parameters)은 develop을 받아 항상 전체를 돌린다 (develop 재검사 용도).
+MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 커밋을 받아, develop과 갈라진 뒤 **바뀐 폴더의 검사만** 돌린다. 결과는 GitLab MR 화면 ✅/❌로 보고, 실패했을 때만 MR 작성자에게 Mattermost DM이 간다(성공 DM은 배포 Job만). 깨진 테스트 목록은 Jenkins 빌드 화면(Test Result)으로 본다. 문서·인프라만 고친 MR은 검사 없이 바로 ✅다. 수동 실행(Build with Parameters)은 develop을 받아 세 서비스를 전부 돌린다 (develop 재검사 용도).
+
+| 폴더 | 검사 | 어디서 | 비고 |
+| --- | --- | --- | --- |
+| `backend/` | `./gradlew --no-daemon spotlessCheck build` (스타일 → 컴파일 → 테스트) | Jenkins 컨테이너 안 | Testcontainers가 docker.sock으로 테스트 DB를 띄움. gradle 캐시 `jenkins-data/.gradle` |
+| `frontend/` | `npm ci` → `npm run lint` → `vitest run` → `npm run build` | 일회용 `node:24.18.0-alpine` 컨테이너 | Node 버전은 프론트 담당 기준(24.18.0). npm 캐시 볼륨 `axcore-npm-cache` |
+| `ai/` | `pip install -r requirements-dev.txt` → `ruff check .` → `pytest` | 일회용 `python:3.11-slim` 컨테이너 | pip 캐시 볼륨 `axcore-pip-cache` |
+
+frontend · ai 컨테이너에는 docker.sock을 붙이지 않는다. 작업 폴더는 호스트 경로(`/home/ubuntu/axcore/jenkins-data/workspace/axcore-mr-check/...`)로 마운트한다(Jenkins 컨테이너의 `/var/jenkins_home`이 호스트의 `jenkins-data`). 컨테이너가 만든 `node_modules` · `dist` · `.pytest_cache`는 root 소유로 작업 폴더에 남지만 다음 검사도 같은 방식이라 문제없다. 지워야 하면 `docker run --rm -v /home/ubuntu/axcore/jenkins-data/workspace/axcore-mr-check/frontend:/app alpine rm -rf /app/node_modules /app/dist`.
 
 - 테스트는 Testcontainers로 테스트용 PostgreSQL 컨테이너를 띄운다. Jenkins 컨테이너의 docker.sock을 쓰며, 그 컨테이너는 기본 bridge에 뜨고 서버 포트로 열리므로 Jenkins 컨테이너에서는 axcore-net 게이트웨이(=서버)로 닿는다. 그 주소가 compose의 `TESTCONTAINERS_HOST_OVERRIDE`다. axcore-net을 지웠다 다시 만들면 게이트웨이가 바뀔 수 있으니 `docker network inspect axcore-net -f '{{(index .IPAM.Config 0).Gateway}}'`로 다시 확인한다.
 - gradle 캐시는 `jenkins-data/.gradle`에 남아 두 번째부터 빠르다. 첫 실행은 Gradle 배포판과 의존성을 받느라 몇 분 걸린다.
-- 메모리: Jenkins 2g + gradle 1g(`GRADLE_OPTS`) + 테스트 JVM 몫으로 compose `mem_limit: 5g`. 빌드 중 `docker stats --no-stream jenkins`로 상한 대비 사용량을 본다.
+- 메모리: compose `mem_limit: 4g`. 2026-11-01 실측(gradle 결과 폴더를 지우고 수동 실행해 컴파일·테스트 전부 돌림): 평소 0.9GiB, 빌드 중 최고 2.0GiB, 끝나면 0.9GiB로 복귀. 다시 재려면 `docker compose exec jenkins rm -rf /var/jenkins_home/workspace/axcore-mr-check/backend/build` 뒤 수동 실행하고 `docker stats --no-stream --format '{{.MemUsage}}' jenkins`를 10초 간격으로 찍는다.
 - `junit` 단계는 Jenkins의 JUnit 플러그인이 있어야 돈다 (초기 추천 플러그인에 포함).
 - 검사 대상은 GitLab이 알려 준 MR 커밋(`gitlabMergeRequestLastCommit`) 자체를 받는다. 빌드 로그 첫머리의 `gitlab*` 변수 목록과 "검사 대상:" 줄로 어떤 코드를 검사했는지 확인한다. MR 검사인데 develop을 받으면 빌드가 실패하도록 안전망이 있다 (2026-10-30, Jenkinsfile 파라미터 `gitlabSourceBranch`의 기본값이 플러그인 변수를 덮어써 develop을 검사하던 문제).
 - 보안 메모: MR 브랜치의 `build.gradle`이 docker.sock이 있는 Jenkins 컨테이너 안에서 실행된다. 팀원 GitLab 계정을 신뢰하는 구성이다. 분리(docker.sock 없는 일회용 컨테이너 + 외부 테스트 DB)는 보안 후속 과제로 둔다.
@@ -128,18 +136,19 @@ MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 브랜
 
 `Jenkinsfile`의 배포 단계는 Job `axcore-deploy`에서만 켜진다 (MR 검증 Job은 배포하지 않는다).
 
-1. develop 머지 → GitLab Webhook → `axcore-deploy` 실행
-2. 서버 `.env`의 `BACKEND_TAG`(지금 배포된 커밋)와 develop 사이에 `backend/` 변경이 있는지 확인. 변경 없으면 배포 건너뜀 (`FORCE_DEPLOY` 파라미터로 강제 가능). 직전 커밋과 비교하지 않는 이유: 머지가 연달아 쌓이면 앞 머지의 backend 변경을 놓친다. 배포 Job은 GitLab이 어떤 변수를 보내든 항상 `origin/develop`만 받는다
-3. `docker build -t axcore-backend:<커밋 SHA> backend`
-4. `scripts/pg-backup.sh` 1회 (마이그레이션 대비)
-5. `.env`의 `BACKEND_TAG`를 새 SHA로 바꾸고 `docker compose -f /home/ubuntu/axcore/compose.yaml up -d backend`
-6. 최대 90초 동안 `(healthy)` 대기. 실패하면 **직전 태그로 자동 롤백**하고 빌드를 실패로 표시
-7. backend 이미지는 최근 3개 태그만 보관, 3일 지난 빌드 캐시 삭제
-8. 결과는 GitLab 커밋 상태 + Mattermost DM(머지한 사람). 배포가 있으면 `backend 배포 <이전> → <새 SHA>` 또는 `롤백됨`이 붙는다
+배포 대상은 backend와 frontend 두 서비스다 (2026-11-01 frontend 추가). 서비스마다 같은 절차를 `deployService` 함수가 돌린다.
+
+1. develop 머지 → GitLab Webhook → `axcore-deploy` 실행. 배포 Job은 GitLab이 어떤 변수를 보내든 항상 `origin/develop`만 받는다
+2. 서비스마다 서버 `.env`의 태그(`BACKEND_TAG` · `FRONTEND_TAG` = 지금 배포된 커밋)와 develop 사이에 그 폴더(`backend/` · `frontend/`) 변경이 있는지 확인. 변경 없으면 그 서비스는 건너뜀 (`FORCE_DEPLOY` 파라미터면 전부 배포). 직전 커밋과 비교하지 않는 이유: 머지가 연달아 쌓이면 앞 머지의 변경을 놓친다
+3. backend: `docker build -t axcore-backend:<커밋 SHA> backend` → `scripts/pg-backup.sh` 1회(마이그레이션 대비) → `.env`의 `BACKEND_TAG` 갱신 + `docker compose up -d backend` → 최대 90초 `(healthy)` 대기 → 실패하면 **직전 태그로 자동 롤백**
+4. frontend: `docker build -t axcore-frontend:<커밋 SHA> frontend` → `.env`의 `FRONTEND_TAG` 갱신 + `docker compose up -d frontend` → 90초 `(healthy)` 대기 → 실패하면 롤백. (DB 백업은 없음)
+5. 한 서비스가 실패해도 다음 서비스 배포는 계속한다(`catchError`). 빌드는 실패로 표시되고 어느 서비스가 실패했는지는 단계 화면과 DM에 나온다
+6. backend · frontend 이미지는 각각 최근 3개 태그만 보관, 3일 지난 빌드 캐시 삭제
+7. 결과는 GitLab 커밋 상태 + Mattermost DM(머지한 사람). 서비스마다 `backend 배포 <이전> → <새 SHA>` / `frontend 배포 실패 → <이전> 로 롤백됨` 한 줄씩, 둘 다 안 바뀌면 `배포: 변경 없음`
 
 Jenkins 컨테이너는 가게 폴더를 같은 경로(`/home/ubuntu/axcore`)로 마운트한다. compose의 상대 경로(`./nginx/...`)가 호스트 기준으로 풀리므로 경로가 같아야 한다.
 
-**손으로 롤백할 때** (자동 롤백이 안 됐거나, 배포 뒤 문제가 늦게 발견된 경우):
+**손으로 롤백할 때** (자동 롤백이 안 됐거나, 배포 뒤 문제가 늦게 발견된 경우). frontend는 `backend`를 `frontend`로, `BACKEND_TAG`를 `FRONTEND_TAG`로 바꿔 같은 절차:
 
 ```bash
 cd ~/axcore
