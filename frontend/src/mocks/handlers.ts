@@ -237,11 +237,40 @@ function objectSummary(id: number) {
   }
 }
 
-// 가짜 로그인 사용자의 계정 번호 (104 내 실행 이력에서 사용)
-const MY_ACCOUNT_ID = 7
+// 가짜 로그인 사용자. 096은 역할이 ADMIN이면 전체, 아니면 본인 실행만 돌려준다고 가정한다.
+// 관리자 화면을 보려면 roleCode를 'ADMIN'으로 바꾼다.
+export const mockUser = { accountId: 7, roleCode: 'PLANNER' }
 
-// 080·104 응답의 실행 이력 (최근 실행이 앞에 오도록 적어 둔다)
+// 080·096 응답의 실행 이력 (최근 실행이 앞에 오도록 적어 둔다)
 const executions: Execution[] = [
+  {
+    id: 9004,
+    requestId: '55555555-5555-4555-8555-555555555555',
+    eventKind: 'ACTION',
+    actionDefinitionId: 1,
+    actorType: 'USER',
+    actorId: 1,
+    actorRoleCode: 'ADMIN',
+    checkedPermissionCode: 'ONTOLOGY_MANAGE',
+    entryPoint: 'WEB',
+    targetType: 'object_type',
+    targetId: 3,
+    input: { name: '프레스 설비' },
+    status: 'SUCCEEDED',
+    blockedReason: null,
+    result: { updated: true },
+    requestedAt: '2026-10-28T10:00:00+09:00',
+    finishedAt: '2026-10-28T10:00:01+09:00',
+    entityChanges: [
+      {
+        tableName: 'object_type',
+        rowKey: { id: 3 },
+        changeKind: 'UPDATE',
+        beforeData: { name: '설비' },
+        afterData: { name: '프레스 설비' },
+      },
+    ],
+  },
   {
     id: 9003,
     requestId: '44444444-4444-4444-8444-444444444444',
@@ -336,7 +365,7 @@ const executions: Execution[] = [
   },
 ]
 
-// 080·104가 같이 쓰는 조회 조건(status, from, to)으로 실행 이력을 거른다.
+// 080·096이 같이 쓰는 조회 조건(status, from, to)으로 실행 이력을 거른다.
 function filterExecutions(items: Execution[], searchParams: URLSearchParams) {
   const status = searchParams.get('status')
   const from = searchParams.get('from')
@@ -453,16 +482,17 @@ export const handlers = [
     })
   }),
 
-  // 104 내 실행 이력
-  http.get('/api/v1/me/executions', async ({ request }) => {
+  // 096 실행·감사 이력 (관리자면 전체, 아니면 본인 실행)
+  http.get('/api/v1/audit/actions', async ({ request }) => {
     await delay()
-    const myExecutions = executions.filter(
-      (item) => item.actorId === MY_ACCOUNT_ID && item.actorType !== 'SYSTEM',
-    )
-    const matched = filterExecutions(
-      myExecutions,
-      new URL(request.url).searchParams,
-    )
+    const isAdmin = mockUser.roleCode === 'ADMIN'
+    const visible = isAdmin
+      ? executions
+      : executions.filter(
+          (item) =>
+            item.actorId === mockUser.accountId && item.actorType !== 'SYSTEM',
+        )
+    const matched = filterExecutions(visible, new URL(request.url).searchParams)
     return HttpResponse.json({
       data: matched,
       meta: {
@@ -470,6 +500,7 @@ export const handlers = [
         size: 20,
         totalElements: matched.length,
         hasNext: false,
+        scope: isAdmin ? 'ALL' : 'MINE',
       },
     })
   }),
