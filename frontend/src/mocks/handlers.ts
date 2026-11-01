@@ -1,5 +1,5 @@
 import { delay, http, HttpResponse } from 'msw'
-import type { ObjectInstance } from '../features/explorer/types'
+import type { ObjectInstance, ObjectLink } from '../features/explorer/types'
 
 const objects: ObjectInstance[] = [
   {
@@ -157,6 +157,85 @@ const propertyNamesByType: Record<number, Record<string, string>> = {
   },
 }
 
+// 078 응답의 연결 (relatedObject는 조회한 객체에 따라 달라서 응답할 때 채운다)
+const links: Omit<ObjectLink, 'relatedObject'>[] = [
+  {
+    id: 22,
+    linkTypeId: 2,
+    linkTypeName: '현재 배정 설비',
+    sourceObjectId: 1101,
+    targetObjectId: 301,
+    origin: 'RULE',
+    status: 'ACTIVE',
+    linkMappingId: 610,
+    evidence: {
+      sourceKey: { work_order_no: 'WO-101' },
+      rawValue: 'PR03',
+      transformedValue: 'PR-03',
+    },
+    expressionKind: null,
+    confirmedBy: null,
+  },
+  {
+    id: 23,
+    linkTypeId: 3,
+    linkTypeName: '생산 대상 수주',
+    sourceObjectId: 1101,
+    targetObjectId: 1201,
+    origin: 'RULE',
+    status: 'ACTIVE',
+    linkMappingId: 611,
+    evidence: {
+      sourceKey: { work_order_no: 'WO-101' },
+      rawValue: 'SO-101',
+      transformedValue: 'SO-101',
+    },
+    expressionKind: null,
+    confirmedBy: null,
+  },
+  {
+    id: 35,
+    linkTypeId: 7,
+    linkTypeName: '언급된 설비',
+    sourceObjectId: 2001,
+    targetObjectId: 301,
+    origin: 'DOCUMENT',
+    status: 'ACTIVE',
+    linkMappingId: null,
+    evidence: {
+      quote: '야간에 3호기 진동이 커졌다.',
+      event: '진동 증가',
+      timeExpression: '야간',
+    },
+    expressionKind: 'ESTIMATED',
+    confirmedBy: 1,
+  },
+  {
+    id: 41,
+    linkTypeId: 8,
+    linkTypeName: '대체 가능 설비',
+    sourceObjectId: 1101,
+    targetObjectId: 302,
+    origin: 'MANUAL',
+    status: 'ACTIVE',
+    linkMappingId: null,
+    evidence: {},
+    expressionKind: null,
+    confirmedBy: 1,
+  },
+]
+
+// 객체 번호 → 078 relatedObject 모양의 요약
+function objectSummary(id: number) {
+  const object = objects.find((item) => item.id === id)
+  return {
+    id,
+    displayName: object?.displayName ?? '',
+    objectTypeId: object?.objectTypeId ?? 0,
+    objectTypeName: object?.objectTypeName ?? '',
+  }
+}
+
 export const handlers = [
   // 076 권한 범위 객체 검색
   http.get('/api/v1/objects', async ({ request }) => {
@@ -204,6 +283,29 @@ export const handlers = [
         propertyNames: propertyNamesByType[object.objectTypeId] ?? {},
         sourceSystemName: source?.systemName ?? null,
         sourceResourceKey: source?.resourceKey ?? null,
+      },
+    })
+  }),
+  // 078 확정 관계·원천 근거 조회
+  http.get('/api/v1/objects/:id/links', async ({ params }) => {
+    await delay()
+    const id = Number(params.id)
+    const matched = links
+      .filter(
+        (link) => link.sourceObjectId === id || link.targetObjectId === id,
+      )
+      .map((link) => {
+        const relatedId =
+          link.sourceObjectId === id ? link.targetObjectId : link.sourceObjectId
+        return { ...link, relatedObject: objectSummary(relatedId) }
+      })
+    return HttpResponse.json({
+      data: matched,
+      meta: {
+        page: 0,
+        size: 20,
+        totalElements: matched.length,
+        hasNext: false,
       },
     })
   }),
