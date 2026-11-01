@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Link } from 'react-router'
 import { fetchObject } from './api'
 import EvidenceDialog from './EvidenceDialog'
 import { formatPropertyValue } from './format'
@@ -100,6 +101,15 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
           원본·연결 근거 보기 ↗
         </button>
       </section>
+
+      <div className="mt-6">
+        <Link
+          to={`/audit?objectId=${object.id}`}
+          className="inline-block rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:border-slate-900"
+        >
+          이 객체 실행 이력
+        </Link>
+      </div>
 
       {evidenceOpen && (
         <EvidenceDialog

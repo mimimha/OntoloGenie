@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
+import { MemoryRouter } from 'react-router'
 import { expect, test } from 'vitest'
 import { server } from '../../mocks/node'
 import ExplorerPage from './ExplorerPage'
@@ -13,7 +14,9 @@ function renderExplorerPage() {
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
-      <ExplorerPage />
+      <MemoryRouter>
+        <ExplorerPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
 }
@@ -304,4 +307,15 @@ test('연결이 없으면 관계도에 안내를 보여준다', async () => {
   expect(
     await screen.findByText('이 객체에는 연결된 관계가 없습니다.'),
   ).toBeInTheDocument()
+})
+
+test('객체 상세의 이 객체 실행 이력은 그 객체의 실행 이력 주소로 연결된다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+
+  await user.click(await screen.findByRole('button', { name: /프레스 3호기/ }))
+
+  expect(
+    await screen.findByRole('link', { name: '이 객체 실행 이력' }),
+  ).toHaveAttribute('href', '/audit?objectId=301')
 })
