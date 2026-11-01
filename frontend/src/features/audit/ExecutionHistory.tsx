@@ -1,37 +1,18 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { formatPropertyValue, formatSourceKey } from '../explorer/format'
 import {
   fetchAuditExecutions,
   fetchObjectExecutions,
   type ExecutionFilters,
 } from './api'
+import { startOfDay, startOfNextDay } from './dateRange'
+import EntityChangeTable from './EntityChangeTable'
 import {
   actorTypeLabels,
-  changeKindLabels,
   eventKindLabels,
   executionStatusLabels,
 } from './labels'
-import type {
-  EntityChange,
-  Execution,
-  ExecutionScope,
-  ExecutionStatus,
-} from './types'
-
-const DAY_MS = 24 * 60 * 60 * 1000
-
-// 날짜 입력값(2026-10-27)을 그날 0시(한국 시각)의 서버 시각 형식으로 바꾼다.
-function startOfDay(date: string) {
-  return new Date(`${date}T00:00:00+09:00`).toISOString()
-}
-
-// 종료일은 그날까지 포함해야 하므로, 다음 날 0시를 상한(미포함)으로 보낸다.
-function startOfNextDay(date: string) {
-  return new Date(
-    new Date(`${date}T00:00:00+09:00`).getTime() + DAY_MS,
-  ).toISOString()
-}
+import type { Execution, ExecutionScope, ExecutionStatus } from './types'
 
 function formatJson(value: Record<string, unknown>) {
   return Object.keys(value).length > 0 ? JSON.stringify(value, null, 2) : null
@@ -70,49 +51,6 @@ function scopeText(objectId: number | undefined, scope?: ExecutionScope) {
     return '조회 범위: 현재 계정의 실행 이력'
   }
   return '조회 범위: 권한에 따라 볼 수 있는 실행 이력'
-}
-
-type EntityChangeTableProps = {
-  change: EntityChange
-}
-
-function EntityChangeTable({ change }: EntityChangeTableProps) {
-  const fields = [
-    ...new Set([
-      ...Object.keys(change.beforeData ?? {}),
-      ...Object.keys(change.afterData ?? {}),
-    ]),
-  ]
-
-  return (
-    <div className="mt-2">
-      <p className="text-xs text-slate-500">
-        {`${change.tableName} · ${formatSourceKey(change.rowKey)} · ${changeKindLabels[change.changeKind]}`}
-      </p>
-      <table className="mt-1 w-full text-left text-xs">
-        <thead className="text-slate-500">
-          <tr>
-            <th className="py-1 pr-2 font-normal">항목</th>
-            <th className="py-1 pr-2 font-normal">변경 전</th>
-            <th className="py-1 font-normal">변경 후</th>
-          </tr>
-        </thead>
-        <tbody>
-          {fields.map((field) => (
-            <tr key={field}>
-              <td className="py-1 pr-2">{field}</td>
-              <td className="py-1 pr-2">
-                {formatPropertyValue(change.beforeData?.[field])}
-              </td>
-              <td className="py-1">
-                {formatPropertyValue(change.afterData?.[field])}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
 }
 
 type ExecutionDetailProps = {

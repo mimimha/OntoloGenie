@@ -1,5 +1,6 @@
 import { delay, http, HttpResponse } from 'msw'
 import type { Execution } from '../features/audit/types'
+import type { DefinitionChange, RuleRevision } from '../features/history/types'
 import type {
   ModelGraph,
   ObjectInstance,
@@ -445,6 +446,110 @@ const modelGraph: ModelGraph = {
   ],
 }
 
+// 044 정의 변경 이력 응답 (최근 변경이 앞에 오도록 적어 둔다)
+// 객체 유형 이름 변경은 096 목의 관리자 실행(9004)과 같은 기록이다.
+const definitionChanges: DefinitionChange[] = [
+  {
+    id: 703,
+    actionExecutionId: 9004,
+    tableName: 'object_type',
+    rowKey: { id: 3 },
+    changeKind: 'UPDATE',
+    beforeData: { name: '설비', row_version: 1 },
+    afterData: { name: '프레스 설비', row_version: 2 },
+    actorId: 1,
+    actorType: 'USER',
+    requestedAt: '2026-10-28T10:00:00+09:00',
+    actionCode: 'UPDATE_OBJECT_TYPE',
+  },
+  {
+    id: 702,
+    actionExecutionId: 8802,
+    tableName: 'property_definition',
+    rowKey: { id: 31 },
+    changeKind: 'INSERT',
+    beforeData: null,
+    afterData: {
+      code: 'vibration_level',
+      name: '진동 수준',
+      data_type: 'NUMBER',
+    },
+    actorId: 1,
+    actorType: 'USER',
+    requestedAt: '2026-10-27T15:00:00+09:00',
+    actionCode: 'CREATE_PROPERTY',
+  },
+  {
+    id: 701,
+    actionExecutionId: 8801,
+    tableName: 'link_type',
+    rowKey: { id: 2 },
+    changeKind: 'UPDATE',
+    beforeData: { name: '배정 설비' },
+    afterData: { name: '현재 배정 설비' },
+    actorId: 1,
+    actorType: 'USER',
+    requestedAt: '2026-10-26T11:00:00+09:00',
+    actionCode: 'UPDATE_LINK_TYPE',
+  },
+]
+
+// 046 연결 규칙 개정 이력 응답 (규칙 코드별)
+const ruleRevisions: Record<string, RuleRevision[]> = {
+  WO_EQUIPMENT_CODE: [
+    {
+      id: 10,
+      code: 'WO_EQUIPMENT_CODE',
+      revision: 1,
+      linkTypeId: 2,
+      status: 'RETIRED',
+      conditions: [
+        {
+          sequenceNo: 1,
+          sourcePropertyId: 31,
+          targetPropertyId: 21,
+          operator: 'EQ',
+          sourceTransforms: [],
+          targetTransforms: [],
+        },
+      ],
+      sourceFilter: {},
+      targetFilter: {},
+      retiredAt: '2026-10-27T09:00:00+09:00',
+      description: '작업지시의 설비 코드로 설비 연결(초판)',
+      createdAt: '2026-10-24T09:00:00+09:00',
+      createdBy: 1,
+      origin: 'AI_PROPOSAL',
+      proposalItemId: 280,
+    },
+    {
+      id: 12,
+      code: 'WO_EQUIPMENT_CODE',
+      revision: 2,
+      linkTypeId: 2,
+      status: 'ACTIVE',
+      conditions: [
+        {
+          sequenceNo: 1,
+          sourcePropertyId: 31,
+          targetPropertyId: 21,
+          operator: 'EQ',
+          sourceTransforms: [{ function: 'UPPER' }],
+          targetTransforms: [],
+        },
+      ],
+      sourceFilter: {},
+      targetFilter: {},
+      retiredAt: null,
+      description: '작업지시의 설비 코드로 설비 연결',
+      createdAt: '2026-10-27T09:00:00+09:00',
+      createdBy: 1,
+      origin: 'AI_PROPOSAL',
+      proposalItemId: 300,
+    },
+  ],
+}
+
 export const handlers = [
   // 042 객체 유형 관계도
   http.get('/api/v1/ontology/model-graph', async () => {
@@ -456,6 +561,34 @@ export const handlers = [
         .length,
     }))
     return HttpResponse.json({ data: { ...modelGraph, nodes } })
+  }),
+
+  // 044 정의 변경 이력 조회
+  http.get('/api/v1/ontology/changes', async ({ request }) => {
+    await delay()
+    const params = new URL(request.url).searchParams
+    const tableName = params.get('tableName')
+    const from = params.get('from')
+    const to = params.get('to')
+    const matched = definitionChanges
+      .filter((item) => !tableName || item.tableName === tableName)
+      .filter((item) => !from || new Date(item.requestedAt) >= new Date(from))
+      .filter((item) => !to || new Date(item.requestedAt) < new Date(to))
+    return HttpResponse.json({
+      data: matched,
+      meta: {
+        page: 0,
+        size: 20,
+        totalElements: matched.length,
+        hasNext: false,
+      },
+    })
+  }),
+
+  // 046 연결 규칙 개정 이력 조회
+  http.get('/api/v1/ontology/rules/:code/revisions', async ({ params }) => {
+    await delay()
+    return HttpResponse.json({ data: ruleRevisions[String(params.code)] ?? [] })
   }),
 
   // 076 권한 범위 객체 검색
