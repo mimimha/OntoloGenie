@@ -15,7 +15,9 @@ Prometheus는 지표를 저장하고 Alloy는 30초마다 수집·전송한다. 
 
 cAdvisor의 Docker 수집을 위해 Alloy에 root 사용자·`privileged: true`·호스트 cgroup namespace와 시스템 경로를 설정한다. 운영 반영 전에 이 권한 변경을 검토한다. Docker 소켓을 읽기 전용으로 마운트해도 Docker API의 변경 요청을 차단하지는 않는다.
 
-현재 확인한 서버는 Docker 29.9.2, cgroup v2, `overlayfs`, Docker 저장 경로 `/var/lib/docker`다. containerd 소켓은 `/run/containerd/containerd.sock`을 사용하며 Docker namespace는 `moby`로 설정한다. 소켓 존재는 확인했지만 컨테이너 지표 수집 성공 여부는 서버 적용 후 검증해야 한다. 소켓이 없으면 자동으로 디렉터리를 만들지 않고 기동에 실패하도록 설정한다.
+현재 확인한 서버는 Docker 29.9.2, cgroup v2, `overlayfs`, Docker 저장 경로 `/var/lib/docker`다. containerd 소켓은 `/run/containerd/containerd.sock`을 사용한다. 소켓이 없으면 자동으로 디렉터리를 만들지 않고 기동에 실패하도록 설정한다.
+
+서버에서 8개 컨테이너의 CPU·메모리 수집은 확인했지만, `containerd_namespace="moby"` 설정에서는 이름이 ID로 나오고 Compose 라벨이 누락됐다. containerd 수집기의 namespace를 기본값 `k8s.io`로 분리해 Docker 컨테이너는 Docker 처리기가 조회하도록 조정한다. 이는 Kubernetes를 추가하는 설정이 아니며 Docker가 실제 사용하는 `moby` namespace도 변경하지 않는다. Compose 서비스 라벨은 추가로 `service` 라벨에 복사한다. 이 수정으로 이름·라벨이 복구되는지는 서버 반영 후 확인해야 한다.
 
 ## 검증 범위
 
@@ -25,5 +27,6 @@ Linux 서버 반영 후에는 다음을 확인한다.
 
 - 기존 호스트 수집 7개 항목의 성공 값이 모두 1이고 실제 메모리·루트 디스크 용량과 일치하는지.
 - `up{job="cadvisor"}`가 1이고 실제 실행 중인 서비스마다 `container_cpu_usage_seconds_total`, `container_memory_working_set_bytes`가 있는지. `up=1`만으로 개별 컨테이너 수집을 완료 처리하지 않는다.
+- 위 두 지표에 `service="backend"`, `service="ai"` 등 실제 Compose 서비스 라벨이 붙는지. Compose로 생성되지 않은 임시 컨테이너에는 서비스 라벨이 없을 수 있으며 임의로 이름을 붙이지 않는다.
 - Alloy 로그의 런타임 연결·권한 오류, Prometheus 상태와 기존 서비스 상태.
 - 수집 추가 후 Alloy 메모리 사용량과 재시작·OOM 여부. 실제 배포·분석 부하 실측과 상한 확정은 별도 잔여 작업이다.
