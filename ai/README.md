@@ -32,6 +32,29 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
+## FastAPI Docker 이미지 (5-1b)
+
+저장소 루트에서 실행합니다. Python 3.11 slim 이미지에 운영 의존성과 `main.py` · `app/`만 복사하고 UID 10001인 `app` 사용자로 실행합니다. 소스 복사 전에 의존성을 설치해 해당 레이어를 재사용합니다. 데이터셋·정답셋·결과 샘플·테스트·가상환경은 이미지에 포함하지 않습니다.
+
+```powershell
+docker build -t axcore-ai:test ai/
+docker run --rm --name axcore-ai-local -p 127.0.0.1:18000:8000 -e AI_ONTOLOGY_BACKEND_URL=http://backend:8080 axcore-ai:test
+```
+
+다른 터미널에서 확인합니다. Docker 상태는 첫 헬스체크가 실행된 뒤 `healthy`로 바뀝니다.
+
+```powershell
+curl.exe -fsS http://127.0.0.1:18000/health
+docker inspect --format '{{.State.Health.Status}}' axcore-ai-local
+```
+
+- 기본 GMS 설정에서 키 없이도 기동합니다. `/health`는 `status: "ok"`, `llm_ready: false`, `llm_missing: "AI_ONTOLOGY_LLM_API_KEY"`를 반환합니다.
+- 헬스체크는 프로세스의 HTTP 응답을 확인합니다. LLM 호출·backend 연동 성공을 의미하지 않습니다.
+- `.env`는 빌드 컨텍스트에서 제외하고 `AI_ONTOLOGY_SKIP_ENV_FILE=1`로 파일 로딩을 끕니다. 필요한 값은 실행 환경변수로 주입하며 키·토큰을 Dockerfile에 넣지 않습니다.
+- 위 단독 실행에는 backend가 없습니다. `http://backend:8080`은 이후 같은 Docker 네트워크에서 사용할 compose 서비스 주소이며 실제 통신은 compose 단계에서 검증합니다.
+- 현재 등록된 API는 `/health`입니다. 분석 실행·결과 전달, compose와 Jenkins 자동 배포는 후속 작업입니다.
+- 검증 후 실행한 터미널에서 Ctrl+C로 종료합니다. 실제 배포 이미지 태그는 `test` 대신 커밋 SHA를 사용합니다.
+
 ## 데이터 다시 만들기
 
 ```powershell
