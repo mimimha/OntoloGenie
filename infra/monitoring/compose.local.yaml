@@ -2,6 +2,14 @@
 # !override는 Docker Compose 2.24.4 이상에서 지원한다.
 services:
   alloy:
+    # Docker Desktop에서는 호스트 수집 설정만 실행한다. cAdvisor 실제 수집은 Linux 서버에서 검증한다.
+    privileged: false
+    cgroup: private
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
     environment:
       HOST_ROOTFS_PATH: /
       HOST_PROCFS_PATH: /proc
@@ -11,7 +19,7 @@ services:
     # Windows 드라이브를 서버 루트로 연결하지 않고 Linux 컨테이너 환경에서 수집 경로를 검증한다.
     # 서버 전체 디스크 용량의 정확성은 Linux 서버 반영 후 별도로 확인한다.
     volumes: !override
-      - ./monitoring/config.alloy:/etc/alloy/config.alloy:ro
+      - ./monitoring:/etc/alloy:ro
       - alloy-data:/var/lib/alloy/data
       # Docker Desktop에서는 udev 추가 장치 정보를 사용하지 않는다.
       - type: tmpfs
