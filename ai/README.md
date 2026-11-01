@@ -52,8 +52,23 @@ docker inspect --format '{{.State.Health.Status}}' axcore-ai-local
 - 헬스체크는 프로세스의 HTTP 응답을 확인합니다. LLM 호출·backend 연동 성공을 의미하지 않습니다.
 - `.env`는 빌드 컨텍스트에서 제외하고 `AI_ONTOLOGY_SKIP_ENV_FILE=1`로 파일 로딩을 끕니다. 필요한 값은 실행 환경변수로 주입하며 키·토큰을 Dockerfile에 넣지 않습니다.
 - 위 단독 실행에는 backend가 없습니다. `http://backend:8080`은 이후 같은 Docker 네트워크에서 사용할 compose 서비스 주소이며 실제 통신은 compose 단계에서 검증합니다.
-- 현재 등록된 API는 `/health`입니다. 분석 실행·결과 전달, compose와 Jenkins 자동 배포는 후속 작업입니다.
+- 현재 등록된 API는 `/health`입니다. 분석 실행·결과 전달은 후속 작업이며, compose와 Jenkins 배포 절차는 아래 서버 자동 배포 안내를 참고합니다.
 - 검증 후 실행한 터미널에서 Ctrl+C로 종료합니다. 실제 배포 이미지 태그는 `test` 대신 커밋 SHA를 사용합니다.
+
+## 서버 자동 배포
+
+develop에 머지되면 Jenkins `axcore-deploy`가 서버의 `AI_TAG`와 현재 develop 사이의 `ai/` 변경을 비교합니다. README를 포함해 해당 폴더에 변경이 있으면 AI 이미지 빌드·배포를 실행합니다.
+
+- 이미지: `axcore-ai:<커밋 SHA>`
+- 처리: 서버 `AI_TAG` 갱신 → compose 기동 → 최대 90초 healthy 대기
+- 실패 시 이전 태그가 있으면 롤백 시도
+- backend·frontend도 각각 변경이 있을 때만 배포 (`FORCE_DEPLOY`는 세 서비스 모두 배포)
+- AI 이미지는 최근 3개 태그 보관 대상
+- 결과는 GitLab 커밋 상태와 Mattermost DM으로 확인
+
+헬스체크 성공은 실제 LLM 호출·분석 연동 성공을 의미하지 않습니다. 롤백 후 정상 복구 여부도 별도 확인이 필요합니다.
+
+상세 절차: [인프라 자동 배포 안내](../infra/README.md#자동-배포-develop-머지--jenkins-axcore-deploy)
 
 ## 데이터 다시 만들기
 
