@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { expect, test } from 'vitest'
@@ -181,15 +181,16 @@ test('근거 보기를 누르면 원천 위치와 연결 근거를 팝업으로 
   expect(
     screen.getByRole('dialog', { name: '원본·연결 근거 · 프레스 3호기' }),
   ).toBeInTheDocument()
-  expect(screen.getByText('mes.equipment')).toBeInTheDocument()
-  expect(screen.getByText('equipment_code: PR-03')).toBeInTheDocument()
-  expect(await screen.findByText('현재 배정 설비')).toBeInTheDocument()
-  expect(screen.getAllByText('들어오는 연결')).toHaveLength(2)
-  expect(screen.getByText('값 PR03 → PR-03')).toBeInTheDocument()
+  const dialog = within(screen.getByRole('dialog'))
+  expect(dialog.getByText('mes.equipment')).toBeInTheDocument()
+  expect(dialog.getByText('equipment_code: PR-03')).toBeInTheDocument()
+  expect(await dialog.findByText('현재 배정 설비')).toBeInTheDocument()
+  expect(dialog.getAllByText('들어오는 연결')).toHaveLength(2)
+  expect(dialog.getByText('값 PR03 → PR-03')).toBeInTheDocument()
   expect(
-    screen.getByText('원문: “야간에 3호기 진동이 커졌다.”'),
+    dialog.getByText('원문: “야간에 3호기 진동이 커졌다.”'),
   ).toBeInTheDocument()
-  expect(screen.getByText('추정')).toBeInTheDocument()
+  expect(dialog.getByText('추정')).toBeInTheDocument()
 
   await user.click(screen.getByRole('button', { name: '닫기' }))
 
@@ -198,10 +199,11 @@ test('근거 보기를 누르면 원천 위치와 연결 근거를 팝업으로 
 
 test('관리자가 직접 만든 연결은 만든 방법을 보여준다', async () => {
   await openEvidenceDialog(/프레스 작업/)
+  const dialog = within(screen.getByRole('dialog'))
 
-  expect(await screen.findByText('대체 가능 설비')).toBeInTheDocument()
-  expect(screen.getAllByText('나가는 연결')).toHaveLength(3)
-  expect(screen.getByText('관리자가 직접 연결')).toBeInTheDocument()
+  expect(await dialog.findByText('대체 가능 설비')).toBeInTheDocument()
+  expect(dialog.getAllByText('나가는 연결')).toHaveLength(3)
+  expect(dialog.getByText('관리자가 직접 연결')).toBeInTheDocument()
 })
 
 test('연결이 없으면 안내 문구를 보여준다', async () => {
@@ -237,11 +239,12 @@ test('연결 조회가 실패해도 원천 위치는 보여준다', async () => 
     ),
   )
   await openEvidenceDialog(/프레스 3호기/)
+  const dialog = within(screen.getByRole('dialog'))
 
   expect(
-    await screen.findByText('요청을 실행할 권한이 없습니다.'),
+    await dialog.findByText('요청을 실행할 권한이 없습니다.'),
   ).toBeInTheDocument()
-  expect(screen.getByText('mes.equipment')).toBeInTheDocument()
+  expect(dialog.getByText('mes.equipment')).toBeInTheDocument()
 })
 
 test('Esc 키를 누르면 근거 팝업이 닫힌다', async () => {
@@ -261,4 +264,44 @@ test('팝업 바깥을 누르면 닫히고 안쪽을 누르면 닫히지 않는�
 
   await user.click(dialog.parentElement!)
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('관계도에서 연결된 객체 카드를 누르면 그 객체로 이동한다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+
+  expect(
+    screen.getByText('객체를 선택하면 연결 관계를 표시합니다.'),
+  ).toBeInTheDocument()
+
+  await user.click(await screen.findByRole('button', { name: /프레스 3호기/ }))
+  const graph = within(screen.getByRole('region', { name: '관계도' }))
+
+  expect(await graph.findByText('연결된 정보 · 2건')).toBeInTheDocument()
+
+  await user.click(graph.getByRole('button', { name: /프레스 작업/ }))
+
+  expect(
+    await screen.findByRole('heading', { name: '프레스 작업' }),
+  ).toBeInTheDocument()
+  expect(await graph.findByText('연결된 정보 · 3건')).toBeInTheDocument()
+})
+
+test('연결이 없으면 관계도에 안내를 보여준다', async () => {
+  server.use(
+    http.get('/api/v1/objects/:id/links', () =>
+      HttpResponse.json({
+        data: [],
+        meta: { page: 0, size: 20, totalElements: 0, hasNext: false },
+      }),
+    ),
+  )
+  const user = userEvent.setup()
+  renderExplorerPage()
+
+  await user.click(await screen.findByRole('button', { name: /프레스 3호기/ }))
+
+  expect(
+    await screen.findByText('이 객체에는 연결된 관계가 없습니다.'),
+  ).toBeInTheDocument()
 })
