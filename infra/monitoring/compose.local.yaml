@@ -1,0 +1,25 @@
+# 노트북 검증 시 compose.yaml 뒤에 추가한다. 서버에서는 사용하지 않는다.
+# !override는 Docker Compose 2.24.4 이상에서 지원한다.
+services:
+  alloy:
+    environment:
+      HOST_ROOTFS_PATH: /
+      HOST_PROCFS_PATH: /proc
+      HOST_SYSFS_PATH: /sys
+      HOST_UDEV_DATA_PATH: /host/udev
+      HOST_METRICS_INSTANCE: docker-desktop
+    # Windows 드라이브를 서버 루트로 연결하지 않고 Linux 컨테이너 환경에서 수집 경로를 검증한다.
+    # 서버 전체 디스크 용량의 정확성은 Linux 서버 반영 후 별도로 확인한다.
+    volumes: !override
+      - ./monitoring/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+      # Docker Desktop에서는 udev 추가 장치 정보를 사용하지 않는다.
+      - type: tmpfs
+        target: /host/udev
+        read_only: true
+        tmpfs:
+          size: 1048576
+
+networks:
+  axcore-net:
+    name: axcore-monitoring-check-net
