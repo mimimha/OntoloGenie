@@ -1,6 +1,7 @@
 import { delay, http, HttpResponse } from 'msw'
 import type { Execution } from '../features/audit/types'
 import type { ObjectInstance, ObjectLink } from '../features/explorer/types'
+import type { ModelGraph } from '../features/ontology/types'
 
 const objects: ObjectInstance[] = [
   {
@@ -376,7 +377,84 @@ function filterExecutions(items: Execution[], searchParams: URLSearchParams) {
     .filter((item) => !to || new Date(item.requestedAt) < new Date(to))
 }
 
+// 042 객체 유형 관계도 응답 (노드는 객체 유형, 선은 관계 유형)
+// 관계 유형 번호·이름과 연결 수는 078 목의 연결(objectLinks)과 맞춘다.
+const modelGraph: ModelGraph = {
+  nodes: [
+    { id: 3, code: 'EQUIPMENT', name: '설비' },
+    { id: 4, code: 'WORK_ORDER', name: '작업지시' },
+    { id: 5, code: 'SALES_ORDER', name: '수주' },
+    { id: 6, code: 'HANDOVER_NOTE', name: '메모' },
+    { id: 7, code: 'MAINTENANCE_LOG', name: '정비 로그' },
+    { id: 8, code: 'INSPECTION_REQUEST', name: '점검 요청' },
+  ],
+  edges: [
+    {
+      id: 2,
+      code: 'ASSIGNED_EQUIPMENT',
+      name: '현재 배정 설비',
+      sourceTypeId: 4,
+      targetTypeId: 3,
+      cardinality: 'MANY_TO_ONE',
+      relationCount: 2,
+      activeLinkCount: 1,
+    },
+    {
+      id: 3,
+      code: 'PRODUCTION_ORDER',
+      name: '생산 대상 수주',
+      sourceTypeId: 4,
+      targetTypeId: 5,
+      cardinality: 'MANY_TO_ONE',
+      relationCount: 1,
+      activeLinkCount: 1,
+    },
+    {
+      id: 7,
+      code: 'MENTIONED_EQUIPMENT',
+      name: '언급된 설비',
+      sourceTypeId: 6,
+      targetTypeId: 3,
+      cardinality: 'MANY_TO_MANY',
+      relationCount: 1,
+      activeLinkCount: 1,
+    },
+    {
+      id: 8,
+      code: 'ALTERNATIVE_EQUIPMENT',
+      name: '대체 가능 설비',
+      sourceTypeId: 4,
+      targetTypeId: 3,
+      cardinality: 'MANY_TO_MANY',
+      relationCount: 1,
+      activeLinkCount: 1,
+    },
+    {
+      id: 9,
+      code: 'MAINTAINED_EQUIPMENT',
+      name: '정비 대상 설비',
+      sourceTypeId: 7,
+      targetTypeId: 3,
+      cardinality: 'MANY_TO_ONE',
+      relationCount: 0,
+      activeLinkCount: 0,
+    },
+  ],
+}
+
 export const handlers = [
+  // 042 객체 유형 관계도
+  http.get('/api/v1/ontology/model-graph', async () => {
+    await delay()
+    // objectCount는 백엔드에 추가를 요청할 값이라, 목에서는 목 객체 수로 채운다.
+    const nodes = modelGraph.nodes.map((node) => ({
+      ...node,
+      objectCount: objects.filter((item) => item.objectTypeId === node.id)
+        .length,
+    }))
+    return HttpResponse.json({ data: { ...modelGraph, nodes } })
+  }),
+
   // 076 권한 범위 객체 검색
   http.get('/api/v1/objects', async ({ request }) => {
     await delay()

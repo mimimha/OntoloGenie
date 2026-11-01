@@ -34,7 +34,9 @@ test('객체 목록 API로 받은 객체를 보여준다', async () => {
     ),
   ).toHaveLength(2)
   expect(
-    screen.getByText('왼쪽 목록에서 객체를 선택해 주세요.'),
+    await screen.findByText(
+      '가운데에서 객체 유형을 고르거나 왼쪽 목록에서 객체를 선택해 주세요.',
+    ),
   ).toBeInTheDocument()
 })
 
@@ -313,13 +315,118 @@ test('팝업 바깥을 누르면 닫히고 안쪽을 누르면 닫히지 않는�
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
-test('관계도에서 연결된 객체 카드를 누르면 그 객체로 이동한다', async () => {
+test('객체를 고르기 전에는 객체 유형 관계도를 보여준다', async () => {
+  renderExplorerPage()
+
+  const graph = within(screen.getByRole('region', { name: '관계도' }))
+  expect(
+    await graph.findByRole('heading', { name: '객체 유형 간 관계' }),
+  ).toBeInTheDocument()
+  expect(graph.getByRole('button', { name: /작업지시/ })).toBeInTheDocument()
+  expect(graph.getByText('생산 대상 수주 · 1건')).toBeInTheDocument()
+  expect(graph.getByText('객체 유형 6개 · 관계 유형 5개')).toBeInTheDocument()
+})
+
+test('같은 두 유형 사이의 관계는 선 하나에 이름을 모아 보여준다', async () => {
+  renderExplorerPage()
+
+  const graph = within(screen.getByRole('region', { name: '관계도' }))
+  const assigned = await graph.findByText('현재 배정 설비 · 1건')
+  const alternative = graph.getByText('대체 가능 설비 · 1건')
+
+  expect(assigned.parentElement).toBe(alternative.parentElement)
+})
+
+test('유형 카드를 누르면 그 유형의 객체 목록과 관계를 보여준다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+  await screen.findByText('6건')
+
+  const graph = within(screen.getByRole('region', { name: '관계도' }))
+  await user.click(await graph.findByRole('button', { name: /설비/ }))
+
+  expect(await screen.findByText('2건')).toBeInTheDocument()
+  expect(screen.getByLabelText('객체 유형')).toHaveValue('3')
+  expect(graph.getByRole('button', { name: /설비/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(screen.getByRole('heading', { name: '설비' })).toBeInTheDocument()
+  expect(screen.getByText('들어오는 관계 4건')).toBeInTheDocument()
+  expect(screen.getByText('작업지시 → 설비 · N:1')).toBeInTheDocument()
+  expect(screen.getByText('활성 연결 1건 · 전체 2건')).toBeInTheDocument()
+})
+
+test('검색어가 있을 때 유형 카드를 누르면 검색어는 두고 유형만 바꾼다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+  await screen.findByText('6건')
+
+  await user.type(screen.getByLabelText('ID · 이름 검색'), '프레스')
+  await user.click(screen.getByRole('button', { name: '검색' }))
+  expect(await screen.findByText('3건')).toBeInTheDocument()
+
+  const graph = within(screen.getByRole('region', { name: '관계도' }))
+  await user.click(graph.getByRole('button', { name: /설비/ }))
+
+  expect(await screen.findByText('2건')).toBeInTheDocument()
+  expect(screen.getByLabelText('ID · 이름 검색')).toHaveValue('프레스')
+  expect(screen.getByLabelText('객체 유형')).toHaveValue('3')
+})
+
+test('객체가 없는 유형은 건수를 보여주고 누를 수 없다', async () => {
+  renderExplorerPage()
+
+  const graph = within(screen.getByRole('region', { name: '관계도' }))
+  const emptyType = await graph.findByRole('button', { name: /점검 요청/ })
+
+  expect(emptyType).toBeDisabled()
+  expect(emptyType).toHaveTextContent('객체 0개')
+})
+
+test('객체를 고른 뒤 전체 구조로를 누르면 유형 관계도로 돌아간다', async () => {
   const user = userEvent.setup()
   renderExplorerPage()
 
+  await user.click(await screen.findByRole('button', { name: /프레스 3호기/ }))
+  await user.click(screen.getByRole('button', { name: '← 전체 구조로' }))
+
   expect(
-    screen.getByText('객체를 선택하면 연결 관계를 표시합니다.'),
+    await screen.findByRole('heading', { name: '객체 유형 간 관계' }),
   ).toBeInTheDocument()
+  expect(
+    screen.getByText(
+      '가운데에서 객체 유형을 고르거나 왼쪽 목록에서 객체를 선택해 주세요.',
+    ),
+  ).toBeInTheDocument()
+})
+
+test('유형 관계도를 볼 권한이 없으면 객체 선택 안내만 보여준다', async () => {
+  server.use(
+    http.get('/api/v1/ontology/model-graph', () =>
+      HttpResponse.json(
+        {
+          error: {
+            code: 'FORBIDDEN',
+            message: '요청을 실행할 권한이 없습니다.',
+            details: {},
+            requestId: 'mock-request-id',
+          },
+        },
+        { status: 403 },
+      ),
+    ),
+  )
+  renderExplorerPage()
+
+  expect(
+    await screen.findByText('객체를 선택하면 연결 관계를 표시합니다.'),
+  ).toBeInTheDocument()
+})
+
+test('관계도에서 연결된 객체 카드를 누르면 그 객체로 이동한다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
 
   await user.click(await screen.findByRole('button', { name: /프레스 3호기/ }))
   const graph = within(screen.getByRole('region', { name: '관계도' }))

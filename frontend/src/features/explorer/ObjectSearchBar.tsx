@@ -7,6 +7,7 @@ export type ObjectTypeOption = {
 }
 
 type ObjectSearchBarProps = {
+  filters: ObjectFilters
   objectTypes: ObjectTypeOption[]
   onSearch: (filters: ObjectFilters) => void
 }
@@ -15,9 +16,15 @@ const labelClass = 'mb-1.5 block text-xs font-semibold text-slate-700'
 const fieldClass =
   'w-full min-w-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-400'
 
-function ObjectSearchBar({ objectTypes, onSearch }: ObjectSearchBarProps) {
-  const [typeId, setTypeId] = useState('')
-  const [keyword, setKeyword] = useState('')
+function ObjectSearchBar({
+  filters,
+  objectTypes,
+  onSearch,
+}: ObjectSearchBarProps) {
+  const [typeId, setTypeId] = useState(
+    filters.objectTypeId ? String(filters.objectTypeId) : '',
+  )
+  const [keyword, setKeyword] = useState(filters.q ?? '')
 
   function handleReset() {
     setTypeId('')
