@@ -1,4 +1,5 @@
 import { delay, http, HttpResponse } from 'msw'
+import type { Execution } from '../features/audit/types'
 import type { ObjectInstance, ObjectLink } from '../features/explorer/types'
 
 const objects: ObjectInstance[] = [
@@ -236,6 +237,116 @@ function objectSummary(id: number) {
   }
 }
 
+// 가짜 로그인 사용자의 계정 번호 (104 내 실행 이력에서 사용)
+const MY_ACCOUNT_ID = 7
+
+// 080·104 응답의 실행 이력 (최근 실행이 앞에 오도록 적어 둔다)
+const executions: Execution[] = [
+  {
+    id: 9003,
+    requestId: '44444444-4444-4444-8444-444444444444',
+    eventKind: 'SYNC_RUN',
+    actionDefinitionId: null,
+    actorType: 'USER',
+    actorId: 7,
+    actorRoleCode: 'PLANNER',
+    checkedPermissionCode: 'SYNC_REQUEST',
+    entryPoint: 'WEB',
+    targetType: 'sync_run',
+    targetId: 77,
+    input: { sourceName: 'MES' },
+    status: 'SUCCEEDED',
+    blockedReason: null,
+    result: { collected: 120 },
+    requestedAt: '2026-10-28T08:00:00+09:00',
+    finishedAt: '2026-10-28T08:03:00+09:00',
+    entityChanges: [],
+  },
+  {
+    id: 9002,
+    requestId: '11111111-1111-4111-8111-111111111111',
+    eventKind: 'ACTION',
+    actionDefinitionId: 3,
+    actorType: 'USER',
+    actorId: 7,
+    actorRoleCode: 'PLANNER',
+    checkedPermissionCode: 'ACTION_EXECUTE',
+    entryPoint: 'WEB',
+    targetType: 'object_instance',
+    targetId: 301,
+    input: { workOrderNo: 'WO-101', toEquipment: 'PR-01' },
+    status: 'SUCCEEDED',
+    blockedReason: null,
+    result: { planId: 501, message: '재배정 계획을 만들었습니다.' },
+    requestedAt: '2026-10-27T09:10:00+09:00',
+    finishedAt: '2026-10-27T09:10:02+09:00',
+    entityChanges: [
+      {
+        tableName: 'reassignment_plan',
+        rowKey: { id: 501 },
+        changeKind: 'INSERT',
+        beforeData: null,
+        afterData: {
+          status: 'DRAFT',
+          fromEquipment: 'PR-03',
+          toEquipment: 'PR-01',
+        },
+      },
+    ],
+  },
+  {
+    id: 9001,
+    requestId: '22222222-2222-4222-8222-222222222222',
+    eventKind: 'ACTION',
+    actionDefinitionId: 3,
+    actorType: 'USER',
+    actorId: 7,
+    actorRoleCode: 'PLANNER',
+    checkedPermissionCode: 'ACTION_EXECUTE',
+    entryPoint: 'WEB',
+    targetType: 'object_instance',
+    targetId: 301,
+    input: { workOrderNo: 'WO-101', toEquipment: 'PR-02' },
+    status: 'BLOCKED',
+    blockedReason: '대체 설비 PR-02는 프레스 공정을 처리할 수 없습니다.',
+    result: {},
+    requestedAt: '2026-10-26T18:00:00+09:00',
+    finishedAt: '2026-10-26T18:00:01+09:00',
+    entityChanges: [],
+  },
+  {
+    id: 9000,
+    requestId: '33333333-3333-4333-8333-333333333333',
+    eventKind: 'ACTION',
+    actionDefinitionId: 5,
+    actorType: 'AGENT',
+    actorId: 7,
+    actorRoleCode: 'PLANNER',
+    checkedPermissionCode: 'ACTION_EXECUTE',
+    entryPoint: 'AGENT',
+    targetType: 'object_instance',
+    targetId: 301,
+    input: { equipmentCode: 'PR-03', reason: '진동 증가' },
+    status: 'FAILED',
+    blockedReason: null,
+    result: { error: '정비 시스템 응답 시간이 초과되었습니다.' },
+    requestedAt: '2026-10-25T14:00:00+09:00',
+    finishedAt: '2026-10-25T14:00:30+09:00',
+    entityChanges: [],
+  },
+]
+
+// 080·104가 같이 쓰는 조회 조건(status, from, to)으로 실행 이력을 거른다.
+function filterExecutions(items: Execution[], searchParams: URLSearchParams) {
+  const status = searchParams.get('status')
+  const from = searchParams.get('from')
+  const to = searchParams.get('to')
+  return items
+    .filter((item) => !status || item.status === status)
+    .filter((item) => !from || new Date(item.requestedAt) >= new Date(from))
+    .filter((item) => !to || new Date(item.requestedAt) < new Date(to))
+}
+
 export const handlers = [
   // 076 권한 범위 객체 검색
   http.get('/api/v1/objects', async ({ request }) => {
@@ -299,6 +410,50 @@ export const handlers = [
           link.sourceObjectId === id ? link.targetObjectId : link.sourceObjectId
         return { ...link, relatedObject: objectSummary(relatedId) }
       })
+    return HttpResponse.json({
+      data: matched,
+      meta: {
+        page: 0,
+        size: 20,
+        totalElements: matched.length,
+        hasNext: false,
+      },
+    })
+  }),
+
+  // 080 객체 관련 실행 이력 조회
+  http.get('/api/v1/objects/:id/executions', async ({ params, request }) => {
+    await delay()
+    const objectExecutions = executions.filter(
+      (item) =>
+        item.targetType === 'object_instance' &&
+        item.targetId === Number(params.id),
+    )
+    const matched = filterExecutions(
+      objectExecutions,
+      new URL(request.url).searchParams,
+    )
+    return HttpResponse.json({
+      data: matched,
+      meta: {
+        page: 0,
+        size: 20,
+        totalElements: matched.length,
+        hasNext: false,
+      },
+    })
+  }),
+
+  // 104 내 실행 이력
+  http.get('/api/v1/me/executions', async ({ request }) => {
+    await delay()
+    const myExecutions = executions.filter(
+      (item) => item.actorId === MY_ACCOUNT_ID && item.actorType !== 'SYSTEM',
+    )
+    const matched = filterExecutions(
+      myExecutions,
+      new URL(request.url).searchParams,
+    )
     return HttpResponse.json({
       data: matched,
       meta: {
