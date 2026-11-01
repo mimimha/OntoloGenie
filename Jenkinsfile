@@ -16,8 +16,8 @@ pipeline {
     parameters {
         // gitlabSourceBranch·gitlabTargetBranch를 파라미터로 선언하지 않는다 (2026-10-30 제거).
         // 선언하면 기본값 'develop'이 GitLab 플러그인이 넣어 주는 환경변수를 덮어써서 MR 검사가 develop을 받았다.
-        // backend가 안 바뀐 머지여도 강제로 배포하고 싶을 때 (수동 실행 전용)
-        booleanParam(name: 'FORCE_DEPLOY', defaultValue: false, description: 'backend 변경이 없어도 배포')
+        // 변경이 없어도 세 서비스를 모두 강제로 배포하고 싶을 때 (수동 실행 전용)
+        booleanParam(name: 'FORCE_DEPLOY', defaultValue: false, description: '변경이 없어도 backend · AI · frontend 모두 배포')
     }
 
     environment {
@@ -177,7 +177,8 @@ pipeline {
                     }
                     env.DEPLOY_BACKEND = (detect('BACKEND_TAG', 'backend') || params.FORCE_DEPLOY) ? 'true' : 'false'
                     env.DEPLOY_FRONTEND = (detect('FRONTEND_TAG', 'frontend') || params.FORCE_DEPLOY) ? 'true' : 'false'
-                    echo "FORCE_DEPLOY: ${params.FORCE_DEPLOY} → backend 배포: ${env.DEPLOY_BACKEND}, frontend 배포: ${env.DEPLOY_FRONTEND}"
+                    env.DEPLOY_AI = (detect('AI_TAG', 'ai') || params.FORCE_DEPLOY) ? 'true' : 'false'
+                    echo "FORCE_DEPLOY: ${params.FORCE_DEPLOY} → backend 배포: ${env.DEPLOY_BACKEND}, frontend 배포: ${env.DEPLOY_FRONTEND}, ai 배포: ${env.DEPLOY_AI}"
                 }
             }
         }
@@ -209,6 +210,23 @@ pipeline {
             }
         }
 
+        stage('Build AI image') {
+            when { expression { env.DEPLOY_AI == 'true' } }
+            steps {
+                // backend 배포 뒤 AI 이미지를 빌드한다. 태그 = 커밋 번호.
+                sh 'docker build -t axcore-ai:${GIT_SHA} ai'
+            }
+        }
+
+        stage('Deploy AI') {
+            when { expression { env.DEPLOY_AI == 'true' } }
+            steps {
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    script { deployService('ai', 'AI_TAG') }
+                }
+            }
+        }
+
         stage('Build frontend image') {
             when { expression { env.DEPLOY_FRONTEND == 'true' } }
             steps {
@@ -232,7 +250,7 @@ pipeline {
                 // 서비스 이미지는 최근 3개 태그만 남긴다 (지금 것 + 롤백용 2개). 쓰는 중인 이미지는 지워지지 않는다.
                 // 빌드 캐시는 3일 지난 것만 지운다.
                 sh '''
-                    for img in axcore-backend axcore-frontend; do
+                    for img in axcore-backend axcore-ai axcore-frontend; do
                         docker images $img --format '{{.Tag}} {{.CreatedAt}}' | sort -k2 -r | awk 'NR>3 {print $1}' \
                             | xargs -r -I{} docker rmi $img:{} || true
                     done
@@ -289,7 +307,7 @@ def notifyMattermost(String result) {
         : 'develop 머지 반영'
     // 배포가 있었으면 서비스마다 어떤 버전으로 바뀌었는지(또는 롤백됐는지) 한 줄씩 붙인다. 값은 deployService가 env에 남긴다.
     def deploy = ''
-    for (p in [['backend', 'BACKEND'], ['frontend', 'FRONTEND']]) {
+    for (p in [['backend', 'BACKEND'], ['ai', 'AI'], ['frontend', 'FRONTEND']]) {
         def svc = p[0]
         def key = p[1]
         if (env."DEPLOY_${key}" != 'true') {
@@ -313,8 +331,8 @@ def notifyMattermost(String result) {
 }
 
 // 서비스 하나를 새 태그(GIT_SHA)로 띄우고 healthy를 기다린다. 실패하면 직전 태그로 되돌리고 예외를 던진다.
-// svc = compose 서비스 이름(= 컨테이너 이름), tagVar = .env의 태그 변수 이름 (BACKEND_TAG / FRONTEND_TAG).
-// 결과는 env.<KEY>_PREV_TAG · env.<KEY>_ROLLED_BACK 에 남겨 DM 문구에서 쓴다 (KEY = BACKEND / FRONTEND).
+// svc = compose 서비스 이름(= 컨테이너 이름), tagVar = .env의 태그 변수 이름 (BACKEND_TAG / AI_TAG / FRONTEND_TAG).
+// 결과는 env.<KEY>_PREV_TAG · env.<KEY>_ROLLED_BACK 에 남겨 DM 문구에서 쓴다 (KEY = BACKEND / AI / FRONTEND).
 // 손으로 하던 절차와 같다: .env 태그 갱신 → docker compose up -d <svc> → docker compose ps (healthy).
 def deployService(String svc, String tagVar) {
     def key = tagVar.replace('_TAG', '')

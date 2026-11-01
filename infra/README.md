@@ -136,19 +136,22 @@ frontend · ai 컨테이너에는 docker.sock을 붙이지 않는다. 작업 폴
 
 `Jenkinsfile`의 배포 단계는 Job `axcore-deploy`에서만 켜진다 (MR 검증 Job은 배포하지 않는다).
 
-배포 대상은 backend와 frontend 두 서비스다 (2026-11-01 frontend 추가). 서비스마다 같은 절차를 `deployService` 함수가 돌린다.
+배포 대상은 backend · AI · frontend 세 서비스다. 변경된 서비스를 backend → AI → frontend 순서로 처리하며, 서비스마다 같은 절차를 `deployService` 함수가 돌린다.
 
 1. develop 머지 → GitLab Webhook → `axcore-deploy` 실행. 배포 Job은 GitLab이 어떤 변수를 보내든 항상 `origin/develop`만 받는다
-2. 서비스마다 서버 `.env`의 태그(`BACKEND_TAG` · `FRONTEND_TAG` = 지금 배포된 커밋)와 develop 사이에 그 폴더(`backend/` · `frontend/`) 변경이 있는지 확인. 변경 없으면 그 서비스는 건너뜀 (`FORCE_DEPLOY` 파라미터면 전부 배포). 직전 커밋과 비교하지 않는 이유: 머지가 연달아 쌓이면 앞 머지의 변경을 놓친다
+2. 서비스마다 서버 `.env`의 태그(`BACKEND_TAG` · `AI_TAG` · `FRONTEND_TAG` = 지금 배포된 커밋)와 develop 사이에 해당 폴더(`backend/` · `ai/` · `frontend/`) 변경이 있는지 확인. 변경 없으면 그 서비스는 건너뜀 (`FORCE_DEPLOY` 파라미터면 세 서비스 모두 배포). 직전 커밋과 비교하지 않는 이유: 머지가 연달아 쌓이면 앞 머지의 변경을 놓친다
 3. backend: `docker build -t axcore-backend:<커밋 SHA> backend` → `scripts/pg-backup.sh` 1회(마이그레이션 대비) → `.env`의 `BACKEND_TAG` 갱신 + `docker compose up -d backend` → 최대 90초 `(healthy)` 대기 → 실패하면 **직전 태그로 자동 롤백**
-4. frontend: `docker build -t axcore-frontend:<커밋 SHA> frontend` → `.env`의 `FRONTEND_TAG` 갱신 + `docker compose up -d frontend` → 90초 `(healthy)` 대기 → 실패하면 롤백. (DB 백업은 없음)
-5. 한 서비스가 실패해도 다음 서비스 배포는 계속한다(`catchError`). 빌드는 실패로 표시되고 어느 서비스가 실패했는지는 단계 화면과 DM에 나온다
-6. backend · frontend 이미지는 각각 최근 3개 태그만 보관, 3일 지난 빌드 캐시 삭제
-7. 결과는 GitLab 커밋 상태 + Mattermost DM(머지한 사람). 서비스마다 `backend 배포 <이전> → <새 SHA>` / `frontend 배포 실패 → <이전> 로 롤백됨` 한 줄씩, 둘 다 안 바뀌면 `배포: 변경 없음`
+4. AI: `docker build -t axcore-ai:<커밋 SHA> ai` → `.env`의 `AI_TAG` 갱신 + `docker compose up -d ai` → 최대 90초 `(healthy)` 대기 → 실패하면 롤백. DB 백업은 없음. compose의 backend healthy 기동 의존성을 적용하며, AI `/health` 응답은 실제 LLM 호출·분석 연동 성공을 의미하지 않는다
+5. frontend: `docker build -t axcore-frontend:<커밋 SHA> frontend` → `.env`의 `FRONTEND_TAG` 갱신 + `docker compose up -d frontend` → 90초 `(healthy)` 대기 → 실패하면 롤백. DB 백업은 없음
+6. 서비스의 **배포 단계** 실패는 `catchError`로 처리해 이후 서비스 단계를 계속한다. 빌드는 실패로 표시된다. 이미지 빌드·DB 백업 단계는 이 처리 밖에 있어 실패하면 이후 단계가 중단될 수 있다. backend 배포 실패 후에도 AI 단계는 진행될 수 있으며, 실제 기동에는 compose의 backend healthy 조건이 필요하다
+7. backend · AI · frontend 이미지는 각각 최근 3개 태그만 보관, 3일 지난 빌드 캐시 삭제
+8. 결과는 GitLab 커밋 상태 + Mattermost DM(머지한 사람). 서비스마다 `ai 배포 <이전> → <새 SHA>` / `ai 배포 실패 → <이전> 로 롤백됨` 등의 결과를 표시하며, 세 서비스 모두 변경이 없으면 `배포: 변경 없음`. 배포 대상 목록을 기준으로 메시지를 만들기 때문에 빌드 실패 등으로 배포 단계에 도달하지 못한 경우에는 Jenkins 단계 로그도 함께 확인한다
+
+롤백은 직전 태그가 있을 때 해당 태그로 `up -d`를 실행한다. 첫 배포처럼 직전 태그가 없으면 되돌릴 대상이 없으며, 롤백 후 healthy를 다시 기다리는 검증은 현재 함수에 없다. 실패 시 컨테이너 상태와 실제 응답을 별도로 확인한다.
 
 Jenkins 컨테이너는 가게 폴더를 같은 경로(`/home/ubuntu/axcore`)로 마운트한다. compose의 상대 경로(`./nginx/...`)가 호스트 기준으로 풀리므로 경로가 같아야 한다.
 
-**손으로 롤백할 때** (자동 롤백이 안 됐거나, 배포 뒤 문제가 늦게 발견된 경우). frontend는 `backend`를 `frontend`로, `BACKEND_TAG`를 `FRONTEND_TAG`로 바꿔 같은 절차:
+**손으로 롤백할 때** (자동 롤백이 안 됐거나, 배포 뒤 문제가 늦게 발견된 경우). frontend는 `backend`를 `frontend`로, `BACKEND_TAG`를 `FRONTEND_TAG`로 바꾼다. AI는 각각 `ai` · `AI_TAG`로 바꿔 같은 절차를 사용한다:
 
 ```bash
 cd ~/axcore
