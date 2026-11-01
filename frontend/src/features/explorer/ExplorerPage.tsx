@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { fetchObjects } from './api'
 import ObjectCard from './ObjectCard'
 import ObjectDetail from './ObjectDetail'
+import ObjectGraph from './ObjectGraph'
 
 function ExplorerPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -44,7 +45,7 @@ function ExplorerPage() {
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-[20rem_1fr]">
+    <div className="grid gap-6 xl:grid-cols-[minmax(200px,0.7fr)_minmax(480px,1.5fr)_minmax(280px,1fr)]">
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline gap-2">
           <h1 className="text-xl font-semibold text-slate-900">객체 목록</h1>
@@ -78,6 +79,13 @@ function ExplorerPage() {
           </button>
         </form>
         {listContent}
+      </section>
+
+      <section
+        aria-label="관계도"
+        className="rounded-xl border border-slate-200 bg-white p-4"
+      >
+        <ObjectGraph objectId={selectedId} onSelect={setSelectedId} />
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6">
