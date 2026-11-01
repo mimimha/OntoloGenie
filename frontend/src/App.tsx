@@ -5,6 +5,7 @@ import PagePlaceholder from './components/PagePlaceholder'
 import AgentPage from './features/agent/AgentPage'
 import AuditPage from './features/audit/AuditPage'
 import ExplorerPage from './features/explorer/ExplorerPage'
+import HistoryPage from './features/history/HistoryPage'
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <Route path="/explorer" element={<ExplorerPage />} />
           <Route path="/agent" element={<AgentPage />} />
           <Route path="/audit" element={<AuditPage />} />
+          <Route path="/admin/history" element={<HistoryPage />} />
           <Route
             path="/admin/sources"
             element={<PagePlaceholder title="데이터 연결" />}
