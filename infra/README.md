@@ -6,7 +6,8 @@
 
 | 파일 | 역할 |
 | --- | --- |
-| `compose.yaml` | nginx · Jenkins · PostgreSQL 18 · backend · AI · frontend 및 도구 프로필 certbot 정의 (이미지 버전 고정, 내부망 `axcore-net`) |
+| `compose.yaml` | nginx · Jenkins · PostgreSQL 18 · backend · AI · frontend · Prometheus · Alloy 및 도구 프로필 certbot 정의 (이미지 버전 고정, 내부망 `axcore-net`) |
+| `monitoring/` | Prometheus·Alloy 설정, Linux 서버 전용 컨테이너 지표 수집과 노트북 검증 설정. 상세는 `monitoring/README.md` |
 | `.env.example` | `compose.yaml`이 읽는 환경 변수 이름 목록 (실제 값은 서버의 `.env`에만) |
 | `nginx/conf.d/default.conf` | HTTP → HTTPS 리다이렉트, TLS 설정, `/jenkins/` 리버스 프록시, `/api/` → backend, `/` → frontend, Swagger Basic Auth |
 | `jenkins/Dockerfile` | Jenkins 공식 이미지 + docker CLI · compose 플러그인 |
