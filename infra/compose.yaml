@@ -120,6 +120,36 @@ services:
       timeout: 5s
       retries: 3
 
+  # 내부 AI 서비스. 이미지 태그는 서버 .env의 AI_TAG로 관리한다.
+  ai:
+    image: axcore-ai:${AI_TAG}
+    container_name: ai
+    restart: unless-stopped
+    # 시작값이며 배포 후 실측해 조정한다.
+    mem_limit: 1g
+    environment:
+      AI_ONTOLOGY_BACKEND_URL: http://backend:8080
+      AI_ONTOLOGY_LLM_PROVIDER: ${AI_ONTOLOGY_LLM_PROVIDER:-gms}
+      AI_ONTOLOGY_LLM_API_KEY: ${AI_ONTOLOGY_LLM_API_KEY:-}
+      AI_ONTOLOGY_LLM_BASE_URL: ${AI_ONTOLOGY_LLM_BASE_URL:-}
+      AI_ONTOLOGY_LLM_MODEL: ${AI_ONTOLOGY_LLM_MODEL:-}
+      AI_ONTOLOGY_LLM_TIMEOUT_SEC: ${AI_ONTOLOGY_LLM_TIMEOUT_SEC:-60}
+      AI_ONTOLOGY_INTERNAL_TOKEN: ${AI_ONTOLOGY_INTERNAL_TOKEN:-}
+      TZ: Asia/Seoul
+    ports:
+      - "127.0.0.1:18000:8000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - axcore-net
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 networks:
   axcore-net:
     name: axcore-net
