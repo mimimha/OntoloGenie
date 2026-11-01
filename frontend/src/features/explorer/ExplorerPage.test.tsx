@@ -243,3 +243,22 @@ test('연결 조회가 실패해도 원천 위치는 보여준다', async () => 
   ).toBeInTheDocument()
   expect(screen.getByText('mes.equipment')).toBeInTheDocument()
 })
+
+test('Esc 키를 누르면 근거 팝업이 닫힌다', async () => {
+  const user = await openEvidenceDialog(/프레스 3호기/)
+
+  await user.keyboard('{Escape}')
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('팝업 바깥을 누르면 닫히고 안쪽을 누르면 닫히지 않는다', async () => {
+  const user = await openEvidenceDialog(/프레스 3호기/)
+  const dialog = screen.getByRole('dialog')
+
+  await user.click(screen.getByText('원천 위치'))
+  expect(dialog).toBeInTheDocument()
+
+  await user.click(dialog.parentElement!)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})

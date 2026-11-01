@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { formatSourceKey } from './format'
 import ObjectLinks from './ObjectLinks'
 import type { ObjectInstanceDetail } from './types'
@@ -8,8 +9,25 @@ type EvidenceDialogProps = {
 }
 
 function EvidenceDialog({ object, onClose }: EvidenceDialogProps) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
   return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center bg-slate-900/40 p-4">
+    <div
+      className="fixed inset-0 z-10 flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose()
+        }
+      }}
+    >
       <div
         role="dialog"
         aria-modal="true"
