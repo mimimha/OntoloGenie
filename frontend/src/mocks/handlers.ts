@@ -11,7 +11,10 @@ const objects: ObjectInstance[] = [
       equipment_code: 'PR-03',
       process: '프레스',
       status: '정지',
+      maintenance_note: null,
+      purchase_price: null,
     },
+    restrictedPropertyCodes: ['purchase_price'],
     status: 'ACTIVE',
     sourceMappingId: 21,
     sourceKey: { equipment_code: 'PR-03' },
@@ -28,7 +31,10 @@ const objects: ObjectInstance[] = [
       equipment_code: 'PR-01',
       process: '프레스',
       status: '가동',
+      maintenance_note: null,
+      purchase_price: null,
     },
+    restrictedPropertyCodes: ['purchase_price'],
     status: 'ACTIVE',
     sourceMappingId: 21,
     sourceKey: { equipment_code: 'PR-01' },
@@ -48,6 +54,7 @@ const objects: ObjectInstance[] = [
       sales_order_no: 'SO-101',
       status: '미착수',
     },
+    restrictedPropertyCodes: [],
     status: 'ACTIVE',
     sourceMappingId: 22,
     sourceKey: { work_order_no: 'WO-101' },
@@ -64,6 +71,7 @@ const objects: ObjectInstance[] = [
       sales_order_no: 'SO-101',
       status: '진행 중',
     },
+    restrictedPropertyCodes: [],
     status: 'ACTIVE',
     sourceMappingId: 31,
     sourceKey: { sales_order_no: 'SO-101' },
@@ -80,6 +88,7 @@ const objects: ObjectInstance[] = [
       note_id: 'NOTE-01',
       content: '야간에 3호기 진동이 커졌다.',
     },
+    restrictedPropertyCodes: [],
     status: 'ACTIVE',
     sourceMappingId: 41,
     sourceKey: { note_id: 'NOTE-01' },
@@ -98,6 +107,7 @@ const objects: ObjectInstance[] = [
       logged_at: '2026-10-20 22:00',
       content: '진동 증가에 따른 설비 정지 및 점검',
     },
+    restrictedPropertyCodes: [],
     status: 'ACTIVE',
     sourceMappingId: 51,
     sourceKey: { log_id: 'MAINT-01' },
@@ -121,16 +131,47 @@ const sourceMappings: Record<number, SourceLocation> = {
   51: { systemName: '정비 로그', resourceKey: 'maint.maintenance_log' },
 }
 
+// 객체 유형 ID → 속성 코드별 표시 이름 (077 응답의 propertyNames를 만들 때 사용)
+const propertyNamesByType: Record<number, Record<string, string>> = {
+  3: {
+    equipment_code: '설비 코드',
+    process: '공정',
+    status: '상태',
+    maintenance_note: '정비 메모',
+    purchase_price: '구매 가격',
+  },
+  4: {
+    work_order_no: '작업지시 번호',
+    process: '공정',
+    assigned_equipment: '배정 설비',
+    sales_order_no: '수주 번호',
+    status: '상태',
+  },
+  5: { sales_order_no: '수주 번호', status: '상태' },
+  6: { note_id: '메모 번호', content: '내용' },
+  7: {
+    log_id: '로그 번호',
+    equipment_code: '설비 코드',
+    logged_at: '기록 시각',
+    content: '내용',
+  },
+}
+
 export const handlers = [
   // 076 권한 범위 객체 검색
-  http.get('/api/v1/objects', async () => {
+  http.get('/api/v1/objects', async ({ request }) => {
     await delay()
+    const q = new URL(request.url).searchParams.get('q') ?? ''
+    const matched = objects.filter((item) => {
+      const numbers = Object.values(item.sourceKey ?? {}).map(String)
+      return [item.displayName, ...numbers].some((text) => text.includes(q))
+    })
     return HttpResponse.json({
-      data: objects,
+      data: matched,
       meta: {
         page: 0,
         size: 20,
-        totalElements: objects.length,
+        totalElements: matched.length,
         hasNext: false,
       },
     })
@@ -160,6 +201,7 @@ export const handlers = [
     return HttpResponse.json({
       data: {
         ...object,
+        propertyNames: propertyNamesByType[object.objectTypeId] ?? {},
         sourceSystemName: source?.systemName ?? null,
         sourceResourceKey: source?.resourceKey ?? null,
       },

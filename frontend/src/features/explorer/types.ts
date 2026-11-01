@@ -4,9 +4,10 @@ export type ObjectStatus = 'ACTIVE' | 'DELETED_AT_SOURCE'
 export type ObjectInstance = {
   id: number
   objectTypeId: number
-  objectTypeName?: string
+  objectTypeName: string
   displayName: string
   properties: Record<string, unknown>
+  restrictedPropertyCodes: string[]
   status: ObjectStatus
   sourceMappingId?: number | null
   sourceKey?: Record<string, unknown> | null
@@ -15,8 +16,9 @@ export type ObjectInstance = {
   dataAsOf?: string | null
 }
 
-// 077 객체 상세 조회 응답: 목록 필드 + 원천 위치
+// 077 객체 상세 조회 응답: 목록 필드 + 속성 표시 이름 + 원천 위치
 export type ObjectInstanceDetail = ObjectInstance & {
+  propertyNames: Record<string, string>
   sourceSystemName?: string | null
   sourceResourceKey?: string | null
 }
