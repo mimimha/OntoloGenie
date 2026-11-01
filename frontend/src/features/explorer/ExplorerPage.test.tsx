@@ -40,9 +40,8 @@ test('객체를 고르면 상세 API로 받은 정보를 보여준다', async ()
     await screen.findByRole('heading', { name: '프레스 3호기' }),
   ).toBeInTheDocument()
   expect(screen.getByText('설비 / #301')).toBeInTheDocument()
-  expect(screen.getByText('MES · mes.equipment')).toBeInTheDocument()
+  expect(screen.getByText('MES · 원천 레코드')).toBeInTheDocument()
   expect(screen.getByText('설비 코드')).toBeInTheDocument()
-  expect(screen.getByText('equipment_code: PR-03')).toBeInTheDocument()
 })
 
 test('권한으로 가린 속성은 권한 없음, 값이 없는 속성은 -로 보여준다', async () => {
@@ -164,4 +163,102 @@ test('상세 조회 권한이 없으면 서버가 준 안내를 보여준다', a
   expect(
     await screen.findByText('요청을 실행할 권한이 없습니다.'),
   ).toBeInTheDocument()
+})
+
+async function openEvidenceDialog(objectName: RegExp) {
+  const user = userEvent.setup()
+  renderExplorerPage()
+  await user.click(await screen.findByRole('button', { name: objectName }))
+  await user.click(
+    await screen.findByRole('button', { name: '원본·연결 근거 보기 ↗' }),
+  )
+  return user
+}
+
+test('근거 보기를 누르면 원천 위치와 연결 근거를 팝업으로 보여준다', async () => {
+  const user = await openEvidenceDialog(/프레스 3호기/)
+
+  expect(
+    screen.getByRole('dialog', { name: '원본·연결 근거 · 프레스 3호기' }),
+  ).toBeInTheDocument()
+  expect(screen.getByText('mes.equipment')).toBeInTheDocument()
+  expect(screen.getByText('equipment_code: PR-03')).toBeInTheDocument()
+  expect(await screen.findByText('현재 배정 설비')).toBeInTheDocument()
+  expect(screen.getAllByText('들어오는 연결')).toHaveLength(2)
+  expect(screen.getByText('값 PR03 → PR-03')).toBeInTheDocument()
+  expect(
+    screen.getByText('원문: “야간에 3호기 진동이 커졌다.”'),
+  ).toBeInTheDocument()
+  expect(screen.getByText('추정')).toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: '닫기' }))
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('관리자가 직접 만든 연결은 만든 방법을 보여준다', async () => {
+  await openEvidenceDialog(/프레스 작업/)
+
+  expect(await screen.findByText('대체 가능 설비')).toBeInTheDocument()
+  expect(screen.getAllByText('나가는 연결')).toHaveLength(3)
+  expect(screen.getByText('관리자가 직접 연결')).toBeInTheDocument()
+})
+
+test('연결이 없으면 안내 문구를 보여준다', async () => {
+  server.use(
+    http.get('/api/v1/objects/:id/links', () =>
+      HttpResponse.json({
+        data: [],
+        meta: { page: 0, size: 20, totalElements: 0, hasNext: false },
+      }),
+    ),
+  )
+  await openEvidenceDialog(/프레스 3호기/)
+
+  expect(
+    await screen.findByText('현재 연결된 정보가 없습니다.'),
+  ).toBeInTheDocument()
+})
+
+test('연결 조회가 실패해도 원천 위치는 보여준다', async () => {
+  server.use(
+    http.get('/api/v1/objects/:id/links', () =>
+      HttpResponse.json(
+        {
+          error: {
+            code: 'FORBIDDEN',
+            message: '요청을 실행할 권한이 없습니다.',
+            details: {},
+            requestId: 'mock-request-id',
+          },
+        },
+        { status: 403 },
+      ),
+    ),
+  )
+  await openEvidenceDialog(/프레스 3호기/)
+
+  expect(
+    await screen.findByText('요청을 실행할 권한이 없습니다.'),
+  ).toBeInTheDocument()
+  expect(screen.getByText('mes.equipment')).toBeInTheDocument()
+})
+
+test('Esc 키를 누르면 근거 팝업이 닫힌다', async () => {
+  const user = await openEvidenceDialog(/프레스 3호기/)
+
+  await user.keyboard('{Escape}')
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('팝업 바깥을 누르면 닫히고 안쪽을 누르면 닫히지 않는다', async () => {
+  const user = await openEvidenceDialog(/프레스 3호기/)
+  const dialog = screen.getByRole('dialog')
+
+  await user.click(screen.getByText('원천 위치'))
+  expect(dialog).toBeInTheDocument()
+
+  await user.click(dialog.parentElement!)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })

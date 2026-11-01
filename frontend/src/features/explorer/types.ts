@@ -22,3 +22,36 @@ export type ObjectInstanceDetail = ObjectInstance & {
   sourceSystemName?: string | null
   sourceResourceKey?: string | null
 }
+
+export type LinkOrigin = 'RULE' | 'DOCUMENT' | 'MANUAL'
+
+// 078 연결 근거: RULE은 원천 키·변환 결과, DOCUMENT는 원문 구간·사건·시간 표현
+export type LinkEvidence = {
+  sourceKey?: Record<string, unknown>
+  rawValue?: unknown
+  transformedValue?: unknown
+  quote?: string
+  event?: string
+  timeExpression?: string
+}
+
+// 078 확정 관계·원천 근거 조회 응답의 연결 하나
+export type ObjectLink = {
+  id: number
+  linkTypeId: number
+  linkTypeName: string
+  sourceObjectId: number
+  targetObjectId: number
+  relatedObject: {
+    id: number
+    displayName: string
+    objectTypeId: number
+    objectTypeName: string
+  }
+  origin: LinkOrigin
+  status: 'ACTIVE'
+  linkMappingId?: number | null
+  evidence: LinkEvidence
+  expressionKind?: 'OBSERVED' | 'ESTIMATED' | null
+  confirmedBy?: number | null
+}

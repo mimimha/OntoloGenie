@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { fetchObject } from './api'
+import EvidenceDialog from './EvidenceDialog'
+import { formatPropertyValue } from './format'
 import { statusLabels } from './labels'
 
 function formatDateTime(value: string | null | undefined) {
@@ -7,24 +10,6 @@ function formatDateTime(value: string | null | undefined) {
     return '-'
   }
   return new Date(value).toLocaleString('ko-KR')
-}
-
-function formatPropertyValue(value: unknown) {
-  if (value === null || value === undefined) {
-    return '-'
-  }
-  return String(value)
-}
-
-function formatSourceKey(
-  sourceKey: Record<string, unknown> | null | undefined,
-) {
-  if (!sourceKey) {
-    return '-'
-  }
-  return Object.entries(sourceKey)
-    .map(([column, value]) => `${column}: ${String(value)}`)
-    .join(', ')
 }
 
 type ObjectDetailProps = {
@@ -44,6 +29,7 @@ type ObjectDetailContentProps = {
 }
 
 function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
+  const [evidenceOpen, setEvidenceOpen] = useState(false)
   const {
     data: object,
     isPending,
@@ -63,8 +49,8 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
   }
 
   const source = object.sourceSystemName
-    ? `${object.sourceSystemName} · ${object.sourceResourceKey}`
-    : '플랫폼에서 만든 객체'
+    ? `${object.sourceSystemName} · 원천 레코드`
+    : '플랫폼 객체'
 
   return (
     <div>
@@ -77,12 +63,9 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
       <span className="mt-2 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
         {statusLabels[object.status]}
       </span>
+      <p className="mt-2 text-sm text-slate-500">{source}</p>
 
       <dl className="mt-4 grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
-        <dt className="text-slate-500">출처</dt>
-        <dd className="text-slate-900">{source}</dd>
-        <dt className="text-slate-500">원천 행</dt>
-        <dd className="text-slate-900">{formatSourceKey(object.sourceKey)}</dd>
         <dt className="text-slate-500">기준 시점</dt>
         <dd className="text-slate-900">{formatDateTime(object.dataAsOf)}</dd>
         <dt className="text-slate-500">최근 동기화</dt>
@@ -106,6 +89,24 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
           </div>
         ))}
       </dl>
+
+      <section className="mt-6">
+        <h3 className="text-sm font-semibold text-slate-900">원천 근거</h3>
+        <button
+          type="button"
+          onClick={() => setEvidenceOpen(true)}
+          className="mt-2 text-sm text-blue-700 hover:underline"
+        >
+          원본·연결 근거 보기 ↗
+        </button>
+      </section>
+
+      {evidenceOpen && (
+        <EvidenceDialog
+          object={object}
+          onClose={() => setEvidenceOpen(false)}
+        />
+      )}
     </div>
   )
 }
