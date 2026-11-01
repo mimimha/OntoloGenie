@@ -1,13 +1,15 @@
 import { apiGet } from '../../api/client'
 import type { ObjectInstance, ObjectInstanceDetail, ObjectLink } from './types'
 
+export const OBJECT_PAGE_SIZE = 20
+
 export type ObjectFilters = {
   q?: string
   objectTypeId?: number
 }
 
 // 076 권한 범위 객체 검색
-export function fetchObjects(filters: ObjectFilters) {
+export function fetchObjects(filters: ObjectFilters, page = 0) {
   const params = new URLSearchParams()
   if (filters.q) {
     params.set('q', filters.q)
@@ -15,8 +17,9 @@ export function fetchObjects(filters: ObjectFilters) {
   if (filters.objectTypeId) {
     params.set('objectTypeId', String(filters.objectTypeId))
   }
-  const query = params.toString() ? `?${params}` : ''
-  return apiGet<ObjectInstance[]>(`/objects${query}`)
+  params.set('page', String(page))
+  params.set('size', String(OBJECT_PAGE_SIZE))
+  return apiGet<ObjectInstance[]>(`/objects?${params}`)
 }
 
 // 077 객체 상세 조회

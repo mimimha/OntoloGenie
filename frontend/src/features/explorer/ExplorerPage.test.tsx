@@ -27,6 +27,7 @@ test('객체 목록 API로 받은 객체를 보여준다', async () => {
   expect(screen.getByText('불러오는 중…')).toBeInTheDocument()
   expect(await screen.findByText('프레스 3호기')).toBeInTheDocument()
   expect(screen.getByText('6건')).toBeInTheDocument()
+  expect(screen.getByText('#301')).toBeInTheDocument()
   expect(
     within(screen.getByRole('region', { name: '객체 목록' })).getAllByText(
       '설비',
@@ -47,7 +48,9 @@ test('객체를 고르면 상세 API로 받은 정보를 보여준다', async ()
     await screen.findByRole('heading', { name: '프레스 3호기' }),
   ).toBeInTheDocument()
   expect(screen.getByText('설비 / #301')).toBeInTheDocument()
-  expect(screen.getByText('MES · 원천 레코드')).toBeInTheDocument()
+  expect(
+    screen.getByText('MES · mes.equipment · 원천 레코드'),
+  ).toBeInTheDocument()
   expect(screen.getByText('설비 코드')).toBeInTheDocument()
 })
 
@@ -322,6 +325,10 @@ test('관계도에서 연결된 객체 카드를 누르면 그 객체로 이동�
   const graph = within(screen.getByRole('region', { name: '관계도' }))
 
   expect(await graph.findByText('연결된 정보 · 2건')).toBeInTheDocument()
+  expect(
+    graph.getByRole('heading', { name: '프레스 3호기와 연결된 정보' }),
+  ).toBeInTheDocument()
+  expect(graph.getByText('#1101')).toBeInTheDocument()
 
   await user.click(graph.getByRole('button', { name: /프레스 작업/ }))
 
@@ -329,6 +336,9 @@ test('관계도에서 연결된 객체 카드를 누르면 그 객체로 이동�
     await screen.findByRole('heading', { name: '프레스 작업' }),
   ).toBeInTheDocument()
   expect(await graph.findByText('연결된 정보 · 3건')).toBeInTheDocument()
+  expect(
+    graph.getByRole('heading', { name: '프레스 작업과 연결된 정보' }),
+  ).toBeInTheDocument()
 })
 
 test('연결이 없으면 관계도에 안내를 보여준다', async () => {
@@ -359,4 +369,64 @@ test('객체 상세의 이 객체 실행 이력은 그 객체의 실행 이력 �
   expect(
     await screen.findByRole('link', { name: '이 객체 실행 이력' }),
   ).toHaveAttribute('href', '/audit?objectId=301')
+})
+
+function manyObjects(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: 1000 + index,
+    objectTypeId: 1,
+    objectTypeName: '설비',
+    displayName: `설비 ${index + 1}`,
+    properties: {},
+    restrictedPropertyCodes: [],
+    status: 'ACTIVE',
+    firstCollectedAt: '2026-10-01T00:00:00Z',
+  }))
+}
+
+function mockManyObjects(count: number) {
+  const all = manyObjects(count)
+  server.use(
+    http.get('/api/v1/objects', ({ request }) => {
+      const page = Number(new URL(request.url).searchParams.get('page'))
+      return HttpResponse.json({
+        data: all.slice(page * 20, page * 20 + 20),
+        meta: {
+          page,
+          size: 20,
+          totalElements: count,
+          hasNext: (page + 1) * 20 < count,
+        },
+      })
+    }),
+  )
+}
+
+test('다음·이전 페이지로 객체 목록을 넘긴다', async () => {
+  const user = userEvent.setup()
+  mockManyObjects(25)
+  renderExplorerPage()
+
+  expect(await screen.findByText('1 / 2쪽 · 25건')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '이전 페이지' })).toBeDisabled()
+
+  await user.click(screen.getByRole('button', { name: '다음 페이지' }))
+
+  expect(await screen.findByText('2 / 2쪽 · 25건')).toBeInTheDocument()
+  expect(screen.getByText('설비 21')).toBeInTheDocument()
+  expect(screen.queryByText('설비 1')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '다음 페이지' })).toBeDisabled()
+})
+
+test('검색하면 첫 페이지로 돌아간다', async () => {
+  const user = userEvent.setup()
+  mockManyObjects(25)
+  renderExplorerPage()
+
+  await user.click(await screen.findByRole('button', { name: '다음 페이지' }))
+  await screen.findByText('2 / 2쪽 · 25건')
+
+  await user.click(screen.getByRole('button', { name: '검색' }))
+
+  expect(await screen.findByText('1 / 2쪽 · 25건')).toBeInTheDocument()
 })
