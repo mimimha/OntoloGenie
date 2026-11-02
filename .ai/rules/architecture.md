@@ -64,6 +64,8 @@
 - 시작·완료·실패 시각을 기록하고 실행 중에는 heartbeat를 갱신한다. heartbeat가 멈춘 작업은 시간 초과 기준으로 실패 처리한다.
 - 수동 실행과 예약 실행은 같은 수집 로직을 쓴다.
 - 반복 실행해도 같은 원천 데이터가 중복 생성되지 않게 한다.
+- `@Scheduled`와 작업 실행은 batch 프로필에서만 돈다. api는 작업 표에 `QUEUED` 행을 넣기만 한다.
+- 배치 작업은 작업 종류마다 `batch.service.QueuedJobHandler`를 구현한다. 가져오기·실패 처리·감사 결과 줄은 `QueuedJobRunner`가 맡는다. 첫 적재처럼 큰 작업은 Handler 안에서 Spring Batch Job으로 실행한다. 자세한 내용은 [C106 개발 가이드](../../docs/development-guide.md) 10.3이다.
 
 ## Team Decision Needed
 

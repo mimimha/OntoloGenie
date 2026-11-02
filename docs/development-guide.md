@@ -389,7 +389,7 @@ action/
 | 원천 CDC | Debezium(Kafka Connect) + Kafka, 소비는 `spring-kafka`(배치 컨테이너). 원천 변경 수집 전용이며 서비스 사이 메시징에는 쓰지 않는다. 인프라는 `infra/cdc/`·`infra/source-db/` |
 | CSV | Jackson CSV |
 | 오래 걸리는 작업 | 실행 기록 테이블에 요청을 넣고 202를 응답한다. 작업자가 `FOR UPDATE SKIP LOCKED`로 가져가 처리한다. 여러 인스턴스 운영을 기준으로 한다. |
-| 배치 | Spring Batch 6(JDBC JobRepository) + `@Scheduled`. 주기 실행은 배치 컨테이너에만 둔다. |
+| 배치 | `@Scheduled` + Spring Batch 6(JDBC JobRepository, 실행 기록 테이블은 Flyway V6). 주기 실행은 배치 컨테이너에만 둔다. 정합성 검사(수동 검사·재검증·후보 시험·수집 중 분류)도 배치 컨테이너에서 실행한다. api는 요청을 받아 실행 기록 테이블에 넣기만 한다(2026-10-30 결정). Spring Batch Job은 첫 적재처럼 큰 작업에만 쓰고, 작은 작업은 10.3의 작업 표 방식으로 처리한다. |
 | 인증 | Spring Security(세션 인증), Spring Session JDBC(세션을 플랫폼 DB에 저장), BCrypt |
 | 외부 호출 | RestClient (시간 제한 필수) |
 | AI Agent | Spring AI 2.0.x (GMS 연결) |
@@ -806,6 +806,19 @@ AI가 생성한 객체 유형이나 연결 규칙은 곧바로 활성 데이터�
 - heartbeat가 중단된 작업은 정해진 시간 초과 기준으로 실패 처리한다.
 - 수동 실행과 예약 실행은 같은 수집 로직을 사용한다.
 - 반복 실행해도 같은 원천 데이터가 중복 생성되지 않도록 한다.
+
+배치 앱 구조(2026-10-30, S15P31C106-215):
+
+- 배치 컨테이너는 백엔드와 같은 이미지를 `SPRING_PROFILES_ACTIVE=batch`로 띄운다. 웹 서버는 없다.
+- `@Scheduled`는 batch 프로필에서만 켜진다(`batch.config.BatchSchedulingConfig`). 정기 자동 검사는 두지 않는다.
+- api가 접수하는 작업(연결 검사, 원천 표본·매핑 미리보기, 정합성 검사, 수동 수집)은 모두 작업 표 방식이다.
+  - api가 작업 표(`source_connection_check`, `source_preview`, `check_run`, `sync_run`)에 `QUEUED` 행을 넣고 202를 응답한다.
+  - 배치의 `QueuedJobPoller`가 `axcore.batch.poll-delay`(기본 2초)마다 확인한다. `QueuedJobRunner`가 `FOR UPDATE SKIP LOCKED`로 한 건씩 가져간다.
+  - 도메인은 작업 종류마다 `QueuedJobHandler` Bean 하나만 만든다. `run`은 트랜잭션 밖에서 원천을 읽고, `complete`는 결과를 저장하며 행을 `SUCCEEDED`로 바꾼다.
+  - 실패 이유를 화면에 보여 주려면 `QueuedJobFailure`를 던진다. 다른 예외는 일반 문구로 남기고 자세한 내용은 서버 로그에만 쓴다.
+  - 감사 기록 결과 줄(SYSTEM + BATCH)은 `QueuedJobRunner`가 남긴다. Handler가 따로 남기지 않는다.
+- 큰 작업(첫 적재, 테이블 전체 다시 읽기)은 Spring Batch Job으로 만들고, Handler의 `run`에서 그 Job을 시작한다. 실패하면 마지막으로 커밋한 청크 다음부터 이어서 실행한다. 업무 상태는 `sync_run`에 두고, Spring Batch 실행 기록 테이블(`batch_*`)은 화면과 API에서 읽지 않는다.
+- 멈춘 작업(RUNNING인 채로 남은 행)의 정리는 heartbeat 작업(S15P31C106-218)에서 한다.
 
 ---
 
