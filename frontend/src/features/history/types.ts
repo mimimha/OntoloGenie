@@ -19,6 +19,9 @@ export type RuleCondition = {
   sequenceNo: number
   sourcePropertyId: number
   targetPropertyId: number
+  // 속성 이름은 개정 당시가 아니라 현재 이름이다. (백엔드 추가 예정이라 아직 없을 수 있다)
+  sourcePropertyName?: string | null
+  targetPropertyName?: string | null
   operator: 'EQ'
   sourceTransforms: Record<string, unknown>[]
   targetTransforms: Record<string, unknown>[]
@@ -30,6 +33,8 @@ export type RuleRevision = {
   code: string
   revision: number
   linkTypeId: number
+  // 관계 유형의 현재 이름 (백엔드 추가 예정이라 아직 없을 수 있다)
+  linkTypeName?: string | null
   status: RuleRevisionStatus
   conditions: RuleCondition[]
   sourceFilter: Record<string, unknown>
@@ -40,4 +45,14 @@ export type RuleRevision = {
   createdBy?: number | null
   origin: RuleOrigin
   proposalItemId?: number | null
+}
+
+// 규칙 목록 API(백엔드 신설 예정: GET /ontology/rules)의 한 줄. 규칙 코드별 최신 개정본 요약.
+export type RuleSummary = {
+  code: string
+  revision: number
+  linkTypeId: number
+  linkTypeName: string
+  status: RuleRevisionStatus
+  description?: string | null
 }

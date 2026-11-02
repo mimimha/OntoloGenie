@@ -87,13 +87,18 @@ test('정의 변경 이력을 볼 권한이 없으면 서버가 준 안내를 �
   ).toBeInTheDocument()
 })
 
-test('규칙 코드로 조회하면 적용 중인 개정본을 이전 개정본과 비교해 보여준다', async () => {
+test('규칙을 고르면 적용 중인 개정본을 이전 개정본과 비교해 보여준다', async () => {
   const user = userEvent.setup()
   renderHistoryPage()
 
   await user.click(screen.getByRole('button', { name: '규칙 개정' }))
-  await user.type(screen.getByLabelText('규칙 코드'), 'WO_EQUIPMENT_CODE')
-  await user.click(screen.getByRole('button', { name: '조회' }))
+  const picker = await screen.findByLabelText('규칙 선택')
+  expect(
+    within(picker).getByRole('option', {
+      name: '작업지시의 설비 코드로 설비 연결 · 현재 배정 설비 · 개정 2 적용 중',
+    }),
+  ).toBeInTheDocument()
+  await user.selectOptions(picker, 'WO_EQUIPMENT_CODE')
 
   const revisions = within(await screen.findByRole('group', { name: '개정본' }))
   expect(
@@ -108,6 +113,47 @@ test('규칙 코드로 조회하면 적용 중인 개정본을 이전 개정본�
     screen.getByText('작업지시의 설비 코드로 설비 연결(초판)'),
   ).toBeInTheDocument()
   expect(screen.getAllByText('바뀜').length).toBeGreaterThan(0)
+  expect(
+    screen.getByText('WO_EQUIPMENT_CODE · 현재 배정 설비'),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByText(
+      /1\. 출발 배정 설비 코드\(#31\) \(변환 1단계: .*\) = 도착 설비 코드\(#21\)/,
+    ),
+  ).toBeInTheDocument()
+})
+
+test('규칙 목록을 받지 못하면 규칙 코드를 직접 입력해서 조회한다', async () => {
+  server.use(
+    http.get('/api/v1/ontology/rules', () =>
+      HttpResponse.json(
+        {
+          error: {
+            code: 'RESOURCE_NOT_FOUND',
+            message: '요청한 항목을 찾을 수 없습니다.',
+            details: {},
+            requestId: 'mock-request-id',
+          },
+        },
+        { status: 404 },
+      ),
+    ),
+  )
+  const user = userEvent.setup()
+  renderHistoryPage('/admin/history?tab=rules')
+
+  await user.type(
+    await screen.findByLabelText('규칙 코드'),
+    'NOTE_EQUIPMENT_MENTION',
+  )
+  await user.click(screen.getByRole('button', { name: '조회' }))
+
+  expect(
+    await screen.findByRole('button', { name: '개정 1 · 적용 중' }),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByText('이 개정본에는 비교할 이전 개정본이 없습니다.'),
+  ).toBeInTheDocument()
 })
 
 test('첫 개정본을 고르면 비교할 이전 개정본이 없다고 안내한다', async () => {
@@ -130,7 +176,9 @@ test('주소에 탭과 규칙 코드가 있으면 그 규칙의 개정 이력을
     'aria-pressed',
     'true',
   )
-  expect(screen.getByLabelText('규칙 코드')).toHaveValue('WO_EQUIPMENT_CODE')
+  expect(await screen.findByLabelText('규칙 선택')).toHaveValue(
+    'WO_EQUIPMENT_CODE',
+  )
   expect(
     await screen.findByRole('button', { name: '개정 2 · 적용 중' }),
   ).toBeInTheDocument()

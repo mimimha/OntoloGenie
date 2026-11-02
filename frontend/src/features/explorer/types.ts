@@ -76,7 +76,8 @@ export type ModelEdge = {
   sourceTypeId: number
   targetTypeId: number
   cardinality: Cardinality
-  relationCount: number
+  // INACTIVE까지 센 운영용 숫자라 ADMIN만 받고, 다른 역할은 null이다.
+  relationCount?: number | null
   activeLinkCount: number
 }
 

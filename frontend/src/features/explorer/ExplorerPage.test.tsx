@@ -357,6 +357,41 @@ test('유형 카드를 누르면 그 유형의 객체 목록과 관계를 보여
   expect(screen.getByText('활성 연결 1건 · 전체 2건')).toBeInTheDocument()
 })
 
+test('관리자가 아니라 전체 연결 수가 없으면 활성 연결 수만 보여준다', async () => {
+  server.use(
+    http.get('/api/v1/ontology/model-graph', () =>
+      HttpResponse.json({
+        data: {
+          nodes: [
+            { id: 3, code: 'EQUIPMENT', name: '설비', objectCount: 2 },
+            { id: 4, code: 'WORK_ORDER', name: '작업지시', objectCount: 1 },
+          ],
+          edges: [
+            {
+              id: 2,
+              code: 'ASSIGNED_EQUIPMENT',
+              name: '현재 배정 설비',
+              sourceTypeId: 4,
+              targetTypeId: 3,
+              cardinality: 'MANY_TO_ONE',
+              relationCount: null,
+              activeLinkCount: 1,
+            },
+          ],
+        },
+      }),
+    ),
+  )
+  const user = userEvent.setup()
+  renderExplorerPage()
+
+  const graph = within(screen.getByRole('region', { name: '관계도' }))
+  await user.click(await graph.findByRole('button', { name: /설비/ }))
+
+  expect(await screen.findByText('활성 연결 1건')).toBeInTheDocument()
+  expect(screen.queryByText(/null/)).not.toBeInTheDocument()
+})
+
 test('검색어가 있을 때 유형 카드를 누르면 검색어는 두고 유형만 바꾼다', async () => {
   const user = userEvent.setup()
   renderExplorerPage()
