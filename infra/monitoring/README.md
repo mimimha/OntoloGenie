@@ -5,12 +5,44 @@ Prometheus는 지표를 저장하고 Alloy는 30초마다 수집·전송한다. 
 ## 파일과 실행 범위
 
 - `prometheus.yml`: Prometheus 자체 지표 수집.
-- `config.alloy`: Alloy 자체 지표와 호스트 CPU·메모리·디스크·시스템 부하 수집.
+- `config.alloy`: Alloy 자체 지표와 호스트 CPU·메모리·디스크·시스템 부하, Docker 서비스 로그 수집.
 - `config.alloy`의 `backend` 수집: 내부 `backend:8080/actuator/prometheus`에서 JVM·HTTP 등 앱 지표를 수집한다. `job="backend"`, `service="backend"`로 전송하며 cAdvisor의 컨테이너 자원 지표와 구분한다.
 - `container-metrics.alloy`: Linux 서버의 Docker 컨테이너 CPU·메모리 수집. `job="cadvisor"`, `instance="axcore-main"`로 전송한다. Compose 서비스·프로젝트 라벨만 허용하고 환경변수는 지표 라벨로 수집하지 않는다.
 - `compose.local.yaml`: 노트북용 네트워크·경로·권한 재정의. `config.alloy`만 실행하며 cAdvisor 실제 수집은 실행하지 않는다. Compose 2.24.4 이상이 필요하다.
 
 서버에서는 Alloy가 `/etc/alloy` 디렉터리의 `.alloy` 파일을 함께 읽는다. 서버 반영 시 `compose.yaml`뿐 아니라 위 두 `.alloy` 파일과 `prometheus.yml`을 `~/axcore/monitoring/`에 복사해야 한다. 저장소 머지만으로 서버 설정이 복사되지는 않는다.
+
+## Loki 로그 저장소
+
+`grafana/loki:3.7.9`를 단일 프로세스·단일 테넌트로 실행한다. `loki.yaml`은 TSDB v13·filesystem 저장소를 사용하며 WAL·인덱스·로그 청크·Compactor 작업 파일을 전용 `axcore-loki-data` 볼륨의 `/loki` 아래에 저장한다. 외부 포트는 열지 않고 `axcore-net` 내부의 `loki:3100`으로 접근한다. `auth_enabled: false`는 테넌트 인증 없이 내부에서 접근하는 설정이므로 외부 nginx 경로를 추가하지 않는다.
+
+메모리 상한 512MiB, 조회 동시성 2, 결과 캐시 32MiB, 삭제 worker 2는 초기 설정이다. 실제 로그 수집·조회·재시작 부하를 측정한 뒤 조정한다. 공식 Loki 이미지는 셸·wget이 없는 distroless이므로 컨테이너 내부 명령을 쓰는 Compose 헬스체크는 추가하지 않는다. 기동 확인 시 다른 내부망 컨테이너에서 `http://loki:3100/ready`를 조회하고 로그·재시작·OOM 여부를 함께 확인한다. `Up`만으로 준비 완료로 판단하지 않는다.
+
+보존 기간은 `168h`(7일)이고 Compactor retention을 활성화한다. 인덱스 주기는 24시간, 삭제 지연은 2시간이다. 7일이 되는 순간 모든 디스크 파일이 즉시 삭제되는 것은 아니며, 보존 정책은 디스크 사용량의 상한도 아니다. 이미 삭제된 로그는 보존 기간을 늘려도 복구되지 않는다. 기동·쓰기·조회·재시작 후 보존 검증과 실제 오래된 로그 정리 확인은 별도 검증 항목이며 설정 작성만으로 완료 처리하지 않는다.
+
+### Docker 로그 수집과 Grafana 조회
+
+`config.alloy`의 `discovery.docker` → `discovery.relabel` → `loki.source.docker` → `loki.write`로 Docker stdout·stderr 로그를 내부 `http://loki:3100/loki/api/v1/push`에 전송한다. Docker 소켓으로 읽으므로 호스트의 로그 파일 경로를 별도로 마운트하지 않는다. 읽은 위치는 기존 `alloy-data`의 storage path 아래에 보관한다. 재기동 시 위치 추적을 위해 이 볼륨을 유지한다.
+
+`DOCKER_LOG_NETWORK`는 서버에서 `axcore-net`, 노트북에서 `axcore-monitoring-check-net`이다. 해당 네트워크에 연결되고 Compose 서비스가 `backend`, `ai`, `frontend`, `batch`, `nginx`, `alloy`, `prometheus`, `loki`, `grafana` 중 하나인 컨테이너만 수집한다. DB·Jenkins·다른 네트워크의 컨테이너는 제외한다. 서비스가 추가되면 허용 목록을 검토한다. 라벨은 `job="docker"`, `service`(Compose 서비스명), `instance`(기존 호스트 식별자)로 조회한다. 컨테이너 환경변수를 로그 라벨로 복사하지 않는다. 앱이 stdout·stderr에 남기는 비밀값까지 자동으로 제거하는 설정은 아니므로 앱의 로그 보안 규칙을 함께 지킨다.
+
+노트북 설정은 기존 `config.alloy` 실행을 유지하면서 Docker 소켓을 추가한다. cAdvisor는 실행하지 않는다. 소켓의 `read_only`는 Docker API 쓰기 요청을 차단하는 접근 제어가 아니므로 호스트 Docker 접근 권한이 추가된다는 점을 검토한다.
+
+Grafana는 `grafana/provisioning/datasources/loki.yaml`을 읽기 전용으로 연결해 내부 Loki를 자동 등록한다. UID는 `axcore-loki`이며 기본 데이터 소스는 기존 Prometheus다. [로컬 Grafana](http://127.0.0.1:13000)의 Explore에서 Loki를 선택하고 최근 15분 범위에 아래 쿼리를 실행한다.
+
+```logql
+{job="docker"}
+```
+
+서비스별 조회 예: `{job="docker", service="backend"}`. 현재 노트북에서 backend를 실행하지 않았다면 해당 서비스의 로그는 없으며, `{job="docker", service="alloy"}`로 수집 경로를 확인할 수 있다.
+
+2026-11-02 노트북 검증: 전체 Alloy 파일 `alloy validate /etc/alloy`, 서버·로컬 Compose `config -q` 통과. 로컬 Alloy·Grafana만 재생성한 뒤 자동 수집 로그를 Loki에서 조회했고, Grafana 데이터 소스 health API의 `status="OK"`와 데이터 소스 프록시를 통한 로그 조회 `status="success"`를 확인했다. 두 컨테이너 모두 `running`, `OOMKilled=false`, `RestartCount=0`이었다. 브라우저 Explore에서 전체 로그와 `service="alloy"` 필터 조회를 확인했고, `docker logs` 원본의 시각·메시지와 대조했다. Loki 설정 검사 `-verify-config=true`도 통과했다. 실제 앱 서비스 로그, Linux 서버 반영과 장기 보존·부하 검증은 별도 잔여 항목이다.
+
+### 서버 반영 시 확인
+
+저장소 변경은 서버에 자동 복사되지 않는다. 승인된 서버 반영 시 `compose.yaml`, `monitoring/config.alloy`, `monitoring/loki.yaml`, `monitoring/grafana/provisioning/datasources/loki.yaml`을 함께 반영한다. 기존 `container-metrics.alloy` 등 다른 설정은 유지한다. 서버 Alloy의 `DOCKER_LOG_NETWORK=axcore-net`과 Docker 소켓 마운트를 확인하고, Alloy validate와 Compose config 검사 후 Loki·Alloy·Grafana만 적용한다. 노트북용 `compose.local.yaml`은 서버에서 사용하지 않는다.
+
+반영 후 Loki `/ready`, Grafana Loki 데이터 소스 연결 상태, Explore의 실제 `backend`·`ai` 등 서비스 로그를 확인한다. 로그 수집 성공과 기존 Prometheus 호스트·컨테이너·backend 지표 유지, 재시작·OOM 여부를 함께 확인한다. 로그 조회 캡처와 산출물 링크, 검토 승인까지 확보한 뒤 66의 완료 기준을 판단한다. 이 저장소 수정과 로컬 검증만으로 서버 검증 완료를 의미하지 않는다.
 
 ## Backend 애플리케이션 지표
 

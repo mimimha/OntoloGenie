@@ -189,6 +189,7 @@ services:
       HOST_SYSFS_PATH: /rootfs/sys
       HOST_UDEV_DATA_PATH: /rootfs/run/udev/data
       HOST_METRICS_INSTANCE: axcore-main
+      DOCKER_LOG_NETWORK: axcore-net
     command:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
@@ -237,6 +238,7 @@ services:
       - grafana-data:/var/lib/grafana
       # 기본 plugins·alerting·dashboards 폴더를 가리지 않고 관리할 파일만 연결한다.
       - ./monitoring/grafana/provisioning/datasources/prometheus.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml:ro
+      - ./monitoring/grafana/provisioning/datasources/loki.yaml:/etc/grafana/provisioning/datasources/loki.yaml:ro
       - ./monitoring/grafana/provisioning/dashboards/axcore.yaml:/etc/grafana/provisioning/dashboards/axcore.yaml:ro
       - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
     networks:
@@ -247,6 +249,22 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  # 로그 저장소. Alloy·Grafana가 내부망으로 접근하며 호스트 포트는 열지 않는다.
+  loki:
+    image: grafana/loki:3.7.9
+    container_name: loki
+    restart: unless-stopped
+    # 초기 상한이며 실제 로그 수집·조회·재시작 부하를 실측해 조정한다.
+    mem_limit: 512m
+    command:
+      - -config.file=/etc/loki/loki.yaml
+    volumes:
+      - ./monitoring/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    networks:
+      - axcore-net
+    # 공식 이미지는 셸·wget이 없는 distroless다. 준비 상태는 내부망의 /ready로 별도 확인한다.
 
 networks:
   axcore-net:
@@ -261,3 +279,5 @@ volumes:
     name: axcore-alloy-data
   grafana-data:
     name: axcore-grafana-data
+  loki-data:
+    name: axcore-loki-data
