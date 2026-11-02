@@ -32,6 +32,7 @@ SSAFY 클라우드 방화벽은 tcp · udp 1024~65535를 열어 두므로, 서�
 | `/` | frontend:80 (React 정적 파일) | resolver + 변수 proxy_pass(frontend 재시작 중에도 nginx 유지). SPA fallback은 frontend 컨테이너 안 nginx가 처리. 이미지 태그 `.env`의 `FRONTEND_TAG`, 호스트 `127.0.0.1:10080`(디버그용) |
 | `/api/` | backend:8080 (경로 그대로) | 로그인 전 요청은 backend가 401로 응답. `X-Forwarded-Proto` 전달(세션 Secure 쿠키), `proxy_buffering off` + `proxy_read_timeout 300s`(Agent 스트리밍), 업로드 상한 20m |
 | `/jenkins/` | jenkins:8080 | 팀원 Read 권한 |
+| `/grafana/` | grafana:3000 | Grafana 로그인 필요. 하위 경로 유지, Live WebSocket 전달. 67 서버 반영 후 외부 검증 필요 |
 | `/swagger-ui.html` · `/swagger-ui/` · `/v3/api-docs` | backend:8080 | nginx Basic Auth (아이디 · 비밀번호는 서버 `nginx/htpasswd`, 팀 DM으로 공유). 백엔드 로그인과 별개 |
 
 바깥에 열지 않는 것: backend `/actuator/*`와 AI 서비스. backend Actuator 전용 nginx 프록시 경로는 없으며, AI도 nginx에 외부 경로를 추가하지 않는다. backend 헬스체크는 `/actuator/health`, Alloy의 앱 지표 수집은 내부 `backend:8080/actuator/prometheus`를 사용한다. backend 변경은 자동 배포되지만 Alloy 설정은 별도로 서버 반영해야 한다.

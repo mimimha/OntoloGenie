@@ -227,6 +227,9 @@ services:
     # 초기 상한이며 대시보드·조회 부하를 실측한 뒤 조정한다.
     mem_limit: 512m
     environment:
+      GF_SERVER_ROOT_URL: https://k15c106.p.ssafy.io/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_COOKIE_SECURE: "true"
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER must be set}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}
       GF_AUTH_ANONYMOUS_ENABLED: "false"
@@ -244,7 +247,7 @@ services:
     networks:
       - axcore-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/grafana/api/health > /dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
