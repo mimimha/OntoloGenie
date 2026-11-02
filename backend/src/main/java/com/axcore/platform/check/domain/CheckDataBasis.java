@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/** 검사 입력의 기준이 되는 원천 자원별 반영 체크포인트. */
+/** 검사 입력의 기준이 되는 원천 자원별 마지막 성공 수집 실행 ID. */
 public record CheckDataBasis(List<ResourceCheckpoint> resources) {
 
     public CheckDataBasis {
@@ -29,16 +29,16 @@ public record CheckDataBasis(List<ResourceCheckpoint> resources) {
                         .toList();
     }
 
-    /** 원천 자원 하나에 반영된 변경 번호. 미적재 상태는 null로 보존한다. */
-    public record ResourceCheckpoint(long sourceResourceId, Long lastAppliedChangeSeq) {
+    /** 원천 자원 하나의 마지막 성공 수집 실행. 성공 이력이 없으면 null로 보존한다. */
+    public record ResourceCheckpoint(long sourceResourceId, Long lastSuccessfulSyncRunId) {
 
         public ResourceCheckpoint {
             if (sourceResourceId < 1) {
                 throw new IllegalArgumentException("원천 자원 ID는 1 이상이어야 합니다.");
             }
 
-            if (lastAppliedChangeSeq != null && lastAppliedChangeSeq < 0) {
-                throw new IllegalArgumentException("반영 변경 번호는 0 이상이어야 합니다.");
+            if (lastSuccessfulSyncRunId != null && lastSuccessfulSyncRunId < 1) {
+                throw new IllegalArgumentException("성공 수집 실행 ID는 1 이상이어야 합니다.");
             }
         }
     }
