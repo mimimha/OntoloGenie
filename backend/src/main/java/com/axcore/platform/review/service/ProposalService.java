@@ -4,11 +4,13 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.review.domain.ProposalItem;
 import com.axcore.platform.review.dto.LatestCheckResponse;
+import com.axcore.platform.review.dto.ProposalOptionResponse;
 import com.axcore.platform.review.dto.ProposalResponse;
 import com.axcore.platform.review.dto.ProposalSearchRequest;
 import com.axcore.platform.review.repository.ProposalItemRepository;
 import com.axcore.platform.review.repository.ProposalItemSpecifications;
 import com.axcore.platform.review.repository.ProposalLatestCheckRepository;
+import com.axcore.platform.review.repository.ProposalOptionRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -25,6 +27,7 @@ public class ProposalService {
 
     private final ProposalItemRepository proposalItemRepository;
     private final ProposalLatestCheckRepository proposalLatestCheckRepository;
+    private final ProposalOptionRepository proposalOptionRepository;
 
     public ProposalResponse getProposal(long id) {
         ProposalItem proposal =
@@ -55,6 +58,33 @@ public class ProposalService {
         Map<Long, LatestCheckResponse> latestChecks = loadLatestChecks(proposals.getContent());
 
         return proposals.map(proposal -> toResponse(proposal, latestChecks.get(proposal.getId())));
+    }
+
+    public List<ProposalOptionResponse> getOptions(long id, Integer revision) {
+        ProposalItem proposal =
+                proposalItemRepository
+                        .findById(id)
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                CommonErrorCode.RESOURCE_NOT_FOUND,
+                                                Map.of("resource", "proposal_item", "id", id)));
+
+        int targetRevision = revision == null ? proposal.getRevision() : revision;
+        if (!proposalOptionRepository.existsRevision(id, targetRevision)) {
+            throw new BusinessException(
+                    CommonErrorCode.RESOURCE_NOT_FOUND,
+                    Map.of(
+                            "resource", "proposal_revision",
+                            "proposalItemId", id,
+                            "revision", targetRevision));
+        }
+
+        return proposalOptionRepository
+                .findByProposalItemIdAndRevisionOrderByOptionNo(id, targetRevision)
+                .stream()
+                .map(ProposalOptionResponse::from)
+                .toList();
     }
 
     private Map<Long, LatestCheckResponse> loadLatestChecks(List<ProposalItem> proposals) {

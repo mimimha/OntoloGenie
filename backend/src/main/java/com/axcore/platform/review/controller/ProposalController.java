@@ -4,6 +4,7 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.response.ApiResponse;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.review.dto.ProposalOptionResponse;
 import com.axcore.platform.review.dto.ProposalResponse;
 import com.axcore.platform.review.dto.ProposalSearchRequest;
 import com.axcore.platform.review.service.ProposalService;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -53,6 +55,17 @@ public class ProposalController {
         requireAdmin(loginAccount);
 
         return ApiResponse.of(proposalService.getProposal(id));
+    }
+
+    @GetMapping("/{id}/options")
+    public ApiResponse<List<ProposalOptionResponse>> getOptions(
+            @PathVariable("id") @Min(value = 1, message = "id는 1 이상이어야 합니다.") long id,
+            @RequestParam(name = "revision", required = false)
+                    @Min(value = 1, message = "revision은 1 이상이어야 합니다.")
+                    Integer revision,
+            @AuthenticationPrincipal LoginAccount loginAccount) {
+        requireAdmin(loginAccount);
+        return ApiResponse.of(proposalService.getOptions(id, revision));
     }
 
     private static void requireAdmin(LoginAccount loginAccount) {
