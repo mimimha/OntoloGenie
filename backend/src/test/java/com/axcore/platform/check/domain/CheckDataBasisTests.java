@@ -15,14 +15,14 @@ class CheckDataBasisTests {
     void sortsAndPreservesCheckpoints() {
         var first = new ResourceCheckpoint(11L, 120L);
         var second = new ResourceCheckpoint(12L, null);
-        var third = new ResourceCheckpoint(13L, 0L);
+        var third = new ResourceCheckpoint(13L, 1L);
         var resources = new ArrayList<>(List.of(third, second, first));
         var basis = new CheckDataBasis(resources);
         resources.clear();
 
         assertThat(basis.resources()).containsExactly(first, second, third);
-        assertThat(basis.resources().get(1).lastAppliedChangeSeq()).isNull();
-        assertThat(basis.resources().get(2).lastAppliedChangeSeq()).isEqualTo(0L);
+        assertThat(basis.resources().get(1).lastSuccessfulSyncRunId()).isNull();
+        assertThat(basis.resources().get(2).lastSuccessfulSyncRunId()).isEqualTo(1L);
         assertThrows(UnsupportedOperationException.class, basis.resources()::clear);
     }
 
@@ -37,5 +37,6 @@ class CheckDataBasisTests {
                                         new ResourceCheckpoint(11L, 121L))));
         assertThrows(IllegalArgumentException.class, () -> new ResourceCheckpoint(0L, 120L));
         assertThrows(IllegalArgumentException.class, () -> new ResourceCheckpoint(11L, -1L));
+        assertThrows(IllegalArgumentException.class, () -> new ResourceCheckpoint(11L, 0L));
     }
 }
