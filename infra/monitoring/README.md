@@ -6,10 +6,21 @@ Prometheus는 지표를 저장하고 Alloy는 30초마다 수집·전송한다. 
 
 - `prometheus.yml`: Prometheus 자체 지표 수집.
 - `config.alloy`: Alloy 자체 지표와 호스트 CPU·메모리·디스크·시스템 부하 수집.
+- `config.alloy`의 `backend` 수집: 내부 `backend:8080/actuator/prometheus`에서 JVM·HTTP 등 앱 지표를 수집한다. `job="backend"`, `service="backend"`로 전송하며 cAdvisor의 컨테이너 자원 지표와 구분한다.
 - `container-metrics.alloy`: Linux 서버의 Docker 컨테이너 CPU·메모리 수집. `job="cadvisor"`, `instance="axcore-main"`로 전송한다. Compose 서비스·프로젝트 라벨만 허용하고 환경변수는 지표 라벨로 수집하지 않는다.
 - `compose.local.yaml`: 노트북용 네트워크·경로·권한 재정의. `config.alloy`만 실행하며 cAdvisor 실제 수집은 실행하지 않는다. Compose 2.24.4 이상이 필요하다.
 
 서버에서는 Alloy가 `/etc/alloy` 디렉터리의 `.alloy` 파일을 함께 읽는다. 서버 반영 시 `compose.yaml`뿐 아니라 위 두 `.alloy` 파일과 `prometheus.yml`을 `~/axcore/monitoring/`에 복사해야 한다. 저장소 머지만으로 서버 설정이 복사되지는 않는다.
+
+## Backend 애플리케이션 지표
+
+backend는 Spring Boot가 관리하는 버전의 `micrometer-registry-prometheus` 런타임 의존성을 추가하고, `api` 프로필에서 `health,prometheus`만 웹에 노출한다. 수집용 정확한 `GET /actuator/prometheus`는 로그인 없이 허용하지만 다른 관리 경로·업무 API 인증·CSRF 규칙은 그대로 유지한다. 새 관리 포트나 nginx 프록시는 추가하지 않는다. 현재 구성의 접근 경계는 nginx와 호스트 loopback 바인딩이며, Docker 내부망 또는 SSH 터널 등으로 backend에 직접 접근 가능한 사용자는 지표를 조회할 수 있다.
+
+backend 담당자는 MR에서 익명 수집 접근 범위와 인증 회귀 테스트를 리뷰한다. 업무 API 계약·DB 변경은 없으며, 관리 경로의 접근 정책은 저장소 개발 가이드와 함께 Notion 사본에도 반영해야 한다.
+
+반영 순서는 backend MR 검사·리뷰 후 머지 및 자동 배포 → 내부 지표 응답 확인 → 서버 Alloy 설정 백업·복사 및 검증 → Alloy 재시작 → `up{job="backend"}=1`과 JVM·HTTP 지표 확인이다. Alloy를 먼저 반영하면 backend 배포 전에는 404·401 등으로 `up=0`이 될 수 있다. 노트북에서 backend를 띄우지 않은 경우에도 해당 대상은 `up=0`이 예상되며 호스트 지표 검증과 구분한다.
+
+`ApiProfileTests`에 익명 GET의 JVM 지표 응답, 다른 관리 경로의 인증 요구, POST의 CSRF 요구 검증을 추가했다. 테스트는 작성만으로 통과 처리하지 않으며 Docker Desktop 실행 상태에서 backend 포맷과 전체 빌드·테스트를 실행해야 한다. 서버 적용 후에는 HTTP 요청을 발생시켜 `http_server_requests_seconds_count`의 기록과 외부 HTTPS `/actuator/prometheus`가 backend 지표를 반환하지 않는지도 확인한다.
 
 ## Grafana
 

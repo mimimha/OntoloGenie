@@ -18,3 +18,10 @@ springdoc:
   swagger-ui:
     enabled: true
   paths-to-exclude: /error
+
+# 수집기는 Docker 내부망으로 접근한다. nginx에 관리 경로를 프록시하지 않는다.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus

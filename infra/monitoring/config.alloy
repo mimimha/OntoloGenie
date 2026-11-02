@@ -43,6 +43,20 @@ prometheus.scrape "host" {
   forward_to      = [prometheus.remote_write.local.receiver]
 }
 
+// 앱 내부 지표(JVM·HTTP 등). 기존 컨테이너 CPU·메모리 지표와 별도로 수집한다.
+prometheus.scrape "backend" {
+  targets = [{
+    __address__ = "backend:8080",
+    instance    = sys.env("HOST_METRICS_INSTANCE"),
+    service     = "backend",
+  }]
+  job_name        = "backend"
+  metrics_path    = "/actuator/prometheus"
+  scrape_interval = "30s"
+  scrape_timeout  = "10s"
+  forward_to      = [prometheus.remote_write.local.receiver]
+}
+
 prometheus.remote_write "local" {
   endpoint {
     url = "http://prometheus:9090/api/v1/write"
