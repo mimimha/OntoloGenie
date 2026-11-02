@@ -867,6 +867,19 @@ AI가 생성한 객체 유형이나 연결 규칙은 곧바로 활성 데이터�
 - Service에서 찾은 입력 오류는 `BusinessException.invalidField(field, reason)`으로 던진다. 응답은 Bean Validation 오류와 같은 400 형식이다.
 - 세션 테이블은 Flyway `V4__create_spring_session.sql`이 만든다.
 
+**내부 API**
+
+FastAPI 같은 내부 서비스가 부르는 `/api/v1/internal/**`는 세션 대신 서비스 토큰으로 인증한다(API 105·043, S15P31C106-270).
+
+- 요청 헤더 `X-Internal-Token`에 공유 비밀을 넣는다. backend는 환경변수 `AXCORE_INTERNAL_API_TOKEN`, AI는 `AI_ONTOLOGY_INTERNAL_TOKEN`에 같은 값을 넣는다. 값은 서버 `.env`에만 둔다.
+- 설정값이 비어 있으면 내부 API를 모두 막는다. 기본값을 두지 않는다.
+- 토큰이 없거나 틀리면 401이다. 토큰 없이 사용자 세션 쿠키로 부르면 403이다.
+- 세션을 만들거나 읽지 않고, 쿠키를 쓰지 않으므로 CSRF도 검사하지 않는다.
+- 토큰은 내부 API에서만 통한다. 다른 API에 토큰을 보내도 인증되지 않는다.
+- 인증된 요청의 사용자는 내부 서비스(`internal-service`)다. `LoginAccount`가 없으므로 `created_by`·`updated_by`는 빈 값이다.
+- 보안 설정은 `global.security.SecurityConfig`의 내부 API 체인과 `InternalApiTokenFilter`다.
+- nginx는 외부에서 오는 `/api/v1/internal/**` 요청을 막는다.
+
 **첫 관리자**
 
 공개 가입이 없으므로 관리자가 한 명도 없으면 서버(`api` 프로필)가 시작할 때 첫 관리자를 만든다.
