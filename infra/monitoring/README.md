@@ -60,7 +60,19 @@ Grafana 이미지는 `grafana/grafana:13.3.0`으로 고정한다. `grafana-data`
 
 서버에서는 새 Compose를 적용하기 전에 `.env`에 `GRAFANA_ADMIN_USER`·`GRAFANA_ADMIN_PASSWORD`를 지정한다. 두 값이 비어 있으면 Compose 변수 해석이 실패하므로 다른 서비스의 Compose 명령에도 영향을 준다. 실제 값을 저장소나 채팅에 남기지 않는다. 이 값은 최초 관리자 생성용이며, 기존 Grafana 데이터 볼륨이 있으면 환경변수 변경만으로 기존 비밀번호가 바뀌지는 않는다. 익명 접근과 사용자 직접 가입은 비활성화한다.
 
-서버 화면은 SSH 터널을 통해 로컬 `http://127.0.0.1:13000`으로 확인한다. 현재 단계에서는 nginx 외부 경로를 추가하지 않는다. 노트북 검증에서는 프로세스 환경변수로 별도 계정을 지정하고 기존 로컬 네트워크 재정의 파일을 함께 사용한다. 로그인·Prometheus 연결·지표 조회·재기동 후 데이터 유지·자원 사용량은 실행 후 검증해야 한다.
+### nginx /grafana 연결 (67)
+
+외부 주소는 `https://k15c106.p.ssafy.io/grafana/`다. Grafana의 `GF_SERVER_ROOT_URL`에 이 주소를 지정하고 `GF_SERVER_SERVE_FROM_SUB_PATH=true`로 하위 경로를 처리한다. nginx는 `/grafana`를 `/grafana/`로 이동시키고 하위 경로를 유지한 채 내부 `grafana:3000`으로 전달한다. 외부 TLS는 nginx가 처리하고 내부 연결은 HTTP다. 기존 loopback 바인딩 `127.0.0.1:13000:3000`은 유지하며 새 외부 포트를 열지 않는다.
+
+nginx는 Docker DNS resolver와 변수 upstream을 사용해 Grafana 주소를 다시 조회한다. Upgrade·Connection 헤더로 Grafana Live WebSocket 연결도 전달한다. Grafana 헬스체크는 `/grafana/api/health`를 조회한다. 서버 설정은 `GF_SECURITY_COOKIE_SECURE=true`로 로그인 쿠키를 HTTPS 연결에서만 전송하도록 한다.
+
+적용 후 SSH 터널로 health를 조회할 때도 `/grafana/api/health` 경로를 사용한다. 예를 들어 로컬 13001을 서버 13000에 연결했다면 `http://127.0.0.1:13001/grafana/api/health`다. 서버 설정의 브라우저 로그인은 외부 HTTPS 주소를 사용한다. HTTP 터널은 Secure 쿠키를 사용하는 로그인 검증을 대신하지 않는다. 노트북의 별도 HTTP 검사 컨테이너에서만 `GF_SECURITY_COOKIE_SECURE=false`로 덮어쓰고, root URL은 브라우저가 접속하는 nginx 주소와 일치시킨다. 이 검사에서는 `http://127.0.0.1:13003/grafana/`를 사용했다.
+
+2026-11-02 로컬 검증(사용자 실행 결과): Compose config 종료 코드 0, nginx 1.30 문법 검사 통과. 서버 인증서를 복사하지 않고 임시 nginx 설정에서 TLS 인증서·SSL listen만 제외했다. 별도 Grafana 13.3.0과 nginx를 연결해 `/grafana` 301, `/grafana/` 302 및 `/grafana/login` 이동, 로그인 화면 200, `/grafana/api/health` 200과 `database=ok`를 확인했다. 비로그인 `/grafana/api/user`와 `/grafana/api/search`는 모두 401이었다. 기존 IP를 임시 컨테이너로 예약하고 Grafana를 172.20.0.2에서 172.20.0.4로 재생성한 후 nginx 재시작 없이 health 200을 확인했다. 별도 HTTP 검사에서 로그인·새로고침 후 세션 유지, nginx 경유 화면 접속을 확인했다. Grafana Live는 초기 root URL(13002)과 브라우저 Origin(13003) 불일치로 403이 발생했고, root URL을 nginx 주소(13003)로 맞춘 뒤 브라우저에서 WebSocket 101을 확인했다. 로그아웃 후 로그인 화면으로 돌아가는 것도 확인했다. 임시 검사 컨테이너와 전용 네트워크는 정리했다. 실제 HTTPS·인증서·Secure 쿠키·서버 계정 권한과 개별 정적 파일 응답 검증은 남아 있다.
+
+2026-11-02 서버 계정 사전 점검(사용자 확인): 기존 관리자 비밀번호가 16자 이상임을 확인했다. 비밀번호 값은 이 점검에서 수집하거나 기록하지 않았다. 팀원용 계정을 생성하고 조직 역할이 Viewer인 것을 확인했다. 기존 SSH 터널로 시크릿 창에서 Viewer 로그인 후 자원 대시보드 조회와 편집·저장·삭제 및 관리자 설정 변경 기능의 제한을 확인했다. 이는 사용자가 보고한 UI 동작 확인이며, 수정 API를 직접 호출하는 권한 검증이나 외부 HTTPS 경로의 최종 검증은 아니다. 기본 비밀번호 로그인 불가 여부도 별도로 확인해야 한다.
+
+서버 반영 전에는 위 계정 정책을 유지한다. 기존 데이터 볼륨의 비밀번호는 `.env` 변경만으로 갱신되지 않는다. 비밀번호·쿠키·토큰을 저장소나 채팅에 남기지 않는다. 서버 기존 설정을 백업·비교하고 실제 인증서를 사용한 `nginx -t`를 통과한 뒤 Grafana 재생성과 nginx reload를 수행한다. 배포 후 HTTPS 로그인 화면·정적 파일·로그인 및 로그아웃·Viewer 권한·Grafana Live, Prometheus·Loki 조회 유지와 포트 접근을 확인한다. 로그인 쿠키의 Secure 속성은 실제 HTTPS 응답 또는 브라우저 쿠키 속성에서 확인하며 쿠키 값은 공유하지 않는다. 기본 비밀번호 인증 실패는 반복 요청 없이 확인한다. 서버 반영은 리뷰·병합 이후에 진행하며, 사전 계정 점검과 로컬 검증만으로 67 완료로 처리하지 않는다.
 
 ### 자원 대시보드 자동 등록
 
