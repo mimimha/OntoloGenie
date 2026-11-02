@@ -218,6 +218,36 @@ services:
     networks:
       - axcore-net
 
+  # 지표 조회 화면. SSH 터널로 접속하며 외부에 직접 공개하지 않는다.
+  grafana:
+    image: grafana/grafana:13.3.0
+    container_name: grafana
+    restart: unless-stopped
+    # 초기 상한이며 대시보드·조회 부하를 실측한 뒤 조정한다.
+    mem_limit: 512m
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER must be set}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      TZ: Asia/Seoul
+    ports:
+      - "127.0.0.1:13000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      # 기본 plugins·alerting·dashboards 폴더를 가리지 않고 관리할 파일만 연결한다.
+      - ./monitoring/grafana/provisioning/datasources/prometheus.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml:ro
+      - ./monitoring/grafana/provisioning/dashboards/axcore.yaml:/etc/grafana/provisioning/dashboards/axcore.yaml:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+    networks:
+      - axcore-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
 networks:
   axcore-net:
     name: axcore-net
@@ -229,3 +259,5 @@ volumes:
     name: axcore-prometheus-data
   alloy-data:
     name: axcore-alloy-data
+  grafana-data:
+    name: axcore-grafana-data
