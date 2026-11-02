@@ -8,6 +8,8 @@ import com.axcore.platform.review.dto.ManualProposalCreateRequest;
 import com.axcore.platform.review.dto.ProposalOptionResponse;
 import com.axcore.platform.review.dto.ProposalResponse;
 import com.axcore.platform.review.dto.ProposalRevisionCreateRequest;
+import com.axcore.platform.review.dto.ProposalRevisionResponse;
+import com.axcore.platform.review.dto.ProposalRevisionSearchRequest;
 import com.axcore.platform.review.dto.ProposalSearchRequest;
 import com.axcore.platform.review.dto.ProposalWriteResponse;
 import com.axcore.platform.review.service.ProposalCommandService;
@@ -92,8 +94,26 @@ public class ProposalController {
                     @Min(value = 1, message = "revision은 1 이상이어야 합니다.")
                     Integer revision,
             @AuthenticationPrincipal LoginAccount loginAccount) {
+
         requireAdmin(loginAccount);
+
         return ApiResponse.of(proposalService.getOptions(id, revision));
+    }
+
+    @GetMapping("/{id}/revisions")
+    public ApiResponse<List<ProposalRevisionResponse>> getRevisions(
+            @PathVariable("id") @Min(value = 1, message = "id는 1 이상이어야 합니다.") long id,
+            @Valid @ModelAttribute ProposalRevisionSearchRequest request,
+            @AuthenticationPrincipal LoginAccount loginAccount) {
+
+        requireAdmin(loginAccount);
+
+        int page = request.page() == null ? 0 : request.page();
+        int size = request.size() == null ? 20 : request.size();
+
+        PageRequest pageable = PageRequest.of(page, size);
+
+        return ApiResponse.ofPage(proposalService.getRevisions(id, pageable));
     }
 
     private static void requireAdmin(LoginAccount loginAccount) {
