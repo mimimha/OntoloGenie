@@ -168,7 +168,7 @@ frontend · ai 컨테이너에는 docker.sock을 붙이지 않는다. 작업 폴
 7. backend · AI · frontend 이미지는 각각 최근 3개 태그만 보관, 3일 지난 빌드 캐시 삭제
 8. 결과는 GitLab 커밋 상태 + Mattermost DM(머지한 사람). 서비스마다 `ai 배포 <이전> → <새 SHA>` / `ai 배포 실패 → <이전> 로 롤백됨` 등의 결과를 표시하며, 세 서비스 모두 변경이 없으면 `배포: 변경 없음`. 배포 대상 목록을 기준으로 메시지를 만들기 때문에 빌드 실패 등으로 배포 단계에 도달하지 못한 경우에는 Jenkins 단계 로그도 함께 확인한다
 
-롤백은 직전 태그가 있을 때 해당 태그로 `up -d`를 실행한다. 첫 배포처럼 직전 태그가 없으면 되돌릴 대상이 없으며, 롤백 후 healthy를 다시 기다리는 검증은 현재 함수에 없다. 실패 시 컨테이너 상태와 실제 응답을 별도로 확인한다.
+롤백은 직전 태그가 있을 때 해당 태그로 `up -d`를 실행하고 복구 후 준비 상태도 재확인한다. 첫 배포처럼 직전 태그가 없으면 실패한 신규 서비스를 정지하고 수동 복구 필요를 기록한다. backend·batch 묶음의 추가 처리 조건은 아래 배치 절을 따른다. 실패 시 컨테이너 상태와 실제 응답도 확인한다.
 
 Jenkins 컨테이너는 가게 폴더를 같은 경로(`/home/ubuntu/axcore`)로 마운트한다. compose의 상대 경로(`./nginx/...`)가 호스트 기준으로 풀리므로 경로가 같아야 한다.
 
@@ -194,8 +194,42 @@ DB 마이그레이션까지 되돌려야 하면 "DB 백업 · 복구"의 운영 
 
 - DB 접속은 compose 안에서 `postgres:5432` (컨테이너 이름 · 컨테이너 포트). 호스트 포트 15432는 SSH 터널용
 - 표는 Flyway가 `platform` 스키마에 만든다: `\dt platform.*`
-- batch 컨테이너는 같은 이미지를 `SPRING_PROFILES_ACTIVE=batch`로 띄운다 (ERP·MES 접속 정보 확정 후 추가)
+- batch 컨테이너는 같은 이미지를 `SPRING_PROFILES_ACTIVE=batch`로 띄운다. 실행 환경과 검증 범위는 아래 배치 절을 따른다.
 - 헬스체크: `docker compose ps`에서 backend `(healthy)` 확인. 컨테이너 안에서 30초마다 `/actuator/health`를 두드리며, DB가 내려가면 약 90초 뒤 `(unhealthy)`로 바뀐다 (자동 재시작은 하지 않음. 5-7 배포 검증과 7-4 알림에서 사용)
+
+## 배치 컨테이너 (54)
+
+백엔드 담당자와 확인한 범위는 같은 backend 이미지를 batch 프로필로 실행하는 컨테이너 환경 구성이다. 정합성 검사·작업 실행 로직은 백엔드 작업 범위다. `batch`는 `axcore-backend:${BACKEND_TAG}`와 기존 플랫폼 PostgreSQL 연결 변수를 사용한다. 원천 MES·ERP 접속 정보나 CDC 소비 설정은 이번 변경에 추가하지 않는다. 이후 실행 코드가 요구하는 환경변수는 담당자와 확인해 별도 반영한다.
+
+초기 자원 제한은 `mem_limit: 1g`, `cpus: 1.0`, `JAVA_TOOL_OPTIONS: -Xmx768m`이다. 힙 외 메모리 여유는 256MiB이며 충분한지는 실제 작업 부하에서 확인한다. batch 프로필은 웹 서버 없이 프로세스를 유지하므로 HTTP 포트를 추가하지 않는다. PostgreSQL의 healthy 상태를 기다린 후 실행하고 기존 `axcore-net`에 연결한다. 기존 Alloy 설정은 이 네트워크의 Compose `service="batch"` 로그를 수집 대상으로 포함하지만 실제 서버 수집 여부는 배포 후 확인해야 한다.
+
+### 배포 준비 완료 기준
+
+백엔드 담당자가 전달한 현재 기준에 따라 batch에는 healthcheck나 하트비트 코드를 추가하지 않는다. Jenkins가 현재 프로세스 시작 이후의 `Started PlatformApplication` 로그, RestartCount=0, OOMKilled=false와 running 상태를 확인하고 60초간 같은 컨테이너 ID·StartedAt이 유지되는지 검사한다. 로그 대기는 최대 90초이며 안정화 기간에는 5초마다 다시 검사한다. HTTP API health는 기존 backend·AI·frontend 기준을 유지한다.
+
+담당자는 현재 배치 코드의 마이그레이션·작업 처리기 빈·스케줄 등록이 기동 중 완료되며, CDC 소비자와 작업 처리기 구현체는 아직 없다고 설명했다. 이번 기준은 기동과 짧은 안정화 확인이며 작업 성공이나 운영 중 DB 단절 감지를 보장하지 않는다. 기동 후 비동기 연결 구성요소 또는 실제 처리기가 추가되면 준비 상태와 운영 heartbeat를 다시 검토한다. 실제 도메인 작업 처리 준비를 Started 로그만으로 보증하지 않는다.
+
+`stop_grace_period: 40s`를 두어 담당자가 안내한 앱 종료 대기 30초보다 Docker 강제 종료 유예를 길게 설정한다. 처리 중인 작업이 실제로 안전하게 종료·복구되는지는 작업 처리기 구현 후 검증한다.
+
+현재 Compose의 메모리 상한이 있는 서비스 합계는 batch 포함 10.875GiB다(Jenkins 4, backend 2, PostgreSQL 1, AI 1, batch 1, frontend 0.125, Prometheus 0.5, Alloy 0.25, Grafana 0.5, Loki 0.5). 이 합계는 전체 서버 메모리 보장을 뜻하지 않는다. nginx에는 상한이 없고 별도 CDC 프로젝트의 Kafka·Connect·Console, OS 등의 사용량도 별도로 포함해야 한다. 16GB 서버의 실제 여유·피크를 확인한 뒤 초기 예산을 확정한다.
+
+### 로컬 검증 결과
+
+2026-11-02 사용자 실행 결과: Compose config 종료 코드 0과 diff 공백 검사 통과. `axcore-backend:batch-54-check`를 Dockerfile로 빌드했다. Dockerfile의 `bootJar -x test` 경로이므로 애플리케이션 테스트 통과를 의미하지 않는다. 외부 포트와 기존 볼륨이 없는 별도 네트워크·tmpfs PostgreSQL 18.6으로 검증했다. batch 프로필·`-Xmx768m`, DB 연결과 Flyway V1~V5 적용 후 `Started PlatformApplication`을 확인했다(약 9.9초). 메모리 260.6MiB/1GiB, CPU 0.09%는 유휴 상태의 단일 측정값이다. Docker inspect에서 Memory=1073741824, NanoCpus=1000000000, PortBindings={}를 확인했다. 재시작 후 약 9.5초에 다시 기동했고 running·OOM=false였다. 임시 앱·DB 컨테이너와 전용 네트워크는 정리했으며 검사 이미지는 남겼다.
+
+후속 사용자 실행 결과: 별도 Windows Gradle project cache로 build 통과. 최신 develop 79ddbef(215 배치 실행 기반·270 인증 포함) 반영 후 backend 전체 build 재검사와 검사 이미지 재빌드도 성공했다. 새 tmpfs PostgreSQL에서 Flyway V1~V6 적용 성공, batch 프로필에서 약 10.52초에 Started 로그와 running·OOM=false·RestartCount=0을 확인했다. 이어서 5초 간격 12회 동안 컨테이너 ID·StartedAt 유지, running·RestartCount=0·OOM=false 조건을 확인해 60초 안정화 검사를 통과했다. 이전 버전으로 수행한 잘못된 DB 비밀번호 검사에서는 기동 완료 없이 Application run failed, 최종 exited·RestartCount=2·ExitCode=1이었다. 이 실패 사례는 최신 코드로 다시 실행한 결과는 아니다.
+
+`infra/tests/jenkins-deploy-tests.groovy`는 Jenkinsfile의 실제 배포 함수를 로드하되 Jenkins 단계와 준비 판정 결과를 대체한다. 사용자가 Gradle에 포함된 Groovy로 실행해 8개 분기(묶음 갱신, 묶음 롤백, 첫 batch 실패 복구, 복구 실패, batch 부재, 기존 이미지 불일치, Compose 해석 오류, 이전 태그 부재) 통과를 확인했다. 이는 실제 Docker 배포나 Jenkins 서버 실행을 대신하지 않는다. 최신 Compose config 종료 코드 0도 확인했다.
+
+컨테이너 기동 검증은 직접 `docker run`으로 지정한 실행 옵션의 확인이다. 서버 Compose batch 서비스의 실제 실행·제한 적용은 배포 후 확인해야 한다. 정합성 검사, 실제 도메인 작업, MES·ERP 연결, 장기 부하·로그 수집은 이번 로컬 검사에서 실행하지 않았다. 최신 기동 검사 컨테이너·임시 DB·네트워크는 사용자 확인으로 최종 정리 완료했다.
+
+### 배포 및 이미지 자동 갱신
+
+태그 정책은 BACKEND_TAG 공유와 backend·batch 묶음 배포·롤백이다. 독립적인 BATCH_TAG는 추가하지 않는다. Jenkins는 backend 이미지를 한 번 빌드하고, 서버 Compose에 batch가 있으면 두 서비스를 함께 재생성한다. HTTP health 확인 후 batch 전용 기동·안정화 검사를 수행하고 HTTP health도 재확인한다. `disableConcurrentBuilds()`로 같은 Jenkins Job 실행을 직렬화해 태그 갱신과 롤백이 겹치지 않게 한다. 이 옵션은 이 Jenkinsfile을 사용하는 MR 검사 Job에도 적용된다. 별도 Job이나 수동 서버 작업까지 잠그는 것은 아니므로 배포 중 수동 태그 변경은 하지 않는다. 서버 Compose에 batch가 아직 없으면 backend만 배포하고 건너뛴 사실을 출력한다. Compose 해석 오류는 서비스 부재로 간주하지 않고 배포를 중단한다. 서버 설정 파일은 여전히 자동 복사되지 않으므로 수동 반영이 필요하다.
+
+기존 batch가 실행 중이면 이전 BACKEND_TAG의 이미지와 같은지 먼저 확인하며, 버전 불일치 시 자동 덮어쓰기 대신 중단한다. 배포 실패 시 이전 태그로 backend와 기존 실행 중 batch를 함께 복구하고 각 서비스의 준비 기준을 재확인한다. 첫 batch 배포처럼 이전에 실행 중이지 않았다면 신규 batch를 정지한 뒤 backend만 복구한다. 이전 태그 자체가 없으면 실패한 신규 서비스를 정지하고 수동 복구 필요를 기록한다. 롤백 검증이 실패하면 성공한 롤백으로 표시하지 않는다. 이미지 롤백은 DB 마이그레이션을 되돌리지 않으므로 이전 코드의 DB 호환성도 검토한다.
+
+Jenkinsfile 변경은 develop 병합 시 서버에서 실행된다. Compose를 반영하기 전의 backend 배포에서는 batch가 추가되지 않는다. 서버 반영은 리뷰·병합 후 기존 설정 백업·비교와 Compose 검사를 거쳐 수행한다. 첫 실행은 이미지 태그 확인 후 `docker compose up -d batch`로 진행하며 기동 로그·60초간 running 및 StartedAt 유지·RestartCount=0·OOM=false·자원 제한·포트·Loki 로그를 확인한다. 이후 실제 자동 갱신과 실패 롤백 검증은 남아 있다. 위 로컬 기동 검증은 Jenkins 안정화 검사나 실제 작업 처리 검증을 대신하지 않는다.
 
 ## PostgreSQL 메이저 업그레이드 절차 (17.11 → 18.6, 2026-10-27 수행)
 
