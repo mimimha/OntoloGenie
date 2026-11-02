@@ -70,7 +70,6 @@ services:
       retries: 5
 
   # 플랫폼 백엔드 (Spring Boot, api 모드). 이미지 태그는 .env의 BACKEND_TAG (= 커밋 SHA).
-  # 같은 이미지를 batch 모드로 한 번 더 띄우는 건 6-6(ERP·MES 접속 정보) 뒤에 추가한다.
   backend:
     image: axcore-backend:${BACKEND_TAG}
     container_name: backend
@@ -102,6 +101,28 @@ services:
       timeout: 5s
       retries: 3
       start_period: 40s
+
+  # backend와 같은 이미지의 비웹 배치 프로세스. 실제 작업 로직은 백엔드에서 구현한다.
+  batch:
+    image: axcore-backend:${BACKEND_TAG}
+    container_name: batch
+    restart: unless-stopped
+    stop_grace_period: 40s
+    # 초기 예산. 힙 외 메모리 256MiB를 남기고 실제 부하에서 조정한다.
+    mem_limit: 1g
+    cpus: 1.0
+    environment:
+      SPRING_PROFILES_ACTIVE: batch
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JAVA_TOOL_OPTIONS: -Xmx768m
+      TZ: Asia/Seoul
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - axcore-net
 
   # 플랫폼 프론트 (React 정적 파일을 컨테이너 안 nginx가 서빙, frontend/Dockerfile). 이미지 태그는 .env의 FRONTEND_TAG (= 커밋 SHA).
   # 바깥 손님은 메인 nginx(443)의 / 를 거쳐 들어온다. 10080은 서버 안 디버그용 (포트 규칙: 1 + 컨테이너 기본 포트. 13000은 grafana 예정).

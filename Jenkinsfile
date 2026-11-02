@@ -7,6 +7,8 @@ pipeline {
     agent any
 
     options {
+        // 같은 서버의 이미지 태그·롤백 상태를 두 빌드가 동시에 바꾸지 않는다.
+        disableConcurrentBuilds()
         // 빌드 기록은 최근 10개만 보관해 디스크를 아낀다.
         buildDiscarder(logRotator(numToKeepStr: '10'))
         // GitLab에 빌드 상태(성공/실패)를 써 줄 연결. Jenkins 관리 → System → GitLab의 Connection name.
@@ -205,7 +207,7 @@ pipeline {
                 // 배포 로직은 아래 deployService 함수 (태그 갱신 → up -d → 90초 헬스체크 → 실패 시 롤백).
                 // catchError: 실패해도 파이프라인을 멈추지 않는다. 이 단계와 빌드는 실패로 표시하고(DM 감) 다음 서비스 배포는 계속한다.
                 catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                    script { deployService('backend', 'BACKEND_TAG') }
+                    script { deployBackendAndBatch() }
                 }
             }
         }
@@ -334,41 +336,136 @@ def notifyMattermost(String result) {
 // svc = compose 서비스 이름(= 컨테이너 이름), tagVar = .env의 태그 변수 이름 (BACKEND_TAG / AI_TAG / FRONTEND_TAG).
 // 결과는 env.<KEY>_PREV_TAG · env.<KEY>_ROLLED_BACK 에 남겨 DM 문구에서 쓴다 (KEY = BACKEND / AI / FRONTEND).
 // 손으로 하던 절차와 같다: .env 태그 갱신 → docker compose up -d <svc> → docker compose ps (healthy).
-def deployService(String svc, String tagVar) {
+def deployBackendAndBatch() {
+    // 서버 Compose는 수동 반영한다. 54 설정 반영 전에는 기존 backend 배포를 유지한다.
+    def configuredServices = sh(returnStdout: true, script: "docker compose -f ${env.DEPLOY_DIR}/compose.yaml config --services").trim().tokenize()
+    def hasBatch = configuredServices.contains('batch')
+    if (!hasBatch) {
+        echo '서버 Compose에 batch가 없어 backend만 배포합니다. 54 설정 반영 후 batch 자동 갱신이 활성화됩니다.'
+        deployService('backend', 'BACKEND_TAG')
+        return
+    }
+    deployService('backend', 'BACKEND_TAG', ['batch'])
+}
+
+def waitForHealthyServices(List services) {
+    def httpServices = services.findAll { it != 'batch' }
+    if (httpServices) {
+        waitForHttpHealth(httpServices)
+    }
+    if (services.contains('batch')) {
+        waitForBatchStartup()
+        // batch 안정화 중 HTTP 서비스가 실패한 경우도 성공으로 판정하지 않는다.
+        if (httpServices) {
+            waitForHttpHealth(httpServices)
+        }
+    }
+}
+
+def waitForBatchStartup() {
+    // 현재 프로세스의 시작 시각 이후 로그만 확인해 이전 기동 로그를 재사용하지 않는다.
+    sh '''
+        batch_id=$(docker inspect --format '{{.Id}}' batch)
+        started=$(docker inspect --format '{{.State.StartedAt}}' batch)
+        check_batch_process() {
+            current_id=$(docker inspect --format '{{.Id}}' batch) || return 1
+            current_start=$(docker inspect --format '{{.State.StartedAt}}' batch) || return 1
+            state=$(docker inspect --format '{{.State.Running}} {{.RestartCount}} {{.State.OOMKilled}}' batch) || return 1
+            [ "$current_id" = "$batch_id" ] && [ "$current_start" = "$started" ] && [ "$state" = 'true 0 false' ]
+        }
+        started_found=false
+        for i in $(seq 1 18); do
+            check_batch_process || { echo 'batch 종료·재시작·OOM 또는 컨테이너 교체 감지'; exit 1; }
+            if docker logs --since "$started" "$batch_id" 2>&1 | grep -q 'Started PlatformApplication'; then
+                started_found=true
+                break
+            fi
+            sleep 5
+        done
+        [ "$started_found" = true ] || { echo 'batch 기동 로그 확인 실패: 90초 초과'; exit 1; }
+        echo 'batch Started 확인. 60초간 동일 프로세스 유지 확인'
+        for i in $(seq 1 12); do
+            sleep 5
+            check_batch_process || { echo 'batch 안정화 중 종료·재시작·OOM 또는 교체 감지'; exit 1; }
+        done
+        echo 'batch 기동 및 60초 안정화 확인 완료'
+    '''
+}
+
+def waitForHttpHealth(List services) {
+    def serviceNames = services.join(' ')
+    sh """
+        for i in \$(seq 1 18); do
+            all_healthy=true
+            for service in ${serviceNames}; do
+                s=\$(docker inspect --format '{{.State.Health.Status}}' \$service 2>/dev/null || echo none)
+                echo "\$service health: \$s (\$i/18)"
+                [ "\$s" = healthy ] || all_healthy=false
+            done
+            [ "\$all_healthy" = true ] && exit 0
+            sleep 5
+        done
+        echo "헬스체크 실패: 90초 안에 전체 서비스가 healthy가 되지 않음"
+        docker compose -f ${env.DEPLOY_DIR}/compose.yaml logs --tail 50 ${serviceNames}
+        exit 1
+    """
+}
+
+def deployService(String svc, String tagVar, List companions = []) {
     def key = tagVar.replace('_TAG', '')
+    def services = [svc] + companions
+    def serviceNames = services.join(' ')
     // 되돌릴 때 쓸 직전 태그를 기억한다.
     def prev = sh(returnStdout: true, script: "grep '^${tagVar}=' ${env.DEPLOY_DIR}/.env | cut -d= -f2").trim()
     env."${key}_PREV_TAG" = prev
-    echo "${svc} ${prev ?: '없음'} → ${env.GIT_SHA}"
+    env."${key}_ROLLED_BACK" = 'false'
+    def rollbackServices = [svc]
+    def stopOnRollback = []
+    for (companion in companions) {
+        def wasRunning = sh(returnStatus: true, script: "[ \"\$(docker inspect --format '{{.State.Running}}' ${companion} 2>/dev/null)\" = true ]") == 0
+        if (wasRunning) {
+            // 버전이 이미 다른 상태에서 공유 태그만으로 롤백하지 않는다.
+            if (!prev) {
+                error("${companion} 실행 중이지만 이전 ${tagVar}가 없어 배포를 중단합니다.")
+            }
+            sh """
+                expected=\$(docker image inspect axcore-backend:${prev} --format '{{.Id}}')
+                actual=\$(docker inspect ${companion} --format '{{.Image}}')
+                [ "\$expected" = "\$actual" ] || { echo '${companion} 이미지와 ${tagVar} 불일치'; exit 1; }
+            """
+            rollbackServices.add(companion)
+        } else {
+            stopOnRollback.add(companion)
+        }
+    }
+    echo "${serviceNames} ${prev ?: '없음'} → ${env.GIT_SHA}"
     try {
         // .env의 태그를 새 번호로 바꾸고(줄이 없으면 만들고) 그 서비스만 새로 띄운다.
         sh """
             grep -q '^${tagVar}=' ${env.DEPLOY_DIR}/.env || echo '${tagVar}=' >> ${env.DEPLOY_DIR}/.env
             sed -i 's/^${tagVar}=.*/${tagVar}=${env.GIT_SHA}/' ${env.DEPLOY_DIR}/.env
-            docker compose -f ${env.DEPLOY_DIR}/compose.yaml up -d ${svc}
+            docker compose -f ${env.DEPLOY_DIR}/compose.yaml up -d ${serviceNames}
         """
-        // 최대 90초(5초 × 18번) 동안 (healthy)가 될 때까지 기다린다. compose의 healthcheck를 그대로 쓴다.
-        sh """
-            for i in \$(seq 1 18); do
-                s=\$(docker inspect --format '{{.State.Health.Status}}' ${svc} 2>/dev/null || echo none)
-                echo "health: \$s (\$i/18)"
-                [ "\$s" = healthy ] && exit 0
-                sleep 5
-            done
-            echo "헬스체크 실패: 90초 안에 healthy가 되지 않음"
-            docker compose -f ${env.DEPLOY_DIR}/compose.yaml logs --tail 50 ${svc}
-            exit 1
-        """
+        // HTTP 서비스 health 확인 후 batch는 기동 로그와 60초 안정화를 별도 확인한다.
+        waitForHealthyServices(services)
     } catch (e) {
-        // 롤백: 직전 태그로 되돌리고 다시 띄운다. 첫 배포(직전 태그 없음)면 되돌릴 게 없어 그대로 둔다.
-        echo "${svc} 배포 실패 → ${prev ?: '(직전 태그 없음)'} 로 롤백"
+        // 롤백 후에도 health를 확인한다. 이전 태그가 없는 신규 서비스는 정지한다.
+        echo "${serviceNames} 배포 실패 → ${prev ?: '(직전 태그 없음)'} 로 롤백"
         if (prev) {
+            if (stopOnRollback) {
+                // 첫 batch 배포 실패 시 이전에 없던 작업 소비자를 실행 상태로 남기지 않는다.
+                sh "docker compose -f ${env.DEPLOY_DIR}/compose.yaml stop ${stopOnRollback.join(' ')}"
+            }
             sh """
                 sed -i 's/^${tagVar}=.*/${tagVar}=${prev}/' ${env.DEPLOY_DIR}/.env
-                docker compose -f ${env.DEPLOY_DIR}/compose.yaml up -d ${svc}
+                docker compose -f ${env.DEPLOY_DIR}/compose.yaml up -d ${rollbackServices.join(' ')}
             """
+            waitForHealthyServices(rollbackServices)
+            env."${key}_ROLLED_BACK" = 'true'
+        } else {
+            sh "docker compose -f ${env.DEPLOY_DIR}/compose.yaml stop ${serviceNames}"
+            echo '직전 태그가 없어 실패한 신규 서비스를 정지했습니다. 수동 복구가 필요합니다.'
         }
-        env."${key}_ROLLED_BACK" = 'true'
         throw e
     }
 }
