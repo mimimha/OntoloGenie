@@ -1,6 +1,10 @@
 import { delay, http, HttpResponse } from 'msw'
 import type { Execution } from '../features/audit/types'
-import type { DefinitionChange, RuleRevision } from '../features/history/types'
+import type {
+  DefinitionChange,
+  RuleRevision,
+  RuleSummary,
+} from '../features/history/types'
 import type {
   ModelGraph,
   ObjectInstance,
@@ -496,18 +500,51 @@ const definitionChanges: DefinitionChange[] = [
 
 // 046 연결 규칙 개정 이력 응답 (규칙 코드별)
 const ruleRevisions: Record<string, RuleRevision[]> = {
+  NOTE_EQUIPMENT_MENTION: [
+    {
+      id: 20,
+      code: 'NOTE_EQUIPMENT_MENTION',
+      revision: 1,
+      linkTypeId: 7,
+      linkTypeName: '언급된 설비',
+      status: 'ACTIVE',
+      conditions: [
+        {
+          sequenceNo: 1,
+          sourcePropertyId: 61,
+          targetPropertyId: 21,
+          sourcePropertyName: '언급 설비 코드',
+          targetPropertyName: '설비 코드',
+          operator: 'EQ',
+          sourceTransforms: [],
+          targetTransforms: [],
+        },
+      ],
+      sourceFilter: {},
+      targetFilter: {},
+      retiredAt: null,
+      description: '인수인계 메모에 언급된 설비 연결',
+      createdAt: '2026-10-25T13:00:00+09:00',
+      createdBy: 1,
+      origin: 'MANUAL',
+      proposalItemId: null,
+    },
+  ],
   WO_EQUIPMENT_CODE: [
     {
       id: 10,
       code: 'WO_EQUIPMENT_CODE',
       revision: 1,
       linkTypeId: 2,
+      linkTypeName: '현재 배정 설비',
       status: 'RETIRED',
       conditions: [
         {
           sequenceNo: 1,
           sourcePropertyId: 31,
           targetPropertyId: 21,
+          sourcePropertyName: '배정 설비 코드',
+          targetPropertyName: '설비 코드',
           operator: 'EQ',
           sourceTransforms: [],
           targetTransforms: [],
@@ -527,12 +564,15 @@ const ruleRevisions: Record<string, RuleRevision[]> = {
       code: 'WO_EQUIPMENT_CODE',
       revision: 2,
       linkTypeId: 2,
+      linkTypeName: '현재 배정 설비',
       status: 'ACTIVE',
       conditions: [
         {
           sequenceNo: 1,
           sourcePropertyId: 31,
           targetPropertyId: 21,
+          sourcePropertyName: '배정 설비 코드',
+          targetPropertyName: '설비 코드',
           operator: 'EQ',
           sourceTransforms: [{ function: 'UPPER' }],
           targetTransforms: [],
@@ -548,6 +588,21 @@ const ruleRevisions: Record<string, RuleRevision[]> = {
       proposalItemId: 300,
     },
   ],
+}
+
+// 연결 규칙 목록 응답 (백엔드 신설 예정): 규칙 코드별 최신 개정본
+function ruleSummaries(): RuleSummary[] {
+  return Object.values(ruleRevisions).map((revisions) => {
+    const latest = revisions.reduce((a, b) => (a.revision > b.revision ? a : b))
+    return {
+      code: latest.code,
+      revision: latest.revision,
+      linkTypeId: latest.linkTypeId,
+      linkTypeName: latest.linkTypeName ?? '',
+      status: latest.status,
+      description: latest.description,
+    }
+  })
 }
 
 export const handlers = [
@@ -583,6 +638,18 @@ export const handlers = [
         hasNext: false,
       },
     })
+  }),
+
+  // 연결 규칙 목록 (백엔드 신설 예정)
+  http.get('/api/v1/ontology/rules', async ({ request }) => {
+    await delay()
+    const params = new URL(request.url).searchParams
+    const linkTypeId = Number(params.get('linkTypeId'))
+    const status = params.get('status')
+    const matched = ruleSummaries()
+      .filter((rule) => !linkTypeId || rule.linkTypeId === linkTypeId)
+      .filter((rule) => !status || rule.status === status)
+    return HttpResponse.json({ data: matched })
   }),
 
   // 046 연결 규칙 개정 이력 조회

@@ -1,5 +1,5 @@
 import { apiGet } from '../../api/client'
-import type { DefinitionChange, RuleRevision } from './types'
+import type { DefinitionChange, RuleRevision, RuleSummary } from './types'
 
 export const DEFINITION_CHANGE_PAGE_SIZE = 20
 
@@ -27,6 +27,12 @@ export function fetchDefinitionChanges(
   params.set('page', String(page))
   params.set('size', String(DEFINITION_CHANGE_PAGE_SIZE))
   return apiGet<DefinitionChange[]>(`/ontology/changes?${params}`)
+}
+
+// 연결 규칙 목록 (백엔드 신설 예정, 명세 번호 미정): 규칙 코드별 최신 개정본
+export async function fetchRules() {
+  const body = await apiGet<RuleSummary[]>('/ontology/rules')
+  return body.data
 }
 
 // 046 연결 규칙 개정 이력 조회

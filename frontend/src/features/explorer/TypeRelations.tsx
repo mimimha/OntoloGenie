@@ -24,7 +24,7 @@ function RelationList({ title, edges, typeName }: RelationListProps) {
                 {`${typeName(edge.sourceTypeId)} → ${typeName(edge.targetTypeId)} · ${cardinalityLabels[edge.cardinality]}`}
               </p>
               <p className="text-xs text-slate-500">
-                {`활성 연결 ${edge.activeLinkCount}건 · 전체 ${edge.relationCount}건`}
+                {`활성 연결 ${edge.activeLinkCount}건${edge.relationCount == null ? '' : ` · 전체 ${edge.relationCount}건`}`}
               </p>
             </li>
           ))}

@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { fetchRuleRevisions } from './api'
+import { fetchRuleRevisions, fetchRules } from './api'
 import { ruleOriginLabels, ruleStatusLabels } from './labels'
-import type { RuleCondition, RuleRevision } from './types'
+import type { RuleCondition, RuleRevision, RuleSummary } from './types'
 
 function formatDateTime(value?: string | null) {
   return value ? new Date(value).toLocaleString('ko-KR') : '-'
@@ -14,7 +14,12 @@ function formatTransforms(transforms: Record<string, unknown>[]) {
     : ''
 }
 
-// 비교 조건은 번호 순서대로 AND로 묶인다. 속성은 아직 번호로만 와서 번호로 보여 준다.
+// 속성은 이름이 오면 "설비 코드(#31)"처럼, 아직 번호만 오면 "속성 #31"로 보여 준다.
+function propertyLabel(id: number, name?: string | null) {
+  return name ? `${name}(#${id})` : `속성 #${id}`
+}
+
+// 비교 조건은 번호 순서대로 AND로 묶인다.
 function formatConditions(conditions: RuleCondition[]) {
   if (conditions.length === 0) {
     return '-'
@@ -23,7 +28,7 @@ function formatConditions(conditions: RuleCondition[]) {
     .sort((a, b) => a.sequenceNo - b.sequenceNo)
     .map(
       (condition) =>
-        `${condition.sequenceNo}. 출발 속성 #${condition.sourcePropertyId}${formatTransforms(condition.sourceTransforms)} = 도착 속성 #${condition.targetPropertyId}${formatTransforms(condition.targetTransforms)}`,
+        `${condition.sequenceNo}. 출발 ${propertyLabel(condition.sourcePropertyId, condition.sourcePropertyName)}${formatTransforms(condition.sourceTransforms)} = 도착 ${propertyLabel(condition.targetPropertyId, condition.targetPropertyName)}${formatTransforms(condition.targetTransforms)}`,
     )
     .join('\n')
 }
@@ -127,6 +132,9 @@ function RevisionComparison({ previous, selected }: RevisionComparisonProps) {
           이 개정본에는 비교할 이전 개정본이 없습니다.
         </p>
       )}
+      <p className="mt-2 text-xs text-slate-500">
+        속성·관계 유형 이름은 개정 당시가 아니라 지금 이름입니다.
+      </p>
     </div>
   )
 }
@@ -149,7 +157,7 @@ function RevisionList({ revisions }: RevisionListProps) {
   return (
     <div>
       <p className="text-xs text-slate-500">
-        {`${selected.code} · 관계 유형 #${selected.linkTypeId}`}
+        {`${selected.code} · ${selected.linkTypeName ?? `관계 유형 #${selected.linkTypeId}`}`}
       </p>
       <h3 className="mt-1 text-lg font-semibold text-slate-900">
         {initial.description ?? selected.code}
@@ -180,14 +188,97 @@ function RevisionList({ revisions }: RevisionListProps) {
   )
 }
 
+function ruleOptionLabel(rule: RuleSummary) {
+  return `${rule.description ?? rule.code} · ${rule.linkTypeName} · 개정 ${rule.revision} ${ruleStatusLabels[rule.status]}`
+}
+
+type RulePickerProps = {
+  code: string
+  onSearch: (code: string) => void
+}
+
+// 규칙 목록 API로 규칙을 고르게 한다. 목록을 받지 못하면(아직 백엔드에 없는 경우 등) 코드를 직접 입력한다.
+function RulePicker({ code, onSearch }: RulePickerProps) {
+  const [input, setInput] = useState(code)
+  const {
+    data: rules,
+    isPending,
+    isError,
+  } = useQuery({
+    queryKey: ['ontology', 'rules'],
+    queryFn: fetchRules,
+    retry: false,
+  })
+
+  if (isPending) {
+    return <p className="text-sm text-slate-500">규칙 목록을 불러오는 중…</p>
+  }
+
+  if (!isError) {
+    // 주소로 들어온 코드가 목록에 없어도 선택된 값으로 보이게 한다.
+    const options =
+      code && !rules.some((rule) => rule.code === code)
+        ? [{ value: code, label: code }]
+        : []
+    return (
+      <label className="flex flex-col gap-1 text-sm">
+        규칙 선택
+        <select
+          value={code}
+          onChange={(event) => onSearch(event.target.value)}
+          className="rounded-lg border border-slate-300 px-2 py-1"
+        >
+          <option value="">규칙을 고르세요</option>
+          {rules.map((rule) => (
+            <option key={rule.code} value={rule.code}>
+              {ruleOptionLabel(rule)}
+            </option>
+          ))}
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    )
+  }
+
+  return (
+    <form
+      className="flex items-end gap-3 text-sm"
+      onSubmit={(event) => {
+        event.preventDefault()
+        onSearch(input.trim())
+      }}
+    >
+      <label className="flex flex-1 flex-col gap-1">
+        규칙 코드
+        <input
+          type="search"
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          placeholder="예: WO_EQUIPMENT_CODE"
+          className="rounded-lg border border-slate-300 px-2 py-1"
+        />
+      </label>
+      <button
+        type="submit"
+        className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white"
+      >
+        조회
+      </button>
+    </form>
+  )
+}
+
 type RuleRevisionsProps = {
   code: string
   onSearch: (code: string) => void
 }
 
-// 046 연결 규칙 개정 이력: 규칙 코드 하나의 개정본들을 고르고 이전 개정본과 비교한다.
+// 046 연결 규칙 개정 이력: 규칙 하나의 개정본들을 고르고 이전 개정본과 비교한다.
 function RuleRevisions({ code, onSearch }: RuleRevisionsProps) {
-  const [input, setInput] = useState(code)
   const {
     data: revisions,
     isPending,
@@ -203,7 +294,7 @@ function RuleRevisions({ code, onSearch }: RuleRevisionsProps) {
   if (code === '') {
     content = (
       <p className="text-slate-500">
-        규칙 코드를 입력하면 그 규칙의 개정 이력을 보여 줍니다.
+        규칙을 고르면 그 규칙의 개정 이력을 보여 줍니다.
       </p>
     )
   } else if (isPending) {
@@ -220,30 +311,7 @@ function RuleRevisions({ code, onSearch }: RuleRevisionsProps) {
 
   return (
     <div>
-      <form
-        className="flex items-end gap-3 text-sm"
-        onSubmit={(event) => {
-          event.preventDefault()
-          onSearch(input.trim())
-        }}
-      >
-        <label className="flex flex-1 flex-col gap-1">
-          규칙 코드
-          <input
-            type="search"
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="예: WO_EQUIPMENT_CODE"
-            className="rounded-lg border border-slate-300 px-2 py-1"
-          />
-        </label>
-        <button
-          type="submit"
-          className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white"
-        >
-          조회
-        </button>
-      </form>
+      <RulePicker code={code} onSearch={onSearch} />
       <div className="mt-5">{content}</div>
     </div>
   )
