@@ -841,7 +841,7 @@ AI가 생성한 객체 유형이나 연결 규칙은 곧바로 활성 데이터�
 **구현에서 쓰는 방법**
 
 - 로그인 사용자는 Controller에서 `@AuthenticationPrincipal LoginAccount`로 받는다. 계정 ID, 로그인 ID, 역할 코드, 임시 비밀번호 여부가 들어 있다.
-- 로그인 없이 부를 수 있는 경로는 로그인(`POST /api/v1/auth/login`), API 문서(`/swagger-ui/**`, `/v3/api-docs/**`), `/actuator/health`뿐이다. 새 공개 경로가 필요하면 `global.security.SecurityConfig`를 고치고 리뷰를 받는다.
+- 로그인 없이 부를 수 있는 경로는 로그인(`POST /api/v1/auth/login`), API 문서(`/swagger-ui/**`, `/v3/api-docs/**`), `/actuator/health`, 내부 모니터링용 `GET /actuator/prometheus`다. 지표 경로는 nginx 외부 프록시에 추가하지 않으며 Docker 내부망 수집에 사용한다. 새 공개 경로가 필요하면 `global.security.SecurityConfig`를 고치고 리뷰를 받는다.
 - 임시 비밀번호 상태(`mustChangePassword=true`)에서는 내 계정 조회, 로그아웃, 비밀번호 변경만 쓸 수 있다. 나머지는 403이다.
 - 계정의 세션을 끊을 때는 `auth.service.AccountSessionService`를 쓴다. 비밀번호 변경은 `expireOthers`, 잠금·비활성화·역할 변경·비밀번호 초기화는 `expireAll`이다.
 - 로그인 요청은 CSRF 검사에서 뺀다. 로그인에 성공하면 세션 ID를 새로 만들고 `XSRF-TOKEN` 쿠키를 준다. `GET /api/v1/auth/me`도 쿠키가 없으면 다시 준다.

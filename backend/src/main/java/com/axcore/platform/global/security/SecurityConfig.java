@@ -22,8 +22,8 @@ import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 /**
- * 세션 인증과 CSRF 검사 (개발 가이드 11.1). 로그인·API 문서·health 체크를 뺀 모든 요청은 로그인이 필요하다. 임시 비밀번호 상태에서는 내 계정 조회,
- * 로그아웃, 비밀번호 변경만 쓸 수 있다.
+ * 세션 인증과 CSRF 검사 (개발 가이드 11.1). 로그인·API 문서·health 체크·Prometheus 지표 GET을 뺀 모든 요청은 로그인이 필요하다. 임시 비밀번호
+ * 상태에서는 내 계정 조회, 로그아웃, 비밀번호 변경만 쓸 수 있다.
  */
 @Configuration(proxyBeanMethods = false)
 public class SecurityConfig {
@@ -58,6 +58,9 @@ public class SecurityConfig {
                                         .requestMatchers(HttpMethod.POST, LOGIN_PATH)
                                         .permitAll()
                                         .requestMatchers(PUBLIC_PATHS)
+                                        .permitAll()
+                                        // 정확한 GET 경로만 허용한다. 다른 Actuator 경로와 CSRF 규칙은 유지한다.
+                                        .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
                                         .permitAll()
                                         .requestMatchers(PASSWORD_CHANGE_ALLOWED_PATHS)
                                         .authenticated()
