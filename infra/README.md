@@ -51,6 +51,16 @@ Swagger 열쇠 파일 만들기 (서버): `echo "swagger:$(openssl passwd -apr1)
 - `backup/` — DB 백업 파일 (7일 보관, 서버에만)
 - `.env`, `*.pem` — 비밀값과 접속 키
 
+## backend–AI 내부 통신 설정 (274)
+
+backend에 `AXCORE_INTERNAL_API_TOKEN`을 서버 `.env`에서 전달하고 `AXCORE_AI_BASE_URL=http://ai:8000`을 지정한다. AI의 `AI_ONTOLOGY_INTERNAL_TOKEN`과 backend 토큰은 서버에서 같은 값으로 관리한다. 토큰 값은 저장소·MR·Jira·로그에 기록하지 않는다. 토큰이 비어 있을 때 요청을 거부하는 인증 구현은 270번 범위이며 이 설정만으로 인증 코드가 구현되는 것은 아니다. batch에는 두 변수를 추가하지 않는다.
+
+nginx는 정확한 `/api/v1/internal` 및 `/api/v1/internal/` 하위 경로를 403으로 차단한다. Docker 내부망에서는 AI가 `http://backend:8080`으로 직접 호출하므로 nginx를 경유하지 않는다. 기존 일반 `/api/` 프록시는 유지한다. 명세의 토큰 관리 방식 설명은 176번에서 서버 `.env` 기준으로 맞춘다.
+
+2026-11-02 사용자 실행 로컬 검증: Compose config 종료 코드 0, 인증서 설정을 제외한 nginx 1.30 문법 검사 통과. 임시 nginx에서 정확한 internal 경로, 모델 요약 GET, 분석 결과 POST 모두 403을 확인했다. 일반 `/api/v1/auth/me`와 유사 접두사 `/api/v1/internal-test`는 backend 부재로 502였다. 이는 차단 규칙과의 경로 구분 확인이며 실제 backend의 정상 응답 검증은 아니다. 임시 nginx는 정리했다. 실제 토큰은 생성하지 않았으며 서버 반영·내부 인증·API 연동 검증은 남아 있다.
+
+리뷰·병합 후 서버 기존 Compose·nginx 설정을 백업·비교한다. 서버에서만 무작위 토큰 하나를 생성해 `.env`의 두 토큰 변수에 같은 값을 지정한다. 값이 이미 있다면 임의로 교체하지 않고 관련 서비스의 공유 상태를 먼저 확인한다. Compose 검사와 실제 인증서를 사용한 nginx 문법 검사 후 backend·AI 재생성 및 nginx reload를 수행한다. 외부 internal 경로 차단·일반 API 유지·앱 상태를 확인하고, 270 및 관련 내부 API 구현 상태에 맞춰 내부망 인증과 연동을 검증한다. 완료되지 않은 서버 작업은 Jira 274에 잔여 항목으로 남긴다. 54 배치 작업과 67 서버 반영은 별도 범위다.
+
 ## 서버에 적용하는 방법
 
 backend · AI · frontend 이미지는 develop 머지 시 Jenkins가 서비스별 변경을 감지해 자동 배포합니다. 상세 흐름은 아래 "자동 배포" 절을 참고합니다.
