@@ -10,6 +10,7 @@ import AuthProvider from './features/auth/AuthProvider'
 import RequireAuth from './features/auth/RequireAuth'
 import LoginPage from './features/auth/LoginPage'
 import PasswordChangePage from './features/auth/PasswordChangePage'
+import SourcesPage from './features/sources/SourcesPage'
 
 function App() {
   return (
@@ -26,10 +27,7 @@ function App() {
               <Route path="/agent" element={<AgentPage />} />
               <Route path="/audit" element={<AuditPage />} />
               <Route path="/admin/history" element={<HistoryPage />} />
-              <Route
-                path="/admin/sources"
-                element={<PagePlaceholder title="데이터 연결" />}
-              />
+              <Route path="/admin/sources" element={<SourcesPage />} />
               <Route
                 path="/admin/rules"
                 element={<PagePlaceholder title="연결 규칙" />}
