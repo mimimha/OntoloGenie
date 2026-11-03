@@ -2,8 +2,10 @@ import { delay, http, HttpResponse } from 'msw'
 import type {
   ConnectionCheck,
   Source,
+  SourceCreateRequest,
   SourceDetail,
   SourceResource,
+  SourceUpdateRequest,
 } from '../features/sources/types'
 import { sourceColumns, sourceResources } from './sourceData'
 
@@ -53,6 +55,13 @@ export function resetSourceMocks() {
   credentials = { 1: defaultCredentials, 2: defaultCredentials }
 }
 resetSourceMocks()
+
+function errorResponse(status: number, code: string, message: string) {
+  return HttpResponse.json(
+    { error: { code, message, details: {}, requestId: 'mock-request-id' } },
+    { status },
+  )
+}
 
 const latestChecks: Record<number, SourceDetail['latestConnectionCheck']> = {
   1: {
@@ -104,6 +113,71 @@ export const sourceHandlers = [
         hasNext: false,
       },
     })
+  }),
+
+  // 010 원천 등록
+  http.post('/api/v1/sources', async ({ request }) => {
+    await delay(150)
+    const body = (await request.json()) as SourceCreateRequest
+    if (sources.some((source) => source.code === body.code)) {
+      return errorResponse(409, 'CONFLICT', '이미 등록된 원천 코드입니다.')
+    }
+    const created: Source = {
+      id: Math.max(...sources.map((source) => source.id)) + 1,
+      code: body.code,
+      name: body.name,
+      sourceKind: body.sourceKind,
+      connectionStatus: 'UNVERIFIED',
+      lastCheckedAt: null,
+      syncEnabled: false,
+      syncIntervalMinutes: null,
+      rowVersion: 0,
+      connectionConfig: body.connectionConfig,
+    }
+    sources.push(created)
+    credentials[created.id] = body.credentials.map(({ purpose, username }) => ({
+      purpose,
+      username,
+    }))
+    return HttpResponse.json({ data: created }, { status: 201 })
+  }),
+
+  // 012 원천 정보 변경
+  http.patch('/api/v1/sources/:id', async ({ params, request }) => {
+    await delay(150)
+    const source = sources.find((item) => item.id === Number(params.id))
+    if (!source) {
+      return notFound('원천을 찾을 수 없습니다.')
+    }
+    const body = (await request.json()) as SourceUpdateRequest
+    if (body.rowVersion !== source.rowVersion) {
+      return errorResponse(
+        409,
+        'CONFLICT',
+        '다른 사용자가 먼저 수정했습니다. 새로 불러온 뒤 다시 저장해 주세요.',
+      )
+    }
+    if (body.name) source.name = body.name
+    if (body.connectionConfig) source.connectionConfig = body.connectionConfig
+    if (body.credentials) {
+      const kept = (credentials[source.id] ?? []).filter(
+        (item) =>
+          !body.credentials!.some((next) => next.purpose === item.purpose),
+      )
+      credentials[source.id] = [
+        ...kept,
+        ...body.credentials.map(({ purpose, username }) => ({
+          purpose,
+          username,
+        })),
+      ]
+    }
+    // 접속 정보가 바뀌면 연결 상태를 처음으로 되돌린다.
+    if (body.connectionConfig || body.credentials) {
+      source.connectionStatus = 'UNVERIFIED'
+    }
+    source.rowVersion += 1
+    return HttpResponse.json({ data: source })
   }),
 
   // 011 원천 상세 조회

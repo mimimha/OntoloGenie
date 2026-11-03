@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, expect, test } from 'vitest'
 import { server } from '../../mocks/node'
 import { resetSourceMocks } from '../../mocks/sourceHandlers'
+import { parseEndpoint } from './endpoint'
 import SourcesPage from './SourcesPage'
 import type { ConnectionCheck } from './types'
 
@@ -277,4 +278,171 @@ test('원천 목록을 불러오지 못하면 다시 불러올 수 있게 안내
   expect(
     screen.getByRole('button', { name: '다시 불러오기' }),
   ).toBeInTheDocument()
+})
+
+test('접속 대상은 주소:포트/데이터베이스로 나누고 포트를 빼면 5432로 본다', () => {
+  expect(parseEndpoint('erp-db.internal:15432/erp')).toEqual({
+    host: 'erp-db.internal',
+    port: 15432,
+    database: 'erp',
+  })
+  expect(parseEndpoint('erp-db.internal/erp')).toEqual({
+    host: 'erp-db.internal',
+    port: 5432,
+    database: 'erp',
+  })
+  expect(parseEndpoint('erp-db.internal')).toBeNull()
+  expect(parseEndpoint('erp-db.internal:70000/erp')).toBeNull()
+})
+
+async function fillNewSource(user: ReturnType<typeof userEvent.setup>) {
+  const dialog = screen.getByRole('dialog', { name: '원천 등록' })
+  const field = (label: string) => within(dialog).getByLabelText(label)
+  await user.type(field('원천 이름'), '품질 DB')
+  await user.type(field('원천 코드'), 'qms_main')
+  await user.type(field('접속 대상'), 'qms-db.internal:5432/qms')
+  await user.type(field('수집 계정 이름'), 'platform_ro')
+  await user.type(field('수집 계정 비밀번호'), 'sync-pw')
+  await user.type(field('AI 분석 계정 이름'), 'platform_ai')
+  await user.type(field('AI 분석 계정 비밀번호'), 'ai-pw')
+  return dialog
+}
+
+test('원천을 등록하면 목록에 더하고 연결을 확인하라고 안내한다', async () => {
+  const user = userEvent.setup()
+  let sent: Record<string, unknown> | undefined
+  server.events.on('request:start', async ({ request }) => {
+    if (
+      request.method === 'POST' &&
+      new URL(request.url).pathname === '/api/v1/sources'
+    ) {
+      sent = (await request.clone().json()) as Record<string, unknown>
+    }
+  })
+  renderSourcesPage()
+  await screen.findByText('erp-db.internal:5432 · erp')
+
+  await user.click(screen.getByRole('button', { name: '+ 원천 등록' }))
+  const dialog = await fillNewSource(user)
+  await user.click(within(dialog).getByRole('button', { name: '등록' }))
+
+  expect(
+    await screen.findByRole('heading', { name: '품질 DB 상세' }),
+  ).toBeInTheDocument()
+  expect(screen.getByText('3개')).toBeInTheDocument()
+  expect(
+    await screen.findByText(/원천을 등록했습니다. 연결 다시 확인을 눌러/),
+  ).toBeInTheDocument()
+  expect(sent).toMatchObject({
+    code: 'QMS_MAIN',
+    sourceKind: 'POSTGRES',
+    connectionConfig: { host: 'qms-db.internal', port: 5432, database: 'qms' },
+    credentials: [
+      { purpose: 'SYNC', username: 'platform_ro', password: 'sync-pw' },
+      { purpose: 'AI', username: 'platform_ai', password: 'ai-pw' },
+    ],
+  })
+  server.events.removeAllListeners()
+})
+
+test('비밀번호가 빠지면 등록하지 않고 안내한다', async () => {
+  const user = userEvent.setup()
+  renderSourcesPage()
+  await screen.findByText('erp-db.internal:5432 · erp')
+
+  await user.click(screen.getByRole('button', { name: '+ 원천 등록' }))
+  const dialog = await fillNewSource(user)
+  await user.clear(within(dialog).getByLabelText('AI 분석 계정 비밀번호'))
+  await user.click(within(dialog).getByRole('button', { name: '등록' }))
+
+  expect(within(dialog).getByRole('alert')).toHaveTextContent(
+    'AI 분석 계정의 이름과 비밀번호를 입력해 주세요.',
+  )
+})
+
+test('이미 있는 원천 코드면 서버가 준 안내를 보여준다', async () => {
+  const user = userEvent.setup()
+  renderSourcesPage()
+  await screen.findByText('erp-db.internal:5432 · erp')
+
+  await user.click(screen.getByRole('button', { name: '+ 원천 등록' }))
+  const dialog = await fillNewSource(user)
+  await user.clear(within(dialog).getByLabelText('원천 코드'))
+  await user.type(within(dialog).getByLabelText('원천 코드'), 'ERP_MAIN')
+  await user.click(within(dialog).getByRole('button', { name: '등록' }))
+
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+    '이미 등록된 원천 코드입니다.',
+  )
+})
+
+test('접속 대상을 바꾸면 미검증으로 돌아가고 다시 확인하라고 안내한다', async () => {
+  const user = userEvent.setup()
+  renderSourcesPage()
+  await screen.findByText('SELECT only · 검증됨')
+
+  await user.click(screen.getByRole('button', { name: '정보 수정' }))
+  const dialog = screen.getByRole('dialog', { name: '원천 정보 수정' })
+  expect(within(dialog).getByLabelText('원천 코드')).toBeDisabled()
+  const endpoint = within(dialog).getByLabelText('접속 대상')
+  await user.clear(endpoint)
+  await user.type(endpoint, 'erp-db2.internal:5432/erp')
+  await user.click(within(dialog).getByRole('button', { name: '저장' }))
+
+  expect(
+    await screen.findByText(
+      '접속 정보가 바뀌었습니다. 연결 다시 확인을 눌러 주세요.',
+    ),
+  ).toBeInTheDocument()
+  expect(
+    await screen.findByText('erp-db2.internal:5432 · erp'),
+  ).toBeInTheDocument()
+  expect(screen.getByText('미검증')).toBeInTheDocument()
+})
+
+test('계정 이름만 바꾸고 비밀번호를 넣지 않으면 저장하지 않는다', async () => {
+  const user = userEvent.setup()
+  renderSourcesPage()
+  await screen.findByText('SELECT only · 검증됨')
+
+  await user.click(screen.getByRole('button', { name: '정보 수정' }))
+  const dialog = screen.getByRole('dialog', { name: '원천 정보 수정' })
+  const username = within(dialog).getByLabelText('AI 분석 계정 이름')
+  await user.clear(username)
+  await user.type(username, 'platform_ai2')
+  await user.click(within(dialog).getByRole('button', { name: '저장' }))
+
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+    'AI 분석 계정 이름을 바꾸려면 비밀번호도 입력해 주세요.',
+  )
+})
+
+test('다른 사람이 먼저 수정했으면 최신 상태를 확인하라고 안내한다', async () => {
+  const user = userEvent.setup()
+  server.use(
+    http.patch('/api/v1/sources/:id', () =>
+      HttpResponse.json(
+        {
+          error: {
+            code: 'CONFLICT',
+            message: '다른 사용자가 먼저 수정했습니다.',
+            details: {},
+            requestId: 'mock-request-id',
+          },
+        },
+        { status: 409 },
+      ),
+    ),
+  )
+  renderSourcesPage()
+  await screen.findByText('SELECT only · 검증됨')
+
+  await user.click(screen.getByRole('button', { name: '정보 수정' }))
+  const dialog = screen.getByRole('dialog', { name: '원천 정보 수정' })
+  await user.type(within(dialog).getByLabelText('원천 이름'), ' 2')
+  await user.click(within(dialog).getByRole('button', { name: '저장' }))
+
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+    '최신 상태를 확인해 주세요.',
+  )
 })
