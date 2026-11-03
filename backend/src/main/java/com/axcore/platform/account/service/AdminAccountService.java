@@ -7,7 +7,9 @@ import com.axcore.platform.account.domain.RoleCode;
 import com.axcore.platform.account.dto.AccountCreateRequest;
 import com.axcore.platform.account.dto.AccountResponse;
 import com.axcore.platform.account.dto.AccountUpdateRequest;
+import com.axcore.platform.account.dto.RoleResponse;
 import com.axcore.platform.account.repository.AccountRepository;
+import com.axcore.platform.account.repository.RoleQueryRepository;
 import com.axcore.platform.account.repository.RoleRepository;
 import com.axcore.platform.audit.domain.Actor;
 import com.axcore.platform.audit.domain.AuditEntry;
@@ -41,7 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 관리자 계정 관리 (API 004~007, FN-ADM-02·03). 모두 ADMIN만 쓸 수 있다.
+ * 관리자 계정·역할 관리 (API 004~008, FN-ADM-02·03). 모두 ADMIN만 쓸 수 있다.
  *
  * <p>생성(005)·변경(007)은 관리 Action이라 성공하면 업무와 같은 트랜잭션에 ACTION 기록을 남긴다. 막히면 트랜잭션이 끝난 뒤 BLOCKED를 따로 남긴다.
  * 트랜잭션 안에서 따로 남기면 잠근 계정 행을 새 트랜잭션의 외래 키 검사가 기다려 교착이 생길 수 있어서다. 세션 삭제도 변경이 커밋된 뒤에 한다.
@@ -61,6 +63,7 @@ public class AdminAccountService {
 
     private final AccountRepository accountRepository;
     private final RoleRepository roleRepository;
+    private final RoleQueryRepository roleQueryRepository;
     private final PasswordEncoder passwordEncoder;
     private final AccountSessionService sessionService;
     private final AuditRecorder audits;
@@ -70,6 +73,7 @@ public class AdminAccountService {
     public AdminAccountService(
             AccountRepository accountRepository,
             RoleRepository roleRepository,
+            RoleQueryRepository roleQueryRepository,
             PasswordEncoder passwordEncoder,
             AccountSessionService sessionService,
             AuditRecorder audits,
@@ -77,6 +81,7 @@ public class AdminAccountService {
             PlatformTransactionManager transactionManager) {
         this.accountRepository = accountRepository;
         this.roleRepository = roleRepository;
+        this.roleQueryRepository = roleQueryRepository;
         this.passwordEncoder = passwordEncoder;
         this.sessionService = sessionService;
         this.audits = audits;
@@ -96,6 +101,13 @@ public class AdminAccountService {
         return accountRepository
                 .search(likePattern(q), status, roleCode, pageable)
                 .map(AccountResponse::from);
+    }
+
+    /** API 008. 역할 4개와 각 역할의 권한 코드. */
+    @Transactional(readOnly = true)
+    public List<RoleResponse> roles(LoginAccount actor) {
+        requireAdmin(actor, RoleCode.ADMIN.name());
+        return roleQueryRepository.findAllWithPermissions();
     }
 
     /** API 006. */
