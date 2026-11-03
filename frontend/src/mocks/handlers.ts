@@ -1,4 +1,5 @@
 import { delay, http, HttpResponse } from 'msw'
+import { agentHandlers } from './agentHandlers'
 import { authHandlers } from './auth'
 import { sourceHandlers } from './sourceHandlers'
 import type { Execution } from '../features/audit/types'
@@ -610,6 +611,7 @@ function ruleSummaries(): RuleSummary[] {
 export const handlers = [
   ...authHandlers,
   ...sourceHandlers,
+  ...agentHandlers,
   // 042 객체 유형 관계도
   http.get('/api/v1/ontology/model-graph', async () => {
     await delay()
