@@ -1,4 +1,5 @@
 import { delay, http, HttpResponse } from 'msw'
+import { agentHandlers } from './agentHandlers'
 import { authHandlers } from './auth'
 import { proposalHandlers } from './proposalHandlers'
 import { sourceHandlers } from './sourceHandlers'
@@ -612,6 +613,7 @@ export const handlers = [
   ...proposalHandlers,
   ...authHandlers,
   ...sourceHandlers,
+  ...agentHandlers,
   // 042 객체 유형 관계도
   http.get('/api/v1/ontology/model-graph', async () => {
     await delay()
