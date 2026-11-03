@@ -14,6 +14,7 @@ import SourcesPage from './features/sources/SourcesPage'
 import RequireAccess from './features/auth/RequireAccess'
 import ProposalsPage from './features/review/ProposalsPage'
 import ProposalDetail from './features/review/ProposalDetail'
+import RuleEditorPage from './features/review/RuleEditorPage'
 
 function App() {
   return (
@@ -43,6 +44,8 @@ function App() {
                 <Route path="history" element={<HistoryPage />} />
                 <Route path="sources" element={<SourcesPage />} />
                 <Route path="rules" element={<ProposalsPage />} />
+                <Route path="rules/new" element={<RuleEditorPage />} />
+                <Route path="rules/:id/edit" element={<RuleEditorPage />} />
                 <Route path="rules/:id" element={<ProposalDetail />} />
                 <Route
                   path="accounts"
