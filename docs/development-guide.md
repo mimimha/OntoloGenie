@@ -397,6 +397,8 @@ action/
 | 코드 품질 | Spotless + google-java-format(AOSP), Lombok(7.2 허용 범위) |
 | 테스트 | JUnit, Mockito, Spring MVC Test, Testcontainers(PostgreSQL 18) |
 
+Agent 답변(API 085)은 오래 걸리는 작업의 예외다. 202로 접수하는 것은 같지만 작업자가 가져가지 않고 질문을 받은 api 서버가 바로 처리하며, 화면은 084를 반복 조회해 진행 단계와 결과를 확인한다(2026-11-03, `docs/agent-response-policy.md`).
+
 사용하지 않는 것: Redis, WebFlux·SSE, QueryDSL, Spring AI 기본 대화 메모리(대화는 플랫폼 DB에 저장한다). Kafka는 원천 CDC에만 쓰고, 서비스 사이 작업 전달은 지금처럼 실행 기록 테이블로 한다(2026-10-30 CDC 결정, S15P31C106-266).
 
 - 같은 프로세스를 여러 개 띄워도 맞게 동작해야 한다. 작업·잠금·카운터 같은 상태를 인스턴스 메모리에만 두지 않는다.
