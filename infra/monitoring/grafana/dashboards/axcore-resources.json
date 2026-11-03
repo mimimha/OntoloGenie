@@ -621,7 +621,7 @@
           "range": true,
           "refId": "A",
           "editorMode": "code",
-          "expr": "100 * container_memory_working_set_bytes{job=\"cadvisor\", service!=\"\"} / on(instance, id) (container_spec_memory_limit_bytes{job=\"cadvisor\", service!=\"\"} > 0)",
+          "expr": "100 * container_memory_working_set_bytes{job=\"cadvisor\", service!=\"\"} / on(instance, id) group_left() (container_spec_memory_limit_bytes{job=\"cadvisor\", service!=\"\"} > 0)",
           "legendFormat": "{{service}} / {{name}}",
           "datasource": {
             "type": "prometheus",
