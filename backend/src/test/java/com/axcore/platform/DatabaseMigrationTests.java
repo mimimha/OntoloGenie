@@ -44,7 +44,7 @@ class DatabaseMigrationTests {
                         .toArray(MigrationInfo[]::new);
 
         assertThat(Arrays.stream(applied).map(info -> info.getVersion().getVersion()))
-                .containsExactly("1", "2", "3", "4", "5", "6");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7");
         assertThat(applied).allMatch(info -> info.getState() == MigrationState.SUCCESS);
         assertThat(flyway.info().pending()).isEmpty();
     }
