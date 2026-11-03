@@ -256,7 +256,7 @@ services:
     # 초기 상한이며 대시보드·조회 부하를 실측한 뒤 조정한다.
     mem_limit: 512m
     environment:
-      GF_SERVER_ROOT_URL: https://k15c106.p.ssafy.io/grafana/
+      GF_SERVER_ROOT_URL: https://ontologenie.com/grafana/
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_SECURITY_COOKIE_SECURE: "true"
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER must be set}

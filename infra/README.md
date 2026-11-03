@@ -17,6 +17,34 @@
 | frontend | React 정적 파일 · `frontend/Dockerfile`(node 24.18.0로 빌드 → `nginx:1.30-alpine`이 dist 서빙, SPA fallback은 `frontend/nginx.conf`) · 호스트 `127.0.0.1:10080`(컨테이너 80) · 이미지 태그 `.env`의 `FRONTEND_TAG` · 메인 nginx `/` → frontend |
 | AI | FastAPI · `ai/Dockerfile`(Python 3.11 slim, 비 root 실행) · 호스트 `127.0.0.1:18000`(컨테이너 8000) · 이미지 태그 `.env`의 `AI_TAG` · nginx 외부 경로 없음 |
 
+## 서비스 도메인 추가 (278)
+
+대표 서비스 주소는 `https://ontologenie.com`, Grafana 주소는 `https://ontologenie.com/grafana/`로 지정한다. 기존 `k15c106.p.ssafy.io`도 nginx에서 계속 처리한다. Grafana의 절대 링크·외부 URL은 새 대표 주소를 사용한다. 두 호스트의 로그인 쿠키는 서로 공유되지 않으므로 주소별로 로그인한다. `www`는 이번 범위에 포함하지 않는다.
+
+가비아 DNS에 `@` A 레코드 `13.125.73.49`, TTL 600을 등록했고, 2026-11-03 사용자 공용 DNS 조회로 연결을 확인했다. 서버 nginx 문법 검사도 통과했고, 변경 전 Compose·nginx 설정은 `/home/ubuntu/axcore/backup/domain-20261103-225602`에 백업했다. 아래 인증서 확장·설정 적용·접속 검증은 아직 실행 전이다.
+
+사용자 실행 로컬 검증: Compose `config --quiet` 종료 코드 0, 인증서 지시문과 TLS listen 옵션만 제외한 임시 사본의 nginx 1.30 문법 검사 통과. 임시 nginx에 `Host: ontologenie.com`으로 요청해 `/login`은 `https://ontologenie.com/login`으로 301, `/api/v1/internal`은 403을 확인했다. 이는 라우팅 검사이며 실제 인증서·앱 연결·Grafana 검증을 대신하지 않는다.
+
+기존 인증서 이름 `k15c106.p.ssafy.io`와 파일 경로를 유지하면서 SAN에 `ontologenie.com`을 추가한다. 두 도메인의 HTTP 인증 경로가 같은 서버의 `/var/www/certbot`으로 연결되는지 먼저 임시 파일로 확인한다. 현재 nginx의 기본 HTTP 서버가 신규 호스트의 인증 경로를 처리하는지도 외부 요청으로 확인하고, 실패하면 인증서 발급을 진행하지 않는다. certbot은 `webroot` 방식으로 실행해 nginx를 중지하지 않는다.
+
+서버에서 인증서 확장(HTTP 경로 확인 후):
+
+```bash
+cd ~/axcore
+docker compose run --rm -T certbot certonly --webroot \
+  -w /var/www/certbot \
+  --cert-name k15c106.p.ssafy.io --expand --non-interactive \
+  -d k15c106.p.ssafy.io -d ontologenie.com
+```
+
+발급 성공 후에만 병합된 `compose.yaml`과 `nginx/conf.d/default.conf`를 서버 파일과 비교해 반영한다. `docker compose config --quiet`, `docker compose exec -T nginx nginx -t`를 통과한 뒤 nginx를 reload하고 Grafana만 `docker compose up -d --no-deps grafana`로 재생성한다. 앱 이미지·DB·배치 컨테이너는 이번 설정 적용 때문에 재생성하지 않는다.
+
+검증: 두 도메인의 HTTPS 인증서 검증(검증 생략 옵션 사용 금지), HTTP→같은 호스트 HTTPS 리다이렉트, 일반 서비스 로그인·로그아웃·세션 유지·CSRF, internal 경로 403, Grafana 로그인·지표·로그·Live WebSocket, 기존 Jenkins·Swagger·Kafka UI 경로를 확인한다. Jenkins의 대표 URL·GitLab Webhook은 현재 기존 주소를 유지하며 새 주소로 일괄 변경하지 않는다.
+
+`docker compose run --rm -T certbot renew --dry-run --cert-name k15c106.p.ssafy.io`로 갱신을 검증한다. 기존 `scripts/renew-cert.sh`는 갱신 후 nginx reload를 수행하므로 계속 사용한다. 서버의 실제 cron 등록·최근 성공 기록은 별도 확인한다. 두 도메인을 한 인증서로 묶었으므로 향후에도 두 도메인의 DNS·HTTP 인증 경로를 유지해야 한다.
+
+복구 시 이번 백업의 Compose·nginx 파일을 복원하고 설정 검사 후 nginx reload·Grafana 재생성을 수행한다. 기존 도메인을 포함해 확장 발급된 인증서는 그대로 사용할 수 있으므로 인증서 파일·개인키를 삭제하거나 저장소에 복사하지 않는다. 인증서 발급에 실패하면 nginx reload·Grafana URL 변경을 진행하지 않는다.
+
 ## 포트 규칙
 
 SSAFY 클라우드 방화벽은 tcp · udp 1024~65535를 열어 두므로, 서버의 ufw와 `127.0.0.1` 바인딩이 유일한 방어선입니다. Docker의 `ports:`는 ufw를 우회하므로 아래 규칙을 지킵니다.
