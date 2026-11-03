@@ -1,6 +1,7 @@
 import { delay, http, HttpResponse } from 'msw'
 import { agentHandlers } from './agentHandlers'
 import { authHandlers } from './auth'
+import { accountHandlers } from './accountHandlers'
 import { proposalHandlers } from './proposalHandlers'
 import { sourceHandlers } from './sourceHandlers'
 import type { Execution } from '../features/audit/types'
@@ -610,6 +611,7 @@ function ruleSummaries(): RuleSummary[] {
 }
 
 export const handlers = [
+  ...accountHandlers,
   ...proposalHandlers,
   ...authHandlers,
   ...sourceHandlers,
