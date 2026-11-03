@@ -27,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-@SpringBootTest
+@SpringBootTest(properties = "test.context=agent-conversation")
 @AutoConfigureMockMvc
 @ActiveProfiles("api")
 @Import(TestcontainersConfiguration.class)
