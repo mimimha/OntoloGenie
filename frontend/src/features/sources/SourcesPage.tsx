@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useSearchParams } from 'react-router'
+import Button from '../../components/Button'
 import DataTable from '../../components/DataTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import { fetchSources } from './api'
 import ConnectionInfo from './ConnectionInfo'
 import { connectionStatusLabels, sourceKindLabels } from './labels'
 import ReadableScope from './ReadableScope'
+import SourceFormDialog from './SourceFormDialog'
 
 // 수집 이력 탭은 수동 수집(S15P31C106-120)에서 더한다.
 const tabs = [
@@ -15,10 +18,11 @@ const tabs = [
 
 type TabKey = (typeof tabs)[number]['key']
 
-// 데이터 연결: 등록된 원천 목록과 원천별 접속 정보·읽기 범위(S15P31C106-106).
-// 원천 등록·수정은 S15P31C106-105에서 이 화면에 더한다.
+// 데이터 연결: 원천 목록·등록·수정(S15P31C106-105)과 접속 정보·읽기 범위(S15P31C106-106)
 function SourcesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const [registering, setRegistering] = useState(false)
+  const [createdId, setCreatedId] = useState<number>()
   const {
     data: sources,
     isPending,
@@ -131,9 +135,22 @@ function SourcesPage() {
               <span className="text-sm text-slate-500">{`${sources.length}개`}</span>
             )}
           </div>
+          <Button variant="secondary" onClick={() => setRegistering(true)}>
+            + 원천 등록
+          </Button>
         </div>
         <div className="text-sm">{list}</div>
       </section>
+      {registering && (
+        <SourceFormDialog
+          onClose={() => setRegistering(false)}
+          onSaved={(source) => {
+            setRegistering(false)
+            setCreatedId(source.id)
+            select(source.id)
+          }}
+        />
+      )}
 
       {selected && (
         <section
@@ -161,7 +178,15 @@ function SourcesPage() {
             ))}
           </div>
           {tab === 'connection' ? (
-            <ConnectionInfo key={selected.id} sourceId={selected.id} />
+            <ConnectionInfo
+              key={selected.id}
+              sourceId={selected.id}
+              notice={
+                createdId === selected.id
+                  ? '원천을 등록했습니다. 연결 다시 확인을 눌러 접속과 읽기 범위를 확인해 주세요.'
+                  : undefined
+              }
+            />
           ) : (
             <ReadableScope key={selected.id} sourceId={selected.id} />
           )}

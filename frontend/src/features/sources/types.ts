@@ -90,3 +90,26 @@ export type SourceColumn = {
   isPresent: boolean
   ordinalPosition: number
 }
+
+export type CredentialInput = {
+  purpose: AccountPurpose
+  username: string
+  password: string
+}
+
+// 010 원천 등록 요청
+export type SourceCreateRequest = {
+  code: string
+  name: string
+  sourceKind: SourceKind
+  connectionConfig: Source['connectionConfig']
+  credentials: CredentialInput[]
+}
+
+// 012 원천 정보 변경 요청. 바꿀 값만 보낸다.
+export type SourceUpdateRequest = {
+  rowVersion: number
+  name?: string
+  connectionConfig?: Source['connectionConfig']
+  credentials?: CredentialInput[]
+}

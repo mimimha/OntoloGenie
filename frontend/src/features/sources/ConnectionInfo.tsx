@@ -9,6 +9,7 @@ import {
   requestConnectionCheck,
 } from './api'
 import { checkStatusLabels, purposeLabels, sourceKindLabels } from './labels'
+import SourceFormDialog from './SourceFormDialog'
 import type { AccountCheck, CheckStatus } from './types'
 
 // 배치가 검사를 끝낼 때까지 결과(100)를 다시 불러오는 간격
@@ -26,10 +27,19 @@ function accountResult(account: AccountCheck) {
 }
 
 // 접속 정보 탭: 011 상세와 013 연결 다시 확인, 100 계정별 결과
-function ConnectionInfo({ sourceId }: { sourceId: number }) {
+function ConnectionInfo({
+  sourceId,
+  notice,
+}: {
+  sourceId: number
+  // 등록·수정 직후 화면에 남길 안내
+  notice?: string
+}) {
   const queryClient = useQueryClient()
   const [requestedCheckId, setRequestedCheckId] = useState<number>()
   const [joined, setJoined] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [savedNotice, setSavedNotice] = useState(notice ?? '')
 
   const detail = useQuery({
     queryKey: ['sources', sourceId, 'detail'],
@@ -41,6 +51,7 @@ function ConnectionInfo({ sourceId }: { sourceId: number }) {
     onSuccess: (accepted) => {
       setRequestedCheckId(accepted.checkId)
       setJoined(accepted.joined)
+      setSavedNotice('')
     },
   })
 
@@ -117,14 +128,39 @@ function ConnectionInfo({ sourceId }: { sourceId: number }) {
               : '미검증'}
           </dd>
         </dl>
-        <Button
-          variant="secondary"
-          pending={checking}
-          onClick={() => request.mutate()}
-        >
-          {checking ? '확인 중…' : '연결 다시 확인'}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setEditing(true)}>
+            정보 수정
+          </Button>
+          <Button
+            variant="secondary"
+            pending={checking}
+            onClick={() => request.mutate()}
+          >
+            {checking ? '확인 중…' : '연결 다시 확인'}
+          </Button>
+        </div>
       </div>
+
+      {savedNotice && (
+        <p role="status" className="rounded-lg bg-amber-50 p-3 text-amber-800">
+          {savedNotice}
+        </p>
+      )}
+      {editing && (
+        <SourceFormDialog
+          source={source}
+          onClose={() => setEditing(false)}
+          onSaved={(_, reconnectNeeded) => {
+            setEditing(false)
+            setSavedNotice(
+              reconnectNeeded
+                ? '접속 정보가 바뀌었습니다. 연결 다시 확인을 눌러 주세요.'
+                : '저장했습니다.',
+            )
+          }}
+        />
+      )}
 
       {request.isError && <ErrorState error={request.error} />}
 
