@@ -163,6 +163,19 @@ npm test -- --run src/api/client.test.ts
 - 테스트에서는 `mocks/handlers.ts`에 없는 요청이 오면 실패로 처리합니다.
 - `public/mockServiceWorker.js`는 MSW가 생성한 파일입니다. 직접 고치지 않습니다.
 
+## 공통 UI (102)
+
+- `components/Button.tsx`: 기본 버튼은 `type="button"`입니다. 폼 전송 시 `type="submit"`을 지정합니다. 요청 중에는 `pending`을 전달해 클릭을 막고 `aria-busy`로 알립니다. 실제 중복 실행 방지와 권한 검사는 서버 책임입니다.
+- `components/DataTable.tsx`: `label`로 표 이름을 지정하고 기존 `thead`·`tbody`를 전달합니다. 좁은 화면에서 표 영역을 가로로 스크롤합니다.
+- `components/StatusBadge.tsx`: 상태 문구와 `tone`을 전달합니다. 업무 상태 코드와 색상의 매핑은 해당 기능 화면이 결정하며 색상만으로 상태를 구분하지 않습니다.
+- `components/Feedback.tsx`: `LoadingState`, `EmptyState`, `ErrorState`로 로딩·빈 결과·실패를 구분합니다. 실패 시 서버 안내·필드 오류·요청 ID를 표시하고 내부 상세 데이터는 펼쳐 출력하지 않습니다.
+- `ErrorState`의 `onRetry`에는 조회 함수만 연결합니다. 401·403·입력 오류·409 상태 충돌에는 재시도 버튼이 없습니다. 로그인 이동·권한별 화면은 103·104에서 연결합니다.
+- `components/Dialog.tsx`: 제목 연결, 모달 내부 탭 이동, Esc·배경·닫기 버튼으로 종료, 배경 스크롤 제한, 닫힌 뒤 호출 위치 포커스 복귀를 제공합니다. 한 번에 하나의 모달을 사용합니다.
+
+실행 이력·정의 변경 이력·객체 연결 근거 화면에서 공통 표와 상태 표시를 재사용합니다. 기존 조회 조건과 API 계약은 유지합니다. 모달은 기존 연결 근거 화면에서 사용합니다.
+
+검증 명령은 `npm test -- --run src/components/CommonUi.test.tsx`이며, 기존 화면 회귀 검증은 전체 테스트로 확인합니다. 102의 자동 테스트·브라우저 표시·피그마 디자인 대조는 변경 후 별도로 확인해야 합니다.
+
 ## 팀 결정이 필요한 항목
 
 - 백엔드 개발 서버 주소·포트 (인증은 API 명세 001에 따라 세션 쿠키 + `X-XSRF-TOKEN` 헤더)
