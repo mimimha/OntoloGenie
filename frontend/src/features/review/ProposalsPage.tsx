@@ -187,6 +187,12 @@ export default function ProposalsPage() {
       </header>
       <section className="space-y-5 rounded-xl border border-slate-200 p-5">
         <h2 className="text-lg font-semibold">검토 제안</h2>
+        <Link
+          to="/admin/rules/new"
+          className="inline-block rounded-lg bg-violet-700 px-4 py-2 text-sm font-medium text-white"
+        >
+          규칙 후보 추가
+        </Link>
         <ProposalFilterForm
           key={params.toString()}
           initialFilters={filters}
