@@ -4,6 +4,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import StatusBadge from '../../components/StatusBadge'
 import ProposalComparison from './ProposalComparison'
 import CheckResults from './CheckResults'
+import ProposalDecision from './ProposalDecision'
 import { fetchProposal } from './api'
 import {
   applyLabels,
@@ -150,6 +151,11 @@ export default function ProposalDetail() {
           onRefresh={() => {
             void query.refetch()
           }}
+        />
+        <ProposalDecision
+          key={`${item.id}:${item.revision}:${item.reviewStatus}`}
+          proposal={item}
+          unavailable={query.isFetching || !!query.error}
         />
         {item.applyError && (
           <p role="alert" className="rounded-lg bg-red-50 p-4 text-red-800">
