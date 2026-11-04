@@ -88,10 +88,51 @@ export const proposalFixtures: Proposal[] = [
 ]
 
 let proposals: Proposal[] = structuredClone(proposalFixtures)
-let savedOptions: Record<string, ProposalOption[]> = {}
+const comparisonFixtures: ProposalOption[] = [
+  {
+    id: 501,
+    optionNo: 1,
+    revision: 2,
+    payload: {
+      ...proposalFixtures[0].payload,
+      name: '설비 코드 공백 제거 후 연결',
+      conditions: [
+        {
+          sourceProperty: 'WORK_ORDER.equipment_code',
+          targetProperty: 'EQUIPMENT.code',
+          operator: 'EQ',
+          sourceTransforms: [{ op: 'TRIM', arg: null }],
+          targetTransforms: [],
+        },
+      ],
+    },
+    evidence: {
+      reason: '원천 설비 코드의 앞뒤 공백을 제거해 비교합니다.',
+      originalText: ' PR-03 ',
+    },
+    aiConfidence: 0.86,
+  },
+  {
+    id: 502,
+    optionNo: 2,
+    revision: 2,
+    payload: {
+      ...proposalFixtures[0].payload,
+      name: '설비 코드 대문자 변환 후 연결',
+    },
+    evidence: {
+      reason: '원천 설비 코드를 대문자로 통일해 비교합니다.',
+      originalText: 'pr-03',
+    },
+    aiConfidence: 0.72,
+  },
+]
+let savedOptions: Record<string, ProposalOption[]> = {
+  '303:2': structuredClone(comparisonFixtures),
+}
 export function resetProposalMocks() {
   proposals = structuredClone(proposalFixtures)
-  savedOptions = {}
+  savedOptions = { '303:2': structuredClone(comparisonFixtures) }
 }
 function failed(status: number, code: string, message: string) {
   return HttpResponse.json(

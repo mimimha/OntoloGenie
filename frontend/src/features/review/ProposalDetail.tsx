@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useParams, useLocation } from 'react-router'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import StatusBadge from '../../components/StatusBadge'
+import ProposalComparison from './ProposalComparison'
 import { fetchProposal } from './api'
 import {
   applyLabels,
@@ -112,6 +113,7 @@ export default function ProposalDetail() {
             </StatusBadge>
           </div>
         </header>
+        <ProposalComparison proposal={item} />
         <section className="rounded-xl border border-slate-200 p-5">
           <h3 className="font-semibold">AI 신뢰도</h3>
           <p className="mt-2 text-2xl font-semibold text-violet-700">
