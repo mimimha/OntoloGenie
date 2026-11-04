@@ -1,12 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import Button from '../../components/Button'
 import DataTable from '../../components/DataTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import AnalysisTargetDialog from '../analysis/AnalysisTargetDialog'
-import { analysisCode } from '../analysis/labels'
-import type { AnalysisRun } from '../analysis/types'
+import { analysisRunPath } from '../analysis/labels'
 import { fetchSources } from './api'
 import ConnectionInfo from './ConnectionInfo'
 import { connectionStatusLabels, sourceKindLabels } from './labels'
@@ -28,10 +27,7 @@ function SourcesPage() {
   const [registering, setRegistering] = useState(false)
   const [createdId, setCreatedId] = useState<number>()
   const [analyzing, setAnalyzing] = useState(false)
-  const [started, setStarted] = useState<{
-    sourceId: number
-    run: AnalysisRun
-  }>()
+  const navigate = useNavigate()
   const {
     data: sources,
     isPending,
@@ -199,17 +195,10 @@ function SourcesPage() {
           ) : (
             <ReadableScope key={selected.id} sourceId={selected.id} />
           )}
-          <div className="space-y-3 border-t border-slate-100 pt-4">
+          <div className="border-t border-slate-100 pt-4">
             <Button onClick={() => setAnalyzing(true)}>
               이 원천으로 AI 관계 제안 받기
             </Button>
-            {started?.sourceId === selected.id && (
-              <p role="status" className="rounded-lg bg-slate-50 p-3 text-sm">
-                {started.run.joined
-                  ? `같은 대상의 분석이 이미 진행 중이라 그 분석(${analysisCode(started.run.id)})에 합류했습니다.`
-                  : `분석을 맡겼습니다(${analysisCode(started.run.id)}). 후보가 만들어지면 연결 규칙에서 검토할 수 있습니다.`}
-              </p>
-            )}
           </div>
           {analyzing && (
             <AnalysisTargetDialog
@@ -217,7 +206,7 @@ function SourcesPage() {
               onClose={() => setAnalyzing(false)}
               onStarted={(run) => {
                 setAnalyzing(false)
-                setStarted({ sourceId: selected.id, run })
+                void navigate(analysisRunPath(run))
               }}
               onEditScope={(sourceId) => {
                 setAnalyzing(false)

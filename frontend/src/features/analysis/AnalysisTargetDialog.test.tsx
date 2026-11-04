@@ -1,17 +1,20 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, expect, test } from 'vitest'
 import { resetAnalysisMocks } from '../../mocks/analysisHandlers'
 import { server } from '../../mocks/node'
+import { resetProposalMocks } from '../../mocks/proposalHandlers'
 import { resetSourceMocks } from '../../mocks/sourceHandlers'
+import ProposalsPage from '../review/ProposalsPage'
 import SourcesPage from '../sources/SourcesPage'
 
 afterEach(() => {
   resetSourceMocks()
   resetAnalysisMocks()
+  resetProposalMocks()
   server.events.removeAllListeners()
 })
 
@@ -25,6 +28,7 @@ function renderAt(path: string) {
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/admin/sources" element={<SourcesPage />} />
+          <Route path="/admin/rules" element={<ProposalsPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -79,7 +83,7 @@ test('원천 상세에서 열면 그 원천의 표와 첫 표의 컬럼을 보�
   ).toBeDisabled()
 })
 
-test('고른 컬럼만 분석을 맡기고 접수됐다고 알려준다', async () => {
+test('고른 컬럼만 분석을 맡기고 연결 규칙에서 이번 분석을 보여준다', async () => {
   const user = userEvent.setup()
   const sent = captureAnalysisRequest()
   const dialog = await openFromSource(user)
@@ -108,40 +112,16 @@ test('고른 컬럼만 분석을 맡기고 접수됐다고 알려준다', async 
     within(dialog).getByRole('button', { name: '분석하고 후보 받기' }),
   )
 
-  expect(await screen.findByRole('status')).toHaveTextContent(
-    '분석을 맡겼습니다(ANALYSIS-001).',
-  )
+  // 목업처럼 연결 규칙 화면으로 넘어가 이번 분석을 보여 준다.
+  const current = await screen.findByRole('region', { name: '이번 분석' })
+  expect(
+    await within(current).findByText(/ANALYSIS-052/, {}, { timeout: 3000 }),
+  ).toBeInTheDocument()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(sent.body).toEqual({
     runKind: 'INITIAL',
     targets: [{ sourceResourceId: 32, columns: ['wo_no', 'product_code'] }],
   })
-})
-
-test('같은 대상을 다시 맡기면 진행 중인 분석에 합류했다고 알려준다', async () => {
-  const user = userEvent.setup()
-  renderAt('/admin/sources?source=2')
-  for (let round = 0; round < 2; round++) {
-    await user.click(
-      await screen.findByRole('button', {
-        name: '이 원천으로 AI 관계 제안 받기',
-      }),
-    )
-    const dialog = screen.getByRole('dialog', { name: '분석 대상 선택' })
-    await user.click(
-      await within(dialog).findByRole('checkbox', { name: 'code 선택' }),
-    )
-    await user.click(
-      within(dialog).getByRole('button', { name: '분석하고 후보 받기' }),
-    )
-    await waitFor(() =>
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
-    )
-  }
-
-  expect(screen.getByRole('status')).toHaveTextContent(
-    '같은 대상의 분석이 이미 진행 중이라 그 분석(ANALYSIS-001)에 합류했습니다.',
-  )
 })
 
 test('표의 컬럼을 모두 고르면 표 전체를 분석하도록 컬럼 목록을 빼서 보낸다', async () => {
@@ -155,7 +135,7 @@ test('표의 컬럼을 모두 고르면 표 전체를 분석하도록 컬럼 목
     within(dialog).getByRole('button', { name: '분석하고 후보 받기' }),
   )
 
-  await screen.findByRole('status')
+  await screen.findByRole('region', { name: '이번 분석' })
   expect(sent.body).toEqual({
     runKind: 'INITIAL',
     targets: [{ sourceResourceId: 29 }],
@@ -249,7 +229,7 @@ test('컬럼이 많으면 나눠 보여 주고 전체 선택은 모든 페이지
   await user.click(
     within(dialog).getByRole('button', { name: '분석하고 후보 받기' }),
   )
-  await screen.findByText(/분석을 맡겼습니다/)
+  await screen.findByRole('region', { name: '이번 분석' })
   expect(sent.body).toEqual({
     runKind: 'INITIAL',
     targets: [{ sourceResourceId: 32 }],
