@@ -142,6 +142,65 @@ function failed(status: number, code: string, message: string) {
 }
 
 export const proposalHandlers = [
+  http.get('/api/v1/checks/runs/:id/results', async ({ params, request }) => {
+    await delay()
+    const search = new URL(request.url).searchParams
+    const page = Number(search.get('page') ?? 0)
+    const size = Number(search.get('size') ?? 20)
+    const item = proposals.find(
+      (proposal) =>
+        proposal.id === Number(search.get('proposalItemId')) &&
+        proposal.latestCheck?.checkRunId === Number(params.id),
+    )
+    if (!item)
+      return failed(404, 'RESOURCE_NOT_FOUND', '검사 실행을 찾을 수 없습니다.')
+    const results =
+      item.latestCheck?.status === 'SUCCEEDED'
+        ? [
+            {
+              id: 601,
+              checkRunId: Number(params.id),
+              proposalItemId: item.id,
+              proposalItemRevision: item.revision,
+              linkMappingId: null,
+              previousResultId: null,
+              totalCount: 3,
+              matchedCount: 2,
+              unmatchedCount: 1,
+              duplicateCount: 0,
+              violationCount: 0,
+              matchRate: 0.6667,
+              sampleRows: [
+                {
+                  sourceKey: { id: 'WO-101' },
+                  rawValue: ' pr-03 ',
+                  transformedValue: 'PR-03',
+                  targetValue: 'PR-03',
+                  classification: 'MATCHED',
+                  reason: null,
+                },
+                {
+                  sourceKey: { id: 'WO-102' },
+                  rawValue: 'PR-99',
+                  transformedValue: 'PR-99',
+                  targetValue: null,
+                  classification: 'UNMATCHED',
+                  reason: '대상 설비가 없습니다.',
+                },
+              ],
+            },
+          ]
+        : []
+    return HttpResponse.json({
+      data: results.slice(page * size, (page + 1) * size),
+      meta: {
+        page,
+        size,
+        totalElements: results.length,
+        hasNext: (page + 1) * size < results.length,
+      },
+    })
+  }),
   http.post('/api/v1/proposals/manual', async ({ request }) => {
     await delay()
     const body = (await request.json()) as {

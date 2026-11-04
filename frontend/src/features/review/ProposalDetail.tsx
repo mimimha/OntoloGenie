@@ -3,6 +3,7 @@ import { Link, useParams, useLocation } from 'react-router'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import StatusBadge from '../../components/StatusBadge'
 import ProposalComparison from './ProposalComparison'
+import CheckResults from './CheckResults'
 import { fetchProposal } from './api'
 import {
   applyLabels,
@@ -64,12 +65,19 @@ export default function ProposalDetail() {
     queryFn: ({ signal }) => fetchProposal(proposalId, signal),
     enabled: validId,
     retry: false,
+    refetchInterval: (query) =>
+      !query.state.error &&
+      ['QUEUED', 'RUNNING'].includes(
+        query.state.data?.latestCheck?.status ?? '',
+      )
+        ? 3000
+        : false,
   })
   let content
   if (!validId) content = <EmptyState message="올바른 제안 주소가 아닙니다." />
   else if (query.isPending)
     content = <LoadingState message="제안 상세를 불러오는 중…" />
-  else if (query.isError)
+  else if (query.isError && !query.data)
     content = (
       <ErrorState
         error={query.error}
@@ -135,26 +143,14 @@ export default function ProposalDetail() {
           <h3 className="font-semibold">제안 근거</h3>
           <RecordView value={item.evidence} />
         </section>
-        <section className="rounded-xl border border-slate-200 p-5">
-          <h3 className="font-semibold">최근 정합성 검사</h3>
-          {item.latestCheck ? (
-            <p className="mt-2 text-sm">
-              검사 #{item.latestCheck.checkRunId} ·{' '}
-              {(
-                {
-                  SUCCEEDED: '완료',
-                  FAILED: '실패',
-                  QUEUED: '대기',
-                  RUNNING: '실행 중',
-                } as Record<string, string>
-              )[item.latestCheck.status] ?? item.latestCheck.status}
-            </p>
-          ) : (
-            <p className="mt-2 text-sm text-slate-500">
-              아직 검사 결과가 없습니다.
-            </p>
-          )}
-        </section>
+        <CheckResults
+          proposal={item}
+          refreshing={query.isFetching}
+          refreshError={query.error}
+          onRefresh={() => {
+            void query.refetch()
+          }}
+        />
         {item.applyError && (
           <p role="alert" className="rounded-lg bg-red-50 p-4 text-red-800">
             반영 실패 사유: {item.applyError}
