@@ -56,6 +56,79 @@ public record IssueTestFixtures(JdbcClient jdbc) {
                 .single();
     }
 
+    /** 시작 시각과 상태를 정한 검사 실행. 재검증 시점 규칙을 시험할 때 쓴다. */
+    public long insertRun(
+            String triggerKind,
+            String status,
+            Instant startedAt,
+            long comparedToRunId,
+            long accountId) {
+        return jdbc.sql(
+                        """
+                        insert into check_run (
+                            trigger_kind, status, work_key, compared_to_run_id,
+                            requested_by, started_at, finished_at, error_message
+                        )
+                        values (
+                            :kind, :status, :workKey, :comparedTo, :accountId, :startedAt,
+                            case when cast(:status as varchar) in ('SUCCEEDED', 'FAILED')
+                                then cast(:startedAt as timestamptz) end,
+                            case when cast(:status as varchar) = 'FAILED' then '테스트 실패' end
+                        )
+                        returning id
+                        """)
+                .param("kind", triggerKind)
+                .param("status", status)
+                .param("workKey", "issue-test-run-" + UUID.randomUUID())
+                .param("comparedTo", comparedToRunId)
+                .param("accountId", accountId)
+                .param("startedAt", Timestamp.from(startedAt), Types.TIMESTAMP)
+                .query(Long.class)
+                .single();
+    }
+
+    public void insertVerification(long issueId, long checkRunId, String outcome) {
+        jdbc.sql(
+                        """
+                        insert into issue_verification (issue_id, check_run_id, outcome)
+                        values (:issueId, :runId, :outcome)
+                        """)
+                .param("issueId", issueId)
+                .param("runId", checkRunId)
+                .param("outcome", outcome)
+                .update();
+    }
+
+    /** 관리자가 at에 문제를 조치완료·재검증대기로 바꾼 상태를 만든다. */
+    public void markFixedAt(long issueId, long accountId, Instant at) {
+        jdbc.sql(
+                        """
+                        update issue
+                        set status = 'FIXED_PENDING_REVERIFY', row_version = row_version + 1
+                        where id = :id
+                        """)
+                .param("id", issueId)
+                .update();
+        jdbc.sql(
+                        """
+                        insert into issue_history (
+                            issue_id, from_status, to_status, note, changed_by, changed_at
+                        )
+                        values (:id, 'CHECKING', 'FIXED_PENDING_REVERIFY', '원천 수정 완료', :accountId, :at)
+                        """)
+                .param("id", issueId)
+                .param("accountId", accountId)
+                .param("at", Timestamp.from(at), Types.TIMESTAMP)
+                .update();
+    }
+
+    public void setStatus(long issueId, String status) {
+        jdbc.sql("update issue set status = :status where id = :id")
+                .param("status", status)
+                .param("id", issueId)
+                .update();
+    }
+
     /** 승인된 연결 규칙 개정본 하나와 그 규칙이 쓰는 유형들을 만든다. */
     public long insertLinkMapping() {
         String suffix = UUID.randomUUID().toString();
