@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useParams, useLocation } from 'react-router'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import StatusBadge from '../../components/StatusBadge'
+import DocumentLinkView from '../analysis/DocumentLinkView'
 import ProposalComparison from './ProposalComparison'
 import CheckResults from './CheckResults'
 import ProposalDecision from './ProposalDecision'
@@ -144,6 +145,9 @@ export default function ProposalDetail() {
             <p className="mt-2 text-sm">분석 실행 #{item.analysisRunId}</p>
           )}
         </section>
+        {item.itemKind === 'DOCUMENT_LINK' && (
+          <DocumentLinkView proposal={item} />
+        )}
         <section className="rounded-xl border border-slate-200 p-5">
           <h3 className="font-semibold">제안 내용</h3>
           <RecordView value={item.payload} />
