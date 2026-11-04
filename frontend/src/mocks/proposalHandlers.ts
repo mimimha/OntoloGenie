@@ -1,5 +1,6 @@
 import { delay, http, HttpResponse } from 'msw'
 import type { Proposal, ProposalOption } from '../features/review/types'
+import type { ProposalDecisionRecord } from '../features/review/decisionApi'
 
 export const proposalFixtures: Proposal[] = [
   {
@@ -142,6 +143,50 @@ function failed(status: number, code: string, message: string) {
 }
 
 export const proposalHandlers = [
+  http.get('/api/v1/proposals/:id/decisions', async ({ params, request }) => {
+    await delay()
+    const item = proposals.find((proposal) => proposal.id === Number(params.id))
+    if (!item)
+      return failed(404, 'RESOURCE_NOT_FOUND', '제안을 찾을 수 없습니다.')
+    const search = new URL(request.url).searchParams
+    const page = Number(search.get('page') ?? 0)
+    const size = Number(search.get('size') ?? 20)
+    const records: ProposalDecisionRecord[] = [
+      {
+        id: 702,
+        proposalItemId: item.id,
+        itemRevision: 1,
+        decision: item.reviewStatus === 'APPROVED' ? 'APPROVE' : 'HOLD',
+        selectedOptionId: null,
+        reason: '대응 설비와 규칙 조건을 확인했습니다.',
+        decidedBy: 1,
+        decidedAt: '2026-10-28T03:00:00Z',
+      },
+      ...(item.id === 303
+        ? [
+            {
+              id: 701,
+              proposalItemId: item.id,
+              itemRevision: 1,
+              decision: 'HOLD',
+              selectedOptionId: null,
+              reason: '원천 설비 코드를 다시 확인합니다.',
+              decidedBy: 1,
+              decidedAt: '2026-10-27T03:00:00Z',
+            },
+          ]
+        : []),
+    ]
+    return HttpResponse.json({
+      data: records.slice(page * size, (page + 1) * size),
+      meta: {
+        page,
+        size,
+        totalElements: records.length,
+        hasNext: (page + 1) * size < records.length,
+      },
+    })
+  }),
   http.get('/api/v1/checks/runs/:id/results', async ({ params, request }) => {
     await delay()
     const search = new URL(request.url).searchParams
