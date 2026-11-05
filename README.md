@@ -40,7 +40,7 @@ ERP, MES, 현장 메모처럼 서로 다른 시스템에 저장된 데이터는 
 | S7 | 계정·권한 관리 | 로그인, 계정·역할 확인과 변경, 전체 실행 이력 조회 | MVP |
 | 공통 | 수집·감사 | 원천 수집 배치(주기·수동 실행), Action 정의 관리, 동작·감사 기록 | MVP |
 
-사용자 역할은 `ADMIN`, `PLANNER`, `MAINTENANCE`, `VIEWER` 4개입니다. MVP에서 `MAINTENANCE`는 `VIEWER`와 권한이 같습니다. 권한 코드와 역할별 부여는 Flyway 초기 데이터(V7·V10)에 있습니다.
+사용자 역할은 `ADMIN`, `PLANNER`, `MAINTENANCE`, `VIEWER` 4개입니다. MVP에서 `MAINTENANCE`는 `VIEWER`와 권한이 같습니다. 권한 코드와 역할별 부여는 Flyway 초기 데이터에 있습니다.
 
 ## 3. 시스템 구성
 
@@ -92,9 +92,9 @@ Jenkins Job 2개가 같은 `Jenkinsfile`을 씁니다. `axcore-mr-check`는 MR�
 
 ## 4. 주요 데이터 모델
 
-[온톨로지 MVP ERD (v2)](https://app.notion.com/p/402bdf14d2d880048f4fd8ee1f1d540b) 기준입니다(2026-10-26 확정). 실제 테이블의 원본은 [Flyway migration](backend/src/main/resources/db/migration)입니다. 모든 테이블은 PostgreSQL 스키마 `platform` 하나에 두고, PK는 `bigint`를 사용합니다.
+[온톨로지 MVP ERD (v2)](https://app.notion.com/p/402bdf14d2d880048f4fd8ee1f1d540b) 기준입니다(2026-10-26 확정). 실제 테이블의 원본은 [Flyway migration](backend/src/main/resources/db/migration)입니다. 모든 테이블은 PostgreSQL 스키마 `platform` 하나에 두고, 단일 ID PK는 `bigint`를 사용합니다. Spring Session·Spring Batch 테이블은 아래 목록에 넣지 않습니다.
 
-**온톨로지 테이블 (18개)**
+**온톨로지 테이블 (19개)**
 
 | 구분 | 테이블 | 설명 |
 | --- | --- | --- |
@@ -105,18 +105,18 @@ Jenkins Job 2개가 같은 `Jenkinsfile`을 씁니다. `axcore-mr-check`는 MR�
 | 연결 규칙 | `link_mapping`, `link_mapping_condition` | 객체끼리 연결하는 규칙. 바뀔 때마다 새 개정본으로 보관 |
 | 인스턴스 | `object_instance`, `object_link` | 실제 객체와 객체 간 연결 |
 | Action | `action_definition` | 실행 가능한 업무, 입력 형식, 권한, Handler, 확인 창 여부 |
-| 수집 | `sync_run`, `sync_run_resource` | 원천 수집 실행 기록과 표별 진행 |
+| 수집 | `sync_run`, `sync_run_resource`, `cdc_offset` | 원천 수집 실행 기록, 표별 진행, CDC 소비 위치 |
 
-**운영 테이블 (25개)**
+**운영 테이블 (23개)**
 
 | 영역 | 내용 |
 | --- | --- |
 | 계정·권한 | 계정, 역할, 권한, 역할별 데이터 범위 |
 | 분석 실행 | AI 분석 실행과 대상 |
-| 제안·검토 | 제안 항목, 후보, 검토 결정, 보류 건 |
-| 정합성 | 검사 일정·실행·결과, 정합성 문제와 이력 |
-| 실행·감사 | Action 실행 기록, 변경 전후 기록 |
-| Agent | 대화, 메시지, Tool 호출 기록 |
+| 제안·검토 | 제안 항목, 개정, 후보, 검토 결정, 보류 건 |
+| 정합성 | 검사 실행·결과, 정합성 문제와 재검증·이력 |
+| 실행·감사 | Action·Agent 조회·작업 실행 기록, 변경 전후 기록 |
+| Agent | 대화, 메시지 |
 | 재배정 계획 | 재배정 계획과 계획 항목 |
 
 > 메모 원문 저장 방식, AI별 Action 구분, API의 ID 표현은 아직 정하지 않았습니다. ERD 문서의 미정 항목에서 관리합니다.
@@ -152,8 +152,6 @@ Jenkins Job 2개가 같은 `Jenkinsfile`을 씁니다. `axcore-mr-check`는 MR�
 3. 사용자가 요청하면 Agent가 재배정 계획 생성 Action을 호출합니다.
 4. Backend가 실행 권한, 설비 조건, 작업지시 상태를 검증합니다.
 5. Action Handler가 계획을 플랫폼 DB에 저장하고 감사 기록을 남깁니다. 원천 MES의 배정은 바꾸지 않습니다.
-
-*실제 시연 데이터와 값은 시연 데이터가 완성되면 추가합니다.*
 
 ## 7. 팀 구성
 

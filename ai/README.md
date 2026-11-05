@@ -25,7 +25,7 @@ ai/
 │   ├── llm/             LLM 호출, 개인정보 가림
 │   ├── models/          후보·분석 데이터 모델
 │   ├── dataset/         데이터·정답 생성기
-│   ├── validators/      정답 점검 (gold_check, gold_source_check)
+│   ├── validators/      정답 점검·후보 평가 (gold_check, gold_source_check, evaluate_ontology)
 │   └── rules/           연결 규칙 변환 단계 (transforms.py)
 ├── tests/
 └── docs/
