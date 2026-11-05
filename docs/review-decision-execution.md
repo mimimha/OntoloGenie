@@ -53,6 +53,8 @@ ProposalDecisionService.decide는 외부 업무 트랜잭션 참여를 NEVER로 
 
 실패 뒤 후보의 apply_status=FAILED/apply_error를 별도 저장하지 않는다. 이 처리는 사용자 지시와 API 054의 동기 계약을 따른다. 189 원본 주석의 별도 FAILED 저장 설명과는 다르며 제공 파일을 임의 수정하지 않았다. 실패 전 HELD 후보도 HELD로 남는다.
 
+현재 상태·결정·성공/실패 실행의 조회 방법은 [133 승인 반영 결과 조회](review-apply-result-query.md)를 따른다. 133은 이 실행·롤백 코드를 변경하지 않고 기존 049·055·096·097을 재사용한다.
+
 ## 원천 검사
 
 CandidateCheckRepository는 속성 매핑의 sourceColumn.sourceId + sourceColumn.resourceKey를 직접 비교한다. table 또는 sourceId.table로 추측하지 않는다. 기본 저장소에 이미 작성된 같은 최소 변경과 회귀 테스트를 131 worktree에서 재사용했다.
