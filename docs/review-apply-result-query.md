@@ -86,4 +86,11 @@ GET /api/v1/audit/actions/456
 
 ## 후속 정리 — 생성자 주입
 
-테스트의 MockMvc·JdbcClient·JsonMapper·QueryProbeApplier는 `final` 필드와 `@Autowired` 생성자로 주입한다. 테스트 시나리오와 운영 코드는 그대로 유지한다. 이후 사용자 요청에 따라 133 변경을 커밋하고 최신 develop을 작업 브랜치에 일반 merge로 반영한다. 추가 실행 검증은 병합된 상태에서 기존 핵심 3건과 포맷 검사로 제한한다.
+테스트의 MockMvc·JdbcClient·JsonMapper·QueryProbeApplier는 `final` 필드와 `@Autowired` 생성자로 주입한다. 테스트 시나리오와 운영 코드는 그대로 유지한다.
+
+- 커밋 전 `spotlessApply spotlessCheck compileTestJava`: 종료 코드 0, BUILD SUCCESSFUL.
+- 133 변경은 `9e3eec0`(`test: 승인 반영 결과 조회 검증 추가`)으로 커밋했다.
+- 가져온 최신 `origin/develop`은 `8381018`이다. 작업 브랜치에 일반 merge로 반영했으며 충돌은 없었다.
+- 병합 상태에서 `./backend/gradlew.bat -p backend spotlessCheck test --tests '*ProposalApplyResultQueryApiTests' --console=plain`: 종료 코드 0, BUILD SUCCESSFUL(1분 25초). XML 기준 3건, 실패·오류·Skip 0. 전체 build는 반복하지 않았다.
+- 최신 develop과 비교한 133 변경은 테스트·문서 5개다. 운영 조회 메서드·프론트·Migration은 추가 수정하지 않았다. Push·MR 생성은 수행하지 않았다.
+- 현재 JPA 우선 규칙을 확인했다. 신규 운영 Repository·SQL은 없고, 테스트 데이터 생성·롤백 유도·DB 상태 검증에만 JdbcClient를 쓴다. 규칙에는 테스트 fixture 적용 범위가 별도로 명시돼 있지 않다.
