@@ -49,6 +49,21 @@ code를 DB ID로 바꾸는 일은 이 서비스가 한다. 아직 승인되지 �
 
 선행 후보가 먼저 반영돼야 한다: 객체 유형 → 속성·관계 유형 → 객체 매핑 → 속성 매핑 → 관계 규칙.
 
+### AI 묶음 후보 (API-105)
+
+아래는 반영기(S15P31C106-189)가 따를 기준이다. 아직 반영기 구현은 없다.
+
+AI 제안기는 관리자가 판단하는 단위로 후보를 묶어 보낸다. 표 하나가 객체 후보 한 건, 관계 하나가 관계 후보 한 건이다. 그래서 AI 후보에는 PROPERTY·OBJECT_MAPPING·PROPERTY_MAPPING이 따로 오지 않고, 연결 규칙이 있는 관계의 LINK_TYPE도 따로 오지 않는다.
+
+| 종류 | payload에 함께 오는 것 | 반영 |
+| --- | --- | --- |
+| OBJECT_TYPE | `objectMapping` {sourceId, resourceKey, keyColumns}, `properties[]` {code, name, dataType, isIdentifier, isRequired, unit, sensitivity, description, sourceColumn, transformSteps} | 한 번에 `object_type`, `property_definition`(속성마다), `object_source_mapping`, `property_source_mapping`(sourceColumn이 있는 속성마다)을 만든다. 순서는 위 선행 순서와 같다 |
+| LINK_RULE | `linkType` {code, name, sourceTypeCode, targetTypeCode, cardinality, description} | `linkTypeCode`의 관계 유형이 없으면 `linkType`으로 먼저 `link_type`을 만들고 규칙을 반영한다. 있으면 `linkType`은 쓰지 않는다 |
+
+- 묶음 안 하나라도 실패하면 묶음 전체가 실패한다(같은 트랜잭션).
+- `objectMapping`·`properties`·`linkType`이 없는 OBJECT_TYPE·LINK_RULE은 지금까지처럼 정의 하나만 반영한다. 관리자가 직접 추가한 연결 규칙(MANUAL)도 그대로다.
+- 규칙이 없는 관계 유형(문서 연결용 등)과 문서 연결은 지금처럼 LINK_TYPE·DOCUMENT_LINK 한 건씩 온다.
+
 ## 실패
 
 반영하지 못하면 `BusinessException`을 던진다.
@@ -66,4 +81,4 @@ code를 DB ID로 바꾸는 일은 이 서비스가 한다. 아직 승인되지 �
 ## 확인 필요
 
 - `property_source_mapping`에는 `proposal_item_id`·`origin` 칸이 없다. 어느 후보로 만든 속성 매핑인지는 감사 기록으로만 찾는다.
-- 속성 매핑 후보의 `sourceColumn.table`은 스키마 없는 표 이름이라 `source_resource.resource_key`(`erp.attendance`)와 맞지 않는다([원천 매핑](source-mapping.md) 승인 반영 절).
+- 속성 매핑 후보의 `sourceColumn.table`은 스키마 없는 표 이름이라 `source_resource.resource_key`(`erp.attendance`)와 맞지 않는다([원천 매핑](source-mapping.md) 승인 반영 절). 11-05부터 AI 후보의 `sourceColumn`에 `resourceKey`(`erp.attendance` 형식)가 함께 온다(S15P31C106-289).
