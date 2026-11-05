@@ -68,7 +68,7 @@ public record ActionExecutionDetailResponse(
             Map<String, Object> beforeData,
             Map<String, Object> afterData) {
 
-        static EntityChangeResponse from(EntityChange change) {
+        public static EntityChangeResponse from(EntityChange change) {
             return new EntityChangeResponse(
                     change.getTableName(),
                     change.getRowKey(),
