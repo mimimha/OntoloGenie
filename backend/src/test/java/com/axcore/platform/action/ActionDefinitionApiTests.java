@@ -8,7 +8,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.axcore.platform.TestcontainersConfiguration;
+import com.axcore.platform.action.handler.ActionContext;
 import com.axcore.platform.action.handler.ActionHandler;
+import com.axcore.platform.action.handler.ActionPreparation;
 import jakarta.servlet.http.Cookie;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +53,17 @@ class ActionDefinitionApiTests {
 
         @Bean
         ActionHandler testHandler() {
-            return () -> TEST_HANDLER;
+            return new ActionHandler() {
+                @Override
+                public String key() {
+                    return TEST_HANDLER;
+                }
+
+                @Override
+                public ActionPreparation prepare(ActionContext context) {
+                    return ActionPreparation.blocked("테스트 Handler는 실행하지 않습니다.");
+                }
+            };
         }
     }
 

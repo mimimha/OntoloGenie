@@ -66,6 +66,7 @@ public class ActionDefinitionService {
     private final ActionDefinitionRepository definitions;
     private final ActionReferenceRepository references;
     private final ActionHandlerRegistry handlers;
+    private final InputSchemaValidator inputSchemas;
     private final AuditRecorder audits;
     private final ActionDefinitionLookup actionDefinitions;
     private final TransactionTemplate transactionTemplate;
@@ -74,12 +75,14 @@ public class ActionDefinitionService {
             ActionDefinitionRepository definitions,
             ActionReferenceRepository references,
             ActionHandlerRegistry handlers,
+            InputSchemaValidator inputSchemas,
             AuditRecorder audits,
             ActionDefinitionLookup actionDefinitions,
             PlatformTransactionManager transactionManager) {
         this.definitions = definitions;
         this.references = references;
         this.handlers = handlers;
+        this.inputSchemas = inputSchemas;
         this.audits = audits;
         this.actionDefinitions = actionDefinitions;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -148,6 +151,7 @@ public class ActionDefinitionService {
         }
         requireTarget(request.targetKind(), request.targetObjectTypeId());
         requireHandler(request.handlerKey());
+        requireInputSchema(request.inputSchema());
         requirePermission(request.requiredPermission());
         if (definitions.existsByCode(request.code())) {
             throw duplicateCode();
@@ -226,6 +230,9 @@ public class ActionDefinitionService {
         if (request.getHandlerKey() != null) {
             requireHandler(request.getHandlerKey());
         }
+        if (request.getInputSchema() != null) {
+            requireInputSchema(request.getInputSchema());
+        }
         if (request.getRequiredPermission() != null) {
             requirePermission(request.getRequiredPermission());
         }
@@ -299,6 +306,14 @@ public class ActionDefinitionService {
     private void requireHandler(String handlerKey) {
         if (!handlers.isRegistered(handlerKey)) {
             throw BusinessException.invalidField("handlerKey", "서버에 등록되지 않은 Handler입니다.");
+        }
+    }
+
+    /** 091이 검사하지 못하는 키워드가 있으면 거절한다. 그대로 두면 정의에 적힌 규칙이 실행 때 조용히 무시된다. */
+    private void requireInputSchema(Map<String, Object> inputSchema) {
+        List<String> problems = inputSchemas.unsupported(inputSchema);
+        if (!problems.isEmpty()) {
+            throw BusinessException.invalidField("inputSchema", problems.get(0));
         }
     }
 
