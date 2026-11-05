@@ -38,7 +38,8 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <ol>
  *   <li>같은 requestId의 기록이 있으면 새로 실행하지 않는다. 같은 요청이면 그 기록을 돌려주고, 다른 요청이면 409다.
- *   <li>관리 Action·비활성·권한·확인·입력 형식(inputSchema)을 검사한다. 막히면 BLOCKED를 따로 기록하고 200으로 돌려준다(D1).
+ *   <li>관리 Action·비활성·Handler 구현 전·권한·입력 형식(inputSchema)·확인을 검사한다. 막히면 BLOCKED를 따로 기록하고 200으로
+ *       돌려준다(D1).
  *   <li>Handler가 업무 조건을 검사하고 저장을 준비한다. 막히면 BLOCKED다. 통과하면 실행 기록(SUCCEEDED)과 Handler의 저장을 한 트랜잭션에
  *       커밋한다.
  *   <li>예상하지 못한 오류는 트랜잭션을 되돌리고 FAILED를 따로 기록한다. 자세한 원인은 서버 로그에만 남긴다.
@@ -53,6 +54,8 @@ import tools.jackson.databind.json.JsonMapper;
 public class ActionExecutionService {
 
     static final String FAILED_MESSAGE = "Action을 실행하지 못했습니다. 관리자에게 문의해 주세요.";
+    static final String HANDLER_NOT_READY_MESSAGE =
+            "Handler 구현 전인 Action입니다. 개발자가 Handler를 배포한 뒤 실행할 수 있습니다.";
 
     private final ActionDefinitionRepository definitions;
     private final ActionReferenceRepository references;
@@ -110,18 +113,10 @@ public class ActionExecutionService {
             return replay(previous.get(), definition, command, target);
         }
 
-        Optional<String> gate = gateReason(definition, command);
+        Optional<String> gate = gateReason(definition, handler, command);
         if (gate.isPresent()) {
             return recordSeparately(
                     definition, command, target, ExecutionStatus.BLOCKED, gate.get());
-        }
-        if (handler == null) {
-            log.error(
-                    "Action Handler가 없습니다 code={} handlerKey={}",
-                    definition.getCode(),
-                    definition.getHandlerKey());
-            return recordSeparately(
-                    definition, command, target, ExecutionStatus.FAILED, FAILED_MESSAGE);
         }
 
         ActionContext context =
@@ -197,25 +192,36 @@ public class ActionExecutionService {
         }
     }
 
-    /** 실행하기 전에 막는 조건. 순서대로 검사해 첫 이유를 돌려준다. */
+    /**
+     * 실행하기 전에 막는 조건. 091의 검사 순서(관리 Action → 비활성 → Handler 구현 전 → 권한 → 입력 형식 → 확인)대로 검사해 첫 이유를 돌려준다.
+     * Handler 구현 전은 권한보다 먼저 본다. 실행할 수 없는 Action에 권한 차단 사유를 보여 주지 않기 위해서다.
+     */
     private Optional<String> gateReason(
-            ActionDefinition definition, ActionExecutionCommand command) {
+            ActionDefinition definition, ActionHandler handler, ActionExecutionCommand command) {
         if (definition.getActionMode() == ActionMode.RECORD) {
             return Optional.of("직접 실행할 수 없는 Action입니다. 해당 관리 화면에서 실행해 주세요.");
         }
         if (!definition.isActive()) {
             return Optional.of("사용이 중지된 Action입니다.");
         }
+        if (handler == null) {
+            return Optional.of(HANDLER_NOT_READY_MESSAGE);
+        }
         if (!references.roleHasPermission(
                 command.actor().roleCode(), definition.getRequiredPermission())) {
             return Optional.of(definition.getRequiredPermission() + " 권한이 없습니다.");
         }
+        Optional<String> inputViolation =
+                inputSchemas
+                        .firstViolation(definition.getInputSchema(), command.input())
+                        .map(violation -> "입력이 형식에 맞지 않습니다. " + violation);
+        if (inputViolation.isPresent()) {
+            return inputViolation;
+        }
         if (definition.isRequiresConfirmation() && !command.confirmed()) {
             return Optional.of("실행 전에 확인이 필요한 Action입니다. 확인한 뒤 다시 요청해 주세요.");
         }
-        return inputSchemas
-                .firstViolation(definition.getInputSchema(), command.input())
-                .map(violation -> "입력이 형식에 맞지 않습니다. " + violation);
+        return Optional.empty();
     }
 
     /**
