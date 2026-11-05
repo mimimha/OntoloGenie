@@ -1,8 +1,8 @@
-# AI Ontology 데이터셋·정답셋
+# AI 분석 서비스·데이터셋
 
-00프레스(가상) ERP·MES 원천 데이터와 정답셋, 그리고 이를 만드는 생성기와 점검 도구입니다.
+원천 데이터를 분석해 온톨로지·매핑·규칙 후보를 만드는 FastAPI 서비스와, 00프레스(가상) ERP·MES 원천 데이터·정답셋입니다.
 
-- 설명: [데이터셋·정답셋](docs/dataset.md) · [분석 연동 초안](docs/api-internal.md)
+- 설명: [데이터셋·정답셋](docs/dataset.md) · [분석 연동](docs/api-internal.md)
 - 담당: 김서연 (DAT-01~05)
 
 ## 폴더 구조
@@ -16,9 +16,18 @@ ai/
 ├── results/
 │   └── proposals-v1.0.api.json   분석 결과 후보 샘플 (API 105 형식)
 ├── app/
+│   ├── api/             내부 API (/health, 분석 시작 수신)
+│   ├── analysis/        분석 실행: 원천 확인 → 엔진 실행 → 결과를 backend(API 105)로 전송
+│   ├── sources/         원천 읽기 (PostgreSQL 읽기 전용, CSV)
+│   ├── analyzers/       정형 데이터 구조·분포 분석
+│   ├── extractors/      메모·정비 기록 정보 추출, 설비 별칭·ID 연결
+│   ├── proposers/       후보·근거·신뢰도 조립
+│   ├── llm/             LLM 호출, 개인정보 가림
+│   ├── models/          후보·분석 데이터 모델
 │   ├── dataset/         데이터·정답 생성기
 │   ├── validators/      정답 점검 (gold_check, gold_source_check)
 │   └── rules/           연결 규칙 변환 단계 (transforms.py)
+├── tests/
 └── docs/
 ```
 

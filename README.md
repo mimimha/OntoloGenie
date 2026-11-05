@@ -8,7 +8,7 @@
 
 ERP, MES, 현장 메모처럼 서로 다른 시스템에 저장된 데이터는 식별자와 표현 방식이 달라 하나의 업무 맥락으로 파악하기 어렵습니다. 기존의 단순 조회나 대시보드에서 나아가, 데이터 간 의미적 관계를 정의하고 실제 업무 실행까지 연결하는 **온톨로지 기반 운영 플랫폼**을 개발합니다.
 
-제조 현장(프레스 공정)의 ERP·MES와 현장 메모를 대상으로 합니다. 시연용 원천 데이터는 기업 예시 데이터의 구조를 참고해 팀이 새로 만들고 있습니다.
+제조 현장(프레스 공정)의 ERP·MES와 현장 메모를 대상으로 합니다. 시연용 원천 데이터는 기업 예시 데이터의 구조를 참고해 팀이 새로 만들었습니다([ai/data](ai/data)).
 
 ### 핵심 목표
 
@@ -40,7 +40,7 @@ ERP, MES, 현장 메모처럼 서로 다른 시스템에 저장된 데이터는 
 | S7 | 계정·권한 관리 | 로그인, 계정·역할 확인과 변경, 전체 실행 이력 조회 | MVP |
 | 공통 | 수집·감사 | 원천 수집 배치(주기·수동 실행), Action 정의 관리, 동작·감사 기록 | MVP |
 
-사용자 역할은 `ADMIN`, `PLANNER`, `MAINTENANCE`, `VIEWER` 4개입니다. 역할별 세부 권한은 개발 중에 확정합니다.
+사용자 역할은 `ADMIN`, `PLANNER`, `MAINTENANCE`, `VIEWER` 4개입니다. MVP에서 `MAINTENANCE`는 `VIEWER`와 권한이 같습니다. 권한 코드와 역할별 부여는 Flyway 초기 데이터(V7·V10)에 있습니다.
 
 ## 3. 시스템 구성
 
@@ -88,23 +88,24 @@ ERP, MES, 현장 메모처럼 서로 다른 시스템에 저장된 데이터는 
   → 바뀐 서비스만 빌드 → Docker 이미지 생성 → Docker Compose 배포 → 헬스체크
 ```
 
-지금 `Jenkinsfile`은 develop push 시 동작을 확인하는 테스트 파이프라인입니다. 서비스 코드가 들어오면 빌드·배포 단계로 확장합니다.
+Jenkins Job 2개가 같은 `Jenkinsfile`을 씁니다. `axcore-mr-check`는 MR을 검사하고, `axcore-deploy`는 develop 병합 시 바뀐 서비스(backend·AI·frontend)만 배포합니다. 결과는 GitLab 커밋 상태와 Mattermost DM으로 알립니다.
 
 ## 4. 주요 데이터 모델
 
-[온톨로지 MVP ERD (v2)](https://app.notion.com/p/402bdf14d2d880048f4fd8ee1f1d540b) 기준입니다(2026-10-26 확정). 모든 테이블은 PostgreSQL 스키마 `platform` 하나에 두고, PK는 `bigint`를 사용합니다.
+[온톨로지 MVP ERD (v2)](https://app.notion.com/p/402bdf14d2d880048f4fd8ee1f1d540b) 기준입니다(2026-10-26 확정). 실제 테이블의 원본은 [Flyway migration](backend/src/main/resources/db/migration)입니다. 모든 테이블은 PostgreSQL 스키마 `platform` 하나에 두고, PK는 `bigint`를 사용합니다.
 
-**온톨로지 테이블 (14개)**
+**온톨로지 테이블 (18개)**
 
 | 구분 | 테이블 | 설명 |
 | --- | --- | --- |
 | 정의 | `object_type`, `property_definition`, `link_type` | 객체 유형, 속성, 관계 유형 |
-| 원천 | `data_source`, `source_resource`, `source_column` | 원천 시스템, 원천의 표·문서, 컬럼 목록 |
+| 원천 | `data_source`, `data_source_credential`, `source_resource`, `source_column` | 원천 시스템, 암호화된 접속 정보, 원천의 표·문서, 컬럼 목록 |
+| 원천 작업 | `source_connection_check`, `source_preview` | 연결 검사, 표본 조회 |
 | 매핑 | `object_source_mapping`, `property_source_mapping` | 원천 행·컬럼을 객체·속성으로 바꾸는 방법 |
 | 연결 규칙 | `link_mapping`, `link_mapping_condition` | 객체끼리 연결하는 규칙. 바뀔 때마다 새 개정본으로 보관 |
 | 인스턴스 | `object_instance`, `object_link` | 실제 객체와 객체 간 연결 |
 | Action | `action_definition` | 실행 가능한 업무, 입력 형식, 권한, Handler, 확인 창 여부 |
-| 수집 | `sync_run` | 원천 수집 실행 기록 |
+| 수집 | `sync_run`, `sync_run_resource` | 원천 수집 실행 기록과 표별 진행 |
 
 **운영 테이블 (25개)**
 
@@ -118,7 +119,7 @@ ERP, MES, 현장 메모처럼 서로 다른 시스템에 저장된 데이터는 
 | Agent | 대화, 메시지, Tool 호출 기록 |
 | 재배정 계획 | 재배정 계획과 계획 항목 |
 
-> 권한 값 목록, 메모 원문 저장 방식, AI별 Action 구분, API의 ID 표현은 아직 정하지 않았습니다. ERD 문서의 미정 항목에서 관리합니다.
+> 메모 원문 저장 방식, AI별 Action 구분, API의 ID 표현은 아직 정하지 않았습니다. ERD 문서의 미정 항목에서 관리합니다.
 
 ## 5. 기술 스택
 
@@ -135,8 +136,8 @@ ERP, MES, 현장 메모처럼 서로 다른 시스템에 저장된 데이터는 
 | API 문서 | OpenAPI 3.1, Swagger | 확정 |
 | Infra | AWS Lightsail, Docker Compose, nginx, Let's Encrypt, Jenkins | 확정 |
 | 협업 | SSAFY GitLab(모노레포), Jira, Notion | 확정 |
-| 모니터링 | Spring Boot Actuator, Prometheus | 백엔드 지표 노출 방식 확정. 수집·대시보드 구성 예정 |
-| 배포 알림 | - | 미정 |
+| 모니터링 | Spring Boot Actuator, Prometheus, Grafana Alloy, Loki, Grafana | 확정 |
+| 배포 알림 | Mattermost DM | 확정 |
 
 캐시(Redis)는 쓰지 않습니다. Kafka는 원천 변경 수집(CDC)에만 쓰고, 오래 걸리는 작업은 지금처럼 DB의 실행 기록 테이블로 넘깁니다. 백엔드 세부 스택은 [개발 가이드 6.2](docs/development-guide.md#62-백엔드-기술-스택)에 있습니다.
 
@@ -190,14 +191,16 @@ ERP, MES, 현장 메모처럼 서로 다른 시스템에 저장된 데이터는 
 ```text
 /
 ├── backend/       # Spring Boot 백엔드 (API 서버·수집 배치 공용)
-├── docs/          # 개발 가이드, 기획 자료
-├── infra/         # 메인 서버 배포 설정 (nginx, certbot, Jenkins, PostgreSQL)
+├── ai/            # FastAPI AI 분석 서비스, 시연 데이터·정답셋
+├── frontend/      # React 웹 화면
+├── docs/          # 개발 가이드, 기획 자료, 기능별 설계 메모
+├── infra/         # 배포 설정 (nginx, certbot, Jenkins, PostgreSQL, 모니터링, 원천 DB·CDC)
 ├── .gitlab/       # MR 템플릿
 ├── .ai/           # AI 도구 공통 규칙
 └── Jenkinsfile    # Jenkins 파이프라인
 ```
 
-AI 서비스와 프론트엔드 코드는 각 서비스 구성이 끝나면 추가합니다.
+AI 서비스와 프론트엔드 실행 방법은 [ai/README.md](ai/README.md), [frontend/README.md](frontend/README.md)에 있습니다.
 
 **Backend 실행** (`backend/`, JDK 21·Docker 필요)
 
@@ -216,6 +219,8 @@ LLM API Key, DB 비밀번호 같은 민감 정보는 저장소에 커밋하지 �
 | --- | --- |
 | 개발 가이드 (브랜치·Commit·MR·코드 규칙) | [docs/development-guide.md](docs/development-guide.md) |
 | 인프라 설정 | [infra/README.md](infra/README.md) |
+| AI 서비스·데이터셋 | [ai/README.md](ai/README.md) |
+| 프론트엔드 | [frontend/README.md](frontend/README.md) |
 | 시스템 구조 | [Notion](https://app.notion.com/p/3f1bdf14d2d88111b3f1d420ead2dce1) |
 | 최종 시나리오 | [Notion](https://app.notion.com/p/3ffbdf14d2d88054aba3d559f0f989d6) |
 | 기능 명세서 (최종본) | [Notion](https://app.notion.com/p/3ffbdf14d2d88041be0ef1898eda8a60) |
