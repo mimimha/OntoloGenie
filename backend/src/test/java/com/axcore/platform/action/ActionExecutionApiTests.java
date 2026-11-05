@@ -56,6 +56,9 @@ class ActionExecutionApiTests {
 
     private static final String PASSWORD = "Passw0rd!";
     private static final String PLAN = "/api/v1/actions/CREATE_REASSIGNMENT_PLAN/executions";
+    private static final String UNDEPLOYED = "UNDEPLOYED_HANDLER";
+    private static final String HANDLER_NOT_READY_REASON =
+            "Handler 구현 전인 Action입니다. 개발자가 Handler를 배포한 뒤 실행할 수 있습니다.";
     private static final String DATA_AS_OF = "2026-10-30T14:00:00+09:00";
 
     @Autowired MockMvc mockMvc;
@@ -589,18 +592,74 @@ class ActionExecutionApiTests {
         assertThat(again).isEqualTo(executionId);
     }
 
+    // ---------------------------------------------------------------- Handler 구현 전(Jira 287)
+
     @Test
-    void recordsFailedWhenHandlerIsMissing() throws Exception {
-        LoginSession admin = login(createAccount("ADMIN"));
-        String code = createDefinition("NO_SUCH_HANDLER");
+    void blocksActionWhoseHandlerIsNotDeployedWithoutTarget() throws Exception {
+        TestAccount adminAccount = createAccount("ADMIN");
+        LoginSession admin = login(adminAccount);
+        String path = "/api/v1/actions/%s/executions".formatted(createDefinition(UNDEPLOYED));
+        long plansBefore = countPlans();
+        // 대상은 Handler가 입력으로 정하므로, Handler가 없으면 보낸 대상은 쓰지 않고 대상 없이 남긴다.
+        String request =
+                ("{\"requestId\": \"%s\", \"targetType\": \"object_instance\", \"targetId\": %d,"
+                                + " \"input\": {}}")
+                        .formatted(UUID.randomUUID(), s4.p103);
+
+        long executionId =
+                longAt(
+                        execute(path, admin, request)
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.data.status").value("BLOCKED"))
+                                .andExpect(
+                                        jsonPath("$.data.blockedReason")
+                                                .value(HANDLER_NOT_READY_REASON))
+                                .andExpect(jsonPath("$.data.targetType").doesNotExist())
+                                .andExpect(jsonPath("$.data.targetId").doesNotExist())
+                                .andExpect(jsonPath("$.data.result").isEmpty())
+                                .andReturn(),
+                        "id");
+
+        assertThat(countPlans()).isEqualTo(plansBefore);
+        // 같은 requestId로 다시 보내도 새로 기록하지 않는다.
+        assertThat(longAt(execute(path, admin, request).andReturn(), "id")).isEqualTo(executionId);
+        assertThat(executionsOf(adminAccount.id())).isOne();
+    }
+
+    @Test
+    void checksHandlerAfterInactiveAndBeforePermission() throws Exception {
+        String request = "{\"requestId\": \"%s\", \"input\": {}}";
+        String inactive = createDefinition(UNDEPLOYED);
+        jdbcClient
+                .sql("update action_definition set is_active = false where code = :code")
+                .param("code", inactive)
+                .update();
 
         execute(
-                        "/api/v1/actions/%s/executions".formatted(code),
-                        admin,
-                        "{\"requestId\": \"%s\", \"input\": {}}".formatted(UUID.randomUUID()))
+                        "/api/v1/actions/%s/executions".formatted(inactive),
+                        login(createAccount("ADMIN")),
+                        request.formatted(UUID.randomUUID()))
+                .andExpect(jsonPath("$.data.status").value("BLOCKED"))
+                .andExpect(jsonPath("$.data.blockedReason").value("사용이 중지된 Action입니다."));
+        // 권한이 없는 사용자에게도 실행할 수 없는 이유(Handler 구현 전)를 먼저 보여 준다.
+        execute(
+                        "/api/v1/actions/%s/executions".formatted(createDefinition(UNDEPLOYED)),
+                        login(createAccount("VIEWER")),
+                        request.formatted(UUID.randomUUID()))
+                .andExpect(jsonPath("$.data.status").value("BLOCKED"))
+                .andExpect(jsonPath("$.data.blockedReason").value(HANDLER_NOT_READY_REASON));
+    }
+
+    @Test
+    void checksInputBeforeConfirmation() throws Exception {
+        String path = "/api/v1/actions/%s/executions".formatted(createPlanDefinition(true, true));
+
+        execute(path, login(createAccount("ADMIN")), body(UUID.randomUUID(), s4.p103, "[]"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("FAILED"))
-                .andExpect(jsonPath("$.data.blockedReason").doesNotExist());
+                .andExpect(jsonPath("$.data.status").value("BLOCKED"))
+                .andExpect(
+                        jsonPath("$.data.blockedReason")
+                                .value("입력이 형식에 맞지 않습니다. input.items: 항목이 1개 이상이어야 합니다."));
     }
 
     @Test
@@ -709,7 +768,7 @@ class ActionExecutionApiTests {
                 messageId);
     }
 
-    /** 지정한 Handler 키를 쓰는 SYSTEM 대상 정의. Handler 키 검사를 거치지 않도록 DB에 직접 넣는다. */
+    /** 지정한 Handler 키를 쓰는 SYSTEM 대상 정의. 다른 테스트와 겹치지 않게 DB에 직접 넣는다. */
     private String createDefinition(String handlerKey) {
         String code = "TEST_" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         jdbcClient
