@@ -166,11 +166,13 @@ function CompletedResults({
 export default function CheckResults({
   proposal,
   refreshing,
+  polling = true,
   refreshError,
   onRefresh,
 }: {
   proposal: Proposal
   refreshing: boolean
+  polling?: boolean
   refreshError?: Error | null
   onRefresh: () => void
 }) {
@@ -204,9 +206,18 @@ export default function CheckResults({
             검사 #{run.checkRunId} · {states[run.status] ?? run.status} · 제안
             개정 {proposal.revision}
           </p>
-          {['QUEUED', 'RUNNING'].includes(run.status) && (
-            <LoadingState message="검사가 진행 중입니다. 3초마다 상태를 확인합니다." />
-          )}
+          {['QUEUED', 'RUNNING'].includes(run.status) &&
+            (polling ? (
+              <LoadingState message="검사가 진행 중입니다. 3초마다 상태를 확인합니다." />
+            ) : (
+              <p
+                role="status"
+                className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600"
+              >
+                검사가 아직 끝나지 않아 자동 확인을 멈췄습니다. 검사 상태
+                새로고침으로 다시 확인하세요.
+              </p>
+            ))}
           {run.status === 'FAILED' && (
             <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">
               검사 실행에 실패했습니다. 부분 결과를 정상 결과로 표시하지
