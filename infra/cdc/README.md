@@ -53,7 +53,7 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:90
 | `cdc-erp` | ERP `3.35.230.145:15432/erp` | `ERP_MAIN` | `axcore_erp` | `ERP_MAIN.erp.<표>` |
 | `cdc-mes` | MES `3.34.192.251:15432/mes` | `MES_MAIN` | `axcore_mes` | `MES_MAIN.mes.<표>` |
 
-**커넥터는 첫 적재보다 먼저 떠 있어야 합니다.** 스냅샷 없이(`no_data`) 등록한 순간부터의 변경만 받으므로, 플랫폼이 테이블 전체를 읽기(`loaded_lsn` 기록) 전에 슬롯이 있어야 그 사이 변경을 놓치지 않습니다. 소비자가 없어도 이벤트는 토픽에 7일간 쌓였다 지워질 뿐이고, Connect가 WAL을 계속 읽어 가므로 원천에 WAL이 쌓이지 않습니다.
+**커넥터는 첫 적재보다 먼저 떠 있어야 합니다.** 스냅샷 없이(`no_data`) 등록한 순간부터의 변경만 받으므로, 플랫폼이 테이블 전체를 읽기 전에 슬롯이 있어야 그 사이 변경을 놓치지 않습니다. 전체 읽기와 이벤트가 겹치는 경계는 LSN이 아니라 읽기 트랜잭션의 스냅샷으로 판단합니다(V11). 소비자가 없어도 이벤트는 토픽에 7일간 쌓였다 지워질 뿐이고, Connect가 WAL을 계속 읽어 가므로 원천에 WAL이 쌓이지 않습니다.
 
 `topic.prefix`는 플랫폼 `data_source.code`와 같아야 합니다. **플랫폼에 원천을 등록할 때 코드를 `ERP_MAIN`·`MES_MAIN`으로 씁니다**(API 009~012 예시와 같음). 토픽은 표에 첫 변경이 생길 때 만들어집니다.
 
@@ -75,7 +75,8 @@ ssh -i ~/.ssh/K15C106T.pem ubuntu@k15c106.p.ssafy.io '~/axcore/cdc/register-conn
 
 이벤트 모양(소비자 S15P31C106-198·199 참고):
 
-- `payload.op`: `c`(추가) / `u`(수정) / `d`(삭제). `payload.source.lsn`이 플랫폼의 `source_lsn`·`loaded_lsn`과 같은 숫자다
+- `payload.op`: `c`(추가) / `u`(수정) / `d`(삭제). `payload.source.lsn`이 플랫폼의 `source_lsn`과 같은 숫자다(재전송 거르기)
+- `payload.source.txId`: 원천 트랜잭션 번호(32비트). 소비자가 epoch를 복원해 `xid8`로 바꾸고, 객체의 적재 스냅샷과 비교한다(`pg_visible_in_snapshot`)
 - 원천 표의 REPLICA IDENTITY가 기본값(PK)이라 `u`의 `before`는 비어 있고, `d`의 `before`에는 PK 컬럼만 있다
 - 메시지마다 컬럼 구성(`schema`)이 같이 온다. 원천 컬럼이 바뀌면 여기서 알 수 있다
 - TRUNCATE는 보내지 않는다(Debezium 기본값)

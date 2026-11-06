@@ -17,16 +17,16 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * ERD의 온톨로지(V1)·운영(V2)·교차 FK(V3)·세션(V4)·CDC 수집(V5)과 Spring Batch(V6) migration이 PostgreSQL 18에 그대로
- * 적용되는지 확인한다.
+ * ERD의 온톨로지(V1)·운영(V2)·교차 FK(V3)·세션(V4)·CDC 수집(V5)·Spring Batch(V6)와 전체 읽기 경계(V11) migration이
+ * PostgreSQL 18에 그대로 적용되는지 확인한다.
  */
 @SpringBootTest
 @ActiveProfiles("api")
 @Import(TestcontainersConfiguration.class)
 class DatabaseMigrationTests {
 
-    // V1 18개 + V5 cdc_offset
-    private static final int ONTOLOGY_TABLES = 19;
+    // V1 18개 + V5 cdc_offset + V11 source_delete_mark
+    private static final int ONTOLOGY_TABLES = 20;
     private static final int OPERATION_TABLES = 23;
     private static final int SESSION_TABLES = 2;
     private static final int SPRING_BATCH_TABLES = 6;
@@ -44,7 +44,7 @@ class DatabaseMigrationTests {
                         .toArray(MigrationInfo[]::new);
 
         assertThat(Arrays.stream(applied).map(info -> info.getVersion().getVersion()))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
         assertThat(applied).allMatch(info -> info.getState() == MigrationState.SUCCESS);
         assertThat(flyway.info().pending()).isEmpty();
     }
@@ -378,6 +378,202 @@ class DatabaseMigrationTests {
                                         .update())
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .hasMessageContaining("cdc_offset_pkey");
+    }
+
+    @Test
+    @Transactional
+    void recoveryRunNeedsNoRequester() {
+        long sourceId = insertDataSource();
+
+        jdbcClient
+                .sql(
+                        """
+                        insert into sync_run (data_source_id, trigger_kind)
+                        values (:source, 'RECOVERY')
+                        """)
+                .param("source", sourceId)
+                .update();
+
+        assertThat(
+                        jdbcClient
+                                .sql(
+                                        """
+                                        select count(*) from sync_run
+                                        where data_source_id = :source and trigger_kind = 'RECOVERY'
+                                          and requested_by is null
+                                        """)
+                                .param("source", sourceId)
+                                .query(Integer.class)
+                                .single())
+                .isEqualTo(1);
+    }
+
+    @Test
+    @Transactional
+    void fullLoadGenerationRequiresCdc() {
+        long resourceId = insertSourceResource("TABLE");
+
+        assertThatThrownBy(
+                        () ->
+                                jdbcClient
+                                        .sql(
+                                                """
+                                                update source_resource set full_load_done_gen = 5
+                                                where id = :id
+                                                """)
+                                        .param("id", resourceId)
+                                        .update())
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("ck_source_resource_load_gen");
+    }
+
+    @Test
+    @Transactional
+    void platformObjectHasNoLoadSnapshot() {
+        assertThatThrownBy(
+                        () ->
+                                jdbcClient
+                                        .sql(
+                                                """
+                                                insert into object_instance
+                                                    (object_type_id, display_name, source_txid)
+                                                values (:type, '플랫폼 객체', pg_current_xact_id())
+                                                """)
+                                        .param("type", insertObjectType())
+                                        .update())
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("ck_object_instance_load");
+    }
+
+    @Test
+    @Transactional
+    void loadedSnapshotNeedsGeneration() {
+        long mappingId = insertObjectMapping();
+
+        assertThatThrownBy(
+                        () ->
+                                jdbcClient
+                                        .sql(
+                                                """
+                                                insert into object_instance
+                                                    (object_type_id, source_mapping_id, source_key, display_name,
+                                                     loaded_snapshot)
+                                                select object_type_id, id, '{"id": 1}', '작업지시 1',
+                                                       pg_current_snapshot()
+                                                from object_source_mapping where id = :mapping
+                                                """)
+                                        .param("mapping", mappingId)
+                                        .update())
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("ck_object_instance_load_pair");
+    }
+
+    @Test
+    @Transactional
+    void storedLoadSnapshotJudgesTransactionVisibility() {
+        long mappingId = insertObjectMapping();
+
+        // 전체 읽기가 남기는 값처럼 스냅샷을 저장하고, 저장한 스냅샷으로 트랜잭션 번호의 가시성을 판단한다.
+        // 이 테스트 트랜잭션은 스냅샷을 찍을 때 아직 끝나지 않았으므로 안 보이고, 그보다 앞서 끝난 번호는 보인다.
+        jdbcClient
+                .sql(
+                        """
+                        insert into object_instance
+                            (object_type_id, source_mapping_id, source_key, display_name,
+                             source_txid, loaded_snapshot, loaded_gen)
+                        select object_type_id, id, '{"id": 1}', '작업지시 1',
+                               pg_current_xact_id(), pg_current_snapshot(), 1
+                        from object_source_mapping where id = :mapping
+                        """)
+                .param("mapping", mappingId)
+                .update();
+
+        assertThat(
+                        jdbcClient
+                                .sql(
+                                        """
+                                        select pg_visible_in_snapshot(source_txid, loaded_snapshot)
+                                        from object_instance where source_mapping_id = :mapping
+                                        """)
+                                .param("mapping", mappingId)
+                                .query(Boolean.class)
+                                .single())
+                .isFalse();
+        assertThat(
+                        jdbcClient
+                                .sql(
+                                        """
+                                        select pg_visible_in_snapshot(
+                                                   (pg_snapshot_xmin(loaded_snapshot)::text::bigint - 1)::text::xid8,
+                                                   loaded_snapshot)
+                                        from object_instance where source_mapping_id = :mapping
+                                        """)
+                                .param("mapping", mappingId)
+                                .query(Boolean.class)
+                                .single())
+                .isTrue();
+    }
+
+    @Test
+    @Transactional
+    void deleteMarkKeepsOnePerSourceKey() {
+        long resourceId = insertSourceResource("TABLE");
+        String mark =
+                """
+                insert into source_delete_mark (source_resource_id, source_key, source_txid, source_lsn)
+                values (:resource, '{"id": 10}', pg_current_xact_id(), 100)
+                """;
+        jdbcClient.sql(mark).param("resource", resourceId).update();
+
+        assertThatThrownBy(() -> jdbcClient.sql(mark).param("resource", resourceId).update())
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("source_delete_mark_pkey");
+    }
+
+    @Test
+    @Transactional
+    void deleteMarkKeyMustBeObject() {
+        long resourceId = insertSourceResource("TABLE");
+
+        assertThatThrownBy(
+                        () ->
+                                jdbcClient
+                                        .sql(
+                                                """
+                                                insert into source_delete_mark
+                                                    (source_resource_id, source_key, source_txid, source_lsn)
+                                                values (:resource, '"WO-10"', pg_current_xact_id(), 100)
+                                                """)
+                                        .param("resource", resourceId)
+                                        .update())
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("ck_source_delete_mark_key");
+    }
+
+    private long insertObjectType() {
+        return jdbcClient
+                .sql(
+                        """
+                        insert into object_type (code, name)
+                        values ('TYPE-' || gen_random_uuid(), '작업지시')
+                        returning id
+                        """)
+                .query(Long.class)
+                .single();
+    }
+
+    private long insertObjectMapping() {
+        return jdbcClient
+                .sql(
+                        """
+                        insert into object_source_mapping (source_resource_id, object_type_id, key_columns)
+                        values (:resource, :type, '["id"]')
+                        returning id
+                        """)
+                .param("resource", insertSourceResource("TABLE"))
+                .param("type", insertObjectType())
+                .query(Long.class)
+                .single();
     }
 
     // 원천과 테이블은 테스트마다 새 코드로 만든다(트랜잭션이 끝나면 되돌린다).

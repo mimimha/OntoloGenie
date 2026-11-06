@@ -44,13 +44,16 @@ public class SourceResource {
     @Enumerated(EnumType.STRING)
     private SyncStrategy syncStrategy;
 
-    /** CDC 테이블을 마지막으로 전체 읽기 직전의 원천 LSN. NULL이면 아직 전체 읽기 전이라 이 테이블의 CDC 이벤트를 버린다. */
+    /**
+     * CDC 테이블을 마지막으로 전체 읽기한 시점의 원천 LSN(참고값). NULL이면 다시 전체 읽기가 필요하다. CDC 이벤트는 이 값과 무관하게 항상
+     * 반영한다(V11). 전체 읽기와 이벤트의 경계는 객체의 적재 스냅샷으로 판단한다.
+     */
     private Long loadedLsn;
 
     private Instant lastSeenAt;
 
     /**
-     * 매핑이 바뀌어 이 테이블을 처음부터 다시 읽어야 한다. CDC 테이블은 기준 LSN을 비워, 다음 전체 읽기가 끝날 때까지 CDC 이벤트를 반영하지 않게 한다(V5).
+     * 매핑이 바뀌어 이 테이블을 처음부터 다시 읽어야 한다. CDC 테이블은 LSN을 비워 다시 읽기를 요청한다. 그동안에도 CDC 이벤트는 계속 반영한다(V11).
      * FULL_COMPARE 테이블은 원래 매번 전체를 읽으므로 바꿀 것이 없다.
      */
     public void requireFullReload() {

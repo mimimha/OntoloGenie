@@ -29,7 +29,7 @@ code를 DB ID로 바꾸는 일은 이 서비스가 한다. 아직 승인되지 �
 | --- | --- |
 | `targetTable`, `targetId` | 대표로 만든 행 |
 | `heldItemIds` | 관계 규칙을 반영하며 만든 보류 건. 커밋 전에 이미 `held_item`에 있다 |
-| `reloadResourceIds` | 매핑을 반영해 전체 다시 읽기(`loaded_lsn = NULL`)를 요청한 원천 자원. 객체는 수집 배치가 만든다 |
+| `reloadResourceIds` | 매핑을 반영해 전체 다시 읽기(`loaded_lsn = NULL`)를 요청한 원천 자원. 객체는 수집 배치가 만든다. 다시 읽는 동안에도 CDC 이벤트는 계속 반영된다(V11) |
 | `summary` | 감사 기록 `result`에 넣을 요약 |
 | `changes` | 바뀐 행의 전후 내용(`List<ChangeEntry>`). 감사 기록 `changes`에 그대로 넣는다 |
 
