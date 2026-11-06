@@ -185,6 +185,7 @@ pipeline {
                     string(credentialsId: 'axcore-initial-admin-password', variable: 'DEPLOY_INITIAL_ADMIN_PASSWORD'),
                     string(credentialsId: 'axcore-grafana-admin-password', variable: 'DEPLOY_GRAFANA_PASSWORD'),
                     string(credentialsId: 'axcore-internal-api-token', variable: 'DEPLOY_INTERNAL_TOKEN'),
+                    string(credentialsId: 'axcore-gms-api-key', variable: 'DEPLOY_GMS_API_KEY'),
                     string(credentialsId: 'source-credential-key-1', variable: 'DEPLOY_SOURCE_KEY'),
                     string(credentialsId: 'axcore-action-notify-webhook-url', variable: 'DEPLOY_ACTION_NOTIFY_WEBHOOK'),
                     string(credentialsId: 'axcore-erp-cdc-password', variable: 'DEPLOY_ERP_CDC_PASSWORD'),
@@ -203,6 +204,7 @@ pipeline {
                             --user "$(id -u):$(id -g)" \
                             -e DEPLOY_POSTGRES_PASSWORD -e DEPLOY_INITIAL_ADMIN_PASSWORD \
                             -e DEPLOY_GRAFANA_PASSWORD -e DEPLOY_INTERNAL_TOKEN -e DEPLOY_SOURCE_KEY \
+                            -e DEPLOY_GMS_API_KEY \
                             -e DEPLOY_ACTION_NOTIFY_WEBHOOK \
                             -e DEPLOY_ERP_CDC_PASSWORD -e DEPLOY_MES_CDC_PASSWORD \
                             -v "$HOST_WS/infra/deploy:/work:ro" \
@@ -514,7 +516,7 @@ def sendMattermostDm(String who, String text) {
 // 손으로 하던 절차와 같다: .env 태그 갱신 → docker compose up -d <svc> → docker compose ps (healthy).
 def deployBackendAndBatch() {
     // 초기 전환 전 서버에 batch가 없는 경우 기존 backend 단독 배포를 유지한다.
-    def configuredServices = sh(returnStdout: true, script: "docker compose -f ${env.DEPLOY_DIR}/compose.yaml config --services").trim().tokenize()
+    def configuredServices = sh(returnStdout: true, script: "${deploymentCompose()} config --services").trim().tokenize()
     def hasBatch = configuredServices.contains('batch')
     if (!hasBatch) {
         echo '서버 Compose에 batch가 없어 backend만 배포합니다. 54 설정 반영 후 batch 자동 갱신이 활성화됩니다.'
@@ -582,9 +584,13 @@ def waitForHttpHealth(List services) {
             sleep 5
         done
         echo "헬스체크 실패: 90초 안에 전체 서비스가 healthy가 되지 않음"
-        docker compose -f ${env.DEPLOY_DIR}/compose.yaml logs --tail 50 ${serviceNames}
+        ${deploymentCompose()} logs --tail 50 ${serviceNames}
         exit 1
     """
+}
+
+def deploymentCompose() {
+    return "env -u AI_ONTOLOGY_LLM_PROVIDER -u AI_ONTOLOGY_LLM_BASE_URL -u AI_ONTOLOGY_LLM_API_KEY docker compose --env-file '${env.DEPLOY_DIR}/.env' -f '${env.DEPLOY_DIR}/compose.yaml'"
 }
 
 def deployService(String svc, String tagVar, List companions = []) {
@@ -620,7 +626,7 @@ def deployService(String svc, String tagVar, List companions = []) {
         sh """
             grep -q '^${tagVar}=' ${env.DEPLOY_DIR}/.env || echo '${tagVar}=' >> ${env.DEPLOY_DIR}/.env
             sed -i 's/^${tagVar}=.*/${tagVar}=${env.GIT_SHA}/' ${env.DEPLOY_DIR}/.env
-            docker compose -f ${env.DEPLOY_DIR}/compose.yaml up -d ${serviceNames}
+            ${deploymentCompose()} up -d ${serviceNames}
         """
         // HTTP 서비스 health 확인 후 batch는 기동 로그와 60초 안정화를 별도 확인한다.
         waitForHealthyServices(services)
@@ -630,16 +636,16 @@ def deployService(String svc, String tagVar, List companions = []) {
         if (prev) {
             if (stopOnRollback) {
                 // 첫 batch 배포 실패 시 이전에 없던 작업 소비자를 실행 상태로 남기지 않는다.
-                sh "docker compose -f ${env.DEPLOY_DIR}/compose.yaml stop ${stopOnRollback.join(' ')}"
+                sh "${deploymentCompose()} stop ${stopOnRollback.join(' ')}"
             }
             sh """
                 sed -i 's/^${tagVar}=.*/${tagVar}=${prev}/' ${env.DEPLOY_DIR}/.env
-                docker compose -f ${env.DEPLOY_DIR}/compose.yaml up -d ${rollbackServices.join(' ')}
+                ${deploymentCompose()} up -d ${rollbackServices.join(' ')}
             """
             waitForHealthyServices(rollbackServices)
             env."${key}_ROLLED_BACK" = 'true'
         } else {
-            sh "docker compose -f ${env.DEPLOY_DIR}/compose.yaml stop ${serviceNames}"
+            sh "${deploymentCompose()} stop ${serviceNames}"
             echo '직전 태그가 없어 실패한 신규 서비스를 정지했습니다. 수동 복구가 필요합니다.'
         }
         throw e

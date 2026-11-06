@@ -15,6 +15,7 @@ MAIN_SECRETS = {
     "GRAFANA_ADMIN_PASSWORD": "DEPLOY_GRAFANA_PASSWORD",
     "AXCORE_INTERNAL_API_TOKEN": "DEPLOY_INTERNAL_TOKEN",
     "AI_ONTOLOGY_INTERNAL_TOKEN": "DEPLOY_INTERNAL_TOKEN",
+    "AI_ONTOLOGY_LLM_API_KEY": "DEPLOY_GMS_API_KEY",
     "AXCORE_SOURCE_CREDENTIAL_KEY_1": "DEPLOY_SOURCE_KEY",
     "AXCORE_ACTION_NOTIFY_WEBHOOK_URL": "DEPLOY_ACTION_NOTIFY_WEBHOOK",
 }
@@ -23,7 +24,8 @@ CDC_SECRETS = {
     "MES_CDC_PASSWORD": "DEPLOY_MES_CDC_PASSWORD",
 }
 TAGS = {"BACKEND_TAG", "FRONTEND_TAG", "AI_TAG"}
-OPTIONAL_KEYS = {"AI_ONTOLOGY_LLM_API_KEY", "AI_ONTOLOGY_GMS_API_KEY"}
+OPTIONAL_KEYS = {"AI_ONTOLOGY_GMS_API_KEY"}
+GMS_BASE_URL = "https://gms.ssafy.io/gmsapi/api.openai.com/v1"
 
 
 class ConfigurationError(Exception):
@@ -93,6 +95,17 @@ def credentials(mapping, environment, current):
     return result
 
 
+def validate_gms_destination(settings: dict[str, str]) -> None:
+    provider = settings.get("AI_ONTOLOGY_LLM_PROVIDER") or "gms"
+    base_url = (
+        settings.get("AI_ONTOLOGY_LLM_BASE_URL")
+        or settings.get("AI_ONTOLOGY_GMS_BASE_URL")
+        or GMS_BASE_URL
+    )
+    if provider != "gms" or base_url.rstrip("/") != GMS_BASE_URL:
+        raise ConfigurationError("GMS 키는 gms 제공사와 기본 GMS 주소에서만 사용할 수 있습니다.")
+
+
 def plan(root, environment):
     main_path, cdc_path = root / ".env", root / "cdc/.env"
     main, cdc = read_env(main_path), read_env(cdc_path)
@@ -124,6 +137,9 @@ def plan(root, environment):
             ):
                 raise ConfigurationError(f".env.config: {key}는 일반 설정이 아닙니다.")
         if path == main_path:
+            # 복구 단계에서도 현재 Credentials를 이전 설정과 함께 사용한다.
+            validate_gms_destination(old)
+            validate_gms_destination(config)
             for key in ("POSTGRES_DB", "POSTGRES_USER", "GRAFANA_ADMIN_USER"):
                 if not config.get(key):
                     raise ConfigurationError(f".env.config: {key}가 필요합니다.")

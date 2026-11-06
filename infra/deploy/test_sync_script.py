@@ -26,6 +26,9 @@ if args[0] == 'run':
     remaining[remaining.index('--source') + 1] = os.environ['TEST_SOURCE']
     sys.exit(subprocess.run([sys.executable, *remaining]).returncode)
 if args[0] == 'compose':
+    for key in ('AI_ONTOLOGY_LLM_PROVIDER', 'AI_ONTOLOGY_LLM_BASE_URL', 'AI_ONTOLOGY_LLM_API_KEY'):
+        if key in os.environ:
+            sys.exit(f'{key} must come from the deployment environment file')
     if 'config' in args and '--quiet' in args and os.environ.get('TEST_FAIL_INITIAL_CONFIG') == '1':
         sys.exit(1)
     if 'config' in args and '--format' in args:
@@ -91,6 +94,9 @@ class ConfigurationShellTests(unittest.TestCase):
                 **os.environ, "PATH": f"{commands}:{os.environ['PATH']}",
                 "DEPLOY_DIR": str(root), "WORKSPACE": str(base / "workspace"),
                 "BUILD_NUMBER": "12", "GIT_SHA": "abc1234",
+                "AI_ONTOLOGY_LLM_PROVIDER": "openai-chat",
+                "AI_ONTOLOGY_LLM_BASE_URL": "https://llm.example.test/v1",
+                "AI_ONTOLOGY_LLM_API_KEY": "inherited-test-only",
                 "TEST_STATE": str(state), "TEST_SOURCE": str(source), "TEST_HELPER": str(helper),
                 "TEST_FAIL_HEALTH": "1" if fail else "0",
                 "TEST_FAIL_ROLLBACK": "1" if rollback_fail else "0",

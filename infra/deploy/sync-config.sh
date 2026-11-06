@@ -3,6 +3,8 @@
 set +x
 set -euo pipefail
 umask 077
+# LLM 대상과 키는 배포 준비 단계에서 검증한 파일에서 읽는다.
+unset AI_ONTOLOGY_LLM_PROVIDER AI_ONTOLOGY_LLM_BASE_URL AI_ONTOLOGY_LLM_API_KEY
 
 : "${DEPLOY_DIR:?}"
 : "${WORKSPACE:?}"
