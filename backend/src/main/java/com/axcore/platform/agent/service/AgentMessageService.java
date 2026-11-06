@@ -10,6 +10,7 @@ import com.axcore.platform.agent.repository.AgentConversationRepository;
 import com.axcore.platform.agent.repository.AgentMessageRepository;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
+import com.axcore.platform.global.security.LoginAccount;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -47,11 +48,11 @@ public class AgentMessageService {
                 .map(AgentMessageResponse::from);
     }
 
-    /** 085. 질문과 처리 중 답변을 저장해 돌려준다. 답변 처리는 커밋 뒤에 이어서 한다. */
+    /** 085. 질문과 처리 중 답변을 저장해 돌려준다. 답변 처리는 커밋 뒤에 질문한 사용자의 권한으로 이어서 한다. */
     @Transactional
     public List<AgentMessageResponse> ask(
-            long accountId, long conversationId, QuestionRequest request) {
-        AgentConversation conversation = ownedConversation(accountId, conversationId);
+            LoginAccount asker, long conversationId, QuestionRequest request) {
+        AgentConversation conversation = ownedConversation(asker.id(), conversationId);
         failStaleAnswers(conversationId);
         if (messages.existsByConversationIdAndStatus(conversationId, MessageStatus.RUNNING)) {
             throw new BusinessException(
@@ -67,7 +68,12 @@ public class AgentMessageService {
         conversation.recordMessage(request.content(), now);
         events.publishEvent(
                 new AgentAnswerRequested(
-                        answer.getId(), request.content(), request.messageContext(), pending));
+                        answer.getId(),
+                        question.getId(),
+                        asker,
+                        request.content(),
+                        request.messageContext(),
+                        pending));
         return List.of(AgentMessageResponse.from(question), AgentMessageResponse.from(answer));
     }
 

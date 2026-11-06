@@ -17,11 +17,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.axcore.platform.TestcontainersConfiguration;
+import com.axcore.platform.agent.service.AgentQuerySession;
+import com.axcore.platform.agent.service.AgentQueryTools;
+import com.axcore.platform.agent.service.AgentResponder;
 import com.axcore.platform.agent.service.QuestionInterpretation;
 import com.axcore.platform.agent.service.QuestionInterpreter;
+import com.axcore.platform.audit.service.AuditExecutionQueryService;
 import com.axcore.platform.global.security.LoginAccount;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,7 +52,9 @@ class AgentMessageApiTests {
 
     @Autowired MockMvc mvc;
     @Autowired JdbcClient jdbc;
+    @Autowired AuditExecutionQueryService executions;
     @MockitoBean QuestionInterpreter interpreter;
+    @MockitoBean AgentResponder responder;
     long owner;
     long conversation;
 
@@ -58,8 +65,15 @@ class AgentMessageApiTests {
     }
 
     @Test
-    void acceptsQuestionAndAnswersWithUnderstoodConditions() throws Exception {
+    void acceptsQuestionAndAnswersWithQueryTools() throws Exception {
         when(interpreter.isConfigured()).thenReturn(true);
+        when(responder.answer(anyString(), any(), any()))
+                .thenAnswer(
+                        call -> {
+                            AgentQuerySession session = call.getArgument(2);
+                            new AgentQueryTools(session, executions).objectExecutions(301L);
+                            return "PR-03의 실행 이력이 없습니다.";
+                        });
         when(interpreter.interpret(anyString(), anyMap(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
@@ -92,10 +106,18 @@ class AgentMessageApiTests {
         mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[1].status").value("SUCCEEDED"))
-                .andExpect(jsonPath("$.data[1].content").value(containsString("대상: PR-03")))
+                .andExpect(jsonPath("$.data[1].content").value("PR-03의 실행 이력이 없습니다."))
                 .andExpect(jsonPath("$.data[1].answerMeta.stage").doesNotExist())
                 .andExpect(jsonPath("$.data[1].answerMeta.syncStatus").value("NONE"))
-                .andExpect(jsonPath("$.data[1].answerMeta.results.length()").value(0))
+                .andExpect(jsonPath("$.data[1].answerMeta.results.length()").value(1))
+                .andExpect(jsonPath("$.data[1].answerMeta.results[0].label").value("실행 이력"))
+                .andExpect(
+                        jsonPath("$.data[1].answerMeta.results[0].toolCode")
+                                .value("OBJECT_EXECUTIONS"))
+                .andExpect(jsonPath("$.data[1].answerMeta.results[0].status").value("SUCCEEDED"))
+                .andExpect(
+                        jsonPath("$.data[1].answerMeta.results[0].resultCategory").value("NO_DATA"))
+                .andExpect(jsonPath("$.data[1].answerMeta.results[0].dataAsOf").value(nullValue()))
                 .andExpect(jsonPath("$.data[1].answerMeta.conditions.purpose").value("비가동 이력"))
                 .andExpect(jsonPath("$.data[1].answerMeta.conditions.targets[0]").value("PR-03"))
                 .andExpect(
@@ -104,6 +126,27 @@ class AgentMessageApiTests {
                         jsonPath("$.data[1].answerMeta.conditions.referenceObjectIds[0]")
                                 .value(301));
         assertThat(title(conversation)).isEqualTo("PR-03 비가동 이력 알려줘");
+        // 조회 기록은 질문 메시지에 연결되고, Agent가 질문한 사용자를 대신한 것으로 남는다.
+        Map<String, Object> query =
+                jdbc.sql(
+                                """
+                                select e.actor_type, e.actor_id, e.entry_point, e.tool_code, e.sequence_no,
+                                       e.result_category, e.target_id, m.sender
+                                from action_execution e join agent_message m on m.id = e.agent_message_id
+                                where e.event_kind = 'AGENT_QUERY' and m.conversation_id = :c
+                                """)
+                        .param("c", conversation)
+                        .query()
+                        .singleRow();
+        assertThat(query)
+                .containsEntry("actor_type", "AGENT")
+                .containsEntry("actor_id", owner)
+                .containsEntry("entry_point", "AGENT")
+                .containsEntry("tool_code", "OBJECT_EXECUTIONS")
+                .containsEntry("sequence_no", 1)
+                .containsEntry("result_category", "NO_DATA")
+                .containsEntry("target_id", 301L)
+                .containsEntry("sender", "USER");
     }
 
     @Test
@@ -133,6 +176,7 @@ class AgentMessageApiTests {
     @Test
     void fillsAskedConditionsWithReply() throws Exception {
         when(interpreter.isConfigured()).thenReturn(true);
+        when(responder.answer(anyString(), any(), any())).thenReturn("PR-03 10월 비가동 이력 답변");
         when(interpreter.interpret(anyString(), anyMap(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
@@ -155,7 +199,7 @@ class AgentMessageApiTests {
                 .andExpect(
                         jsonPath("$.data[1].answerMeta.clarification.missing[0]").value("PERIOD"))
                 .andExpect(jsonPath("$.data[3].status").value("SUCCEEDED"))
-                .andExpect(jsonPath("$.data[3].content").value(containsString("대상: PR-03")))
+                .andExpect(jsonPath("$.data[3].content").value("PR-03 10월 비가동 이력 답변"))
                 .andExpect(jsonPath("$.data[3].answerMeta.clarification").doesNotExist())
                 .andExpect(jsonPath("$.data[3].answerMeta.conditions.purpose").value("비가동 이력"))
                 .andExpect(

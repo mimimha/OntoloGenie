@@ -55,6 +55,6 @@ public class AgentMessageController {
             @PathVariable("id") @Min(1) long id,
             @Valid @RequestBody QuestionRequest request,
             @AuthenticationPrincipal LoginAccount account) {
-        return ApiResponse.of(service.ask(account.id(), id, request));
+        return ApiResponse.of(service.ask(account, id, request));
     }
 }
