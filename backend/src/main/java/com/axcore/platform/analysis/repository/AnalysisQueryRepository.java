@@ -21,6 +21,10 @@ import org.springframework.stereotype.Repository;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
+/**
+ * analysis_run·analysis_run_target(Entity를 두지 않는 작업 테이블) 조회. analysis_run 행을 응답으로 바꾸는 곳은 여기 한 곳이다.
+ * 분석 생성도 findById로 읽어 AnalysisRunResponse로 감싼다.
+ */
 @Repository
 @RequiredArgsConstructor
 public class AnalysisQueryRepository {

@@ -236,6 +236,22 @@ class AnalysisCreateApiTests {
     }
 
     @Test
+    void rejectsColumnNoLongerPresentInSource() throws Exception {
+        jdbc.sql(
+                        """
+                insert into source_column(source_resource_id, column_name, source_data_type, is_nullable, ordinal_position, is_present)
+                values (:id, 'gone', 'text', true, 3, false)
+                """)
+                .param("id", first)
+                .update();
+        send("{\"runKind\":\"INITIAL\",\"targets\":[{\"sourceResourceId\":%d,\"columns\":[\"gone\"]}]}"
+                        .formatted(first))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+        assertThat(count("analysis_run", "requested_by=" + accountId)).isZero();
+    }
+
+    @Test
     void rejectsMissingResourceAndSyncReference() throws Exception {
         send("{\"runKind\":\"INITIAL\",\"targets\":[{\"sourceResourceId\":9223372036854775807}]}")
                 .andExpect(status().isNotFound());
