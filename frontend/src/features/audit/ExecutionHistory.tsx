@@ -13,20 +13,42 @@ import { startOfDay, startOfNextDay } from './dateRange'
 import EntityChangeTable from './EntityChangeTable'
 import {
   actorTypeLabels,
+  categoryLabels,
   eventKindLabels,
   executionStatusLabels,
 } from './labels'
-import type { Execution, ExecutionScope, ExecutionStatus } from './types'
+import type {
+  Execution,
+  ExecutionCategory,
+  ExecutionScope,
+  ExecutionStatus,
+} from './types'
 
-function formatJson(value: Record<string, unknown>) {
-  return Object.keys(value).length > 0 ? JSON.stringify(value, null, 2) : null
+// 권한으로 가린 키(restricted)의 null은 "(권한으로 가림)"으로 바꿔 보여 준다.
+function formatJson(value: Record<string, unknown>, restricted: string[]) {
+  if (Object.keys(value).length === 0) {
+    return null
+  }
+  return JSON.stringify(
+    value,
+    (key, item) =>
+      item === null && restricted.includes(key) ? '(권한으로 가림)' : item,
+    2,
+  )
 }
 
+// "분류 · 동작 이름". 수집·검사 같은 데이터 작업은 분류 대신 작업 종류(데이터 수집 등)를 쓴다.
 function actionLabel(execution: Execution) {
-  const kind = eventKindLabels[execution.eventKind]
-  return execution.eventKind === 'ACTION'
-    ? `${kind} · Action #${execution.actionDefinitionId ?? '-'}`
-    : kind
+  const kind =
+    execution.category && execution.category !== 'DATA_JOB'
+      ? categoryLabels[execution.category]
+      : eventKindLabels[execution.eventKind]
+  const name =
+    execution.actionName ??
+    (execution.eventKind === 'ACTION'
+      ? `Action #${execution.actionDefinitionId ?? '-'}`
+      : null)
+  return name ? `${kind} · ${name}` : kind
 }
 
 // 표의 굵은 대상 글자. 객체 이력이면 객체 이름을, 내 이력이면 대상 종류와 번호를 쓴다.
@@ -39,12 +61,26 @@ function targetText(execution: Execution) {
   return `${kind} #${execution.targetId}`
 }
 
+// 실행자 이름이 없으면 번호로 보여 준다. SYSTEM은 이름 없이 "시스템".
 function actorLabel(execution: Execution) {
-  const actor = execution.actorId ? ` · 사용자 #${execution.actorId}` : ''
-  return `${actorTypeLabels[execution.actorType]}${actor}`
+  const type = actorTypeLabels[execution.actorType]
+  if (execution.actorType === 'SYSTEM') {
+    return type
+  }
+  const name =
+    execution.actorName ??
+    (execution.actorId ? `사용자 #${execution.actorId}` : null)
+  return name ? `${type} · ${name}` : type
 }
 
-function scopeText(objectId: number | undefined, scope?: ExecutionScope) {
+function scopeText(
+  objectId: number | undefined,
+  hasTarget: boolean,
+  scope?: ExecutionScope,
+) {
+  if (hasTarget) {
+    return '조회 범위: 선택한 대상에 대한 실행 기록'
+  }
   if (objectId !== undefined) {
     return '조회 범위: 관리자는 이 객체의 전체 실행, 그 밖의 역할은 본인 실행'
   }
@@ -57,13 +93,33 @@ function scopeText(objectId: number | undefined, scope?: ExecutionScope) {
   return '조회 범위: 권한에 따라 볼 수 있는 실행 이력'
 }
 
+// 실패 이유 중 코드로 오는 값을 읽을 수 있는 문장으로 바꾼다.
+const failureReasonTexts: Record<string, string> = {
+  TIMEOUT: '분석 시간이 초과되었습니다.',
+}
+
+// 실패 이유는 업무 실행·데이터 작업은 result.errorMessage, 분석은 result.reason에 온다.
+function failureReason(result: Record<string, unknown>) {
+  const raw =
+    typeof result.errorMessage === 'string'
+      ? result.errorMessage
+      : typeof result.reason === 'string'
+        ? result.reason
+        : null
+  return raw === null ? null : (failureReasonTexts[raw] ?? raw)
+}
+
 type ExecutionDetailProps = {
   execution: Execution
 }
 
 function ExecutionDetail({ execution }: ExecutionDetailProps) {
-  const input = formatJson(execution.input)
-  const result = formatJson(execution.result)
+  const restricted = execution.restrictedPropertyCodes ?? []
+  const failed = execution.status === 'FAILED'
+  // 실패 이유(errorMessage·reason)는 따로 보여 주므로 처리 결과에서는 뺀다.
+  const { errorMessage, reason, ...restResult } = execution.result
+  const input = formatJson(execution.input, restricted)
+  const result = formatJson(failed ? restResult : execution.result, restricted)
 
   return (
     <details className="text-xs">
@@ -77,6 +133,15 @@ function ExecutionDetail({ execution }: ExecutionDetailProps) {
           <p className="mt-2 font-semibold text-slate-700">차단 이유</p>
           <p className="text-slate-900">
             {execution.blockedReason ?? '기록된 이유가 없습니다.'}
+          </p>
+        </>
+      )}
+      {failed && (
+        <>
+          <p className="mt-2 font-semibold text-slate-700">실패 이유</p>
+          <p className="text-slate-900">
+            {failureReason({ errorMessage, reason }) ??
+              '기록된 이유가 없습니다.'}
           </p>
         </>
       )}
@@ -94,7 +159,11 @@ function ExecutionDetail({ execution }: ExecutionDetailProps) {
             {`실행 전후 비교 ${execution.entityChanges.length}건`}
           </summary>
           {execution.entityChanges.map((change, index) => (
-            <EntityChangeTable key={index} change={change} />
+            <EntityChangeTable
+              key={index}
+              change={change}
+              restrictedCodes={restricted}
+            />
           ))}
         </details>
       ) : (
@@ -104,13 +173,28 @@ function ExecutionDetail({ execution }: ExecutionDetailProps) {
   )
 }
 
+// 종류 탭. 데이터 작업(DATA_JOB)은 [전체]에서만 보인다.
+const categoryTabs: { value: ExecutionCategory | ''; label: string }[] = [
+  { value: '', label: '전체' },
+  { value: 'ANALYSIS', label: categoryLabels.ANALYSIS },
+  { value: 'OPERATION', label: categoryLabels.OPERATION },
+  { value: 'CHANGE', label: categoryLabels.CHANGE },
+]
+
 // objectId가 있으면 그 객체의 이력(080), 없으면 권한에 따른 실행 이력(096)을 보여 준다.
+// target이 있으면 096을 그 대상(targetType·targetId)으로 거른다. (예: 규칙 이력의 활동 기록)
 type ExecutionHistoryProps = {
   objectId?: number
   targetLabel?: string
+  target?: { type: string; id: number }
 }
 
-function ExecutionHistory({ objectId, targetLabel }: ExecutionHistoryProps) {
+function ExecutionHistory({
+  objectId,
+  targetLabel,
+  target,
+}: ExecutionHistoryProps) {
+  const [category, setCategory] = useState<ExecutionCategory | ''>('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [status, setStatus] = useState<ExecutionStatus | ''>('')
@@ -125,11 +209,16 @@ function ExecutionHistory({ objectId, targetLabel }: ExecutionHistoryProps) {
   } = useQuery({
     queryKey:
       objectId === undefined
-        ? ['audit', 'actions', filters]
+        ? ['audit', 'actions', target, category, filters]
         : ['objects', objectId, 'executions', filters],
     queryFn: () =>
       objectId === undefined
-        ? fetchAuditExecutions(filters)
+        ? fetchAuditExecutions({
+            ...filters,
+            category: category || undefined,
+            targetType: target?.type,
+            targetId: target?.id,
+          })
         : fetchObjectExecutions(objectId, filters),
     placeholderData: keepPreviousData,
   })
@@ -194,8 +283,15 @@ function ExecutionHistory({ objectId, targetLabel }: ExecutionHistoryProps) {
                 <td className="px-3 py-3">
                   <p>{actionLabel(execution)}</p>
                   <p className="font-semibold">
-                    {targetLabel ?? targetText(execution)}
+                    {targetLabel ??
+                      execution.targetLabel ??
+                      targetText(execution)}
                   </p>
+                  {!targetLabel && execution.targetLabel && (
+                    <p className="text-xs text-slate-500">
+                      {targetText(execution)}
+                    </p>
+                  )}
                 </td>
                 <td className="px-3 py-3 font-semibold">
                   <StatusBadge
@@ -225,6 +321,30 @@ function ExecutionHistory({ objectId, targetLabel }: ExecutionHistoryProps) {
 
   return (
     <div>
+      {/* 종류 탭은 096 전체 목록에서만 쓴다. 객체(080)나 대상(규칙 활동 기록 등)을 고른 화면에서는 숨긴다. */}
+      {objectId === undefined && target === undefined && (
+        <div
+          role="group"
+          aria-label="실행 이력 종류"
+          className="mb-4 flex flex-wrap gap-2"
+        >
+          {categoryTabs.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              aria-pressed={category === tab.value}
+              onClick={() => setCategory(tab.value)}
+              className={`rounded-lg border px-3 py-1.5 text-sm ${
+                category === tab.value
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-300 text-slate-700 hover:border-slate-900'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
       <form
         className={`grid items-end gap-3 text-sm ${
           targetLabel
@@ -302,7 +422,7 @@ function ExecutionHistory({ objectId, targetLabel }: ExecutionHistoryProps) {
         </p>
       )}
       <p className="mt-2 text-xs text-slate-500">
-        {`${scopeText(objectId, executionPage?.meta?.scope)} · Agent 조회 기록은 제외됩니다.`}
+        {`${scopeText(objectId, target !== undefined, executionPage?.meta?.scope)} · Agent 조회 기록은 제외됩니다.`}
       </p>
       {executionPage && (
         <p className="mt-3 text-xs text-slate-500">
