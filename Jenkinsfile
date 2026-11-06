@@ -7,6 +7,8 @@ pipeline {
     agent any
 
     options {
+        // Checkout 단계에서 검사할 커밋을 명시적으로 받는다.
+        skipDefaultCheckout()
         // 같은 서버의 이미지 태그·롤백 상태를 두 빌드가 동시에 바꾸지 않는다.
         disableConcurrentBuilds()
         // 빌드 기록은 최근 10개만 보관해 디스크를 아낀다.
