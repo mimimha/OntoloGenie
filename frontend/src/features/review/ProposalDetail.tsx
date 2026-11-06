@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Link, useParams, useLocation } from 'react-router'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import StatusBadge from '../../components/StatusBadge'
@@ -9,6 +10,8 @@ import {
   isBundle,
   withoutBundleKeys,
 } from './bundle'
+import { CHECK_POLL_MS, shouldPoll } from './checkPolling'
+import EvidenceView from './EvidenceView'
 import ProposalBundleView from './ProposalBundleView'
 import ProposalComparison from './ProposalComparison'
 import CheckResults from './CheckResults'
@@ -69,19 +72,35 @@ export default function ProposalDetail() {
   const proposalId = Number(id)
   const validId =
     /^\d+$/.test(id ?? '') && Number.isSafeInteger(proposalId) && proposalId > 0
+  const [refreshing, setRefreshing] = useState(false)
+  const queryClient = useQueryClient()
+  const queryKey = ['proposals', 'detail', proposalId]
+  // 화면을 연 시점의 조회 횟수. 같은 제안에 다시 들어와도 그때부터 다시 센다(캐시에 남은 횟수 제외).
+  const [startCount] = useState(
+    () => queryClient.getQueryState(queryKey)?.dataUpdateCount ?? 0,
+  )
   const query = useQuery({
-    queryKey: ['proposals', 'detail', proposalId],
+    queryKey,
     queryFn: ({ signal }) => fetchProposal(proposalId, signal),
     enabled: validId,
     retry: false,
     refetchInterval: (query) =>
-      !query.state.error &&
-      ['QUEUED', 'RUNNING'].includes(
-        query.state.data?.latestCheck?.status ?? '',
+      shouldPoll(
+        query.state.data,
+        query.state.dataUpdateCount - startCount,
+        !!query.state.error,
       )
-        ? 3000
+        ? CHECK_POLL_MS
         : false,
   })
+  // 같은 내용이 와도 확인할 때마다 다시 그리도록 dataUpdatedAt을 읽는다.
+  const polling =
+    query.dataUpdatedAt > 0 &&
+    shouldPoll(
+      query.data,
+      (queryClient.getQueryState(queryKey)?.dataUpdateCount ?? 0) - startCount,
+      !!query.error,
+    )
   let content
   if (!validId) content = <EmptyState message="올바른 제안 주소가 아닙니다." />
   else if (query.isPending)
@@ -168,8 +187,8 @@ export default function ProposalDetail() {
         </section>
         <section className="rounded-xl border border-slate-200 p-5">
           <h3 className="font-semibold">제안 근거</h3>
-          <RecordView
-            value={
+          <EvidenceView
+            evidence={
               isBundle(item)
                 ? withoutBundleKeys(item.evidence, BUNDLE_EVIDENCE_KEYS)
                 : item.evidence
@@ -178,16 +197,19 @@ export default function ProposalDetail() {
         </section>
         <CheckResults
           proposal={item}
-          refreshing={query.isFetching}
+          refreshing={refreshing}
+          polling={polling}
           refreshError={query.error}
           onRefresh={() => {
-            void query.refetch()
+            setRefreshing(true)
+            void query.refetch().finally(() => setRefreshing(false))
           }}
         />
         <ProposalDecision
           key={`${item.id}:${item.revision}:${item.reviewStatus}`}
           proposal={item}
-          unavailable={query.isFetching || !!query.error}
+          // 자동 확인(백그라운드 조회) 중에는 입력을 막지 않는다. 직접 새로고침할 때만 막는다.
+          unavailable={refreshing || !!query.error}
         />
         {item.applyError && (
           <p role="alert" className="rounded-lg bg-red-50 p-4 text-red-800">
