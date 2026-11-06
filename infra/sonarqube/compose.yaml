@@ -1,0 +1,53 @@
+services:
+  sonarqube:
+    image: sonarqube:26.10.0.133078-community
+    restart: unless-stopped
+    mem_limit: 4g
+    cpus: 2.0
+    ulimits:
+      nofile: 131072
+      nproc: 8192
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: ${SONAR_DB_PASSWORD:?Set SONAR_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:9000:9000"
+    networks:
+      - default
+      - axcore-net
+    volumes:
+      - sonar-data:/opt/sonarqube/data
+      - sonar-extensions:/opt/sonarqube/extensions
+      - sonar-logs:/opt/sonarqube/logs
+
+  db:
+    image: postgres:17.11
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 0.5
+    environment:
+      POSTGRES_DB: sonar
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: ${SONAR_DB_PASSWORD:?Set SONAR_DB_PASSWORD}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "sonar", "-d", "sonar"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+networks:
+  axcore-net:
+    external: true
+    name: axcore-net
+
+volumes:
+  sonar-data:
+  sonar-extensions:
+  sonar-logs:
+  db-data:

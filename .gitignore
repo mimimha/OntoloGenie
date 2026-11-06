@@ -52,6 +52,7 @@ dist/
 .vite/
 *.tsbuildinfo
 coverage/
+.scannerwork/
 
 # Infra: 서버에서만 유지하는 데이터 (저장소에 올리지 않음)
 infra/certbot/
