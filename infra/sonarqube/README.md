@@ -36,8 +36,9 @@
 ## 자동 실행
 
 - `axcore-deploy`는 활성화 후 Git의 Compose를 검사한다. SonarQube의 CPU·메모리·프로세스 제한 및 재시작 정책 변경을 자동 반영한다. 적용 전에 현재 Compose와 PostgreSQL 덤프를 `/home/ubuntu/axcore/sonarqube/backup.*`에 남긴다. 이미지 버전, DB, 서비스 구성, 볼륨, 네트워크 변경은 별도 운영 작업으로 처리한다.
-- SonarQube가 UP이면 배포 대상인 frontend·backend·AI를 고정 태그의 스캐너 컨테이너로 순서대로 분석한다. `RUN_SONARQUBE`를 선택하면 세 서비스 모두 분석한다. 백엔드는 Gradle `testClasses`로 분석에 필요한 Java 본문·테스트 바이트코드를 준비한다. 분석 단계는 결과를 병합 조건으로 사용하지 않는다.
+- SonarQube가 UP이면 배포 대상인 frontend·backend·AI를 고정 태그의 스캐너 컨테이너로 순서대로 분석한다. `RUN_SONARQUBE`를 선택하면 세 서비스 모두 분석한다. 분석 단계는 결과를 병합 조건으로 사용하지 않는다.
 - 프론트 분석은 `npm run test:coverage`로 생성한 `frontend/coverage/lcov.info`를 읽는다. 배포 Job에서는 프론트 분석 직전에 생성하고, `axcore-mr-check` 수동 분석에서는 `Frontend check`의 테스트 실행에서 생성한다.
+- 백엔드 분석은 Gradle `jacocoTestReport`로 생성한 `backend/build/reports/jacoco/test/jacocoTestReport.xml`을 읽는다. 배포 Job에서는 백엔드 분석 직전에 테스트와 보고서 생성을 실행하고, `axcore-mr-check` 수동 분석에서는 `Backend check`에서 기존 테스트 실행과 함께 보고서를 생성한다.
 - 새 Compose는 SonarQube가 UP에 도달한 뒤 활성 파일로 저장한다. 갱신이 실패하면 이전 Compose를 다시 적용하고 UP을 확인한다. Jenkins는 해당 실행을 실패로 표시하고 분석을 생략한다. 복구도 실패하면 로그와 백업을 확인한다.
 - DB 덤프에는 SonarQube 운영 데이터가 포함된다. 백업 폴더에 운영자만 접근하도록 하고 보존 기간은 팀에서 정한다.
 

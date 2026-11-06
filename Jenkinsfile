@@ -110,7 +110,10 @@ pipeline {
             when { expression { env.IS_DEPLOY_JOB != 'true' && env.CHECK_BACKEND == 'true' } }
             steps {
                 dir('backend') {
-                    sh './gradlew --no-daemon spotlessCheck build'
+                    script {
+                        def coverageTask = isManualSonarCheck() ? ' jacocoTestReport' : ''
+                        sh "./gradlew --no-daemon spotlessCheck build${coverageTask}"
+                    }
                 }
             }
             post {
@@ -359,7 +362,10 @@ pipeline {
                                 sh 'test -s frontend/coverage/lcov.info'
                             } else if (component == 'backend') {
                                 dir('backend') {
-                                    sh './gradlew --no-daemon testClasses'
+                                    if (env.IS_DEPLOY_JOB == 'true') {
+                                        sh './gradlew --no-daemon jacocoTestReport'
+                                    }
+                                    sh 'test -s build/reports/jacoco/test/jacocoTestReport.xml'
                                 }
                             }
                             def credentialId = component == 'frontend' ? 'axcore-sonarqube-token' : "axcore-sonarqube-${component}-token"
