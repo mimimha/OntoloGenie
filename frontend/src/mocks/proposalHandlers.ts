@@ -1,6 +1,10 @@
 import { delay, http, HttpResponse } from 'msw'
 import type { Proposal, ProposalOption } from '../features/review/types'
-import type { ProposalDecisionRecord } from '../features/review/decisionApi'
+import type {
+  DecisionInput,
+  ProposalDecisionRecord,
+} from '../features/review/decisionApi'
+import type { HeldItem } from '../features/review/heldItemApi'
 
 export const proposalFixtures: Proposal[] = [
   {
@@ -131,9 +135,14 @@ const comparisonFixtures: ProposalOption[] = [
 let savedOptions: Record<string, ProposalOption[]> = {
   '303:2': structuredClone(comparisonFixtures),
 }
+let savedDecisions: ProposalDecisionRecord[] = []
+let heldItems: HeldItem[] = []
+
 export function resetProposalMocks() {
   proposals = structuredClone(proposalFixtures)
   savedOptions = { '303:2': structuredClone(comparisonFixtures) }
+  savedDecisions = []
+  heldItems = []
 }
 function failed(status: number, code: string, message: string) {
   return HttpResponse.json(
@@ -143,6 +152,120 @@ function failed(status: number, code: string, message: string) {
 }
 
 export const proposalHandlers = [
+  http.post('/api/v1/proposals/:id/decisions', async ({ params, request }) => {
+    await delay()
+    const item = proposals.find((proposal) => proposal.id === Number(params.id))
+    if (!item)
+      return failed(404, 'RESOURCE_NOT_FOUND', '제안을 찾을 수 없습니다.')
+    if (!['PENDING', 'HELD'].includes(item.reviewStatus))
+      return failed(409, 'PROPOSAL_ALREADY_DECIDED', '이미 결정된 제안입니다.')
+    const input = (await request.json()) as DecisionInput
+    if (input.revision !== item.revision)
+      return failed(409, 'REVISION_CONFLICT', '최신 제안을 확인해 주세요.')
+    const { decision, selectedOptionId, reason } = input
+    if (
+      !['APPROVE', 'HOLD', 'REJECT'].includes(decision) ||
+      !reason?.trim() ||
+      reason.length > 1000
+    )
+      return failed(
+        400,
+        'VALIDATION_FAILED',
+        '검토 결정과 사유를 확인해 주세요.',
+      )
+    if (
+      selectedOptionId != null &&
+      !savedOptions[`${item.id}:${item.revision}`]?.some(
+        (option) => option.id === selectedOptionId,
+      )
+    )
+      return failed(
+        400,
+        'VALIDATION_FAILED',
+        '현재 개정의 대안을 선택해 주세요.',
+      )
+    if (decision === 'APPROVE' && item.latestCheck?.status !== 'SUCCEEDED')
+      return failed(
+        422,
+        'REVIEW_VALIDATION_FAILED',
+        '같은 개정의 성공한 검사가 필요합니다.',
+      )
+
+    const now = new Date().toISOString()
+    const id = 703 + savedDecisions.length
+    item.reviewStatus = {
+      APPROVE: 'APPROVED',
+      HOLD: 'HELD',
+      REJECT: 'REJECTED',
+    }[decision]
+    item.applyStatus = decision === 'APPROVE' ? 'APPLIED' : 'NOT_APPLIED'
+    item.appliedAt = decision === 'APPROVE' ? now : null
+    savedDecisions.unshift({
+      id,
+      proposalItemId: item.id,
+      itemRevision: item.revision,
+      decision,
+      selectedOptionId: selectedOptionId ?? null,
+      reason,
+      decidedBy: 1,
+      decidedAt: now,
+    })
+    const heldItemIds = []
+    if (decision === 'APPROVE' && item.id === 303) {
+      const heldItemId = 801
+      heldItems.unshift({
+        id: heldItemId,
+        proposalItemId: item.id,
+        linkMappingId: 2,
+        sourceObjectId: 101,
+        linkTypeId: 2,
+        status: 'HELD',
+        rawValue: ' pr-99 ',
+        transformedValue: 'PR-99',
+        holdReason: '대상 설비가 없습니다.',
+        resolvedLinkId: null,
+        resolvedSyncRunId: null,
+        resolvedBy: null,
+        resolvedAt: null,
+        resolutionNote: null,
+        createdAt: now,
+      })
+      heldItemIds.push(heldItemId)
+    }
+    return HttpResponse.json({
+      data: {
+        decisionId: id,
+        decision,
+        reviewStatus: item.reviewStatus,
+        applyStatus: item.applyStatus,
+        appliedEntityIds: decision === 'APPROVE' ? [2] : [],
+        heldItemIds,
+        actionExecutionId: id + 1000,
+      },
+    })
+  }),
+  http.get('/api/v1/held-items', async ({ request }) => {
+    await delay()
+    const search = new URL(request.url).searchParams
+    const page = Number(search.get('page') ?? 0)
+    const size = Number(search.get('size') ?? 20)
+    return HttpResponse.json({
+      data: heldItems.slice(page * size, (page + 1) * size),
+      meta: {
+        page,
+        size,
+        totalElements: heldItems.length,
+        hasNext: (page + 1) * size < heldItems.length,
+      },
+    })
+  }),
+  http.get('/api/v1/held-items/:id', async ({ params }) => {
+    await delay()
+    const item = heldItems.find((item) => item.id === Number(params.id))
+    return item
+      ? HttpResponse.json({ data: item })
+      : failed(404, 'RESOURCE_NOT_FOUND', '보류 건을 찾을 수 없습니다.')
+  }),
   http.get('/api/v1/proposals/:id/decisions', async ({ params, request }) => {
     await delay()
     const item = proposals.find((proposal) => proposal.id === Number(params.id))
@@ -152,11 +275,12 @@ export const proposalHandlers = [
     const page = Number(search.get('page') ?? 0)
     const size = Number(search.get('size') ?? 20)
     const records: ProposalDecisionRecord[] = [
+      ...savedDecisions.filter((record) => record.proposalItemId === item.id),
       {
         id: 702,
         proposalItemId: item.id,
         itemRevision: 1,
-        decision: item.reviewStatus === 'APPROVED' ? 'APPROVE' : 'HOLD',
+        decision: item.id === 301 ? 'APPROVE' : 'HOLD',
         selectedOptionId: null,
         reason: '대응 설비와 규칙 조건을 확인했습니다.',
         decidedBy: 1,

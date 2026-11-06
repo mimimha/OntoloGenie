@@ -6,6 +6,7 @@ import Pagination from '../../components/Pagination'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import { fetchProposal } from './api'
 import { DECISION_PAGE_SIZE, fetchProposalDecisions } from './decisionApi'
+import HeldItems from './HeldItems'
 import { applyLabels, proposalTitle, reviewLabels } from './labels'
 import type { Proposal } from './types'
 
@@ -66,6 +67,7 @@ function DecisionHistory({
     queryKey: ['proposals', 'decisions', proposalId, page],
     queryFn: ({ signal }) => fetchProposalDecisions(proposalId, page, signal),
     retry: false,
+    refetchOnMount: 'always',
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
@@ -88,8 +90,14 @@ function DecisionHistory({
         표시하며, 시각이 같으면 결정 번호가 큰 순서입니다. 개별 문제 건의
         보류·해소 기록과는 구분됩니다.
       </p>
-      {query.isPending ? (
-        <LoadingState message="결정 이력을 불러오는 중…" />
+      {query.isPending || query.isFetching || query.isPaused ? (
+        <LoadingState
+          message={
+            query.isPaused
+              ? '연결이 복구되면 결정 이력을 불러옵니다.'
+              : '결정 이력을 불러오는 중…'
+          }
+        />
       ) : query.isError ? (
         <ErrorState
           error={query.error}
@@ -163,7 +171,9 @@ export default function ProposalHistoryPage() {
   const proposalId = Number(id)
   const validId =
     /^\d+$/.test(id ?? '') && Number.isSafeInteger(proposalId) && proposalId > 0
-  const activity = params.get('view') === 'activity'
+  const view = params.get('view')
+  const activity = view === 'activity'
+  const held = view === 'held'
   const rawPage = params.get('historyPage') ?? '0'
   const page =
     /^\d+$/.test(rawPage) && Number.isSafeInteger(Number(rawPage))
@@ -180,11 +190,14 @@ export default function ProposalHistoryPage() {
     retry: false,
   })
 
-  function changeView(nextActivity: boolean, nextPage = 0) {
+  function changeView(
+    nextView: 'approval' | 'activity' | 'held',
+    nextPage = 0,
+  ) {
     const next = new URLSearchParams(params)
     next.delete('view')
     next.delete('historyPage')
-    if (nextActivity) next.set('view', 'activity')
+    if (nextView !== 'approval') next.set('view', nextView)
     if (nextPage > 0) next.set('historyPage', String(nextPage))
     setParams(next)
   }
@@ -217,27 +230,44 @@ export default function ProposalHistoryPage() {
           <p className="text-sm text-slate-500">
             제안 #{proposalId} · 현재 개정 {query.data.revision}
           </p>
-          <div role="group" aria-label="규칙 이력 보기" className="flex gap-2">
+          <div
+            role="group"
+            aria-label="규칙 이력 보기"
+            className="flex flex-wrap gap-2"
+          >
             <Button
-              variant={activity ? 'secondary' : 'primary'}
-              aria-pressed={!activity}
-              onClick={() => changeView(false)}
+              variant={activity || held ? 'secondary' : 'primary'}
+              aria-pressed={!activity && !held}
+              onClick={() => changeView('approval')}
             >
               승인 상태
             </Button>
             <Button
               variant={activity ? 'primary' : 'secondary'}
               aria-pressed={activity}
-              onClick={() => changeView(true)}
+              onClick={() => changeView('activity')}
             >
               활동 기록
+            </Button>
+            <Button
+              variant={held ? 'primary' : 'secondary'}
+              aria-pressed={held}
+              onClick={() => changeView('held')}
+            >
+              개별 보류 건
             </Button>
           </div>
           {activity ? (
             <DecisionHistory
               proposalId={proposalId}
               page={page}
-              onPageChange={(next) => changeView(true, next)}
+              onPageChange={(next) => changeView('activity', next)}
+            />
+          ) : held ? (
+            <HeldItems
+              key={`${proposalId}:${page}`}
+              page={page}
+              onPageChange={(next) => changeView('held', next)}
             />
           ) : (
             <ApprovalStatus proposal={query.data} />
