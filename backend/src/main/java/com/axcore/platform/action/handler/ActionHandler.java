@@ -5,7 +5,8 @@ import java.util.Optional;
 
 /**
  * 업무 Action(actionMode=EXECUTE)을 실행하는 코드. 091 실행 요청이 정의의 handlerKey와 같은 {@link #key()}를 가진 Bean을
- * 찾는다. Action 정의 등록·수정(088·090)은 Bean으로 등록된 키만 받는다.
+ * 찾는다. 정의는 이 Bean이 배포되기 전에도 등록할 수 있고, 그동안 091은 BLOCKED를 남긴다(handlerReady=false, Jira 287). 여러 정의가
+ * 같은 키를 가리킬 수 있으므로 정의별 차이는 {@link ActionContext#definition()}으로 본다.
  *
  * <p>권한·활성·확인·입력 형식은 공통 실행기({@code ActionExecutionService})가 먼저 검사한다. Handler는 그 Action만의 업무 조건을
  * 검사하고 저장할 내용을 준비한다. 공통 실행기가 실행 기록과 같은 트랜잭션에서 {@link #prepare}를 부르고, 실행 기록을 남긴 뒤 준비한 저장을 실행한다.
