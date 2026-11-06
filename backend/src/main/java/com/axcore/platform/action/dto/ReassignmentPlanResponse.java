@@ -1,5 +1,6 @@
 package com.axcore.platform.action.dto;
 
+import com.axcore.platform.action.domain.ReassignmentPlan;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -20,17 +21,18 @@ public record ReassignmentPlanResponse(
         Instant createdAt,
         List<ReassignmentPlanItemResponse> items) {
 
-    public ReassignmentPlanResponse withItems(List<ReassignmentPlanItemResponse> planItems) {
+    public static ReassignmentPlanResponse from(
+            ReassignmentPlan plan, List<ReassignmentPlanItemResponse> items) {
         return new ReassignmentPlanResponse(
-                id,
-                status,
-                fromEquipmentId,
-                selectionBasis,
-                dataAsOf,
-                actionExecutionId,
-                agentConversationId,
-                createdBy,
-                createdAt,
-                planItems);
+                plan.getId(),
+                plan.getStatus(),
+                plan.getFromEquipmentId(),
+                plan.getSelectionBasis() == null ? Map.of() : plan.getSelectionBasis(),
+                plan.getDataAsOf(),
+                plan.getActionExecutionId(),
+                plan.getAgentConversationId(),
+                plan.getCreatedBy(),
+                plan.getCreatedAt(),
+                items);
     }
 }
