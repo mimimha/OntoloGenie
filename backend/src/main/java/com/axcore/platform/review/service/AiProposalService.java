@@ -5,8 +5,6 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.review.dto.AiProposalRequest;
 import com.axcore.platform.review.repository.AiProposalWriteRepository;
 import com.axcore.platform.review.repository.ProposalReferenceRepository;
-import java.time.Clock;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -23,7 +21,6 @@ public class AiProposalService {
     private final AiProposalWriteRepository repository;
     private final CandidateCheckService checks;
     private final ProposalReferenceRepository references;
-    private final Clock clock;
 
     @Transactional
     public List<Long> save(long analysisRunId, List<AiProposalRequest> proposals) {
@@ -38,9 +35,8 @@ public class AiProposalService {
         }
         List<Long> ids = new ArrayList<>();
         try {
-            Instant now = Instant.now(clock);
             for (var proposal : proposals) {
-                ids.add(repository.insert(analysisRunId, proposal, now));
+                ids.add(repository.insert(analysisRunId, proposal));
             }
         } catch (DataIntegrityViolationException ex) {
             throw BusinessException.invalidField("proposals", "후보의 형식과 값을 확인해 주세요.");

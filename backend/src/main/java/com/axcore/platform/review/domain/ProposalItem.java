@@ -36,6 +36,26 @@ public class ProposalItem extends BaseAuditEntity {
         return item;
     }
 
+    /** 분석 실행이 보낸 AI 후보. 첫 revision(1)로 검토 대기 상태에서 시작한다. */
+    public static ProposalItem ai(
+            long analysisRunId,
+            String itemKind,
+            Map<String, Object> payload,
+            Map<String, Object> evidence,
+            BigDecimal aiConfidence) {
+        ProposalItem item = new ProposalItem();
+        item.analysisRunId = analysisRunId;
+        item.origin = "AI";
+        item.itemKind = itemKind;
+        item.revision = 1;
+        item.payload = payload;
+        item.evidence = evidence;
+        item.aiConfidence = aiConfidence;
+        item.reviewStatus = "PENDING";
+        item.applyStatus = "NOT_APPLIED";
+        return item;
+    }
+
     public void revise(Map<String, Object> payload, Map<String, Object> evidence) {
         if (!"PENDING".equals(reviewStatus) && !"HELD".equals(reviewStatus)) {
             throw new IllegalStateException("검토 중이거나 보류된 후보만 수정할 수 있습니다.");

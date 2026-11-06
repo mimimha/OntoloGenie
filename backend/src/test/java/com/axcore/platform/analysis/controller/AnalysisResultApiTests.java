@@ -142,6 +142,8 @@ class AnalysisResultApiTests {
                                         + id
                                         + " and origin='AI' and revision=1 and review_status='PENDING'"
                                         + " and apply_status='NOT_APPLIED' and created_by is null and updated_by is null"
+                                        + " and created_at=updated_at and row_version=0 and apply_error is null"
+                                        + " and applied_at is null and payload->>'code'='NEW_TYPE'"
                                         + " and ai_confidence=0.92 and evidence->>'reason'='검토용 근거'"))
                 .isEqualTo(1);
         assertThat(
@@ -150,7 +152,10 @@ class AnalysisResultApiTests {
                                 "proposal_item_id="
                                         + proposal
                                         + " and revision=1 and ai_confidence=0.92 and created_by is null"
-                                        + " and payload->>'code'='NEW_TYPE'"))
+                                        + " and payload->>'code'='NEW_TYPE' and created_at=(select created_at"
+                                        + " from proposal_item where id="
+                                        + proposal
+                                        + ")"))
                 .isEqualTo(1);
         assertThat(
                         count(
