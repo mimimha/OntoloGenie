@@ -6,6 +6,7 @@ import DataTable from '../../components/DataTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import AnalysisTargetDialog from '../analysis/AnalysisTargetDialog'
 import { analysisRunPath } from '../analysis/labels'
+import MappingPanel from '../mapping/MappingPanel'
 import { fetchSources } from './api'
 import ConnectionInfo from './ConnectionInfo'
 import { connectionStatusLabels, sourceKindLabels } from './labels'
@@ -16,6 +17,7 @@ import SourceFormDialog from './SourceFormDialog'
 const tabs = [
   { key: 'connection', label: '접속 정보' },
   { key: 'scope', label: '수집 대상' },
+  { key: 'mapping', label: '원천 매핑' },
 ] as const
 
 type TabKey = (typeof tabs)[number]['key']
@@ -39,8 +41,9 @@ function SourcesPage() {
   const selectedId = Number(searchParams.get('source'))
   const selected =
     sources?.find((source) => source.id === selectedId) ?? sources?.[0]
-  const tab: TabKey =
-    searchParams.get('tab') === 'scope' ? 'scope' : 'connection'
+  const tab =
+    tabs.find((item) => item.key === searchParams.get('tab'))?.key ??
+    'connection'
 
   function select(sourceId: number, nextTab: TabKey = 'connection') {
     setSearchParams({ source: String(sourceId), tab: nextTab })
@@ -165,7 +168,11 @@ function SourcesPage() {
           <h2 className="text-lg font-semibold text-slate-900">
             {selected.name} 상세
           </h2>
-          <div role="group" aria-label="상세 항목" className="flex gap-2">
+          <div
+            role="group"
+            aria-label="상세 항목"
+            className="flex flex-wrap gap-2"
+          >
             {tabs.map((item) => (
               <button
                 key={item.key}
@@ -192,8 +199,10 @@ function SourcesPage() {
                   : undefined
               }
             />
-          ) : (
+          ) : tab === 'scope' ? (
             <ReadableScope key={selected.id} sourceId={selected.id} />
+          ) : (
+            <MappingPanel key={selected.id} sourceId={selected.id} />
           )}
           <div className="border-t border-slate-100 pt-4">
             <Button onClick={() => setAnalyzing(true)}>

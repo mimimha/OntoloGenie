@@ -14,6 +14,20 @@ export const transformLabels: Record<string, string> = {
   MAP_VALUE: '값 대응표',
 }
 export type TransformDraft = { op: string; arg: string }
+export function toTransformDraft(step: {
+  op: string
+  arg: unknown
+}): TransformDraft {
+  return {
+    op: step.op,
+    arg:
+      step.arg == null
+        ? ''
+        : typeof step.arg === 'string'
+          ? step.arg
+          : JSON.stringify(step.arg),
+  }
+}
 export type ConditionDraft = {
   sourceProperty: string
   targetProperty: string
@@ -57,15 +71,7 @@ function readTransforms(value: unknown): TransformDraft[] {
       !Object.hasOwn(transformLabels, step.op)
     )
       throw new Error('지원하지 않는 기존 변환이 있어 수정을 중단했습니다.')
-    const draft = {
-      op: step.op,
-      arg:
-        step.arg == null
-          ? ''
-          : typeof step.arg === 'string'
-            ? step.arg
-            : JSON.stringify(step.arg),
-    }
+    const draft = toTransformDraft({ op: step.op, arg: step.arg })
     buildTransform(draft)
     return draft
   })

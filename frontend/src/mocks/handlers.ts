@@ -5,6 +5,7 @@ import { authHandlers } from './auth'
 import { accountHandlers } from './accountHandlers'
 import { proposalHandlers } from './proposalHandlers'
 import { issueHandlers } from './issueHandlers'
+import { mappingHandlers } from './mappingHandlers'
 import { sourceHandlers } from './sourceHandlers'
 import type { Execution } from '../features/audit/types'
 import type {
@@ -677,6 +678,7 @@ export const handlers = [
   ...issueHandlers,
   ...authHandlers,
   ...sourceHandlers,
+  ...mappingHandlers,
   ...analysisHandlers,
   ...agentHandlers,
   // 042 객체 유형 관계도

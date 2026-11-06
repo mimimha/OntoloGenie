@@ -67,10 +67,18 @@ export async function fetchConnectionCheck(sourceId: number, checkId: number) {
 }
 
 // 014 원천 표·뷰·자료 목록 (한 원천의 표는 수십 개라 한 번에 받는다)
-export async function fetchResources(sourceId: number) {
-  const body = await apiGet<SourceResource[]>(
-    `/sources/${sourceId}/resources?page=0&size=200`,
+export function fetchResourcePage(
+  sourceId: number,
+  page: number,
+  size: number,
+) {
+  return apiGet<SourceResource[]>(
+    `/sources/${sourceId}/resources?page=${page}&size=${size}`,
   )
+}
+
+export async function fetchResources(sourceId: number) {
+  const body = await fetchResourcePage(sourceId, 0, 200)
   return body.data
 }
 
