@@ -31,6 +31,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
@@ -51,6 +52,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  *       handlerReady가 false이고 091이 BLOCKED를 남긴다(11-05 결정, Jira 287).
  *   <li>등록·수정은 관리 Action이라 성공하면 업무와 같은 트랜잭션에 ACTION 기록을 남기고, 막히면 트랜잭션이 끝난 뒤 BLOCKED를 따로 남긴다
  *       (AdminAccountService와 같은 방식).
+ *   <li>저장 결과 Handler가 없으면(088 등록, 090의 handlerKey 변경) 커밋 뒤 개발자에게 Handler 구현을 알린다(Action 정의서 4-3,
+ *       Jira 288). 알림은 등록·수정 결과에 영향을 주지 않는다.
  * </ul>
  */
 @Slf4j
@@ -73,6 +76,7 @@ public class ActionDefinitionService {
     private final InputSchemaValidator inputSchemas;
     private final AuditRecorder audits;
     private final ActionDefinitionLookup actionDefinitions;
+    private final ApplicationEventPublisher events;
     private final TransactionTemplate transactionTemplate;
 
     public ActionDefinitionService(
@@ -83,6 +87,7 @@ public class ActionDefinitionService {
             InputSchemaValidator inputSchemas,
             AuditRecorder audits,
             ActionDefinitionLookup actionDefinitions,
+            ApplicationEventPublisher events,
             PlatformTransactionManager transactionManager) {
         this.definitions = definitions;
         this.references = references;
@@ -91,6 +96,7 @@ public class ActionDefinitionService {
         this.inputSchemas = inputSchemas;
         this.audits = audits;
         this.actionDefinitions = actionDefinitions;
+        this.events = events;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -188,6 +194,7 @@ public class ActionDefinitionService {
                                                 Map.of("id", definition.getId()),
                                                 snapshot(definition))))
                         .build());
+        requestHandlerIfMissing(actor, definition, HandlerRequested.Reason.CREATED);
         return toResponse(definition);
     }
 
@@ -240,6 +247,7 @@ public class ActionDefinitionService {
         }
 
         Map<String, Object> before = snapshot(definition);
+        String handlerKeyBefore = definition.getHandlerKey();
         if (request.getName() != null) {
             definition.rename(request.getName());
         }
@@ -288,7 +296,37 @@ public class ActionDefinitionService {
                                                         diff.before(),
                                                         diff.after()))));
         audits.record(entry.build());
+        if (!Objects.equals(handlerKeyBefore, definition.getHandlerKey())) {
+            requestHandlerIfMissing(actor, definition, HandlerRequested.Reason.HANDLER_CHANGED);
+        }
         return toResponse(definition);
+    }
+
+    /** 트랜잭션 안에서 발행한다. 롤백되면 알리지 않고, 커밋되면 HandlerRequestNotifier가 보낸다. */
+    private void requestHandlerIfMissing(
+            LoginAccount actor, ActionDefinition definition, HandlerRequested.Reason reason) {
+        if (handlers.isRegistered(definition.getHandlerKey())) {
+            return;
+        }
+        String objectType =
+                definition.getTargetObjectTypeId() == null
+                        ? null
+                        : objectTypes
+                                .findById(definition.getTargetObjectTypeId())
+                                .map(type -> type.getCode() + "(" + type.getName() + ")")
+                                .orElse(null);
+        events.publishEvent(
+                new HandlerRequested(
+                        reason,
+                        definition.getCode(),
+                        definition.getName(),
+                        definition.getHandlerKey(),
+                        definition.getTargetKind().name(),
+                        objectType,
+                        definition.getRequiredPermission(),
+                        definition.getInputSchema(),
+                        definition.isActive(),
+                        actor.loginId()));
     }
 
     /** SYSTEM이면 대상 객체 유형이 없어야 한다. OBJECT는 유형을 비워도 되고, 정하면 있는 유형이어야 한다. */

@@ -32,6 +32,7 @@ class CredentialPreparationTests(unittest.TestCase):
             "DEPLOY_SOURCE_KEY": self.key,
             "DEPLOY_ERP_CDC_PASSWORD": "erp-test-only",
             "DEPLOY_MES_CDC_PASSWORD": "mes-test-only",
+            "DEPLOY_ACTION_NOTIFY_WEBHOOK": "https://chat.example.test/hooks/test-only",
         }
         self.values = {
             "POSTGRES_DB": "axcore", "POSTGRES_USER": "axcore",
@@ -60,6 +61,8 @@ class CredentialPreparationTests(unittest.TestCase):
         self.assertEqual(runtime["BACKEND_TAG"], "abc1234")
         self.assertEqual(runtime["AXCORE_INTERNAL_API_TOKEN"], runtime["AI_ONTOLOGY_INTERNAL_TOKEN"])
         self.assertEqual(runtime["AXCORE_SOURCE_CREDENTIAL_KEY_1"], self.key)
+        self.assertEqual(runtime["AXCORE_ACTION_NOTIFY_WEBHOOK_URL"], "https://chat.example.test/hooks/test-only")
+        self.assertNotIn("AXCORE_ACTION_NOTIFY_WEBHOOK_URL", config)
         self.assertEqual(set(read_env(self.root / "cdc/.env")), {"ERP_CDC_PASSWORD", "MES_CDC_PASSWORD"})
 
     def test_missing_credential_does_not_write_any_file(self):
@@ -132,7 +135,14 @@ class CredentialPreparationTests(unittest.TestCase):
             plan(self.root, self.environment)
 
     def test_general_config_cannot_contain_secrets(self):
-        self.write(".env.config", {"POSTGRES_PASSWORD": "bad-test-only"})
+        for key in ("POSTGRES_PASSWORD", "AXCORE_ACTION_NOTIFY_WEBHOOK_URL"):
+            with self.subTest(key=key):
+                self.write(".env.config", {key: "bad-test-only"})
+                with self.assertRaises(ConfigurationError):
+                    plan(self.root, self.environment)
+
+    def test_missing_webhook_credential_stops_before_write(self):
+        del self.environment["DEPLOY_ACTION_NOTIFY_WEBHOOK"]
         with self.assertRaises(ConfigurationError):
             plan(self.root, self.environment)
 

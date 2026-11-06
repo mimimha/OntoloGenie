@@ -16,6 +16,7 @@ MAIN_SECRETS = {
     "AXCORE_INTERNAL_API_TOKEN": "DEPLOY_INTERNAL_TOKEN",
     "AI_ONTOLOGY_INTERNAL_TOKEN": "DEPLOY_INTERNAL_TOKEN",
     "AXCORE_SOURCE_CREDENTIAL_KEY_1": "DEPLOY_SOURCE_KEY",
+    "AXCORE_ACTION_NOTIFY_WEBHOOK_URL": "DEPLOY_ACTION_NOTIFY_WEBHOOK",
 }
 CDC_SECRETS = {
     "ERP_CDC_PASSWORD": "DEPLOY_ERP_CDC_PASSWORD",
@@ -119,7 +120,7 @@ def plan(root, environment):
         }
         for key in config:
             if key in secrets_map or key in tags or re.search(
-                r"PASSWORD|TOKEN|SECRET|API_KEY|CREDENTIAL_KEY_(?!VERSION)", key
+                r"PASSWORD|TOKEN|SECRET|API_KEY|WEBHOOK|CREDENTIAL_KEY_(?!VERSION)", key
             ):
                 raise ConfigurationError(f".env.config: {key}는 일반 설정이 아닙니다.")
         if path == main_path:

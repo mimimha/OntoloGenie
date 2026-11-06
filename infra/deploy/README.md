@@ -20,8 +20,11 @@ Jenkins가 운영 비밀값을 MR 검사·이미지 빌드에 바인딩하지 �
 | axcore-grafana-admin-password | DEPLOY_GRAFANA_PASSWORD | GRAFANA_ADMIN_PASSWORD |
 | axcore-internal-api-token | DEPLOY_INTERNAL_TOKEN | AXCORE_INTERNAL_API_TOKEN, AI_ONTOLOGY_INTERNAL_TOKEN |
 | source-credential-key-1 | DEPLOY_SOURCE_KEY | AXCORE_SOURCE_CREDENTIAL_KEY_1 |
+| axcore-action-notify-webhook-url | DEPLOY_ACTION_NOTIFY_WEBHOOK | AXCORE_ACTION_NOTIFY_WEBHOOK_URL (backend만) |
 | axcore-erp-cdc-password | DEPLOY_ERP_CDC_PASSWORD | ERP_CDC_PASSWORD |
 | axcore-mes-cdc-password | DEPLOY_MES_CDC_PASSWORD | MES_CDC_PASSWORD |
+
+`axcore-action-notify-webhook-url`은 2026-11-06 S15P31C106-288에서 추가했다. Mattermost 팀 채널 Incoming Webhook 주소이며 주소 자체가 비밀값이다. 다른 항목처럼 필수라서 Credentials가 없으면 배포 Job이 쓰기 전에 중단한다.
 
 기존 암호화 키·DB 비밀번호·토큰·CDC 비밀번호를 바꾸는 작업이 아니다. 현재 서버 값이 있으면 등록된 Credentials와 일치해야 진행한다. 변경이 필요하면 별도 회전 절차를 수행해야 한다. 기존 초기화용 비밀번호도 현재 로그인 비밀번호로 임의 변경하지 않는다.
 

@@ -186,6 +186,7 @@ pipeline {
                     string(credentialsId: 'axcore-grafana-admin-password', variable: 'DEPLOY_GRAFANA_PASSWORD'),
                     string(credentialsId: 'axcore-internal-api-token', variable: 'DEPLOY_INTERNAL_TOKEN'),
                     string(credentialsId: 'source-credential-key-1', variable: 'DEPLOY_SOURCE_KEY'),
+                    string(credentialsId: 'axcore-action-notify-webhook-url', variable: 'DEPLOY_ACTION_NOTIFY_WEBHOOK'),
                     string(credentialsId: 'axcore-erp-cdc-password', variable: 'DEPLOY_ERP_CDC_PASSWORD'),
                     string(credentialsId: 'axcore-mes-cdc-password', variable: 'DEPLOY_MES_CDC_PASSWORD')
                 ]) {
@@ -202,6 +203,7 @@ pipeline {
                             --user "$(id -u):$(id -g)" \
                             -e DEPLOY_POSTGRES_PASSWORD -e DEPLOY_INITIAL_ADMIN_PASSWORD \
                             -e DEPLOY_GRAFANA_PASSWORD -e DEPLOY_INTERNAL_TOKEN -e DEPLOY_SOURCE_KEY \
+                            -e DEPLOY_ACTION_NOTIFY_WEBHOOK \
                             -e DEPLOY_ERP_CDC_PASSWORD -e DEPLOY_MES_CDC_PASSWORD \
                             -v "$HOST_WS/infra/deploy:/work:ro" \
                             -v "$DEPLOY_DIR:$DEPLOY_DIR" \
