@@ -1,0 +1,104 @@
+{
+  "tables": {
+    "customer": {
+      "description": "거래처(납품처) 기본 정보",
+      "primary_key": [
+        "cust_no"
+      ],
+      "columns": {
+        "cust_no": {
+          "type": "varchar(10)",
+          "comment": "거래처 번호"
+        },
+        "cust_name": {
+          "type": "varchar(50)",
+          "comment": "거래처명"
+        },
+        "region": {
+          "type": "varchar(10)",
+          "comment": "소재 지역"
+        },
+        "active_yn": {
+          "type": "char(1)",
+          "comment": "거래 활성 여부(Y/N)"
+        },
+        "biz_reg_no": {
+          "type": "varchar(12)",
+          "comment": "사업자등록번호"
+        }
+      }
+    },
+    "item": {
+      "description": "판매·생산 대상 사출 부품 품목 기준정보",
+      "primary_key": [
+        "item_cd"
+      ],
+      "columns": {
+        "item_cd": {
+          "type": "varchar(10)",
+          "comment": "품목 코드"
+        },
+        "item_name": {
+          "type": "varchar(50)",
+          "comment": "품목명"
+        },
+        "resin_grade": {
+          "type": "varchar(10)",
+          "comment": "사용 수지 종류"
+        },
+        "unit_weight_g": {
+          "type": "decimal(7,1)",
+          "comment": "개당 중량(g)"
+        },
+        "uom": {
+          "type": "varchar(5)",
+          "comment": "판매 단위"
+        },
+        "std_price": {
+          "type": "int",
+          "comment": "표준 단가(원)"
+        }
+      }
+    },
+    "sales_order": {
+      "description": "고객 수주 내역",
+      "primary_key": [
+        "so_no"
+      ],
+      "columns": {
+        "so_no": {
+          "type": "varchar(12)",
+          "comment": "수주 번호"
+        },
+        "doc_seq": {
+          "type": "int",
+          "comment": "회계 전표 일련번호(내부 채번)"
+        },
+        "cust_no": {
+          "type": "varchar(10)",
+          "comment": "주문 거래처 번호"
+        },
+        "item_cd": {
+          "type": "varchar(10)",
+          "comment": "주문 품목 코드"
+        },
+        "order_qty": {
+          "type": "int",
+          "comment": "주문 수량"
+        },
+        "order_date": {
+          "type": "date",
+          "comment": "수주일"
+        },
+        "due_date": {
+          "type": "date",
+          "comment": "납기일"
+        },
+        "status": {
+          "type": "varchar(10)",
+          "comment": "진행 상태"
+        }
+      }
+    }
+  }
+}

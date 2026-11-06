@@ -1,0 +1,108 @@
+{
+  "tables": {
+    "mold": {
+      "description": "사출 금형 대장",
+      "primary_key": [
+        "mold_no"
+      ],
+      "columns": {
+        "mold_no": {
+          "type": "int",
+          "comment": "금형 관리 번호"
+        },
+        "mold_tag": {
+          "type": "varchar(10)",
+          "comment": "금형 각인 표기"
+        },
+        "part_code": {
+          "type": "varchar(10)",
+          "comment": "성형 부품 코드(현장 표기)"
+        },
+        "cavity": {
+          "type": "int",
+          "comment": "캐비티 수"
+        },
+        "cycle_sec": {
+          "type": "int",
+          "comment": "표준 사이클 타임(초)"
+        },
+        "mold_status": {
+          "type": "varchar(10)",
+          "comment": "금형 상태"
+        }
+      }
+    },
+    "work_order": {
+      "description": "사출 작업지시",
+      "primary_key": [
+        "wo_id"
+      ],
+      "columns": {
+        "wo_id": {
+          "type": "int",
+          "comment": "작업지시 번호"
+        },
+        "order_ref": {
+          "type": "varchar(10)",
+          "comment": "근거 주문 번호(현장 약식 표기)"
+        },
+        "mold_no": {
+          "type": "int",
+          "comment": "사용 금형 번호"
+        },
+        "machine_cd": {
+          "type": "varchar(6)",
+          "comment": "사출기 호기"
+        },
+        "plan_qty": {
+          "type": "int",
+          "comment": "계획 수량"
+        },
+        "plan_date": {
+          "type": "date",
+          "comment": "작업 예정일"
+        },
+        "wo_status": {
+          "type": "varchar(10)",
+          "comment": "작업 상태"
+        }
+      }
+    },
+    "prod_result": {
+      "description": "교대별 생산 실적",
+      "primary_key": [
+        "result_id"
+      ],
+      "columns": {
+        "result_id": {
+          "type": "varchar(10)",
+          "comment": "실적 번호"
+        },
+        "wo_id": {
+          "type": "int",
+          "comment": "실적이 속한 작업지시 번호"
+        },
+        "worker_no": {
+          "type": "int",
+          "comment": "작업자 사번(인사 시스템 채번, 이 데이터에 명부 없음)"
+        },
+        "shift": {
+          "type": "char(1)",
+          "comment": "근무조"
+        },
+        "good_qty": {
+          "type": "int",
+          "comment": "양품 수량"
+        },
+        "defect_qty": {
+          "type": "int",
+          "comment": "불량 수량"
+        },
+        "work_date": {
+          "type": "date",
+          "comment": "작업일"
+        }
+      }
+    }
+  }
+}

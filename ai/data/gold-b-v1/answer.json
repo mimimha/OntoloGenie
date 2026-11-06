@@ -1,0 +1,63 @@
+{
+  "systems": [
+    "erp",
+    "mes"
+  ],
+  "relations": [
+    {
+      "from": "erp.sales_order.cust_no",
+      "to": "erp.customer.cust_no",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.sales_order.item_cd",
+      "to": "erp.item.item_cd",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.mold.part_code",
+      "to": "erp.item.item_cd",
+      "transform": "'pl412' → 'PL-0412': 대문자화, 'PL' 뒤 하이픈 삽입, 숫자 4자리 0 채움",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.work_order.order_ref",
+      "to": "erp.sales_order.so_no",
+      "transform": "'26-7' → 'SO26-0007': 'SO' 접두어 추가, 일련번호 4자리 0 채움",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.work_order.mold_no",
+      "to": "mes.mold.mold_no",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.prod_result.wo_id",
+      "to": "mes.work_order.wo_id",
+      "transform": null,
+      "cardinality": "N:1"
+    }
+  ],
+  "traps": [
+    {
+      "column": "erp.sales_order.doc_seq",
+      "looks_like": "mes.work_order.wo_id",
+      "why": "둘 다 1001부터 채번된 정수라 값 범위가 거의 겹치지만 doc_seq는 회계 전표 일련번호로 작업지시와 무관"
+    },
+    {
+      "column": "mes.prod_result.worker_no",
+      "looks_like": "mes.mold.mold_no",
+      "why": "작업자 사번(3~48)이 금형 번호(1~45) 범위와 대부분 겹치지만 사람 번호이며 금형과 무관"
+    }
+  ],
+  "dirty": [
+    "erp.sales_order.cust_no: 빈 값 3개, 존재하지 않는 코드(C→G 오타) 2개",
+    "mes.mold.part_code: 빈 값 1개, 오타 2개(접두어 pl→pi 1개, 끝자리 0 추가 1개)",
+    "mes.work_order.order_ref: 빈 값 3개, 존재하지 않는 번호 2개(범위 밖 일련번호 1개, 연도 오기 1개)",
+    "mes.work_order.mold_no: 존재하지 않는 금형 번호(45→54 자리 뒤바뀜 형태) 1개",
+    "mes.prod_result.wo_id: 빈 값 2개, 존재하지 않는 번호 2개(자리 뒤바뀜 1개, 자릿수 초과 1개)"
+  ]
+}
