@@ -3,11 +3,16 @@ import Button from '../../components/Button'
 
 type ChatComposerProps = {
   disabled: boolean
+  initialDraft?: string
   onSend: (content: string) => Promise<void>
 }
 
-function ChatComposer({ disabled, onSend }: ChatComposerProps) {
-  const [draft, setDraft] = useState('')
+function ChatComposer({
+  disabled,
+  initialDraft = '',
+  onSend,
+}: ChatComposerProps) {
+  const [draft, setDraft] = useState(initialDraft)
   const content = draft.trim()
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

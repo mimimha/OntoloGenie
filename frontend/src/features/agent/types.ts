@@ -53,3 +53,9 @@ export type QuestionRequest = {
   referenceObjectIds?: number[]
   context?: Record<string, unknown>
 }
+
+export type AgentEntryState = {
+  conversationId: number
+  referenceObjectId: number
+  draft: string
+}
