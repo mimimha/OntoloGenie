@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -84,14 +84,14 @@ test('전체 후보 보기를 누르면 분석 조건 없이 모든 제안을 �
   expect(
     screen.queryByRole('region', { name: '이번 분석' }),
   ).not.toBeInTheDocument()
-  await expect
-    .poll(
-      () =>
-        within(
-          screen.getByRole('table', { name: '검토 제안 목록' }),
-        ).getAllByRole('row').length,
-    )
-    .toBe(4)
+  // expect.poll은 기본 1초만 기다려(setup.ts의 대기 설정을 따르지 않음) 바쁠 때 실패한다. waitFor로 기다린다
+  await waitFor(() =>
+    expect(
+      within(
+        screen.getByRole('table', { name: '검토 제안 목록' }),
+      ).getAllByRole('row'),
+    ).toHaveLength(4),
+  )
 })
 
 test('실패한 분석은 실패 사유를 보여준다', async () => {
@@ -101,7 +101,8 @@ test('실패한 분석은 실패 사유를 보여준다', async () => {
   expect(await within(current).findByRole('alert')).toHaveTextContent(
     'AI 계정이 이 테이블을 읽을 수 없습니다: erp.employee',
   )
-  expect(current).toHaveTextContent('분석에 실패했습니다')
+  // 실패 사유(alert)가 먼저 뜨고 상태 문구는 그 뒤에 바뀔 수 있어 기다려서 본다
+  await waitFor(() => expect(current).toHaveTextContent('분석에 실패했습니다'))
   expect(
     await screen.findByText('조건에 맞는 제안이 없습니다.'),
   ).toBeInTheDocument()
