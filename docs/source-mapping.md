@@ -72,6 +72,7 @@ AI 후보는 대상을 코드로 가리키고, 이 서비스는 ID를 받는다.
 
 - 다시 읽을 대상은 켜진 객체 매핑이 있고 `loaded_lsn`이 null인 CDC 자원이다.
 - 한 트랜잭션(`REPEATABLE READ`)에서 `pg_current_snapshot()`과 SELECT를 같이 한다. 객체는 `source_txid`가 그 스냅샷에서 보일 때만, 그리고 `loaded_gen`이 이번 세대 이하일 때만 덮어쓴다. 값이 같아도 `loaded_snapshot`·`loaded_gen`은 갱신한다.
+- 객체 쓰기는 [원천 객체 저장](object-sync.md)(180)의 `applyLoaded`·`finishLoad`를 부른다.
 - 새 객체를 만들기 전에 `source_delete_mark`를 본다. 흔적 번호가 스냅샷에서 안 보이면 읽은 뒤 지워진 행이라 만들지 않는다. 끝나면 스냅샷에서 보이는 흔적을 지우고 `source_resource.full_load_done_gen`을 올린다. 그보다 옛 세대 적재는 쓰지 않는다.
 - 속성 매핑이 지워지거나 다른 객체 매핑으로 옮겨진 뒤 다시 읽을 때, 객체의 속성을 매핑 기준으로 통째로 다시 만들어야 지운 속성 값이 남지 않는다.
 
