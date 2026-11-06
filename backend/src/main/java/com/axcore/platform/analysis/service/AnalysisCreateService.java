@@ -4,6 +4,7 @@ import com.axcore.platform.analysis.domain.AnalysisRunCreated;
 import com.axcore.platform.analysis.dto.AnalysisCreateRequest;
 import com.axcore.platform.analysis.dto.AnalysisRunResponse;
 import com.axcore.platform.analysis.repository.AnalysisCreateRepository;
+import com.axcore.platform.analysis.repository.AnalysisQueryRepository;
 import com.axcore.platform.audit.domain.Actor;
 import com.axcore.platform.audit.domain.AuditEntry;
 import com.axcore.platform.audit.domain.EntryPoint;
@@ -13,6 +14,10 @@ import com.axcore.platform.audit.service.AuditRecorder;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.source.domain.SourceColumn;
+import com.axcore.platform.source.domain.SourceResource;
+import com.axcore.platform.source.repository.SourceColumnRepository;
+import com.axcore.platform.source.repository.SourceResourceRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -28,6 +33,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -38,6 +44,9 @@ import tools.jackson.databind.json.JsonMapper;
 @RequiredArgsConstructor
 public class AnalysisCreateService {
     private final AnalysisCreateRepository repository;
+    private final AnalysisQueryRepository queries;
+    private final SourceResourceRepository sourceResources;
+    private final SourceColumnRepository sourceColumns;
     private final AuditRecorder audits;
     private final Clock clock;
     private final JsonMapper json;
@@ -68,12 +77,12 @@ public class AnalysisCreateService {
                             Instant.now(clock));
             if (inserted.isPresent()) {
                 repository.insertTargets(inserted.get(), ids);
-                response = repository.read(inserted.get(), false);
+                response = read(inserted.get(), false);
                 break;
             }
             var active = repository.findActiveForUpdate(key);
             if (active.isPresent()) {
-                response = repository.read(active.get(), true);
+                response = read(active.get(), true);
                 break;
             }
             // 충돌한 실행이 기다리는 동안 끝났으면 활성 실행 생성을 다시 시도한다.
@@ -118,7 +127,11 @@ public class AnalysisCreateService {
 
     private void validateReferences(
             AnalysisCreateRequest request, List<Target> targets, List<Long> ids) {
-        if (!repository.existingResources(ids).containsAll(ids)) {
+        Set<Long> existingResources =
+                sourceResources.findAllById(ids).stream()
+                        .map(SourceResource::getId)
+                        .collect(Collectors.toSet());
+        if (!existingResources.containsAll(ids)) {
             throw new BusinessException(
                     CommonErrorCode.RESOURCE_NOT_FOUND, Map.of("resource", "source_resource"));
         }
@@ -128,9 +141,9 @@ public class AnalysisCreateService {
                     CommonErrorCode.RESOURCE_NOT_FOUND, Map.of("resource", "sync_run"));
         }
         Map<Long, Set<String>> existing = new HashMap<>();
-        for (var column : repository.currentColumns(ids)) {
-            existing.computeIfAbsent(column.sourceResourceId(), ignored -> new HashSet<>())
-                    .add(column.name());
+        for (SourceColumn column : sourceColumns.findBySourceResourceIdInAndIsPresentTrue(ids)) {
+            existing.computeIfAbsent(column.getSourceResourceId(), ignored -> new HashSet<>())
+                    .add(column.getColumnName());
         }
         for (var target : targets) {
             if (target.columns() != null
@@ -140,6 +153,12 @@ public class AnalysisCreateService {
                         "targets", "선택한 컬럼이 해당 원천 자원의 현재 컬럼 목록에 없습니다.");
             }
         }
+    }
+
+    private AnalysisRunResponse read(long id, boolean joined) {
+        return queries.findById(id)
+                .map(run -> AnalysisRunResponse.of(run, joined))
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
     }
 
     private static String digest(String value) {
