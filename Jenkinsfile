@@ -349,6 +349,8 @@ pipeline {
                         backend: env.DEPLOY_BACKEND,
                         ai: env.DEPLOY_AI
                     ]
+                    def gateRecipient = sonarGateRecipient()
+                    def failedGateLinks = []
                     components.findAll { component, deploy -> params.RUN_SONARQUBE || deploy == 'true' }.each { component, deploy ->
                         catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', catchInterruptions: false) {
                             echo "SonarQube analysis: ${component}"
@@ -359,20 +361,41 @@ pipeline {
                             }
                             def credentialId = component == 'frontend' ? 'axcore-sonarqube-token' : "axcore-sonarqube-${component}-token"
                             withCredentials([string(credentialsId: credentialId, variable: 'SONAR_TOKEN')]) {
-                                withEnv(["SONAR_COMPONENT=${component}"]) {
-                                    sh '''
+                                withEnv(["SONAR_COMPONENT=${component}", "SONAR_GATE_CHECK=${gateRecipient ? 'true' : 'false'}"]) {
+                                    def gate = sh(returnStdout: true, script: '''
                                         set +x
                                         HOST_WS=$(printf '%s' "$WORKSPACE" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
+                                        set --
+                                        if [ "$SONAR_GATE_CHECK" = true ]; then
+                                            report_dir=$(mktemp -d "$WORKSPACE/.sonar-gate.XXXXXXXX")
+                                            trap 'rm -f "$report_dir/report-task.txt"; rmdir "$report_dir"' EXIT
+                                            set -- "-Dsonar.scanner.metadataFilePath=/workspace/${report_dir##*/}/report-task.txt"
+                                        fi
                                         docker run --rm --memory 2g --cpus 2 --network axcore-net \
                                             --user "$(id -u):$(id -g)" \
                                             -e SONAR_HOST_URL=http://sonarqube:9000 -e SONAR_TOKEN \
                                             -e SONAR_USER_HOME=/tmp/.sonar \
                                             -v "$HOST_WS:/workspace" -w "/workspace/$SONAR_COMPONENT" \
-                                            sonarsource/sonar-scanner-cli:12.3.0.4285_8.1.0
-                                    '''
+                                            sonarsource/sonar-scanner-cli:12.3.0.4285_8.1.0 "$@" >&2
+                                        if [ "$SONAR_GATE_CHECK" = true ]; then
+                                            docker run --rm --network axcore-net --memory 128m \
+                                                -e SONAR_TOKEN -e SONAR_HOST_URL=http://sonarqube:9000 \
+                                                -v "$HOST_WS:/workspace:ro" python:3.11-slim \
+                                                python /workspace/infra/sonarqube/quality_gate.py \
+                                                "/workspace/${report_dir##*/}/report-task.txt" "axcore-$SONAR_COMPONENT" \
+                                                || echo "SonarQube Quality Gate 상태 확인 실패: $SONAR_COMPONENT" >&2
+                                        fi
+                                    ''').trim()
+                                    if (gate == 'ERROR') {
+                                        def dashboard = (env.SONARQUBE_DASHBOARD_URL ?: 'http://localhost:9000').replaceAll('/+$', '')
+                                        failedGateLinks.add("${dashboard}/dashboard?id=axcore-${component}")
+                                    }
                                 }
                             }
                         }
+                    }
+                    if (failedGateLinks) {
+                        sendMattermostDm(gateRecipient, failedGateLinks.join('\n'))
                     }
                 }
             }
@@ -427,6 +450,19 @@ pipeline {
     }
 }
 
+def sonarGateRecipient() {
+    if (env.JOB_NAME != 'axcore-deploy' || env.gitlabActionType != 'PUSH' ||
+            env.gitlabSourceBranch != 'develop' || !(env.gitlabUserUsername ==~ /[A-Za-z0-9_.-]+/)) {
+        return null
+    }
+    // 대기 중 develop이 앞서면 다른 머지의 코드가 검사될 수 있다.
+    if (env.gitlabAfter != sh(returnStdout: true, script: 'git rev-parse HEAD').trim()) {
+        echo 'SonarQube DM 생략: 배포 커밋이 GitLab push 이벤트와 다름'
+        return null
+    }
+    return env.gitlabUserUsername
+}
+
 // Mattermost DM 전송. 받는 사람 = 이 빌드를 일으킨 GitLab 사용자(MR 작성자, 또는 develop에 머지한 사람).
 // SSAFY GitLab 아이디와 Mattermost 아이디가 같아서 "@아이디"로 바로 보낸다. 채널에는 올리지 않는다.
 // 아이디 변수는 이벤트마다 다르다: push(배포)는 gitlabUserUsername, MR 이벤트(검사)는 gitlabMergedByUser (2026-10-30 빌드 #44 로그로 확인).
@@ -456,11 +492,19 @@ def notifyMattermost(String result) {
         deploy = '\n배포: 변경 없음'
     }
     def text = "${result} ${env.JOB_NAME} #${env.BUILD_NUMBER} · ${what}${deploy}\n로그: ${env.BUILD_URL}console"
+    sendMattermostDm(who, text)
+}
+
+def sendMattermostDm(String who, String text) {
     def payload = groovy.json.JsonOutput.toJson([channel: "@${who}", text: text])
     echo "Mattermost DM → @${who}"
     // 비밀값(MM_WEBHOOK)은 Groovy 문자열에 섞지 않고 셸 환경변수로만 읽는다. 알림 실패가 빌드 결과를 바꾸면 안 되므로 || echo.
     withEnv(["MM_PAYLOAD=${payload}"]) {
-        sh 'curl -sS -f -X POST -H "Content-Type: application/json" -d "$MM_PAYLOAD" "$MM_WEBHOOK" > /dev/null || echo "Mattermost 알림 실패"'
+        sh '''
+            set +x
+            curl -sS -f --max-time 15 -X POST -H "Content-Type: application/json" \
+                -d "$MM_PAYLOAD" "$MM_WEBHOOK" > /dev/null || echo "Mattermost 알림 실패"
+        '''
     }
 }
 

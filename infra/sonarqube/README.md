@@ -39,3 +39,13 @@
 - SonarQube가 UP이면 배포 대상인 frontend·backend·AI를 고정 태그의 스캐너 컨테이너로 순서대로 분석한다. `RUN_SONARQUBE`를 선택하면 세 서비스 모두 분석한다. 백엔드는 Gradle `testClasses`로 분석에 필요한 Java 본문·테스트 바이트코드를 준비한다. 분석 단계는 결과를 병합 조건으로 사용하지 않는다. 커버리지 리포트는 별도 연동이다.
 - 새 Compose는 SonarQube가 UP에 도달한 뒤 활성 파일로 저장한다. 갱신이 실패하면 이전 Compose를 다시 적용하고 UP을 확인한다. Jenkins는 해당 실행을 실패로 표시하고 분석을 생략한다. 복구도 실패하면 로그와 백업을 확인한다.
 - DB 덤프에는 SonarQube 운영 데이터가 포함된다. 백업 폴더에 운영자만 접근하도록 하고 보존 기간은 팀에서 정한다.
+
+## 배포 후 Quality Gate 알림
+
+팀 브라우저 접속 주소는 `https://sonar.ontologenie.com`이다. 메인 서버를 가리키는 DNS A 레코드와 이 호스트 전용 Certbot 인증서를 먼저 준비한다. Nginx는 `axcore-net`에서 `sonarqube:9000`으로 요청을 전달한다. 외부 접속 전에 로그인 필수와 프로젝트 Private 설정을 확인하고 팀원에게 Browse 권한을 부여한다.
+
+Nginx 설정이 배포되면 팀원 브라우저에서 로그인과 프로젝트 조회를 확인한다. 이후 SonarQube의 Server base URL과 Jenkins의 `SONARQUBE_DASHBOARD_URL`을 공용 HTTPS 주소로 설정한다.
+
+`axcore-deploy`가 GitLab의 `develop` push 이벤트로 실행되고 이벤트 커밋이 실제 배포 체크아웃과 일치하면, Jenkins가 제출한 분석의 Quality Gate를 최대 2분 동안 기다린다. 미통과한 프로젝트가 있으면 이벤트를 일으킨 GitLab 사용자에게 대시보드 링크를 한 건의 Mattermost DM으로 보낸다. Quality Gate 미통과와 상태 조회 실패는 배포 결과를 변경하지 않는다.
+
+기존 SonarQube 프로젝트 분석 토큰과 `mm-webhook`을 사용한다. 링크는 기본적으로 SSH 터널에서 접근하는 `http://localhost:9000`을 사용한다. 팀원이 접속할 수 있는 별도 SonarQube 주소가 있으면 Jenkins 전역 환경 변수 `SONARQUBE_DASHBOARD_URL`을 그 주소로 설정한다.
