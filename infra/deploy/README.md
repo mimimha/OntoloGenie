@@ -19,7 +19,7 @@ Jenkins가 운영 비밀값을 MR 검사·이미지 빌드에 바인딩하지 �
 | axcore-initial-admin-password | DEPLOY_INITIAL_ADMIN_PASSWORD | AXCORE_INITIAL_ADMIN_PASSWORD |
 | axcore-grafana-admin-password | DEPLOY_GRAFANA_PASSWORD | GRAFANA_ADMIN_PASSWORD |
 | axcore-internal-api-token | DEPLOY_INTERNAL_TOKEN | AXCORE_INTERNAL_API_TOKEN, AI_ONTOLOGY_INTERNAL_TOKEN |
-| axcore-gms-api-key | DEPLOY_GMS_API_KEY | AI_ONTOLOGY_LLM_API_KEY |
+| axcore-gms-api-key | DEPLOY_GMS_API_KEY | AI_ONTOLOGY_LLM_API_KEY (ai), AXCORE_AGENT_LLM_API_KEY (backend) |
 | source-credential-key-1 | DEPLOY_SOURCE_KEY | AXCORE_SOURCE_CREDENTIAL_KEY_1 |
 | axcore-action-notify-webhook-url | DEPLOY_ACTION_NOTIFY_WEBHOOK | AXCORE_ACTION_NOTIFY_WEBHOOK_URL (backend만) |
 | axcore-erp-cdc-password | DEPLOY_ERP_CDC_PASSWORD | ERP_CDC_PASSWORD |
@@ -42,6 +42,8 @@ Jenkins가 운영 비밀값을 MR 검사·이미지 빌드에 바인딩하지 �
 `prepare_credentials.py`는 `.env`를 셸로 실행하지 않으며 생성 시 `$`를 Compose의 리터럴 달러로 이스케이프한다. 기존 파일에 해석이 필요한 `$변수`, 여러 줄 값, 지원하지 않는 따옴표 표현이 있으면 자동 추측하지 않고 중단한다. 값이 출력되는 `docker compose config`, `env`, `printenv`, `docker inspect` 전체 출력으로 진단하지 않는다. `config --quiet`만 사용한다.
 
 GMS 키를 연결하는 배포에서는 현재 실행용 설정과 다음 배포 설정이 모두 `gms` 제공사와 기본 GMS 주소를 사용해야 한다. 배포 준비 단계에서 두 설정을 검사하고, 조건에 맞지 않으면 파일을 쓰기 전에 중단한다. 복구 시에도 현재 Credentials를 이전 설정과 함께 사용하므로 두 설정에 같은 조건을 적용한다. 설정 반영과 앱 배포·복구에서 Compose는 명시한 환경 파일에서 LLM 제공사·주소·키를 읽는다.
+
+백엔드 Agent도 같은 Credential을 사용한다. 배포 준비 시 `.env.config`에 Agent 설정이 없으면 `AXCORE_AGENT_LLM=openai`를 넣고, Compose는 백엔드 Agent를 기본 GMS 주소로 연결한다. Agent를 끄려면 일반 설정에 `AXCORE_AGENT_LLM=none`을 지정한다. 배포 후에는 Agent에 질문을 보내 실제 답변을 확인한다.
 
 GMS 키는 병합 전에 Jenkins에 `axcore-gms-api-key` Secret text로 등록한다. 예전 이름인 `AI_ONTOLOGY_GMS_API_KEY`에 값이 남아 있으면 준비 단계에서 중단한다. 병합 후 `FORCE_DEPLOY=true`로 배포하면 AI 폴더 변경이 없어도 AI가 배포 대상에 포함되며 backend와 frontend도 함께 배포 대상으로 잡힌다. 배포 후 AI 컨테이너에서 새 설정이 반영됐는지 확인한다. 원천 서버 자체의 관리자·조회 계정 비밀번호와 DB에 암호화 저장하는 원천 접속 정보는 이 메인 서버 전환과 구분한다.
 

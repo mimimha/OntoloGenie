@@ -79,6 +79,9 @@ services:
       SPRING_PROFILES_ACTIVE: api
       AXCORE_INTERNAL_API_TOKEN: ${AXCORE_INTERNAL_API_TOKEN:-}
       AXCORE_AI_BASE_URL: http://ai:8000
+      AXCORE_AGENT_LLM: ${AXCORE_AGENT_LLM:-none}
+      AXCORE_AGENT_LLM_API_KEY: ${AI_ONTOLOGY_LLM_API_KEY:-}
+      AXCORE_AGENT_LLM_BASE_URL: https://gms.ssafy.io/gmsapi/api.openai.com/v1
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       DB_USERNAME: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}

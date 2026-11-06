@@ -590,7 +590,7 @@ def waitForHttpHealth(List services) {
 }
 
 def deploymentCompose() {
-    return "env -u AI_ONTOLOGY_LLM_PROVIDER -u AI_ONTOLOGY_LLM_BASE_URL -u AI_ONTOLOGY_LLM_API_KEY docker compose --env-file '${env.DEPLOY_DIR}/.env' -f '${env.DEPLOY_DIR}/compose.yaml'"
+    return "env -u AI_ONTOLOGY_LLM_PROVIDER -u AI_ONTOLOGY_LLM_BASE_URL -u AI_ONTOLOGY_LLM_API_KEY -u AXCORE_AGENT_LLM docker compose --env-file '${env.DEPLOY_DIR}/.env' -f '${env.DEPLOY_DIR}/compose.yaml'"
 }
 
 def deployService(String svc, String tagVar, List companions = []) {

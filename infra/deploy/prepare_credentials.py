@@ -140,6 +140,8 @@ def plan(root, environment):
             # 복구 단계에서도 현재 Credentials를 이전 설정과 함께 사용한다.
             validate_gms_destination(old)
             validate_gms_destination(config)
+            if not config.get("AXCORE_AGENT_LLM"):
+                config["AXCORE_AGENT_LLM"] = "openai"
             for key in ("POSTGRES_DB", "POSTGRES_USER", "GRAFANA_ADMIN_USER"):
                 if not config.get(key):
                     raise ConfigurationError(f".env.config: {key}가 필요합니다.")

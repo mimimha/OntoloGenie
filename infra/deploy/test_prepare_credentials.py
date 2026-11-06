@@ -131,6 +131,24 @@ class CredentialPreparationTests(unittest.TestCase):
         with self.assertRaises(ConfigurationError):
             plan(self.root, self.environment)
 
+    @unittest.skipUnless(shutil.which("docker"), "Docker CLI가 필요합니다.")
+    def test_compose_enables_agent_with_shared_gms_key(self):
+        apply(self.root, self.environment)
+        compose = Path(__file__).resolve().parents[1] / "compose.yaml"
+        runtime = self.root / ".env"
+        environment = {key: value for key, value in os.environ.items() if key not in read_env(runtime)}
+        result = subprocess.run(
+            ["docker", "compose", "--env-file", str(runtime), "-f", str(compose), "config", "--format", "json"],
+            check=True, capture_output=True, text=True, encoding="utf-8", env=environment,
+        )
+        services = json.loads(result.stdout)["services"]
+        backend = services["backend"]["environment"]
+        self.assertEqual(backend["AXCORE_AGENT_LLM"], "openai")
+        self.assertEqual(backend["AXCORE_AGENT_LLM_API_KEY"], self.environment["DEPLOY_GMS_API_KEY"])
+        self.assertEqual(backend["AXCORE_AGENT_LLM_API_KEY"], services["ai"]["environment"]["AI_ONTOLOGY_LLM_API_KEY"])
+        self.assertEqual(backend["AXCORE_AGENT_LLM_BASE_URL"], "https://gms.ssafy.io/gmsapi/api.openai.com/v1")
+        self.assertNotIn("AXCORE_AGENT_LLM_API_KEY", services["batch"]["environment"])
+
     def test_unregistered_ai_key_is_not_discarded(self):
         self.values["AI_ONTOLOGY_GMS_API_KEY"] = "legacy-gms-test-only"
         self.write(".env", self.values)
