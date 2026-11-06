@@ -13,7 +13,7 @@ import com.axcore.platform.review.repository.ProposalItemRepository;
 import com.axcore.platform.review.repository.ProposalItemSpecifications;
 import com.axcore.platform.review.repository.ProposalLatestCheckRepository;
 import com.axcore.platform.review.repository.ProposalOptionRepository;
-import com.axcore.platform.review.repository.ProposalRevisionQueryRepository;
+import com.axcore.platform.review.repository.ProposalRevisionRepository;
 import com.axcore.platform.review.repository.ReviewDecisionRepository;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +33,7 @@ public class ProposalService {
     private final ProposalItemRepository proposalItemRepository;
     private final ProposalLatestCheckRepository proposalLatestCheckRepository;
     private final ProposalOptionRepository proposalOptionRepository;
-    private final ProposalRevisionQueryRepository proposalRevisionQueryRepository;
+    private final ProposalRevisionRepository proposalRevisionRepository;
     private final ReviewDecisionRepository reviewDecisionRepository;
 
     public ProposalResponse getProposal(long id) {
@@ -91,7 +91,7 @@ public class ProposalService {
                                                 Map.of("resource", "proposal_item", "id", id)));
 
         int targetRevision = revision == null ? proposal.getRevision() : revision;
-        if (!proposalOptionRepository.existsRevision(id, targetRevision)) {
+        if (!proposalRevisionRepository.existsByProposalItemIdAndRevision(id, targetRevision)) {
             throw new BusinessException(
                     CommonErrorCode.RESOURCE_NOT_FOUND,
                     Map.of(
@@ -114,7 +114,9 @@ public class ProposalService {
                     Map.of("resource", "proposal_item", "id", id));
         }
 
-        return proposalRevisionQueryRepository.findByProposalItemId(id, pageable);
+        return proposalRevisionRepository
+                .findByProposalItemIdOrderByRevisionAsc(id, pageable)
+                .map(ProposalRevisionResponse::from);
     }
 
     public Page<ProposalDecisionResponse> getDecisions(long id, Pageable pageable) {

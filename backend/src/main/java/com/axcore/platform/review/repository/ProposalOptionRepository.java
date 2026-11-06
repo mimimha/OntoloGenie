@@ -3,11 +3,12 @@ package com.axcore.platform.review.repository;
 import com.axcore.platform.review.domain.ProposalOption;
 import java.util.List;
 import java.util.Optional;
-import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
-import org.springframework.data.repository.query.Param;
 
+/** 선택지는 만든 뒤 바꾸지 않으므로 저장·조회 메서드만 연다. */
 public interface ProposalOptionRepository extends Repository<ProposalOption, Long> {
+
+    <S extends ProposalOption> List<S> saveAllAndFlush(Iterable<S> options);
 
     boolean existsByIdAndProposalItemIdAndRevision(long id, long proposalItemId, int revision);
 
@@ -16,16 +17,4 @@ public interface ProposalOptionRepository extends Repository<ProposalOption, Lon
 
     List<ProposalOption> findByProposalItemIdAndRevisionOrderByOptionNo(
             long proposalItemId, int revision);
-
-    @Query(
-            value =
-                    """
-                    select exists (
-                        select 1 from proposal_revision
-                        where proposal_item_id = :proposalItemId and revision = :revision
-                    )
-                    """,
-            nativeQuery = true)
-    boolean existsRevision(
-            @Param("proposalItemId") long proposalItemId, @Param("revision") int revision);
 }
