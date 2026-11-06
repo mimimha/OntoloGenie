@@ -24,6 +24,12 @@ public interface QueuedJobHandler<R> {
 
     void complete(long jobId, R result);
 
+    /**
+     * 작업이 FAILED가 된 트랜잭션 안에서 부른다. 작업 표에 딸린 행(예: sync_run_resource)을 함께 끝낼 때 쓴다. 작업 행이 RUNNING이 아니어서
+     * FAILED로 바꾸지 않았으면 부르지 않는다.
+     */
+    default void failed(long jobId, String errorMessage) {}
+
     /** 감사 기록 결과 줄의 result에 남길 요약. 건수 같은 값만 넣고 원천 행 값은 넣지 않는다. */
     default Map<String, Object> auditResult(R result) {
         return Map.of();

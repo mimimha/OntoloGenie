@@ -139,7 +139,10 @@ public class SourceCatalogRepository {
                             sync_strategy = excluded.sync_strategy,
                             loaded_lsn = case when excluded.sync_strategy = 'CDC'
                                                and source_resource.sync_strategy = 'CDC'
-                                              then source_resource.loaded_lsn end
+                                              then source_resource.loaded_lsn end,
+                            full_load_done_gen = case when excluded.sync_strategy = 'CDC'
+                                                       and source_resource.sync_strategy = 'CDC'
+                                                      then source_resource.full_load_done_gen end
                         returning id
                         """)
                 .param("dataSourceId", dataSourceId)

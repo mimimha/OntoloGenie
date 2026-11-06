@@ -67,6 +67,11 @@ axcore:
     ssl-mode: ${AXCORE_SOURCE_SSL_MODE:require}
     # Debezium 커넥터가 쓰는 원천 publication 이름(infra/cdc/connectors). 여기 든 표만 수집 방식을 CDC로 둔다.
     cdc-publication: ${AXCORE_SOURCE_CDC_PUBLICATION:axcore_cdc}
+  # 원천 테이블 전체 읽기(batch, Jira 197). 행을 메모리에 모두 올리므로 한 실행에서 읽는 행 수를 제한한다.
+  # 시간대 없는 timestamp 컬럼은 zone-id의 시각으로 보고 DATETIME 속성(시간대 포함)으로 바꾼다.
+  source-load:
+    max-rows: ${AXCORE_SOURCE_LOAD_MAX_ROWS:200000}
+    zone-id: ${AXCORE_SOURCE_LOAD_ZONE_ID:Asia/Seoul}
   # 끝나지 않고 남은 분석 실행을 FAILED로 정리하는 기준(batch, S15P31C106-273). QUEUED는 요청 시각, RUNNING은 시작 시각부터 잰다.
   # AI 분석 소요 시간 측정(S15P31C106-55) 전 임시값이며, RUNNING 기준은 최대 소요 시간보다 길게 둔다.
   analysis:

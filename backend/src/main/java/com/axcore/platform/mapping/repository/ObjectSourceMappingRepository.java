@@ -1,6 +1,7 @@
 package com.axcore.platform.mapping.repository;
 
 import com.axcore.platform.mapping.domain.ObjectSourceMapping;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -39,4 +40,7 @@ public interface ObjectSourceMappingRepository extends JpaRepository<ObjectSourc
             nativeQuery = true,
             value = "select exists(select 1 from object_instance where source_mapping_id = :id)")
     boolean hasObjects(@Param("id") Long id);
+
+    /** 한 원천 자원의 켜진 매핑. 전체 읽기(Jira 197)가 이 매핑으로 객체를 만든다. */
+    List<ObjectSourceMapping> findBySourceResourceIdAndActiveTrueOrderById(Long sourceResourceId);
 }
