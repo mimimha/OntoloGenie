@@ -5,7 +5,6 @@ import java.sql.Types;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -37,14 +36,6 @@ public class ReassignmentPlanRepository {
                 .param("count", count)
                 .query(Long.class)
                 .list();
-    }
-
-    /** Agent 질문 메시지가 속한 대화. 계획을 대화에 연결한다. */
-    public Optional<Long> conversationOf(long agentMessageId) {
-        return jdbc.sql("select conversation_id from agent_message where id = :id")
-                .param("id", agentMessageId)
-                .query(Long.class)
-                .optional();
     }
 
     public void insertPlan(
