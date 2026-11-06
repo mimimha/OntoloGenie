@@ -1,7 +1,9 @@
 package com.axcore.platform.issue.dto;
 
+import com.axcore.platform.issue.domain.Issue;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** API 065·066 정합성 문제. 없는 값도 null로 내보내 화면이 필드 유무를 따로 확인하지 않게 한다. */
@@ -25,4 +27,37 @@ public record IssueResponse(
         Instant forwardedAt,
         Long forwardedBy,
         Instant createdAt,
-        long rowVersion) {}
+        long rowVersion) {
+
+    public static IssueResponse from(Issue issue) {
+        return new IssueResponse(
+                issue.getId(),
+                issue.getIssueKind().name(),
+                issue.getStatus().name(),
+                issue.getDedupeKey(),
+                issue.getFailureReason(),
+                issue.getRawValue(),
+                issue.getTransformedValue(),
+                evidence(issue.getEvidence()),
+                issue.getObjectInstanceId(),
+                issue.getLinkMappingId(),
+                issue.getProposalItemId(),
+                issue.getHeldItemId(),
+                issue.getDetectedCheckRunId(),
+                issue.getResolvedCheckRunId(),
+                issue.getForwardedAt(),
+                issue.getForwardedBy(),
+                issue.getCreatedAt(),
+                issue.getRowVersion());
+    }
+
+    private static Map<String, Object> evidence(Map<String, Object> stored) {
+        // Entity의 근거를 바꾸지 않도록 복사본에 채운다.
+        Map<String, Object> evidence = new LinkedHashMap<>(stored);
+        // 원인 확인 여부를 남기지 않은 근거는 원인 미확정으로 본다(FN-ISS-02).
+        if (!(evidence.get("causeConfirmed") instanceof Boolean)) {
+            evidence.put("causeConfirmed", false);
+        }
+        return evidence;
+    }
+}

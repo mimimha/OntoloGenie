@@ -4,29 +4,25 @@ import com.axcore.platform.issue.domain.IssueStatus;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-/** 문제 상태 변경에 필요한 잠금·재검증 확인·갱신. */
+/**
+ * 문제 상태 변경에 필요한 재검증 확인과 처리 이력 저장. 문제 행의 잠금·상태 변경은 {@link IssueRepository}와 Entity가 맡는다.
+ *
+ * <ul>
+ *   <li>재검증 확인 세 메서드: 다른 도메인 테이블(check_run)과 issue_verification·issue_history를 한 번의 SQL로 join·검사하는
+ *       조회다.
+ *   <li>{@link #insertHistory}: Entity를 두지 않은 issue_history의 저장이다. 문제 등록 이력({@code
+ *       IssueWriteRepository})과 같은 방식을 따른다.
+ * </ul>
+ */
 @Repository
 @RequiredArgsConstructor
 public class IssueStatusRepository {
 
     private final JdbcClient jdbc;
-
-    /** 상태를 바꾸는 동안 다른 변경이 끼어들지 않도록 문제 행을 잠근다. */
-    public Optional<LockedIssue> lock(long issueId) {
-        return jdbc.sql("select status, row_version from issue where id = :id for update")
-                .param("id", issueId)
-                .query(
-                        (rs, rowNum) ->
-                                new LockedIssue(
-                                        IssueStatus.valueOf(rs.getString("status")),
-                                        rs.getLong("row_version")))
-                .optional();
-    }
 
     /**
      * 해결 근거로 쓸 수 있는 재검증인지 확인한다.
@@ -111,25 +107,6 @@ public class IssueStatusRepository {
                 .orElse(false);
     }
 
-    public void updateStatus(
-            long issueId, IssueStatus status, Long resolvedCheckRunId, Instant now) {
-        jdbc.sql(
-                        """
-                        update issue
-                        set status = :status,
-                            resolved_check_run_id = :runId,
-                            resolved_outcome = case when :runId is null then null else 'PASSED' end,
-                            row_version = row_version + 1,
-                            updated_at = :now
-                        where id = :id
-                        """)
-                .param("status", status.name())
-                .param("runId", resolvedCheckRunId, Types.BIGINT)
-                .param("now", Timestamp.from(now))
-                .param("id", issueId)
-                .update();
-    }
-
     public void insertHistory(
             long issueId,
             IssueStatus from,
@@ -154,6 +131,4 @@ public class IssueStatusRepository {
                 .param("now", Timestamp.from(now))
                 .update();
     }
-
-    public record LockedIssue(IssueStatus status, long rowVersion) {}
 }
