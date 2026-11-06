@@ -774,7 +774,7 @@ SQL 문자열 속 컬럼 이름은 컴파일러가 확인하지 못한다. 이�
 - Entity를 두지 않는 테이블
   - 작업 테이블: `sync_run`, `check_run`, `source_connection_check`, `source_preview`(`QueuedJobType`의 테이블), `sync_run`의 하위 테이블 `sync_run_resource`, `analysis_run`과 그 하위 테이블 `analysis_run_target`. 배치와 API가 상태를 함께 바꾸므로 SQL로 다룬다. `check_result`는 작업 테이블이 아니다(Entity 있음).
   - 비밀값 테이블: `data_source_credential`. toString·로그·감사 기록으로 새어 나가지 않게 Entity로 만들지 않는다.
-  - 그 밖에 아직 Entity가 없는 테이블(`object_instance`, `issue` 등)은 그 테이블을 다루는 기존 Repository 방식을 따른다. 새 Entity를 만들려면 담당 도메인과 정한다.
+  - 그 밖에 아직 Entity가 없는 테이블(`object_instance` 등)은 그 테이블을 다루는 기존 Repository 방식을 따른다. 새 Entity를 만들려면 담당 도메인과 정한다.
 - 다른 도메인이 소유한 테이블은 그 도메인의 Repository나 Service로 읽는다.
   - 다만 한 번의 SQL로 끝내야 하는 join·존재 검사는 SQL로 직접 읽을 수 있다.
   - 이때 다른 도메인 테이블은 읽기만 한다. 바꾸는 일은 그 도메인의 Service로 한다.

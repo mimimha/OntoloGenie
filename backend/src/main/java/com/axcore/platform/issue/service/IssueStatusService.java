@@ -2,13 +2,13 @@ package com.axcore.platform.issue.service;
 
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
+import com.axcore.platform.issue.domain.Issue;
 import com.axcore.platform.issue.domain.IssueErrorCode;
 import com.axcore.platform.issue.domain.IssueStatus;
 import com.axcore.platform.issue.dto.IssueResponse;
 import com.axcore.platform.issue.dto.IssueStatusChangeRequest;
-import com.axcore.platform.issue.repository.IssueQueryRepository;
+import com.axcore.platform.issue.repository.IssueRepository;
 import com.axcore.platform.issue.repository.IssueStatusRepository;
-import com.axcore.platform.issue.repository.IssueStatusRepository.LockedIssue;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
@@ -21,13 +21,16 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>해결은 재검증을 통과한 기록이 있을 때 관리자가 바꾼다. 재검증이 통과해도 자동으로 해결하지 않는다. 재검증이 실패하면 검사가 확인중으로 되돌린다({@link
  * #reopenAfterFailedReverification}).
+ *
+ * <p>문제 행은 잠근 Entity로 바꾸고 rowVersion은 {@code @Version}이 한 번 올린다. 처리 이력은 JdbcClient로 넣으므로, 바꾼 뒤 바로
+ * flush해 같은 트랜잭션의 SQL(이력 저장, 뒤에 이어지는 검사 SQL)이 바뀐 행을 보게 한다. 응답의 rowVersion도 flush 뒤 값이다.
  */
 @Service
 @RequiredArgsConstructor
 public class IssueStatusService {
 
+    private final IssueRepository issueRepository;
     private final IssueStatusRepository issueStatusRepository;
-    private final IssueQueryRepository issueQueryRepository;
     private final Clock clock;
 
     @Transactional
@@ -35,32 +38,33 @@ public class IssueStatusService {
         IssueStatus target = IssueStatus.valueOf(request.status());
         requireRunOnlyForResolution(target, request.resolvedCheckRunId());
 
-        LockedIssue issue =
-                issueStatusRepository
-                        .lock(issueId)
+        Issue issue =
+                issueRepository
+                        .findForUpdate(issueId)
                         .orElseThrow(
                                 () ->
                                         new BusinessException(
                                                 CommonErrorCode.RESOURCE_NOT_FOUND,
                                                 Map.of("resource", "issue")));
-        if (issue.rowVersion() != request.rowVersion()) {
+        if (issue.getRowVersion() != request.rowVersion()) {
             throw new BusinessException(
                     CommonErrorCode.VERSION_CONFLICT,
                     Map.of(
                             "field", "rowVersion",
                             "expected", request.rowVersion(),
-                            "actual", issue.rowVersion()));
+                            "actual", issue.getRowVersion()));
         }
-        if (!issue.status().canMoveTo(target)) {
+        IssueStatus from = issue.getStatus();
+        if (!from.canMoveTo(target)) {
             throw new BusinessException(
                     IssueErrorCode.INVALID_STATUS_TRANSITION,
                     Map.of(
                             "currentStatus",
-                            issue.status().name(),
+                            from.name(),
                             "requestedStatus",
                             target.name(),
                             "allowedStatuses",
-                            issue.status().nextStatuses().stream().map(Enum::name).toList()));
+                            from.nextStatuses().stream().map(Enum::name).toList()));
         }
         if (target == IssueStatus.RESOLVED
                 && !issueStatusRepository.isUsableReverification(
@@ -74,16 +78,21 @@ public class IssueStatusService {
         }
 
         Instant now = Instant.now(clock);
-        issueStatusRepository.updateStatus(issueId, target, request.resolvedCheckRunId(), now);
+        if (target == IssueStatus.RESOLVED) {
+            issue.resolve(request.resolvedCheckRunId());
+        } else {
+            issue.moveTo(target);
+        }
+        issueRepository.flush();
         issueStatusRepository.insertHistory(
                 issueId,
-                issue.status(),
+                from,
                 target,
                 request.reason(),
                 request.resolvedCheckRunId(),
                 accountId,
                 now);
-        return issueQueryRepository.findById(issueId).orElseThrow();
+        return IssueResponse.from(issue);
     }
 
     /**
@@ -96,6 +105,9 @@ public class IssueStatusService {
      *   <li>재검증이 조치완료 표시 전에 시작했다. 고치기 전 자료를 읽은 결과라 되돌릴 근거가 아니다.
      * </ul>
      *
+     * <p>호출 조건: 같은 트랜잭션에서 이 메서드보다 먼저 Issue Entity를 읽었거나 issue 행을 SQL로 바꿨다면, 부르기 전에 flush하고 영속성
+     * 컨텍스트를 비운다(clear). 그렇지 않으면 아래 잠금 조회가 DB를 다시 읽지 않고 이미 들고 있는 옛 값을 돌려준다(개발 가이드 9.3).
+     *
      * @return 확인중으로 되돌렸으면 true
      * @throws IllegalStateException 이 재검증에 이 문제의 FAILED 기록이 없으면(호출 순서 오류)
      */
@@ -105,17 +117,18 @@ public class IssueStatusService {
             throw new IllegalStateException(
                     "재검증 FAILED 기록이 없습니다: issueId=" + issueId + ", checkRunId=" + checkRunId);
         }
-        LockedIssue issue =
-                issueStatusRepository
-                        .lock(issueId)
+        Issue issue =
+                issueRepository
+                        .findForUpdate(issueId)
                         .orElseThrow(() -> new IllegalStateException("문제가 없습니다: " + issueId));
-        if (issue.status() != IssueStatus.FIXED_PENDING_REVERIFY
+        if (issue.getStatus() != IssueStatus.FIXED_PENDING_REVERIFY
                 || !issueStatusRepository.startedAfterLastFix(issueId, checkRunId)) {
             return false;
         }
 
         Instant now = Instant.now(clock);
-        issueStatusRepository.updateStatus(issueId, IssueStatus.CHECKING, null, now);
+        issue.moveTo(IssueStatus.CHECKING);
+        issueRepository.flush();
         issueStatusRepository.insertHistory(
                 issueId,
                 IssueStatus.FIXED_PENDING_REVERIFY,
