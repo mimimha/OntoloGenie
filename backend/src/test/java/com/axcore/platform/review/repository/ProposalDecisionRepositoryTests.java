@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.axcore.platform.TestcontainersConfiguration;
 import com.axcore.platform.review.DecisionHistoryFixtures;
 import com.axcore.platform.review.domain.ProposalItem;
+import com.axcore.platform.review.domain.ReviewDecision;
 import com.axcore.platform.review.dto.ProposalDecisionRequest;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,9 +20,9 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 @DataJpaTest
-@Import({TestcontainersConfiguration.class, ProposalDecisionWriteRepository.class})
+@Import(TestcontainersConfiguration.class)
 class ProposalDecisionRepositoryTests {
-    @Autowired ProposalDecisionWriteRepository repository;
+    @Autowired ReviewDecisionRepository repository;
     @Autowired ProposalItemRepository items;
     @Autowired JdbcClient jdbc;
     private DecisionHistoryFixtures data;
@@ -42,7 +43,7 @@ class ProposalDecisionRepositoryTests {
         long option = data.option(proposal, 1);
         ProposalItem item = items.findById(proposal).orElseThrow();
         long id =
-                repository.insert(
+                insert(
                         item,
                         new ProposalDecisionRequest(1, decision, option, " 판단 근거 보존 "),
                         account,
@@ -69,13 +70,13 @@ class ProposalDecisionRepositoryTests {
     void storesNullOptionAndAppendsWithoutOverwritingTheEarlierDecision() {
         ProposalItem item = items.findById(proposal).orElseThrow();
         long first =
-                repository.insert(
+                insert(
                         item,
                         new ProposalDecisionRequest(1, "HOLD", null, "첫 번째 사유"),
                         account,
                         DECIDED_AT);
         long second =
-                repository.insert(
+                insert(
                         item,
                         new ProposalDecisionRequest(1, "REJECT", null, "두 번째 사유"),
                         account,
@@ -100,7 +101,7 @@ class ProposalDecisionRepositoryTests {
     void keepsTheDecidedRevisionAfterTheCandidateChanges() {
         ProposalItem item = items.findById(proposal).orElseThrow();
         long id =
-                repository.insert(
+                insert(
                         item,
                         new ProposalDecisionRequest(1, "HOLD", null, "원래 개정본 판단"),
                         account,
@@ -121,7 +122,7 @@ class ProposalDecisionRepositoryTests {
         ProposalItem item = items.findById(proposal).orElseThrow();
         assertThatThrownBy(
                         () ->
-                                repository.insert(
+                                insert(
                                         item,
                                         new ProposalDecisionRequest(1, "HOLD", option, "잘못된 선택지"),
                                         account,
@@ -139,11 +140,25 @@ class ProposalDecisionRepositoryTests {
         assertThat(option).isNotEqualTo(oldOption);
         assertThatThrownBy(
                         () ->
-                                repository.insert(
+                                insert(
                                         item,
                                         new ProposalDecisionRequest(2, "HOLD", oldOption, "과거 선택지"),
                                         account,
                                         DECIDED_AT))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private long insert(
+            ProposalItem item, ProposalDecisionRequest request, long decidedBy, Instant decidedAt) {
+        return repository
+                .saveAndFlush(
+                        ReviewDecision.record(
+                                item,
+                                request.decision(),
+                                request.selectedOptionId(),
+                                request.reason(),
+                                decidedBy,
+                                decidedAt))
+                .getId();
     }
 }

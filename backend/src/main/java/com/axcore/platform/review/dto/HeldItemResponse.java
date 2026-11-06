@@ -1,5 +1,6 @@
 package com.axcore.platform.review.dto;
 
+import com.axcore.platform.review.domain.HeldItem;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 
@@ -19,4 +20,24 @@ public record HeldItemResponse(
         Long resolvedBy,
         Instant resolvedAt,
         String resolutionNote,
-        Instant createdAt) {}
+        Instant createdAt) {
+
+    public static HeldItemResponse from(HeldItem item) {
+        return new HeldItemResponse(
+                item.getId(),
+                item.getProposalItemId(),
+                item.getLinkMappingId(),
+                item.getSourceObjectId(),
+                item.getLinkTypeId(),
+                item.getStatus(),
+                item.getRawValue(),
+                item.getTransformedValue(),
+                item.getHoldReason(),
+                item.getResolvedLinkId(),
+                item.getResolvedSyncRunId(),
+                item.getResolvedBy(),
+                item.getResolvedAt(),
+                item.getResolutionNote(),
+                item.getCreatedAt());
+    }
+}
