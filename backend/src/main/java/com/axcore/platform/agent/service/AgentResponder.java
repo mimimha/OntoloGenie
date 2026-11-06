@@ -4,6 +4,7 @@ import com.axcore.platform.audit.service.AuditExecutionQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,12 @@ public class AgentResponder {
             - Action 도구가 BLOCKED나 NOT_RUN을 돌려주면 실행되지 않았다고 말하고 이유를 그대로 전한다.
             """;
 
+    /**
+     * GMS의 gpt-6-luna는 함수 도구와 추론 옵션을 함께 보내면 400으로 거절한다. 도구를 쓰는 이 요청에만 추론을 끈다고 명시한다(배포 확인
+     * 2026-11-06). 도구가 없는 질문 해석 요청(QuestionInterpreter)에는 넣지 않는다.
+     */
+    static final String NO_REASONING = "none";
+
     private final ObjectProvider<ChatModel> chatModels;
     private final AuditExecutionQueryService executions;
     private final AgentActionTools actionTools;
@@ -41,6 +48,7 @@ public class AgentResponder {
                         .prompt()
                         .system(SYSTEM_PROMPT)
                         .user(userPrompt(question, interpretation))
+                        .options(OpenAiChatOptions.builder().reasoningEffort(NO_REASONING))
                         .tools(
                                 new AgentQueryTools(session, executions),
                                 actionTools.forAnswer(session.asker(), session.questionId()))
