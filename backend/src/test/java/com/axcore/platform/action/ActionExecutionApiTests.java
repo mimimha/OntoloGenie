@@ -2,6 +2,8 @@ package com.axcore.platform.action;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.hasItem;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -355,6 +357,161 @@ class ActionExecutionApiTests {
 
         assertBlocked(
                 planner, singleItem(UUID.randomUUID(), s4.p103, "30", s4.p101), "30 공정은 이미 끝났습니다");
+    }
+
+    // ---------------------------------------------------------------- 통합 검증(Jira 242)
+    // 실제 091 실행 결과가 결과 조회(092)·계획 조회(094·095)·감사(096~098)·객체별 이력(080)에서 같은 기록으로 보이는지 확인한다.
+    // 각 조회 API의 세부 규칙은 ReassignmentPlanQueryApiTests(SQL로 넣은 계획)와
+    // AuditExecutionApiTests(AuditRecorder로 남긴 기록)가
+    // 따로 확인한다.
+
+    @Test
+    void webPlanIsTheSameRecordAcrossResultPlanAuditAndObjectHistory() throws Exception {
+        TestAccount plannerAccount = createAccount("PLANNER");
+        LoginSession planner = login(plannerAccount);
+        LoginSession admin = login(createAccount("ADMIN"));
+        String sourceBefore = sourceObjectsOf();
+
+        MvcResult result =
+                execute(
+                                PLAN,
+                                planner,
+                                body(
+                                        UUID.randomUUID(),
+                                        s4.p103,
+                                        """
+                                        [{"workOrderId": %d, "operationCode": "20", "toEquipmentId": %d},
+                                         {"workOrderId": %d, "operationCode": "30", "toEquipmentId": %d}]
+                                        """
+                                                .formatted(s4.order, s4.p101, s4.order, s4.p101)))
+                        .andExpect(jsonPath("$.data.status").value("SUCCEEDED"))
+                        .andReturn();
+        long executionId = longAt(result, "id");
+        long planId = longAt(result, "planId");
+
+        // 092: 실행자 본인이 결과와 바뀐 행을 본다.
+        mockMvc.perform(get("/api/v1/action-executions/" + executionId).cookie(planner.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.result.planId").value(planId))
+                .andExpect(jsonPath("$.data.entityChanges.length()").value(3));
+        // 094·095: 계획이 이 실행을 가리키고 항목이 둘이다.
+        mockMvc.perform(get("/api/v1/reassignment-plans/" + planId).cookie(planner.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.actionExecutionId").value(executionId))
+                .andExpect(jsonPath("$.data.fromEquipmentId").value(s4.p103))
+                .andExpect(jsonPath("$.data.createdBy").value(plannerAccount.id()))
+                .andExpect(jsonPath("$.data.agentConversationId").doesNotExist())
+                .andExpect(jsonPath("$.data.items.length()").value(2));
+        mockMvc.perform(
+                        get("/api/v1/reassignment-plans/" + planId + "/items")
+                                .cookie(planner.session()))
+                .andExpect(jsonPath("$.data[*].toEquipmentId", hasItem((int) s4.p101)));
+        // 096~098: 관리자가 같은 기록을 목록·상세·변경 전후로 본다.
+        mockMvc.perform(
+                        get("/api/v1/audit/actions")
+                                .cookie(admin.session())
+                                .param("actorId", String.valueOf(plannerAccount.id()))
+                                .param("actionCode", "CREATE_REASSIGNMENT_PLAN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(executionId))
+                .andExpect(jsonPath("$.data[0].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data[0].entryPoint").value("WEB"))
+                .andExpect(jsonPath("$.data[0].checkedPermissionCode").value("PLAN_CREATE"));
+        mockMvc.perform(get("/api/v1/audit/actions/" + executionId).cookie(admin.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.actorType").value("USER"))
+                .andExpect(jsonPath("$.data.targetId").value(s4.p103))
+                .andExpect(jsonPath("$.data.result.planId").value(planId));
+        mockMvc.perform(
+                        get("/api/v1/audit/actions/" + executionId + "/changes")
+                                .cookie(admin.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.entityChanges.length()").value(3))
+                .andExpect(jsonPath("$.data.entityChanges[0].tableName").value("reassignment_plan"))
+                .andExpect(jsonPath("$.data.entityChanges[0].rowKey.id").value(planId))
+                .andExpect(jsonPath("$.data.entityChanges[0].afterData.status").value("CREATED"));
+        // 080: 정지 설비의 실행 이력에서 이 계획 실행을 찾는다.
+        mockMvc.perform(get("/api/v1/objects/" + s4.p103 + "/executions").cookie(planner.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].id", hasItem((int) executionId)));
+        // 원천에서 온 설비·작업지시·공정 객체는 그대로다(결정 O3).
+        assertThat(sourceObjectsOf()).isEqualTo(sourceBefore);
+    }
+
+    @Test
+    void agentPlanIsRecordedAsAgentAndLinkedToConversation() throws Exception {
+        TestAccount plannerAccount = createAccount("PLANNER");
+        long messageId = createAgentMessage(plannerAccount.id());
+        long conversationId = conversationOf(messageId);
+        LoginSession admin = login(createAccount("ADMIN"));
+
+        ActionExecutionResponse response =
+                actionExecutionService.execute(
+                        agentCommand(plannerAccount, UUID.randomUUID(), s4.p101, messageId));
+        long planId = ((Number) response.result().get("planId")).longValue();
+
+        mockMvc.perform(get("/api/v1/reassignment-plans/" + planId).cookie(admin.session()))
+                .andExpect(jsonPath("$.data.actionExecutionId").value(response.id()))
+                .andExpect(jsonPath("$.data.agentConversationId").value(conversationId));
+        mockMvc.perform(
+                        get("/api/v1/audit/actions")
+                                .cookie(admin.session())
+                                .param("actorId", String.valueOf(plannerAccount.id()))
+                                .param("entryPoint", "AGENT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(response.id()))
+                .andExpect(jsonPath("$.data[0].actorType").value("AGENT"))
+                .andExpect(jsonPath("$.data[0].status").value("SUCCEEDED"));
+    }
+
+    @Test
+    void blockedRunsLeaveAuditOnlyAndReplayDoesNotRecordAgain() throws Exception {
+        TestAccount viewerAccount = createAccount("VIEWER");
+        TestAccount plannerAccount = createAccount("PLANNER");
+        LoginSession admin = login(createAccount("ADMIN"));
+        UUID viewerRequest = UUID.randomUUID();
+        String sourceBefore = sourceObjectsOf();
+
+        // 권한 없음(관문)과 업무 조건(300톤 설비)으로 각각 막힌다.
+        MvcResult byPermission =
+                execute(
+                                PLAN,
+                                login(viewerAccount),
+                                singleItem(viewerRequest, s4.p103, "20", s4.p101))
+                        .andExpect(jsonPath("$.data.status").value("BLOCKED"))
+                        .andReturn();
+        MvcResult byBusinessRule =
+                execute(
+                                PLAN,
+                                login(plannerAccount),
+                                singleItem(UUID.randomUUID(), s4.p103, "20", s4.p201))
+                        .andExpect(jsonPath("$.data.status").value("BLOCKED"))
+                        .andReturn();
+        long permissionRun = longAt(byPermission, "id");
+        long businessRun = longAt(byBusinessRule, "id");
+        // 같은 requestId로 다시 보내면 같은 기록을 돌려주고 새로 남기지 않는다.
+        execute(PLAN, login(viewerAccount), singleItem(viewerRequest, s4.p103, "20", s4.p101))
+                .andExpect(jsonPath("$.data.id").value(permissionRun));
+
+        assertThat(executionsOf(viewerAccount.id())).isOne();
+        // 정지 설비 P103은 이 테스트에서만 쓰므로, 막힌 실행이 계획을 하나라도 남겼다면 여기서 보인다.
+        assertThat(plansFrom(s4.p103)).isZero();
+        assertThat(sourceObjectsOf()).isEqualTo(sourceBefore);
+        mockMvc.perform(get("/api/v1/audit/actions/" + permissionRun).cookie(admin.session()))
+                .andExpect(jsonPath("$.data.status").value("BLOCKED"))
+                .andExpect(jsonPath("$.data.blockedReason").value("PLAN_CREATE 권한이 없습니다."))
+                .andExpect(jsonPath("$.data.entityChanges.length()").value(0));
+        mockMvc.perform(get("/api/v1/audit/actions/" + businessRun).cookie(admin.session()))
+                .andExpect(jsonPath("$.data.status").value("BLOCKED"))
+                .andExpect(jsonPath("$.data.entityChanges.length()").value(0));
+        mockMvc.perform(
+                        get("/api/v1/objects/" + s4.p103 + "/executions")
+                                .cookie(admin.session())
+                                .param("status", "BLOCKED"))
+                .andExpect(jsonPath("$.data[*].id", hasItem((int) permissionRun)))
+                .andExpect(jsonPath("$.data[*].id", hasItem((int) businessRun)));
     }
 
     // ---------------------------------------------------------------- 실행 전 차단
@@ -978,6 +1135,14 @@ class ActionExecutionApiTests {
         return jdbcClient
                 .sql("select count(*) from action_execution where actor_id = :id")
                 .param("id", actorId)
+                .query(Long.class)
+                .single();
+    }
+
+    private long plansFrom(long fromEquipmentId) {
+        return jdbcClient
+                .sql("select count(*) from reassignment_plan where from_equipment_id = :id")
+                .param("id", fromEquipmentId)
                 .query(Long.class)
                 .single();
     }
