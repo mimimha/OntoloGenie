@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useLocation, useNavigate } from 'react-router'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import ChatComposer from './ChatComposer'
 import MessageItem from './MessageItem'
 import { fetchMessages, sendQuestion } from './api'
 import { NEW_CONVERSATION_TITLE } from './labels'
-import type { AgentConversation } from './types'
+import type { AgentConversation, AgentEntryState } from './types'
 
 // 처리 중인 답변이 있으면 이 간격으로 084를 다시 읽는다(정책 문서 3.3).
 const POLL_INTERVAL_MS = 1500
@@ -15,6 +16,11 @@ function ConversationPanel({
   conversation: AgentConversation
 }) {
   const queryClient = useQueryClient()
+  const location = useLocation()
+  const navigate = useNavigate()
+  // Explorer의 [질문하기]로 이 대화에 들어왔으면 그 객체를 첫 질문에만 함께 보낸다(152).
+  const entry = location.state as AgentEntryState | null
+  const reference = entry?.conversationId === conversation.id ? entry : null
 
   const messagesQuery = useQuery({
     queryKey: ['agent', 'messages', conversation.id],
@@ -26,7 +32,13 @@ function ConversationPanel({
   })
 
   const sendMutation = useMutation({
-    mutationFn: (content: string) => sendQuestion(conversation.id, { content }),
+    mutationFn: (content: string) =>
+      sendQuestion(
+        conversation.id,
+        reference
+          ? { content, referenceObjectIds: [reference.referenceObjectId] }
+          : { content },
+      ),
     onSuccess: () => {
       // 접수된 질문과 처리 중 답변을 다시 읽고, 첫 질문이면 바뀐 제목도 목록에 반영한다.
       void queryClient.invalidateQueries({
@@ -35,6 +47,12 @@ function ConversationPanel({
       void queryClient.invalidateQueries({
         queryKey: ['agent', 'conversations'],
       })
+      if (reference) {
+        void navigate(`${location.pathname}${location.search}`, {
+          replace: true,
+          state: null,
+        })
+      }
     },
   })
 
@@ -87,6 +105,7 @@ function ConversationPanel({
         </div>
       )}
       <ChatComposer
+        initialDraft={reference?.draft}
         disabled={running || sendMutation.isPending}
         onSend={handleSend}
       />

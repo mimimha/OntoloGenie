@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, expect, test } from 'vitest'
 import { resetAgentMocks } from '../../mocks/agentHandlers'
+import { server } from '../../mocks/node'
 import AgentPage from './AgentPage'
 
 afterEach(() => {
@@ -105,4 +106,60 @@ test('새 대화를 만들면 목록에 추가하고 그 대화를 연다', asyn
   expect(
     within(list).getByRole('button', { name: '새 대화', pressed: true }),
   ).toBeInTheDocument()
+})
+
+test('객체에서 들어오면 질문을 미리 채우고 첫 질문에 그 객체를 함께 보낸다', async () => {
+  const user = userEvent.setup()
+  const bodies: unknown[] = []
+  server.events.on('request:start', ({ request }) => {
+    if (
+      request.method === 'POST' &&
+      request.url.endsWith('/agent/conversations/2/messages')
+    ) {
+      void request
+        .clone()
+        .json()
+        .then((body) => bodies.push(body))
+    }
+  })
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/agent',
+            search: '?conversation=2',
+            state: {
+              conversationId: 2,
+              referenceObjectId: 301,
+              draft: '프레스 3호기에 연결된 업무 정보를 알려줘',
+            },
+          },
+        ]}
+      >
+        <Routes>
+          <Route path="/agent" element={<AgentPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+
+  expect(await screen.findByLabelText('업무 질문')).toHaveValue(
+    '프레스 3호기에 연결된 업무 정보를 알려줘',
+  )
+  await user.click(screen.getByRole('button', { name: '보내기 ↑' }))
+
+  await waitFor(() =>
+    expect(bodies).toEqual([
+      {
+        content: '프레스 3호기에 연결된 업무 정보를 알려줘',
+        referenceObjectIds: [301],
+      },
+    ]),
+  )
+  server.events.removeAllListeners()
 })

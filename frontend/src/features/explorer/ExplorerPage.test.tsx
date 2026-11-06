@@ -2,10 +2,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { expect, test } from 'vitest'
 import { server } from '../../mocks/node'
 import ExplorerPage from './ExplorerPage'
+import type { AgentEntryState } from '../agent/types'
 
 function renderExplorerPage() {
   render(
@@ -571,4 +572,41 @@ test('검색하면 첫 페이지로 돌아간다', async () => {
   await user.click(screen.getByRole('button', { name: '검색' }))
 
   expect(await screen.findByText('1 / 2쪽 · 25건')).toBeInTheDocument()
+})
+
+function AgentEntryProbe() {
+  const location = useLocation()
+  const entry = location.state as AgentEntryState
+  return (
+    <div>
+      <p>{location.search}</p>
+      <p>{`${entry.referenceObjectId} · ${entry.draft}`}</p>
+    </div>
+  )
+}
+
+test('객체 상세의 질문하기는 새 대화를 만들어 그 객체로 질문을 시작한다', async () => {
+  const user = userEvent.setup()
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <MemoryRouter initialEntries={['/explorer']}>
+        <Routes>
+          <Route path="/explorer" element={<ExplorerPage />} />
+          <Route path="/agent" element={<AgentEntryProbe />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+
+  await user.click(await screen.findByRole('button', { name: /프레스 3호기/ }))
+  await user.click(await screen.findByRole('button', { name: '질문하기' }))
+
+  expect(await screen.findByText(/^\?conversation=\d+$/)).toBeInTheDocument()
+  expect(
+    screen.getByText('301 · 프레스 3호기에 연결된 업무 정보를 알려줘'),
+  ).toBeInTheDocument()
 })

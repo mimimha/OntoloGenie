@@ -1,10 +1,14 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
+import Button from '../../components/Button'
+import { createConversation } from '../agent/api'
+import type { AgentConversation, AgentEntryState } from '../agent/types'
 import { fetchObject } from './api'
 import EvidenceDialog from './EvidenceDialog'
 import { formatObjectCode, formatPropertyValue } from './format'
 import { statusLabels } from './labels'
+import type { ObjectInstanceDetail } from './types'
 
 function formatDateTime(value: string | null | undefined) {
   if (!value) {
@@ -31,6 +35,8 @@ type ObjectDetailContentProps = {
 
 function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
   const [evidenceOpen, setEvidenceOpen] = useState(false)
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const {
     data: object,
     isPending,
@@ -39,6 +45,27 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
   } = useQuery({
     queryKey: ['objects', objectId],
     queryFn: () => fetchObject(objectId),
+  })
+
+  // [질문하기]: 새 대화를 만들고, 이 객체와 미리 채울 질문을 들고 대화 화면으로 간다(152).
+  const askMutation = useMutation<
+    AgentConversation,
+    Error,
+    ObjectInstanceDetail
+  >({
+    mutationFn: () => createConversation(),
+    onSuccess: (created, target) => {
+      queryClient.setQueryData<AgentConversation[]>(
+        ['agent', 'conversations'],
+        (previous) => [created, ...(previous ?? [])],
+      )
+      const entry: AgentEntryState = {
+        conversationId: created.id,
+        referenceObjectId: target.id,
+        draft: `${target.displayName}에 연결된 업무 정보를 알려줘`,
+      }
+      void navigate(`/agent?conversation=${created.id}`, { state: entry })
+    },
   })
 
   if (isPending) {
@@ -57,9 +84,21 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
 
   return (
     <div>
-      <p className="text-sm text-slate-500">
-        {object.objectTypeName} / {formatObjectCode(object.id)}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-slate-500">
+          {object.objectTypeName} / {formatObjectCode(object.id)}
+        </p>
+        <Button
+          variant="secondary"
+          disabled={askMutation.isPending}
+          onClick={() => askMutation.mutate(object)}
+        >
+          질문하기
+        </Button>
+      </div>
+      {askMutation.isError && (
+        <p className="mt-1 text-sm text-red-600">대화를 만들지 못했어요.</p>
+      )}
       <h2 className="mt-1 text-lg font-semibold text-slate-900">
         {object.displayName}
       </h2>
