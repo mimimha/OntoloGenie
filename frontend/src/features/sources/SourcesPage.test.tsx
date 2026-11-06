@@ -30,6 +30,57 @@ function renderSourcesPage(path = '/admin/sources') {
   )
 }
 
+test.each(['CDC', 'FULL_COMPARE'] as const)(
+  '수집 주기 설정은 FULL_COMPARE 자원이 있을 때만 표시한다 (%s)',
+  async (strategy) => {
+    server.use(
+      http.get('/api/v1/sources/:id/resources', ({ params, request }) => {
+        const page = Number(new URL(request.url).searchParams.get('page'))
+        return HttpResponse.json({
+          data: [
+            {
+              id: page + 1,
+              dataSourceId: Number(params.id),
+              resourceKey: page ? 'target_view' : 'cdc_table',
+              resourceKind: page ? 'VIEW' : 'TABLE',
+              isReadable: true,
+              sourceMetadata: {},
+              syncStrategy: page ? strategy : 'CDC',
+            },
+          ],
+          meta: { page, size: 200, totalElements: 2, hasNext: page === 0 },
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    renderSourcesPage('/admin/sources?tab=scope')
+    await screen.findByText('target_view')
+    if (strategy === 'CDC') {
+      expect(
+        screen.queryByRole('region', { name: '자동 수집 주기' }),
+      ).not.toBeInTheDocument()
+      return
+    }
+    const schedule = within(
+      screen.getByRole('region', { name: '자동 수집 주기' }),
+    )
+    const enabled = schedule.getByRole('checkbox', {
+      name: '자동 수집 사용',
+    }) as HTMLInputElement
+    if (!enabled.checked) await user.click(enabled)
+    const interval = schedule.getByRole('spinbutton', { name: '수집 주기(분)' })
+    await user.clear(interval)
+    await user.type(interval, '0')
+    expect(interval).toHaveAttribute('aria-invalid', 'true')
+    await user.clear(interval)
+    await user.type(interval, '15')
+    expect(interval).toHaveAttribute('aria-invalid', 'false')
+    expect(
+      schedule.getByRole('button', { name: '수집 주기 저장' }),
+    ).toBeDisabled()
+  },
+)
+
 function checkResult(overrides: Partial<ConnectionCheck>): ConnectionCheck {
   return {
     checkId: 101,

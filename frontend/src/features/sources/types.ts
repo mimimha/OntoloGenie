@@ -76,6 +76,7 @@ export type SourceResource = {
   resourceKey: string
   resourceKind: ResourceKind
   isReadable: boolean
+  syncStrategy?: 'CDC' | 'FULL_COMPARE' | null
   sourceMetadata: { description?: string } & Record<string, unknown>
 }
 
