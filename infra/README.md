@@ -192,6 +192,12 @@ MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 커밋
 
 Job은 develop의 Jenkinsfile로 검사 절차를 읽고, Checkout 단계에서 MR 코드를 받는다. 따라서 Jenkinsfile만 변경한 MR의 성공 표시가 새 Jenkinsfile의 문법·실행 검증을 의미하지는 않는다.
 
+### MR 검사와 배포를 동시에 실행
+
+Jenkins 관리 → Nodes → Built-In Node → Configure에서 **Number of executors**를 `2`로 저장한다. 이 값은 Jenkins 서버 설정에서 관리한다. 공용 Jenkinsfile의 `disableConcurrentBuilds()`는 각 Job에 적용되므로 `axcore-mr-check`와 `axcore-deploy`는 동시에 실행할 수 있고, 같은 Job의 여러 실행은 순서대로 처리한다.
+
+변경 후 Jenkins Build Queue와 Built-In Node에서 두 Job이 각각 executor 하나를 사용하는지 확인한다. 첫 동시 실행에서는 `docker stats --no-stream jenkins`와 호스트 메모리를 확인한다. Jenkins 컨테이너의 설정 상한은 CPU 2코어와 메모리 4GiB다.
+
 ### SonarQube 배포와 코드 분석
 
 최초 편입은 [SonarQube 운영 절차](sonarqube/README.md)를 따른다. 활성화된 `axcore-deploy`는 Git의 Compose 변경을 반영하고 SonarQube 준비 상태를 확인한다. 배포 대상 서비스의 정적 분석도 제출한다. 수동으로 세 서비스를 모두 분석하려면 `RUN_SONARQUBE`를 선택한다.
