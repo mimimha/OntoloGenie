@@ -59,6 +59,9 @@ println 'PASS: backend와 batch 동시 갱신'
 def rollback = harness(failedDeploy: true)
 fails { rollback.script.deployBackendAndBatch() }
 assert rollback.commands.count { it.contains('up -d backend batch') } == 2
+assert rollback.commands.findAll { it.contains('up -d backend batch') }.every {
+    it.contains("env -u AI_ONTOLOGY_LLM_PROVIDER -u AI_ONTOLOGY_LLM_BASE_URL -u AI_ONTOLOGY_LLM_API_KEY docker compose --env-file '/test/axcore/.env'")
+}
 assert rollback.commands.any { it.contains('BACKEND_TAG=old1234') }
 assert rollback.checks == [['backend', 'batch'], ['backend', 'batch']]
 assert rollback.env.BACKEND_ROLLED_BACK == 'true'

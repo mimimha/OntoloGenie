@@ -29,6 +29,7 @@ class CredentialPreparationTests(unittest.TestCase):
             "DEPLOY_INITIAL_ADMIN_PASSWORD": "admin-test-only",
             "DEPLOY_GRAFANA_PASSWORD": "grafana-test-only",
             "DEPLOY_INTERNAL_TOKEN": "token-test-only",
+            "DEPLOY_GMS_API_KEY": "gms-test-only",
             "DEPLOY_SOURCE_KEY": self.key,
             "DEPLOY_ERP_CDC_PASSWORD": "erp-test-only",
             "DEPLOY_MES_CDC_PASSWORD": "mes-test-only",
@@ -57,9 +58,11 @@ class CredentialPreparationTests(unittest.TestCase):
         runtime = read_env(self.root / ".env")
         self.assertEqual(config["POSTGRES_DB"], "axcore")
         self.assertNotIn("POSTGRES_PASSWORD", config)
+        self.assertNotIn("AI_ONTOLOGY_LLM_API_KEY", config)
         self.assertNotIn("BACKEND_TAG", config)
         self.assertEqual(runtime["BACKEND_TAG"], "abc1234")
         self.assertEqual(runtime["AXCORE_INTERNAL_API_TOKEN"], runtime["AI_ONTOLOGY_INTERNAL_TOKEN"])
+        self.assertEqual(runtime["AI_ONTOLOGY_LLM_API_KEY"], self.environment["DEPLOY_GMS_API_KEY"])
         self.assertEqual(runtime["AXCORE_SOURCE_CREDENTIAL_KEY_1"], self.key)
         self.assertEqual(runtime["AXCORE_ACTION_NOTIFY_WEBHOOK_URL"], "https://chat.example.test/hooks/test-only")
         self.assertNotIn("AXCORE_ACTION_NOTIFY_WEBHOOK_URL", config)
@@ -129,10 +132,30 @@ class CredentialPreparationTests(unittest.TestCase):
             plan(self.root, self.environment)
 
     def test_unregistered_ai_key_is_not_discarded(self):
-        self.values["AI_ONTOLOGY_LLM_API_KEY"] = "test-api-key"
+        self.values["AI_ONTOLOGY_GMS_API_KEY"] = "legacy-gms-test-only"
         self.write(".env", self.values)
         with self.assertRaises(ConfigurationError):
             plan(self.root, self.environment)
+
+    def test_gms_key_rejects_incompatible_current_or_new_settings_before_writing(self):
+        for filename in (".env", ".env.config"):
+            for settings in (
+                {"AI_ONTOLOGY_LLM_PROVIDER": "openai-chat"},
+                {"AI_ONTOLOGY_LLM_BASE_URL": "https://llm.example.test/v1"},
+                {"AI_ONTOLOGY_GMS_BASE_URL": "https://llm.example.test/v1"},
+            ):
+                with self.subTest(filename=filename, settings=settings):
+                    path = self.root / filename
+                    self.write(filename, {**self.values, **settings} if filename == ".env" else settings)
+                    before = path.read_bytes()
+                    with self.assertRaisesRegex(ConfigurationError, "기본 GMS 주소"):
+                        apply(self.root, self.environment)
+                    self.assertEqual(path.read_bytes(), before)
+                    self.assertFalse((self.root / ".deployment-settings-before.json").exists())
+                    if filename == ".env":
+                        self.write(filename, self.values)
+                    else:
+                        path.unlink()
 
     def test_general_config_cannot_contain_secrets(self):
         for key in ("POSTGRES_PASSWORD", "AXCORE_ACTION_NOTIFY_WEBHOOK_URL"):
@@ -156,6 +179,7 @@ class CredentialPreparationTests(unittest.TestCase):
         self.write(".env", runtime)
         apply(self.root, self.environment)
         self.assertEqual(read_env(self.root / ".env")["BACKEND_TAG"], "new5678")
+        self.assertEqual(read_env(self.root / ".env")["AI_ONTOLOGY_LLM_API_KEY"], self.environment["DEPLOY_GMS_API_KEY"])
         self.assertEqual(read_env(self.root / ".env")["AI_ONTOLOGY_LLM_MODEL"], "model-check")
 
     def test_variable_expression_is_rejected_without_execution(self):
