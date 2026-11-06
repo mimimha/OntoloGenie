@@ -9,12 +9,12 @@ import com.axcore.platform.review.dto.ProposalOptionResponse;
 import com.axcore.platform.review.dto.ProposalResponse;
 import com.axcore.platform.review.dto.ProposalRevisionResponse;
 import com.axcore.platform.review.dto.ProposalSearchRequest;
-import com.axcore.platform.review.repository.ProposalDecisionQueryRepository;
 import com.axcore.platform.review.repository.ProposalItemRepository;
 import com.axcore.platform.review.repository.ProposalItemSpecifications;
 import com.axcore.platform.review.repository.ProposalLatestCheckRepository;
 import com.axcore.platform.review.repository.ProposalOptionRepository;
 import com.axcore.platform.review.repository.ProposalRevisionQueryRepository;
+import com.axcore.platform.review.repository.ReviewDecisionRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -34,7 +34,7 @@ public class ProposalService {
     private final ProposalLatestCheckRepository proposalLatestCheckRepository;
     private final ProposalOptionRepository proposalOptionRepository;
     private final ProposalRevisionQueryRepository proposalRevisionQueryRepository;
-    private final ProposalDecisionQueryRepository proposalDecisionQueryRepository;
+    private final ReviewDecisionRepository reviewDecisionRepository;
 
     public ProposalResponse getProposal(long id) {
         ProposalItem proposal =
@@ -123,7 +123,9 @@ public class ProposalService {
                     CommonErrorCode.RESOURCE_NOT_FOUND,
                     Map.of("resource", "proposal_item", "id", id));
         }
-        return proposalDecisionQueryRepository.findByProposalItemId(id, pageable);
+        return reviewDecisionRepository
+                .findByProposalItemIdOrderByDecidedAtDescIdDesc(id, pageable)
+                .map(ProposalDecisionResponse::from);
     }
 
     private Map<Long, LatestCheckResponse> loadLatestChecks(List<ProposalItem> proposals) {
