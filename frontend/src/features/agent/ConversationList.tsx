@@ -8,6 +8,9 @@ type ConversationListProps = {
   creating: boolean
   onSelect: (id: number) => void
   onCreate: () => void
+  // 임시(개발 데이터 정리용, 나중에 제거)
+  deleting: boolean
+  onDelete: (id: number) => void
 }
 
 function ConversationList({
@@ -16,6 +19,8 @@ function ConversationList({
   creating,
   onSelect,
   onCreate,
+  deleting,
+  onDelete,
 }: ConversationListProps) {
   return (
     <aside
@@ -35,14 +40,28 @@ function ConversationList({
           {conversations.map((conversation) => {
             const selected = conversation.id === selectedId
             return (
-              <li key={conversation.id}>
+              <li key={conversation.id} className="flex items-center gap-1">
                 <button
                   type="button"
                   aria-pressed={selected}
                   onClick={() => onSelect(conversation.id)}
-                  className={`w-full truncate rounded-lg px-3 py-2 text-left text-sm ${selected ? 'bg-slate-100 font-semibold text-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                  className={`min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-left text-sm ${selected ? 'bg-slate-100 font-semibold text-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
                 >
                   {conversation.title ?? NEW_CONVERSATION_TITLE}
+                </button>
+                {/* 임시(개발 데이터 정리용, 나중에 제거): DB에서 바로 지운다. */}
+                <button
+                  type="button"
+                  disabled={deleting}
+                  aria-label={`${conversation.title ?? NEW_CONVERSATION_TITLE} 삭제`}
+                  onClick={() => {
+                    if (window.confirm('이 대화를 DB에서 완전히 지울까요?')) {
+                      onDelete(conversation.id)
+                    }
+                  }}
+                  className="shrink-0 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                >
+                  삭제
                 </button>
               </li>
             )
