@@ -39,8 +39,16 @@ public class AgentAnswerProcessor {
                         AgentAnswerService.NOT_CONFIGURED_REASON);
                 return;
             }
-            answers.answerUnderstood(
-                    answerId, interpreter.interpret(event.question(), event.context()));
+            QuestionInterpretation interpretation =
+                    interpreter.interpret(event.question(), event.context(), event.pending());
+            if (event.pending() != null) {
+                interpretation = interpretation.fillFrom(event.pending().previous());
+            }
+            if (interpretation.missing().isEmpty()) {
+                answers.answerUnderstood(answerId, interpretation);
+            } else {
+                answers.answerClarification(answerId, interpretation);
+            }
         } catch (RuntimeException ex) {
             log.error("Agent 답변 {}의 AI 처리가 실패했습니다.", answerId, ex);
             try {

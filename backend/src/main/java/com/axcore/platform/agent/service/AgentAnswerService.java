@@ -19,7 +19,7 @@ public class AgentAnswerService {
     static final String FAILED_CONTENT = "답변을 끝내지 못했습니다. 잠시 후 다시 질문해 주세요.";
     static final String FAILED_REASON = "AI 응답 실패";
 
-    private static final String UNKNOWN = "확인하지 못함";
+    private static final String CLARIFY_INTRO = "질문을 정확히 이해하려면 몇 가지를 더 알려 주세요.";
     private static final String NOT_QUERIED = "실제 데이터 조회는 아직 연결되지 않아 값은 알려 드릴 수 없습니다.";
 
     private final AgentMessageRepository messages;
@@ -38,6 +38,22 @@ public class AgentAnswerService {
                                                 "conditions", interpretation.toConditions())));
     }
 
+    /** 대상·목적·기간이 부족하면 되묻는다(143). 지금까지 알아낸 조건은 conditions에 남겨 다음 답과 합친다. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void answerClarification(long answerId, QuestionInterpretation interpretation) {
+        running(answerId)
+                .ifPresent(
+                        answer ->
+                                answer.succeed(
+                                        clarifyingQuestion(interpretation),
+                                        Map.of(
+                                                "syncStatus", "NONE",
+                                                "results", List.of(),
+                                                "conditions", interpretation.toConditions(),
+                                                "clarification",
+                                                        interpretation.toClarification())));
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void fail(long answerId, String content, String reason) {
         running(answerId).ifPresent(answer -> answer.fail(content, reason));
@@ -45,14 +61,14 @@ public class AgentAnswerService {
 
     static String understoodAnswer(QuestionInterpretation interpretation) {
         String targets =
-                !interpretation.targets().isEmpty()
-                        ? String.join(", ", interpretation.targets())
-                        : interpretation.referenceObjectIds().isEmpty() ? UNKNOWN : "화면에서 고른 객체";
+                interpretation.targets().isEmpty()
+                        ? "화면에서 고른 객체"
+                        : String.join(", ", interpretation.targets());
         String period =
                 interpretation.hasPeriod()
                         ? interpretation.from() + " ~ " + interpretation.to()
                         : "지정하지 않음";
-        String purpose = interpretation.purpose() == null ? UNKNOWN : interpretation.purpose();
+        String purpose = interpretation.purpose();
         return """
                 질문을 이렇게 이해했습니다.
                 - 대상: %s
@@ -60,6 +76,23 @@ public class AgentAnswerService {
                 - 알고 싶은 것: %s
                 %s"""
                 .formatted(targets, period, purpose, NOT_QUERIED);
+    }
+
+    static String clarifyingQuestion(QuestionInterpretation interpretation) {
+        StringBuilder text = new StringBuilder(CLARIFY_INTRO);
+        for (MissingCondition missing : interpretation.missing()) {
+            text.append('\n')
+                    .append(
+                            switch (missing) {
+                                case TARGET -> "- 어떤 설비·작업지시·공정을 말씀하시는지 알려 주세요.";
+                                case PURPOSE -> "- 무엇을 알고 싶으신지 알려 주세요. (예: 상태, 비가동 이력)";
+                                case PERIOD ->
+                                        "- '"
+                                                + interpretation.vaguePeriod()
+                                                + "'이 언제부터 언제까지인지 알려 주세요. (예: 10월 1일부터 10월 31일까지)";
+                            });
+        }
+        return text.toString();
     }
 
     private Optional<AgentMessage> running(long answerId) {

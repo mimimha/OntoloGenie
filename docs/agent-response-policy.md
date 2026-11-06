@@ -38,13 +38,13 @@ Agent가 답변을 화면에 보내는 방식, 답변에 붙는 기준 시점의
 1. 대화 소유자와 요청 값을 검사한다. 같은 대화에 `RUNNING`인 답변이 있으면 409(`CONFLICT`)로 막는다. 막히면 지금처럼 JSON 오류 응답을 보낸다.
 2. USER 메시지와 AGENT 메시지(`status=RUNNING`, `content=""`, `answerMeta={"stage":"INTERPRETING"}`)를 저장하고 2건을 202로 돌려준다.
 3. 질문을 받은 api 서버가 Agent 실행기에서 이어서 처리한다(아래 설명 참고). 단계가 바뀔 때마다 AGENT 메시지의 `answerMeta.stage`를 고친다.
-   1. 질문 해석 `INTERPRETING`. 대상이 불명확하면 되묻는 답변을 만들고 4번으로 간다.
+   1. 질문 해석 `INTERPRETING`. 대상이나 알고 싶은 것을 알 수 없거나, "최근"처럼 기간 표현이 모호하면 되묻는 답변을 만들고 4번으로 간다. 기간을 임의로 정하지 않는다.
    2. 질문 시 동기화 `SYNCING` (5장)
-   3. 조회 도구 호출 `QUERYING`. 호출마다 `action_execution`(AGENT_QUERY)에 기록하고 `agent_message_id`에 이 AGENT 메시지를 넣는다.
+   3. 조회 도구 호출 `QUERYING`. 호출마다 `action_execution`(AGENT_QUERY)에 기록하고 `agent_message_id`에 이 답변의 질문(USER) 메시지를 넣는다. Agent의 Action 실행(091)과 같은 기준이다(2026-11-05 결정).
    4. 답변 작성 `ANSWERING`
 4. 끝나면 AGENT 메시지의 `status`, `content`, `answerMeta`(`syncStatus`, `results`)를 최종 값으로 저장한다. `stage`는 지운다.
 
-AGENT 메시지를 처음부터 저장하므로, 조회 도구 기록(`action_execution.agent_message_id`)이 답변 메시지를 처리 중에도 가리킬 수 있다.
+질문 하나에 답변이 하나이므로, 조회 도구 기록은 질문 메시지로 해당 답변을 찾을 수 있다.
 
 개발 가이드의 오래 걸리는 작업은 작업자가 `SKIP LOCKED`로 가져가 처리한다. Agent 답변은 이 방식 대신 질문을 받은 api 서버가 바로 처리한다(2026-11-03 결정). 처리 중 서버가 멈추면 3.4의 규칙으로 정리한다.
 
@@ -53,10 +53,11 @@ AGENT 메시지를 처음부터 저장하므로, 조회 도구 기록(`action_ex
 | `status` | `content` | `answerMeta` | 뜻 |
 |---|---|---|---|
 | `RUNNING` | `""` | `{"stage": "INTERPRETING" \| "SYNCING" \| "QUERYING" \| "ANSWERING"}` | 처리 중 |
-| `SUCCEEDED` | 최종 답변 | `syncStatus`, `results`, `conditions` | 답변을 끝냄 (데이터 없음·미연결·권한 제한 설명 포함) |
+| `SUCCEEDED` | 최종 답변 | `syncStatus`, `results`, `conditions`, `clarification`(되묻기만) | 답변을 끝냄 (데이터 없음·미연결·권한 제한 설명 포함) |
 | `FAILED` | 실패 안내 | `syncStatus`, `results` (얻은 만큼) | 답변을 끝내지 못함. `errorMessage` 필수 |
 
 - `conditions`는 이번 답변에서 확정한 조건이다(`purpose`, `targets`, `period`{`from`,`to`} 또는 null, `referenceObjectIds`). 다음 질문 때 마지막 답변의 값을 읽어 이어 간다.
+- `clarification`은 되묻는 답변에만 있다(`missing`: `TARGET`·`PURPOSE`·`PERIOD` 중 부족한 것, `vaguePeriod`: "최근"처럼 범위가 정해지지 않은 기간 표현 또는 null). 되묻는 답변도 `SUCCEEDED`이며 `syncStatus=NONE`, `results=[]`다. 다음 질문은 그 답으로 보고, 새로 알려 준 값만 이전 `conditions`를 덮는다(143).
 
 ### 3.3 화면 처리
 

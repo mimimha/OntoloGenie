@@ -33,6 +33,9 @@ public class QuestionInterpreter {
             - targets: 질문에 나온 설비·작업지시·공정 같은 대상의 이름이나 코드를 그대로 쓴다(예: PR-03). 없으면 빈 배열.
             - from, to: 조회 기간을 yyyy-MM-dd로 쓴다. "이번 달", "최근 7일" 같은 표현은 오늘 날짜로 계산한다.
               질문에 기간이 없고 화면 기간이 있으면 화면 기간을 쓴다. 둘 다 없으면 null.
+            - vaguePeriod: "최근", "요즘", "지난번"처럼 기간을 말했지만 범위가 정해지지 않은 표현이면 그 표현을 그대로 쓰고
+              from, to는 null로 둔다. 기간을 임의로 정하지 않는다. 그런 표현이 없으면 null.
+            "이전에 되물은 내용"이 있으면 질문은 그에 대한 사용자의 답이다. 답에서 새로 알려 준 값만 뽑고, 이미 확인한 조건은 다시 쓰지 않는다.
             """;
 
     private final ObjectProvider<ChatModel> chatModels;
@@ -43,13 +46,14 @@ public class QuestionInterpreter {
         return chatModels.getIfAvailable() != null;
     }
 
-    /** AI 호출이 실패하거나 응답이 비면 예외를 던진다. 부르는 쪽이 답변을 실패로 끝낸다. */
-    public QuestionInterpretation interpret(String question, Map<String, Object> screenContext) {
+    /** AI 호출이 실패하거나 응답이 비면 예외를 던진다. 부르는 쪽이 답변을 실패로 끝낸다. pending은 직전 되묻기이며 없으면 null이다. */
+    public QuestionInterpretation interpret(
+            String question, Map<String, Object> screenContext, PendingClarification pending) {
         Extracted extracted =
                 ChatClient.create(chatModels.getObject())
                         .prompt()
                         .system(SYSTEM_PROMPT)
-                        .user(userPrompt(question, screenContext))
+                        .user(userPrompt(question, screenContext, pending))
                         .call()
                         .entity(Extracted.class);
         if (extracted == null) {
@@ -59,7 +63,8 @@ public class QuestionInterpreter {
     }
 
     /** AI가 돌려준 값. 형식이 틀릴 수 있어 날짜도 문자열로 받는다. */
-    public record Extracted(String purpose, List<String> targets, String from, String to) {}
+    public record Extracted(
+            String purpose, List<String> targets, String from, String to, String vaguePeriod) {}
 
     static QuestionInterpretation verify(Extracted extracted, List<Long> referenceObjectIds) {
         LocalDate from = parseDate(extracted.from());
@@ -79,12 +84,18 @@ public class QuestionInterpreter {
                                 .distinct()
                                 .limit(MAX_TARGETS)
                                 .toList();
-        String purpose = extracted.purpose() == null ? "" : extracted.purpose().strip();
+        String purpose = blankToNull(extracted.purpose());
         return new QuestionInterpretation(
-                purpose.isEmpty() ? null : limit(purpose), targets, from, to, referenceObjectIds);
+                purpose,
+                targets,
+                from,
+                to,
+                referenceObjectIds,
+                blankToNull(extracted.vaguePeriod()));
     }
 
-    private String userPrompt(String question, Map<String, Object> screenContext) {
+    private String userPrompt(
+            String question, Map<String, Object> screenContext, PendingClarification pending) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("오늘: ").append(LocalDate.now(clock.withZone(USER_ZONE))).append('\n');
         if (screenContext.get("period") instanceof Map<?, ?> period) {
@@ -92,6 +103,19 @@ public class QuestionInterpreter {
                     .append(period.get("from"))
                     .append(" ~ ")
                     .append(period.get("to"))
+                    .append('\n');
+        }
+        if (pending != null) {
+            QuestionInterpretation previous = pending.previous();
+            prompt.append("이전에 되물은 내용: ")
+                    .append(pending.askedQuestion())
+                    .append('\n')
+                    .append("이미 확인한 조건: 목적=")
+                    .append(previous.purpose())
+                    .append(", 대상=")
+                    .append(previous.targets())
+                    .append(", 기간=")
+                    .append(previous.hasPeriod() ? previous.from() + " ~ " + previous.to() : "없음")
                     .append('\n');
         }
         return prompt.append("질문: ").append(question).toString();
@@ -116,6 +140,13 @@ public class QuestionInterpreter {
         } catch (DateTimeParseException ex) {
             return null;
         }
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return limit(value.strip());
     }
 
     private static String limit(String value) {
