@@ -8,6 +8,74 @@ import { issueFixture } from '../../mocks/issueHandlers'
 import { server } from '../../mocks/node'
 import ProposalsPage from '../review/ProposalsPage'
 
+test.each(['linkMappingId', 'proposalItemId'] as const)(
+  '문제의 %s로 두 검사 실행의 결과와 근거를 비교한다',
+  async (filter) => {
+    const scope = { linkMappingId: null, proposalItemId: null, [filter]: 12 }
+    const results = vi.fn(
+      ({
+        params,
+        request,
+      }: {
+        params: { runId?: string }
+        request: Request
+      }) => {
+        const runId = Number(params.runId)
+        expect(new URL(request.url).searchParams.get(filter)).toBe('12')
+        return HttpResponse.json({
+          data: [
+            {
+              id: runId,
+              checkRunId: runId,
+              ...scope,
+              totalCount: 1,
+              matchedCount: runId === 2 ? 1 : 0,
+              unmatchedCount: runId === 2 ? 0 : 1,
+              duplicateCount: 0,
+              violationCount: 0,
+              matchRate: runId === 2 ? 1 : 0,
+              sampleRows: [{ rawValue: runId === 2 ? '수정된 값' : '최초 값' }],
+            },
+          ],
+          meta: { page: 0, size: 20, totalElements: 1, hasNext: false },
+        })
+      },
+    )
+    server.use(
+      http.get('/api/v1/issues/1', () =>
+        HttpResponse.json({
+          data: {
+            ...issueFixture,
+            ...scope,
+            status: 'RESOLVED',
+            resolvedCheckRunId: 2,
+          },
+        }),
+      ),
+      http.get('/api/v1/checks/runs/:runId/results', results),
+    )
+    const user = userEvent.setup()
+    open('?view=issues&issue=1')
+    const dialog = within(await screen.findByRole('dialog'))
+    const toggle = await dialog.findByText('검사 결과 비교')
+    expect(results).not.toHaveBeenCalled()
+    await user.click(toggle)
+    expect(
+      await within(
+        await dialog.findByRole('region', { name: '발견 당시 검사 결과' }),
+      ).findByText('최초 값'),
+    ).toBeInTheDocument()
+    expect(
+      await within(
+        await dialog.findByRole('region', {
+          name: '해결 처리에 사용한 재검증 결과',
+        }),
+      ).findByText('수정된 값'),
+    ).toBeInTheDocument()
+    expect(results).toHaveBeenCalledTimes(2)
+  },
+)
+
 function HistoryControl() {
   const navigate = useNavigate()
   return (

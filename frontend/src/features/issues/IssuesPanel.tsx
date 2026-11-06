@@ -10,6 +10,7 @@ import Dialog from '../../components/Dialog'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import Pagination from '../../components/Pagination'
 import StatusBadge from '../../components/StatusBadge'
+import IssueReverification from './IssueReverification'
 import IssueStatusForm from './IssueStatusForm'
 import IssueTracking from './IssueTracking'
 import { fetchIssue, fetchIssues, type Issue } from './api'
@@ -90,6 +91,7 @@ function IssueDetail({ id, onClose }: { id: number; onClose: () => void }) {
               ))}
             </dl>
             <IssueStatusForm issue={issue} statusLabels={statusLabels} />
+            <IssueReverification issue={issue} />
             <IssueTracking issue={issue} statusLabels={statusLabels} />
             <section aria-label="원천 근거" className="space-y-2">
               <h3 className="font-semibold">원천 근거</h3>

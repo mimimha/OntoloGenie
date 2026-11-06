@@ -13,6 +13,8 @@ export const issueFixture: Issue = {
   objectInstanceId: 501,
   linkMappingId: 12,
   proposalItemId: null,
+  detectedCheckRunId: 1,
+  resolvedCheckRunId: null,
   forwardedAt: null,
   forwardedBy: null,
   rowVersion: 0,

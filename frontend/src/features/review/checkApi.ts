@@ -17,6 +17,48 @@ export type CheckResult = {
 }
 export const CHECK_PAGE_SIZE = 20
 
+export async function fetchRunResults(
+  runId: number,
+  filter: { proposalItemId: number } | { linkMappingId: number },
+  page: number,
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(CHECK_PAGE_SIZE),
+  })
+  for (const [key, value] of Object.entries(filter))
+    params.set(key, String(value))
+  const response = await apiGet<CheckResult[]>(
+    `/checks/runs/${runId}/results?${params}`,
+    { signal },
+  )
+  if (
+    !response.meta ||
+    response.meta.page !== page ||
+    !Array.isArray(response.data)
+  ) {
+    throw new ApiError('검사 결과의 페이지 정보를 확인할 수 없습니다.', {
+      kind: 'invalid-response',
+    })
+  }
+  if (
+    response.data.some(
+      (row) =>
+        row.checkRunId !== runId ||
+        ('linkMappingId' in filter
+          ? row.linkMappingId !== filter.linkMappingId
+          : row.proposalItemId !== filter.proposalItemId),
+    )
+  ) {
+    throw new ApiError('검사 결과의 대상이 일치하지 않습니다.', {
+      kind: 'conflict',
+      status: 409,
+    })
+  }
+  return { data: response.data, meta: response.meta }
+}
+
 export async function fetchCheckResults(
   runId: number,
   proposalId: number,
