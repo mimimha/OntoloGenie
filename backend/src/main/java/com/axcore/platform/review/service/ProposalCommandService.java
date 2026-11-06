@@ -12,13 +12,16 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.review.domain.ProposalItem;
+import com.axcore.platform.review.domain.ProposalOption;
+import com.axcore.platform.review.domain.ProposalRevision;
 import com.axcore.platform.review.domain.ReviewErrorCode;
 import com.axcore.platform.review.dto.ManualProposalCreateRequest;
 import com.axcore.platform.review.dto.ProposalOptionCreateRequest;
 import com.axcore.platform.review.dto.ProposalRevisionCreateRequest;
 import com.axcore.platform.review.dto.ProposalWriteResponse;
 import com.axcore.platform.review.repository.ProposalItemRepository;
-import com.axcore.platform.review.repository.ProposalRevisionWriteRepository;
+import com.axcore.platform.review.repository.ProposalOptionRepository;
+import com.axcore.platform.review.repository.ProposalRevisionRepository;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -33,7 +36,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class ProposalCommandService {
     private final ProposalItemRepository items;
-    private final ProposalRevisionWriteRepository revisions;
+    private final ProposalRevisionRepository revisions;
+    private final ProposalOptionRepository proposalOptions;
     private final ProposalPayloadValidator validator;
     private final CandidateCheckService checks;
     private final AuditRecorder audits;
@@ -104,7 +108,15 @@ public class ProposalCommandService {
             Set<Long> types,
             LoginAccount account,
             Map<String, Object> before) {
-        revisions.insert(item, options, account.id());
+        // 선택지의 FK가 개정본을 가리키므로 개정본을 먼저 넣는다. 바로 뒤 검사 등록(CandidateCheckRepository, JdbcClient)이
+        // 같은 트랜잭션에서 두 테이블을 SQL로 읽으므로 둘 다 flush한다.
+        revisions.saveAndFlush(ProposalRevision.snapshot(item, account.id()));
+        List<ProposalOption> newOptions = new ArrayList<>();
+        for (int i = 0; i < options.size(); i++) {
+            ProposalOptionCreateRequest option = options.get(i);
+            newOptions.add(ProposalOption.manual(item, i + 1, option.payload(), option.evidence()));
+        }
+        proposalOptions.saveAllAndFlush(newOptions);
         long checkId =
                 checks.enqueue(
                         item.getId(),
