@@ -10,6 +10,7 @@ import { resetProposalMocks } from '../../mocks/proposalHandlers'
 import { resetSourceMocks } from '../../mocks/sourceHandlers'
 import ProposalsPage from '../review/ProposalsPage'
 import SourcesPage from '../sources/SourcesPage'
+import AnalysisTargetDialog from './AnalysisTargetDialog'
 
 afterEach(() => {
   resetSourceMocks()
@@ -289,4 +290,93 @@ test('원천 등록을 누르면 선택 창 대신 등록 창을 연다', async 
     screen.queryByRole('dialog', { name: '분석 대상 선택' }),
   ).not.toBeInTheDocument()
   expect(screen.getByRole('dialog')).toBeInTheDocument()
+})
+
+test('목록에 없는 원천 번호로 열어도 선택칸과 표 목록이 같은 원천을 가리킨다', async () => {
+  const requested: string[] = []
+  server.events.on('request:start', ({ request }) => {
+    requested.push(new URL(request.url).pathname)
+  })
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <AnalysisTargetDialog
+        initialSourceId={999}
+        onClose={() => {}}
+        onStarted={() => {}}
+        onEditScope={() => {}}
+        onRegister={() => {}}
+      />
+    </QueryClientProvider>,
+  )
+  const dialog = screen.getByRole('dialog', { name: '분석 대상 선택' })
+
+  const list = await within(dialog).findByRole('list', { name: '표·자료 목록' })
+  expect(within(dialog).getByLabelText('등록된 원천')).toHaveValue('1')
+  expect(
+    within(dialog).getByText(
+      '열려던 원천을 찾을 수 없어 첫 원천을 보여 줍니다.',
+    ),
+  ).toBeInTheDocument()
+  for (const item of within(list).getAllByRole('button')) {
+    expect(item).toHaveTextContent(/^erp\./)
+  }
+  expect(requested).not.toContain('/api/v1/sources/999/resources')
+})
+
+test('컬럼이 없는 문서·자료는 자료 전체를 골라 컬럼 없이 분석을 맡긴다', async () => {
+  const user = userEvent.setup()
+  const sent = captureAnalysisRequest()
+  server.use(
+    http.get('/api/v1/sources/:id/resources', () =>
+      HttpResponse.json({
+        data: [
+          {
+            id: 9001,
+            dataSourceId: 2,
+            resourceKey: 'docs.handover_files',
+            resourceKind: 'DOCUMENT_SET',
+            isReadable: true,
+            sourceMetadata: { description: '교대 인계 문서' },
+          },
+        ],
+        meta: { page: 0, size: 100, totalElements: 1, hasNext: false },
+      }),
+    ),
+    http.get('/api/v1/sources/:id/resources/:resourceId/columns', () =>
+      HttpResponse.json({ data: [] }),
+    ),
+  )
+  const dialog = await openFromSource(user)
+
+  const include = await within(dialog).findByRole('checkbox', {
+    name: '이 자료를 분석에 포함',
+  })
+  // 다시 끄면 선택에서 빠진다
+  await user.click(include)
+  await user.click(include)
+  expect(
+    within(dialog).getByText(
+      '0개 원천 · 0개 테이블 · 0개 컬럼 · 0개 문서·자료',
+    ),
+  ).toBeInTheDocument()
+  await user.click(include)
+  expect(
+    within(dialog).getByText(
+      '1개 원천 · 0개 테이블 · 0개 컬럼 · 1개 문서·자료',
+    ),
+  ).toBeInTheDocument()
+  expect(within(dialog).getByText(/자료 전체 선택/)).toBeInTheDocument()
+  await user.click(
+    within(dialog).getByRole('button', { name: '분석하고 후보 받기' }),
+  )
+
+  await screen.findByRole('region', { name: '이번 분석' })
+  expect(sent.body).toEqual({
+    runKind: 'INITIAL',
+    targets: [{ sourceResourceId: 9001 }],
+  })
 })
