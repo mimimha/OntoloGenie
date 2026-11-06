@@ -20,6 +20,7 @@ pipeline {
         // 선언하면 기본값 'develop'이 GitLab 플러그인이 넣어 주는 환경변수를 덮어써서 MR 검사가 develop을 받았다.
         // 변경이 없어도 세 서비스를 모두 강제로 배포하고 싶을 때 (수동 실행 전용)
         booleanParam(name: 'FORCE_DEPLOY', defaultValue: false, description: '변경이 없어도 backend · AI · frontend 모두 배포')
+        booleanParam(name: 'RUN_SONARQUBE', defaultValue: false, description: 'develop의 frontend · backend · AI를 모두 SonarQube로 분석')
     }
 
     environment {
@@ -162,6 +163,9 @@ pipeline {
             steps {
                 sh '''
                     bash -n infra/deploy/sync-config.sh
+                    if [ -f infra/deploy/sync-sonarqube.sh ]; then
+                        bash -n infra/deploy/sync-sonarqube.sh
+                    fi
                     bash -n infra/scripts/pg-backup.sh
                     HOST_WS=$(printf '%s' "$WORKSPACE" | sed 's#^/var/jenkins_home#/home/ubuntu/axcore/jenkins-data#')
                     docker run --rm --network none --memory 256m \
@@ -303,6 +307,71 @@ pipeline {
             steps {
                 catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                     script { deployService('frontend', 'FRONTEND_TAG') }
+                }
+            }
+        }
+
+        stage('Deploy SonarQube') {
+            when {
+                expression { env.IS_DEPLOY_JOB == 'true' && env.ENABLE_SONARQUBE == 'true' }
+            }
+            steps {
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', catchInterruptions: false) {
+                    withCredentials([string(credentialsId: 'axcore-sonarqube-db-password', variable: 'SONAR_DB_PASSWORD')]) {
+                        sh 'bash infra/deploy/sync-sonarqube.sh'
+                    }
+                    script { env.SONARQUBE_READY = 'true' }
+                }
+            }
+        }
+
+        stage('SonarQube analysis') {
+            when {
+                expression {
+                    if (env.CHECK_REF != 'origin/develop') {
+                        return false
+                    }
+                    if (env.IS_DEPLOY_JOB == 'true') {
+                        return env.ENABLE_SONARQUBE == 'true' && env.SONARQUBE_READY == 'true' &&
+                            (params.RUN_SONARQUBE || env.DEPLOY_FRONTEND == 'true' ||
+                                env.DEPLOY_BACKEND == 'true' || env.DEPLOY_AI == 'true')
+                    }
+                    return env.JOB_NAME == 'axcore-mr-check' && params.RUN_SONARQUBE &&
+                        !env.gitlabActionType
+                }
+            }
+            steps {
+                script {
+                    def components = [
+                        frontend: env.DEPLOY_FRONTEND,
+                        backend: env.DEPLOY_BACKEND,
+                        ai: env.DEPLOY_AI
+                    ]
+                    components.findAll { component, deploy -> params.RUN_SONARQUBE || deploy == 'true' }.each { component, deploy ->
+                        catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', catchInterruptions: false) {
+                            echo "SonarQube analysis: ${component}"
+                            if (component == 'backend') {
+                                dir('backend') {
+                                    sh './gradlew --no-daemon testClasses'
+                                }
+                            }
+                            def credentialId = component == 'frontend' ? 'axcore-sonarqube-token' : "axcore-sonarqube-${component}-token"
+                            withCredentials([string(credentialsId: credentialId, variable: 'SONAR_TOKEN')]) {
+                                withEnv(["SONAR_COMPONENT=${component}"]) {
+                                    sh '''
+                                        set +x
+                                        HOST_WS=$(printf '%s' "$WORKSPACE" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
+                                        docker run --rm --memory 2g --cpus 2 --network axcore-net \
+                                            --user "$(id -u):$(id -g)" \
+                                            -e SONAR_HOST_URL=http://sonarqube:9000 -e SONAR_TOKEN \
+                                            -e SONAR_USER_HOME=/tmp/.sonar \
+                                            -v "$HOST_WS:/workspace" -w "/workspace/$SONAR_COMPONENT" \
+                                            sonarsource/sonar-scanner-cli:12.3.0.4285_8.1.0
+                                    '''
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

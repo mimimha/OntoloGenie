@@ -192,6 +192,10 @@ MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 커밋
 
 Job은 develop의 Jenkinsfile로 검사 절차를 읽고, Checkout 단계에서 MR 코드를 받는다. 따라서 Jenkinsfile만 변경한 MR의 성공 표시가 새 Jenkinsfile의 문법·실행 검증을 의미하지는 않는다.
 
+### SonarQube 배포와 코드 분석
+
+최초 편입은 [SonarQube 운영 절차](sonarqube/README.md)를 따른다. 활성화된 `axcore-deploy`는 Git의 Compose 변경을 반영하고 SonarQube 준비 상태를 확인한다. 배포 대상 서비스의 정적 분석도 제출한다. 수동으로 세 서비스를 모두 분석하려면 `RUN_SONARQUBE`를 선택한다.
+
 | 폴더 | 검사 | 어디서 | 비고 |
 | --- | --- | --- | --- |
 | `backend/` | `./gradlew --no-daemon spotlessCheck build` (스타일 → 컴파일 → 테스트) | Jenkins 컨테이너 안 | Testcontainers가 docker.sock으로 테스트 DB를 띄움. gradle 캐시 `jenkins-data/.gradle` |
