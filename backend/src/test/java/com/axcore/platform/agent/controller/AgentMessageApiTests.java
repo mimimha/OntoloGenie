@@ -3,8 +3,11 @@ package com.axcore.platform.agent.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.notNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -57,14 +60,15 @@ class AgentMessageApiTests {
     @Test
     void acceptsQuestionAndAnswersWithUnderstoodConditions() throws Exception {
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(anyString(), anyMap()))
+        when(interpreter.interpret(anyString(), anyMap(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "비가동 이력",
                                 List.of("PR-03"),
                                 LocalDate.parse("2026-10-01"),
                                 LocalDate.parse("2026-10-27"),
-                                List.of(301L)));
+                                List.of(301L),
+                                null));
 
         askRaw(
                         conversation,
@@ -103,6 +107,63 @@ class AgentMessageApiTests {
     }
 
     @Test
+    void asksBackWhenConditionsAreMissing() throws Exception {
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(interpreter.interpret(anyString(), anyMap(), any()))
+                .thenReturn(
+                        new QuestionInterpretation(null, List.of(), null, null, List.of(), "최근"));
+
+        ask(conversation, "최근 거 보여줘").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+
+        mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
+                .andExpect(jsonPath("$.data[1].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data[1].content").value(containsString("어떤 설비")))
+                .andExpect(jsonPath("$.data[1].content").value(containsString("'최근'")))
+                .andExpect(jsonPath("$.data[1].answerMeta.syncStatus").value("NONE"))
+                .andExpect(
+                        jsonPath("$.data[1].answerMeta.clarification.missing[0]").value("TARGET"))
+                .andExpect(
+                        jsonPath("$.data[1].answerMeta.clarification.missing[1]").value("PURPOSE"))
+                .andExpect(
+                        jsonPath("$.data[1].answerMeta.clarification.missing[2]").value("PERIOD"))
+                .andExpect(jsonPath("$.data[1].answerMeta.clarification.vaguePeriod").value("최근"));
+    }
+
+    @Test
+    void fillsAskedConditionsWithReply() throws Exception {
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(interpreter.interpret(anyString(), anyMap(), any()))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                "비가동 이력", List.of("PR-03"), null, null, List.of(), "최근"),
+                        new QuestionInterpretation(
+                                null,
+                                List.of(),
+                                LocalDate.parse("2026-10-01"),
+                                LocalDate.parse("2026-10-31"),
+                                List.of(),
+                                null));
+
+        ask(conversation, "PR-03 최근 비가동 이력 알려줘").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        ask(conversation, "10월 1일부터 31일까지").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+
+        verify(interpreter).interpret(anyString(), anyMap(), notNull());
+        mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
+                .andExpect(
+                        jsonPath("$.data[1].answerMeta.clarification.missing[0]").value("PERIOD"))
+                .andExpect(jsonPath("$.data[3].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data[3].content").value(containsString("대상: PR-03")))
+                .andExpect(jsonPath("$.data[3].answerMeta.clarification").doesNotExist())
+                .andExpect(jsonPath("$.data[3].answerMeta.conditions.purpose").value("비가동 이력"))
+                .andExpect(
+                        jsonPath("$.data[3].answerMeta.conditions.period.from")
+                                .value("2026-10-01"));
+    }
+
+    @Test
     void failsAnswerWhenAiIsNotConfigured() throws Exception {
         when(interpreter.isConfigured()).thenReturn(false);
 
@@ -117,7 +178,7 @@ class AgentMessageApiTests {
     @Test
     void failsAnswerWhenAiCallFails() throws Exception {
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(anyString(), anyMap()))
+        when(interpreter.interpret(anyString(), anyMap(), any()))
                 .thenThrow(new IllegalStateException("GMS 시간 초과"));
 
         ask(conversation, "PR-03 상태 알려줘").andExpect(status().isAccepted());

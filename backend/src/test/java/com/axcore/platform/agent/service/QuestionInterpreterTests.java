@@ -14,7 +14,8 @@ class QuestionInterpreterTests {
     void keepsValidConditions() {
         QuestionInterpretation result =
                 QuestionInterpreter.verify(
-                        new Extracted(" 비가동 이력 ", List.of("PR-03"), "2026-10-01", "2026-10-31"),
+                        new Extracted(
+                                " 비가동 이력 ", List.of("PR-03"), "2026-10-01", "2026-10-31", null),
                         List.of(301L));
 
         assertThat(result.purpose()).isEqualTo("비가동 이력");
@@ -28,13 +29,15 @@ class QuestionInterpreterTests {
     void dropsInvalidPeriod() {
         assertThat(
                         QuestionInterpreter.verify(
-                                        new Extracted("상태", List.of(), "2026-10-31", "2026-10-01"),
+                                        new Extracted(
+                                                "상태", List.of(), "2026-10-31", "2026-10-01", null),
                                         List.of())
                                 .hasPeriod())
                 .isFalse();
         assertThat(
                         QuestionInterpreter.verify(
-                                        new Extracted("상태", List.of(), "이번 달", null), List.of())
+                                        new Extracted("상태", List.of(), "이번 달", null, null),
+                                        List.of())
                                 .hasPeriod())
                 .isFalse();
     }
@@ -46,6 +49,7 @@ class QuestionInterpreterTests {
                         new Extracted(
                                 "  ",
                                 Arrays.asList(" PR-03 ", "", null, "PR-03", "WO-1"),
+                                null,
                                 null,
                                 null),
                         List.of());

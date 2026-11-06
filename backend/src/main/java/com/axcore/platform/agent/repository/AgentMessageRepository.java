@@ -1,6 +1,7 @@
 package com.axcore.platform.agent.repository;
 
 import com.axcore.platform.agent.domain.AgentMessage;
+import com.axcore.platform.agent.domain.MessageSender;
 import com.axcore.platform.agent.domain.MessageStatus;
 import java.time.Instant;
 import java.util.List;
@@ -19,6 +20,9 @@ public interface AgentMessageRepository extends JpaRepository<AgentMessage, Long
 
     List<AgentMessage> findByConversationIdAndStatusAndCreatedAtBefore(
             Long conversationId, MessageStatus status, Instant before);
+
+    Optional<AgentMessage> findFirstByConversationIdAndSenderOrderByIdDesc(
+            Long conversationId, MessageSender sender);
 
     /** 메시지가 속한 대화 ID. 재배정 계획을 Agent 대화에 연결할 때 쓴다. 메시지가 없으면 비어 있다. */
     @Query("select m.conversationId from AgentMessage m where m.id = :id")

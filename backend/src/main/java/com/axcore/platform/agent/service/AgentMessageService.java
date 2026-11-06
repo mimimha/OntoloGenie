@@ -2,6 +2,7 @@ package com.axcore.platform.agent.service;
 
 import com.axcore.platform.agent.domain.AgentConversation;
 import com.axcore.platform.agent.domain.AgentMessage;
+import com.axcore.platform.agent.domain.MessageSender;
 import com.axcore.platform.agent.domain.MessageStatus;
 import com.axcore.platform.agent.dto.AgentMessageResponse;
 import com.axcore.platform.agent.dto.QuestionRequest;
@@ -56,6 +57,7 @@ public class AgentMessageService {
             throw new BusinessException(
                     CommonErrorCode.CONFLICT, "이 대화에서 처리 중인 답변이 있습니다.", Map.of());
         }
+        PendingClarification pending = pendingClarification(conversationId);
         Instant now = Instant.now(clock).truncatedTo(ChronoUnit.MICROS);
         AgentMessage question =
                 messages.save(
@@ -65,8 +67,22 @@ public class AgentMessageService {
         conversation.recordMessage(request.content(), now);
         events.publishEvent(
                 new AgentAnswerRequested(
-                        answer.getId(), request.content(), request.messageContext()));
+                        answer.getId(), request.content(), request.messageContext(), pending));
         return List.of(AgentMessageResponse.from(question), AgentMessageResponse.from(answer));
+    }
+
+    /** 마지막 답변이 되묻기였으면 이번 질문을 그 답으로 본다(143). 아니면 null. */
+    private PendingClarification pendingClarification(long conversationId) {
+        return messages.findFirstByConversationIdAndSenderOrderByIdDesc(
+                        conversationId, MessageSender.AGENT)
+                .filter(last -> last.getAnswerMeta().containsKey("clarification"))
+                .map(
+                        last ->
+                                new PendingClarification(
+                                        last.getContent(),
+                                        QuestionInterpretation.fromAnswerMeta(
+                                                last.getAnswerMeta())))
+                .orElse(null);
     }
 
     private AgentConversation ownedConversation(long accountId, long conversationId) {
