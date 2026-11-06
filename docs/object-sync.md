@@ -4,6 +4,7 @@
 
 - 코드: `ontology.service.ObjectSyncService`, SQL은 `ontology.repository.ObjectSyncRepository`
 - 판단 규칙의 근거: V11 마이그레이션 주석, [개발 가이드](development-guide.md) 원천 연동 절
+- 전체 읽기 작업(197): [원천 테이블 전체 읽기](full-load.md)
 
 ## 부르는 쪽이 지킬 것
 
@@ -11,7 +12,24 @@
 - 매핑·변환은 부르는 쪽이 끝내고 `SyncedObject`(원천 테이블, 매핑, 객체 유형, 원천 키, 표시 이름, 속성)로 넘긴다.
 - **CDC 테이블 매핑의 원천 키는 원천 PK와 같아야 한다.** 삭제 이벤트에는 PK만 오므로(REPLICA IDENTITY DEFAULT), 키가 다르면 삭제를 객체에 이을 수 없다.
 - CDC 이벤트의 `txId`(32비트)는 부르는 쪽(198)이 epoch를 복원해 `SourceChange.transactionId`로 넘긴다.
-- **원천 키 값의 JSON 모양을 197과 198이 똑같이 만든다.** 객체와 흔적은 `source_key`를 jsonb로 그대로 비교한다. 같은 PK `12`가 한쪽에서 숫자 `12`, 다른 쪽에서 문자열 `"12"`로 들어오면 다른 객체가 된다. 예를 들어 커넥터는 `decimal.handling.mode=string`이라 numeric PK를 문자열로 보내고, JDBC SELECT는 숫자로 읽는다. 키 변환은 한 곳에 두고 둘이 같이 쓴다.
+- **원천 키 값은 늘 공용 형식의 문자열이다(`source.domain.SourceKeyText`).** 객체와 흔적은 `source_key`를 jsonb로 그대로 비교한다. 같은 PK `12`가 한쪽에서 숫자 `12`, 다른 쪽에서 문자열 `"12"`로 들어오거나 시각 표기가 다르면 다른 객체가 된다.
+  - 두 경로 모두 원천 값을 먼저 같은 Java 값으로 푼 뒤 `SourceKeyText.of`로 바꾼다. 197은 JDBC 값을, 198은 커넥터 값(date = 1970년부터 일수, timestamp = 마이크로초 정수, numeric = 문자열)을 푼다. PostgreSQL 텍스트 출력(`getString`)은 세션 시간대에 따라 달라져 쓰지 않는다.
+
+    | 원천 형식 | 키 문자열 | 예 |
+    |---|---|---|
+    | 문자열·uuid 등 | 그대로 | `"WO-0001"` |
+    | 정수 | 십진수 | `"12"` |
+    | numeric | 지수 표기 없이, 원천 소수 자릿수 그대로 | `"12.50"` |
+    | 실수 | 유한하면 지수 표기 없이 | `"1.5"` |
+    | boolean | `true`·`false` | `"true"` |
+    | date | ISO 날짜 | `"2026-11-06"` |
+    | time | ISO 시각, 초는 늘, 소수 초는 있을 때만 | `"09:00:00"` |
+    | timestamp | ISO 날짜시각(시간대 없음) | `"2026-11-06T09:00:00"` |
+    | timestamptz | UTC 순간 | `"2026-11-06T00:00:00Z"` |
+    | json·jsonb | 원천이 정규화한 JSON 텍스트 | |
+
+  - 값이 없거나 NaN·무한대인 키는 키가 없는 것으로 보고 객체를 만들지 않는다.
+  - 복합 키 예: `key_columns ["order_no","line_no"]` → `{"order_no": "SO-0001", "line_no": "3"}`. jsonb는 키 순서를 따지지 않는다.
 
 ## 메서드
 

@@ -1,6 +1,8 @@
 package com.axcore.platform.mapping.repository;
 
 import com.axcore.platform.mapping.domain.PropertySourceMapping;
+import java.util.Collection;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -32,4 +34,7 @@ public interface PropertySourceMappingRepository
             @Param("sourceMappingId") Long sourceMappingId,
             @Param("propertyDefinitionId") Long propertyDefinitionId,
             @Param("excludeId") Long excludeId);
+
+    /** 여러 객체 매핑의 속성 매핑. 전체 읽기(Jira 197)가 쓴다. */
+    List<PropertySourceMapping> findBySourceMappingIdInOrderById(Collection<Long> sourceMappingIds);
 }

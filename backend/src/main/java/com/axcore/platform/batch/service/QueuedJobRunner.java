@@ -65,7 +65,7 @@ public class QueuedJobRunner {
             R result = handler.run(job.id());
             transactionTemplate.executeWithoutResult(status -> complete(handler, job, result));
         } catch (RuntimeException e) {
-            fail(job, e);
+            fail(handler, job, e);
         }
         return true;
     }
@@ -81,7 +81,7 @@ public class QueuedJobRunner {
                 resultLine(job, ExecutionStatus.SUCCEEDED, handler.auditResult(result)));
     }
 
-    private void fail(ClaimedJob job, RuntimeException cause) {
+    private void fail(QueuedJobHandler<?> handler, ClaimedJob job, RuntimeException cause) {
         String message;
         if (cause instanceof QueuedJobFailure) {
             message = cause.getMessage();
@@ -98,6 +98,7 @@ public class QueuedJobRunner {
                                 "RUNNING이 아니어서 FAILED로 바꾸지 않음 type={} id={}", job.type(), job.id());
                         return;
                     }
+                    handler.failed(job.id(), message);
                     auditRecorder.record(
                             resultLine(
                                     job, ExecutionStatus.FAILED, Map.of("errorMessage", message)));
