@@ -27,6 +27,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    coverage: {
+      include: ['src/**/*.{ts,tsx}'],
+    },
     // 테스트 하나의 기본 한도 5초는 검사 서버가 바쁠 때 화면이 다 뜨기 전에 끊긴다(src/test/setup.ts 참고)
     testTimeout: 30000,
   },
