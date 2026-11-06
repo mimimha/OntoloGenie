@@ -4,6 +4,7 @@ import { analysisHandlers } from './analysisHandlers'
 import { authHandlers } from './auth'
 import { accountHandlers } from './accountHandlers'
 import { proposalHandlers } from './proposalHandlers'
+import { issueHandlers } from './issueHandlers'
 import { sourceHandlers } from './sourceHandlers'
 import type { Execution } from '../features/audit/types'
 import type {
@@ -673,6 +674,7 @@ function ruleSummaries(): RuleSummary[] {
 export const handlers = [
   ...accountHandlers,
   ...proposalHandlers,
+  ...issueHandlers,
   ...authHandlers,
   ...sourceHandlers,
   ...analysisHandlers,

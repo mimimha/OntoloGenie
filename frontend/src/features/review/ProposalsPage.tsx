@@ -8,6 +8,7 @@ import Pagination from '../../components/Pagination'
 import StatusBadge from '../../components/StatusBadge'
 import AnalysisPanel from '../analysis/AnalysisPanel'
 import { fetchAnalysisProposals } from '../analysis/api'
+import IssuesPanel from '../issues/IssuesPanel'
 import { fetchProposals, PROPOSAL_PAGE_SIZE } from './api'
 import {
   applyLabels,
@@ -80,6 +81,53 @@ function ProposalFilterForm({
 }
 
 export default function ProposalsPage() {
+  const [params] = useSearchParams()
+  const showingIssues = params.get('view') === 'issues'
+  const proposalParams = new URLSearchParams(params)
+  for (const key of [
+    'view',
+    'issue',
+    'issuePage',
+    'issueKind',
+    'issueStatus',
+  ]) {
+    proposalParams.delete(key)
+  }
+  const issueParams = new URLSearchParams(proposalParams)
+  issueParams.set('view', 'issues')
+
+  return (
+    <div className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-semibold">연결 규칙</h1>
+        <p className="mt-2 text-sm text-slate-500">
+          분석 결과와 직접 추가한 제안을 검토하고, 적용 후 문제를 확인하세요.
+        </p>
+      </header>
+      <nav aria-label="연결 규칙 보기" className="flex gap-4 text-sm">
+        <Link
+          to={{ search: proposalParams.toString() }}
+          aria-current={showingIssues ? undefined : 'page'}
+          className="text-violet-700 underline underline-offset-4 aria-[current=page]:font-semibold"
+        >
+          검토 제안
+        </Link>
+        <Link
+          to={{
+            search: showingIssues ? params.toString() : issueParams.toString(),
+          }}
+          aria-current={showingIssues ? 'page' : undefined}
+          className="text-violet-700 underline underline-offset-4 aria-[current=page]:font-semibold"
+        >
+          적용 후 문제
+        </Link>
+      </nav>
+      {showingIssues ? <IssuesPanel /> : <ProposalList />}
+    </div>
+  )
+}
+
+function ProposalList() {
   const [params, setParams] = useSearchParams()
   const filters: ProposalFilters = {}
   for (const field of fields) {
@@ -197,13 +245,6 @@ export default function ProposalsPage() {
     )
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">연결 규칙</h1>
-        <p className="mt-2 text-sm text-slate-500">
-          분석 결과와 직접 추가한 제안을 함께 검토하고, 제안 내용과 근거를
-          확인하세요.
-        </p>
-      </header>
       <AnalysisPanel
         currentId={analysisId}
         joined={params.get('joined') === '1'}
