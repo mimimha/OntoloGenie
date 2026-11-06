@@ -61,6 +61,27 @@ class HandlerRequestNotifierTests {
     }
 
     @Test
+    void includesDescriptionUpToFiveHundredCharactersAndManualJiraGuide() {
+        String longDescription = "가".repeat(499) + "나다@channel";
+
+        String text =
+                HandlerRequestNotifier.message(
+                        event("CODE_2", "이름", longDescription, Map.of("type", "object")));
+
+        assertThat(text)
+                .contains("- 설명: `" + "가".repeat(499) + "나…(이하 생략)`")
+                .doesNotContain("다@channel")
+                .contains("Jira 이슈는 자동으로 만들어지지 않습니다.")
+                .contains("`[BE][Action] CODE_2 Handler 구현`")
+                .contains("위 관리자에게 확인해 주세요.")
+                .contains("- 등록한 관리자: `관리자(admin01)`");
+        assertThat(
+                        HandlerRequestNotifier.message(
+                                event("CODE_3", "이름", " ", Map.of("type", "object"))))
+                .contains("- 설명: `-`");
+    }
+
+    @Test
     void summarizesAtMostTenInputFields() {
         Map<String, Object> properties = new LinkedHashMap<>();
         for (int i = 1; i <= 12; i++) {
@@ -83,16 +104,48 @@ class HandlerRequestNotifierTests {
 
     private static HandlerRequested event(
             String code, String name, Map<String, Object> inputSchema) {
+        return event(code, name, "설명", inputSchema);
+    }
+
+    private static HandlerRequested event(
+            String code, String name, String description, Map<String, Object> inputSchema) {
         return new HandlerRequested(
                 HandlerRequested.Reason.CREATED,
                 code,
                 name,
+                description,
                 "MISSING",
                 "SYSTEM",
                 null,
                 "PLAN_CREATE",
                 inputSchema,
                 true,
-                "admin01");
+                "관리자(admin01)",
+                "관리자(admin01)");
+    }
+
+    @Test
+    void handlerChangeShowsRegistrantAndEditorAndDashWhenRegistrantUnknown() {
+        HandlerRequested changed =
+                new HandlerRequested(
+                        HandlerRequested.Reason.HANDLER_CHANGED,
+                        "CODE_4",
+                        "이름",
+                        "설명",
+                        "MISSING",
+                        "SYSTEM",
+                        null,
+                        "PLAN_CREATE",
+                        Map.of("type", "object"),
+                        false,
+                        "바꾼 사람(admin02)",
+                        null);
+
+        assertThat(HandlerRequestNotifier.message(changed))
+                .contains("아직 없는 Handler로 바꿨습니다")
+                .contains("- 처음 등록한 관리자: `-`")
+                .contains("- 이번에 바꾼 관리자: `바꾼 사람(admin02)`")
+                .contains("- 사용 여부: 사용 안 함")
+                .doesNotContain("- 등록한 관리자:");
     }
 }

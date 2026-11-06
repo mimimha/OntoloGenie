@@ -22,6 +22,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class HandlerRequestNotifier {
 
     private static final int MAX_FIELD_LENGTH = 200;
+    private static final int MAX_DESCRIPTION_LENGTH = 500;
     private static final int MAX_INPUT_FIELDS = 10;
 
     private final MattermostWebhookClient client;
@@ -54,7 +55,10 @@ public class HandlerRequestNotifier {
         }
     }
 
-    /** 관리자가 입력한 값은 코드 서식으로 감싸 Mattermost 서식·멘션(@channel 등)으로 해석되지 않게 한다. 설명은 넣지 않는다. */
+    /**
+     * 관리자가 입력한 값은 코드 서식으로 감싸 Mattermost 서식·멘션(@channel 등)으로 해석되지 않게 한다. 설명은 개발자가 Handler가 할 일을 아는
+     * 유일한 글이라 500자까지 넣는다.
+     */
     static String message(HandlerRequested event) {
         String reason =
                 event.reason() == HandlerRequested.Reason.CREATED
@@ -65,6 +69,7 @@ public class HandlerRequestNotifier {
         lines.add(reason + " Handler가 배포되기 전까지 이 Action은 실행되지 않습니다(BLOCKED).");
         lines.add("");
         lines.add("- Action: " + literal(event.code()) + " " + literal(event.name()));
+        lines.add("- 설명: " + literal(event.description(), MAX_DESCRIPTION_LENGTH));
         lines.add("- handlerKey: " + literal(event.handlerKey()));
         lines.add(
                 "- 대상: "
@@ -75,14 +80,20 @@ public class HandlerRequestNotifier {
         lines.add("- 필요 권한: " + literal(event.requiredPermission()));
         lines.add("- 입력: " + inputSummary(event.inputSchema()));
         lines.add("- 사용 여부: " + (event.active() ? "사용" : "사용 안 함"));
-        lines.add("- 등록·수정한 관리자: " + literal(event.adminLoginId()));
+        if (event.reason() == HandlerRequested.Reason.CREATED) {
+            lines.add("- 등록한 관리자: " + literal(event.requestedBy()));
+        } else {
+            lines.add("- 처음 등록한 관리자: " + literal(event.createdBy()));
+            lines.add("- 이번에 바꾼 관리자: " + literal(event.requestedBy()));
+        }
         lines.add("");
         lines.add(
-                "Jira 이슈 "
+                "Jira 이슈는 자동으로 만들어지지 않습니다. 맡을 개발자가 Jira에 "
                         + literal("[BE][Action] " + event.code() + " Handler 구현")
-                        + "을 만들고, key()가 "
+                        + " 이슈를 직접 만들고(에픽 S15P31C106-97), key()가 "
                         + literal(event.handlerKey())
-                        + "인 ActionHandler를 배포해 주세요.");
+                        + "인 ActionHandler를 구현해 배포해 주세요.");
+        lines.add("설명만으로 Handler가 할 일을 정하기 어려우면 위 관리자에게 확인해 주세요.");
         return String.join("\n", lines);
     }
 
@@ -115,12 +126,16 @@ public class HandlerRequestNotifier {
     }
 
     private static String literal(String value) {
-        if (value == null) {
+        return literal(value, MAX_FIELD_LENGTH);
+    }
+
+    private static String literal(String value, int maxLength) {
+        if (value == null || value.isBlank()) {
             return "`-`";
         }
         String flat = value.replace('`', '\'').replaceAll("\\s+", " ").strip();
-        if (flat.length() > MAX_FIELD_LENGTH) {
-            flat = flat.substring(0, MAX_FIELD_LENGTH) + "…";
+        if (flat.length() > maxLength) {
+            flat = flat.substring(0, maxLength) + "…(이하 생략)";
         }
         return "`" + flat + "`";
     }

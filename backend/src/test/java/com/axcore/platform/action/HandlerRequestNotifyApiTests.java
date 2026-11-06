@@ -77,20 +77,25 @@ class HandlerRequestNotifyApiTests {
     @BeforeEach
     void fixtures() {
         MATTERMOST.reset();
+        admin = createAdmin("알림 관리자");
+    }
+
+    private LoginAccount createAdmin(String displayName) {
         String loginId = "notify-admin-" + UUID.randomUUID().toString().substring(0, 8);
         long id =
                 jdbc.sql(
                                 """
                                 insert into account(login_id, display_name, password_hash, role_id,
                                                     must_change_password)
-                                values (:login, '알림 관리자', 'test-hash',
+                                values (:login, :name, 'test-hash',
                                         (select id from role where code = 'ADMIN'), false)
                                 returning id
                                 """)
                         .param("login", loginId)
+                        .param("name", displayName)
                         .query(Long.class)
                         .single();
-        admin = new LoginAccount(id, loginId, "ADMIN", false);
+        return new LoginAccount(id, loginId, "ADMIN", false);
     }
 
     @Test
@@ -101,7 +106,7 @@ class HandlerRequestNotifyApiTests {
         write(
                         post(ACTIONS),
                         """
-                        {"code": "%s", "name": "설비 점검 요청", "description": "설명은 알림에 넣지 않는다",
+                        {"code": "%s", "name": "설비 점검 요청", "description": "점검 사유를 받아\\n설비 점검 요청을 만든다",
                          "targetKind": "OBJECT", "targetObjectTypeId": %d, "handlerKey": "%s",
                          "inputSchema": {"type": "object", "required": ["reason"],
                                          "properties": {"reason": {"type": "string"},
@@ -124,9 +129,11 @@ class HandlerRequestNotifyApiTests {
                 .contains("필요 권한: `PLAN_CREATE`")
                 .contains("`reason`(`string`, 필수)")
                 .contains("`dueAt`(`string`)")
-                .contains("`" + admin.loginId() + "`")
-                .contains("[BE][Action] " + code + " Handler 구현")
-                .doesNotContain("설명은 알림에 넣지 않는다");
+                .contains("- 등록한 관리자: `알림 관리자(" + admin.loginId() + ")`")
+                .contains("위 관리자에게 확인해 주세요")
+                .contains("- 설명: `점검 사유를 받아 설비 점검 요청을 만든다`")
+                .contains("Jira 이슈는 자동으로 만들어지지 않습니다")
+                .contains("[BE][Action] " + code + " Handler 구현");
         assertThat(MATTERMOST.requests).hasSize(1);
         assertThat(MATTERMOST.requests.peek().path()).isEqualTo("/hooks/" + HOOK_SECRET);
         assertThat(MATTERMOST.requests.peek().contentType()).startsWith("application/json");
@@ -174,6 +181,21 @@ class HandlerRequestNotifyApiTests {
         awaitCount(2);
 
         assertThat(MATTERMOST.codes()).containsExactly(deployed, deployed);
+    }
+
+    @Test
+    void handlerChangeNamesOriginalRegistrantAndCurrentEditor() throws Exception {
+        String code = uniqueCode();
+        create(code, DEPLOYED);
+        LoginAccount registrant = admin;
+        admin = createAdmin("바꾼 관리자");
+
+        update(code, "{\"handlerKey\": \"%s\", \"rowVersion\": 0}".formatted(UNDEPLOYED));
+
+        assertThat(awaitMessage(code))
+                .contains("- 처음 등록한 관리자: `알림 관리자(" + registrant.loginId() + ")`")
+                .contains("- 이번에 바꾼 관리자: `바꾼 관리자(" + admin.loginId() + ")`")
+                .doesNotContain("- 등록한 관리자:");
     }
 
     @Test

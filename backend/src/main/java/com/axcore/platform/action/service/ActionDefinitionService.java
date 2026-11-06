@@ -1,6 +1,7 @@
 package com.axcore.platform.action.service;
 
 import com.axcore.platform.account.domain.RoleCode;
+import com.axcore.platform.account.repository.AccountRepository;
 import com.axcore.platform.action.domain.ActionDefinition;
 import com.axcore.platform.action.domain.ActionKind;
 import com.axcore.platform.action.domain.ActionMode;
@@ -72,6 +73,7 @@ public class ActionDefinitionService {
     private final ActionDefinitionRepository definitions;
     private final ActionReferenceRepository references;
     private final ObjectTypeRepository objectTypes;
+    private final AccountRepository accounts;
     private final ActionHandlerRegistry handlers;
     private final InputSchemaValidator inputSchemas;
     private final AuditRecorder audits;
@@ -83,6 +85,7 @@ public class ActionDefinitionService {
             ActionDefinitionRepository definitions,
             ActionReferenceRepository references,
             ObjectTypeRepository objectTypes,
+            AccountRepository accounts,
             ActionHandlerRegistry handlers,
             InputSchemaValidator inputSchemas,
             AuditRecorder audits,
@@ -92,6 +95,7 @@ public class ActionDefinitionService {
         this.definitions = definitions;
         this.references = references;
         this.objectTypes = objectTypes;
+        this.accounts = accounts;
         this.handlers = handlers;
         this.inputSchemas = inputSchemas;
         this.audits = audits;
@@ -320,13 +324,24 @@ public class ActionDefinitionService {
                         reason,
                         definition.getCode(),
                         definition.getName(),
+                        definition.getDescription(),
                         definition.getHandlerKey(),
                         definition.getTargetKind().name(),
                         objectType,
                         definition.getRequiredPermission(),
                         definition.getInputSchema(),
                         definition.isActive(),
-                        actor.loginId()));
+                        adminLabel(actor.id(), actor.loginId()),
+                        definition.getCreatedBy() == null
+                                ? null
+                                : adminLabel(definition.getCreatedBy(), null)));
+    }
+
+    /** 개발자가 문의할 사람을 찾을 수 있게 "이름(로그인 ID)"로 적는다. 계정을 못 찾으면 아는 값만 쓴다. */
+    private String adminLabel(Long accountId, String knownLoginId) {
+        return accounts.findById(accountId)
+                .map(account -> account.getDisplayName() + "(" + account.getLoginId() + ")")
+                .orElse(knownLoginId == null ? "계정 " + accountId : knownLoginId);
     }
 
     /** SYSTEM이면 대상 객체 유형이 없어야 한다. OBJECT는 유형을 비워도 되고, 정하면 있는 유형이어야 한다. */
