@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-/** Action 정의·실행이 가리키는 다른 표(permission, role_permission, object_type, agent_message)를 확인한다. */
+/** Action 정의·실행이 가리키는 다른 표(permission, role_permission, agent_message)를 확인한다. */
 @Repository
 @RequiredArgsConstructor
 public class ActionReferenceRepository {
@@ -45,13 +45,6 @@ public class ActionReferenceRepository {
                         """)
                 .param("messageId", agentMessageId)
                 .param("accountId", accountId)
-                .query(Boolean.class)
-                .single();
-    }
-
-    public boolean objectTypeExists(long id) {
-        return jdbc.sql("select exists (select 1 from object_type where id = :id)")
-                .param("id", id)
                 .query(Boolean.class)
                 .single();
     }

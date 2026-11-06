@@ -22,6 +22,7 @@ import com.axcore.platform.audit.service.AuditRecorder;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.ontology.repository.ObjectTypeRepository;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,6 +68,7 @@ public class ActionDefinitionService {
 
     private final ActionDefinitionRepository definitions;
     private final ActionReferenceRepository references;
+    private final ObjectTypeRepository objectTypes;
     private final ActionHandlerRegistry handlers;
     private final InputSchemaValidator inputSchemas;
     private final AuditRecorder audits;
@@ -76,6 +78,7 @@ public class ActionDefinitionService {
     public ActionDefinitionService(
             ActionDefinitionRepository definitions,
             ActionReferenceRepository references,
+            ObjectTypeRepository objectTypes,
             ActionHandlerRegistry handlers,
             InputSchemaValidator inputSchemas,
             AuditRecorder audits,
@@ -83,6 +86,7 @@ public class ActionDefinitionService {
             PlatformTransactionManager transactionManager) {
         this.definitions = definitions;
         this.references = references;
+        this.objectTypes = objectTypes;
         this.handlers = handlers;
         this.inputSchemas = inputSchemas;
         this.audits = audits;
@@ -296,7 +300,7 @@ public class ActionDefinitionService {
             throw BusinessException.invalidField(
                     "targetObjectTypeId", "targetKind가 SYSTEM이면 targetObjectTypeId는 null이어야 합니다.");
         }
-        if (!references.objectTypeExists(targetObjectTypeId)) {
+        if (!objectTypes.existsById(targetObjectTypeId)) {
             throw BusinessException.invalidField("targetObjectTypeId", "없는 객체 유형입니다.");
         }
     }

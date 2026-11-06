@@ -3,6 +3,7 @@ package com.axcore.platform.action.handler;
 import com.axcore.platform.action.handler.ReassignmentPlanValidator.ValidatedItem;
 import com.axcore.platform.action.repository.ReassignmentObjectRepository.ObjectRow;
 import com.axcore.platform.action.repository.ReassignmentPlanRepository;
+import com.axcore.platform.agent.repository.AgentMessageRepository;
 import com.axcore.platform.audit.domain.ChangeEntry;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -33,6 +34,7 @@ public class ReassignmentPlanHandler implements ActionHandler {
 
     private final ReassignmentPlanValidator validator;
     private final ReassignmentPlanRepository plans;
+    private final AgentMessageRepository agentMessages;
     private final ReassignmentProperties properties;
     private final JsonMapper json;
 
@@ -70,7 +72,9 @@ public class ReassignmentPlanHandler implements ActionHandler {
         Long conversationId =
                 context.agentMessageId() == null
                         ? null
-                        : plans.conversationOf(context.agentMessageId()).orElse(null);
+                        : agentMessages
+                                .findConversationIdById(context.agentMessageId())
+                                .orElse(null);
         Instant dataAsOf = OffsetDateTime.parse(input.dataAsOf()).toInstant();
         Map<String, Object> selectionBasis =
                 input.selectionBasis() == null ? Map.of() : input.selectionBasis();
