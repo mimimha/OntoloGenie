@@ -3,9 +3,14 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { expect, test } from 'vitest'
+import { afterEach, expect, test } from 'vitest'
+import { mockUser } from '../../mocks/handlers'
 import { server } from '../../mocks/node'
 import HistoryPage from './HistoryPage'
+
+afterEach(() => {
+  mockUser.roleCode = 'PLANNER'
+})
 
 function renderHistoryPage(path = '/admin/history') {
   render(
@@ -189,5 +194,37 @@ test('개정 이력이 없는 규칙 코드면 안내를 보여준다', async ()
 
   expect(
     await screen.findByText('이 규칙 코드의 개정 이력이 없습니다.'),
+  ).toBeInTheDocument()
+})
+
+test('활동 기록 탭은 고른 개정본의 원본 제안에 대한 실행 기록을 보여준다', async () => {
+  mockUser.roleCode = 'ADMIN'
+  const user = userEvent.setup()
+  renderHistoryPage('/admin/history?tab=rules&code=WO_EQUIPMENT_CODE')
+
+  await user.click(await screen.findByRole('button', { name: '활동 기록' }))
+
+  expect(await screen.findByDisplayValue('제안 #300')).toBeInTheDocument()
+  expect(await screen.findByText('1건')).toBeInTheDocument()
+  expect(screen.getByText('검토·변경 · 연결 규칙 승인')).toBeInTheDocument()
+  // 대상을 고른 활동 기록에는 종류 탭이 없다.
+  expect(
+    screen.queryByRole('group', { name: '실행 이력 종류' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.getByText(
+      '조회 범위: 선택한 대상에 대한 실행 기록 · Agent 조회 기록은 제외됩니다.',
+    ),
+  ).toBeInTheDocument()
+})
+
+test('원본 제안이 없는 개정본은 활동 기록이 없다고 안내한다', async () => {
+  const user = userEvent.setup()
+  renderHistoryPage('/admin/history?tab=rules&code=NOTE_EQUIPMENT_MENTION')
+
+  await user.click(await screen.findByRole('button', { name: '활동 기록' }))
+
+  expect(
+    screen.getByText(/원본 제안이 없어\(직접 등록·초기 데이터\)/),
   ).toBeInTheDocument()
 })

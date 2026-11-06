@@ -1,10 +1,22 @@
-import type { EntityChange, Execution, ExecutionStatus } from './types'
+import type {
+  EntityChange,
+  Execution,
+  ExecutionCategory,
+  ExecutionStatus,
+} from './types'
 
 export const executionStatusLabels: Record<ExecutionStatus, string> = {
   RUNNING: '진행 중',
   SUCCEEDED: '성공',
   BLOCKED: '차단',
   FAILED: '실패',
+}
+
+export const categoryLabels: Record<ExecutionCategory, string> = {
+  ANALYSIS: '분석',
+  OPERATION: '업무 실행',
+  CHANGE: '검토·변경',
+  DATA_JOB: '데이터 작업',
 }
 
 export const eventKindLabels: Record<Execution['eventKind'], string> = {

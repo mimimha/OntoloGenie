@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import ExecutionHistory from '../audit/ExecutionHistory'
 import { fetchRuleRevisions, fetchRules } from './api'
 import { ruleOriginLabels, ruleStatusLabels } from './labels'
 import type { RuleCondition, RuleRevision, RuleSummary } from './types'
@@ -139,6 +140,37 @@ function RevisionComparison({ previous, selected }: RevisionComparisonProps) {
   )
 }
 
+type RevisionActivityProps = {
+  revision: RuleRevision
+}
+
+// 개정본의 원본 제안(proposal_item)에 대한 실행 기록(승인·거절·검사 등, 096).
+// 직접 등록·초기 데이터 개정본은 원본 제안이 없어 보여 줄 기록이 없다.
+function RevisionActivity({ revision }: RevisionActivityProps) {
+  if (!revision.proposalItemId) {
+    return (
+      <p className="mt-4 text-sm text-slate-500">
+        이 개정본은 원본 제안이 없어(직접 등록·초기 데이터) 연결된 활동 기록이
+        없습니다.
+      </p>
+    )
+  }
+  return (
+    <div className="mt-4">
+      <ExecutionHistory
+        key={revision.proposalItemId}
+        target={{ type: 'proposal_item', id: revision.proposalItemId }}
+        targetLabel={`제안 #${revision.proposalItemId}`}
+      />
+    </div>
+  )
+}
+
+const historyViews = [
+  { key: 'revisions', label: '개정 내역' },
+  { key: 'activity', label: '활동 기록' },
+] as const
+
 type RevisionListProps = {
   revisions: RuleRevision[]
 }
@@ -153,6 +185,8 @@ function RevisionList({ revisions }: RevisionListProps) {
   const previous = sorted.find(
     (revision) => revision.revision < selected.revision,
   )
+  const [view, setView] =
+    useState<(typeof historyViews)[number]['key']>('revisions')
 
   return (
     <div>
@@ -183,7 +217,32 @@ function RevisionList({ revisions }: RevisionListProps) {
           </button>
         ))}
       </div>
-      <RevisionComparison previous={previous} selected={selected} />
+      <div
+        role="group"
+        aria-label="규칙 이력 보기"
+        className="mt-4 flex gap-2 border-b border-slate-200 pb-2"
+      >
+        {historyViews.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            aria-pressed={view === item.key}
+            onClick={() => setView(item.key)}
+            className={`rounded-lg px-3 py-1.5 text-sm ${
+              view === item.key
+                ? 'bg-slate-100 font-semibold text-slate-900'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      {view === 'revisions' ? (
+        <RevisionComparison previous={previous} selected={selected} />
+      ) : (
+        <RevisionActivity revision={selected} />
+      )}
     </div>
   )
 }
