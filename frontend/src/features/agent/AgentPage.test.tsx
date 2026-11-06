@@ -98,13 +98,16 @@ test('새 대화를 만들면 목록에 추가하고 그 대화를 연다', asyn
   renderAgentPage('/agent?conversation=1')
   const list = await screen.findByRole('complementary', { name: '대화방 목록' })
 
-  await user.click(within(list).getByRole('button', { name: '+ 새 대화' }))
+  await user.click(
+    await within(list).findByRole('button', { name: '+ 새 대화' }),
+  )
 
   await waitFor(() =>
     expect(within(list).getAllByRole('listitem')).toHaveLength(3),
   )
+  // 목록이 먼저 늘고 선택 표시는 그 뒤에 바뀐다. 바쁠 때는 바로 찾으면 아직 없어 실패한다
   expect(
-    within(list).getByRole('button', { name: '새 대화', pressed: true }),
+    await within(list).findByRole('button', { name: '새 대화', pressed: true }),
   ).toBeInTheDocument()
 })
 
