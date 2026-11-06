@@ -17,9 +17,15 @@ export const RESOURCE_PAGE_SIZE = 6
 export const COLUMN_PAGE_SIZE = 8
 
 // 고른 컬럼을 표별로 모은다. allColumns는 그 표의 전체 컬럼 수.
+// whole은 컬럼이 없는 문서·자료를 통째로 고른 경우다.
 type Selection = Record<
   number,
-  { resource: SourceResource; columns: string[]; allColumns: number }
+  {
+    resource: SourceResource
+    columns: string[]
+    allColumns: number
+    whole: boolean
+  }
 >
 
 function isDocument(resource: SourceResource) {
@@ -41,12 +47,16 @@ function ColumnPicker({
   sourceName,
   picked,
   onChange,
+  included,
+  onInclude,
 }: {
   sourceId: number
   resource: SourceResource
   sourceName: string
   picked: string[]
   onChange: (columns: string[], allColumns: number) => void
+  included: boolean
+  onInclude: (include: boolean) => void
 }) {
   const [query, setQuery] = useState('')
   const [columnPage, setColumnPage] = useState(0)
@@ -72,6 +82,26 @@ function ColumnPicker({
           void refetch()
         }}
       />
+    )
+  } else if (
+    isDocument(resource) &&
+    !columns.some((column) => column.isPresent)
+  ) {
+    // 컬럼이 없는 문서·자료는 목업처럼 자료 단위로 고른다.
+    content = (
+      <>
+        <p className="text-sm text-slate-600">
+          컬럼이 없는 문서·자료입니다. 고르면 자료 전체를 분석합니다.
+        </p>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={included}
+            onChange={(event) => onInclude(event.target.checked)}
+          />
+          이 자료를 분석에 포함
+        </label>
+      </>
     )
   } else {
     const present = columns.filter((column) => column.isPresent)
@@ -228,8 +258,16 @@ function AnalysisTargetDialog({
     queryKey: ['sources', 'list'],
     queryFn: fetchSources,
   })
-  const sourceId = chosenSourceId ?? sources.data?.[0]?.id
+  // 목록에 없는 원천 번호(삭제된 원천 등)로 열면 첫 원천으로 맞춰 선택칸과 표 목록이 어긋나지 않게 한다.
+  const knownSource = sources.data?.some((item) => item.id === chosenSourceId)
+  const sourceId = knownSource ? chosenSourceId : sources.data?.[0]?.id
   const source = sources.data?.find((item) => item.id === sourceId)
+  const missingInitialSource =
+    initialSourceId !== undefined &&
+    chosenSourceId === initialSourceId &&
+    sources.data !== undefined &&
+    sources.data.length > 0 &&
+    !sources.data.some((item) => item.id === initialSourceId)
 
   const resources = useQuery({
     queryKey: ['sources', sourceId, 'resources'],
@@ -240,9 +278,9 @@ function AnalysisTargetDialog({
   const start = useMutation({
     mutationFn: () => {
       const targets: AnalysisTarget[] = Object.values(selection).map(
-        ({ resource, columns, allColumns }) =>
-          // 표의 컬럼을 모두 골랐으면 컬럼 목록을 빼서 표 전체를 분석한다.
-          columns.length === allColumns
+        ({ resource, columns, allColumns, whole }) =>
+          // 자료를 통째로 골랐거나 표의 컬럼을 모두 골랐으면 컬럼 목록을 빼서 전체를 분석한다.
+          whole || columns.length === allColumns
             ? { sourceResourceId: resource.id }
             : { sourceResourceId: resource.id, columns },
       )
@@ -288,7 +326,24 @@ function AnalysisTargetDialog({
       if (columns.length === 0) {
         delete next[resource.id]
       } else {
-        next[resource.id] = { resource, columns, allColumns }
+        next[resource.id] = { resource, columns, allColumns, whole: false }
+      }
+      return next
+    })
+  }
+
+  function includeWhole(resource: SourceResource, include: boolean) {
+    setSelection((previous) => {
+      const next = { ...previous }
+      if (include) {
+        next[resource.id] = {
+          resource,
+          columns: [],
+          allColumns: 0,
+          whole: true,
+        }
+      } else {
+        delete next[resource.id]
       }
       return next
     })
@@ -339,7 +394,11 @@ function AnalysisTargetDialog({
                 </span>
                 <span className="text-xs text-slate-500">
                   {isDocument(resource) ? '문서·자료' : '테이블'}
-                  {chosen ? ` · ${chosen.columns.length}개 컬럼 선택` : ''}
+                  {chosen
+                    ? chosen.whole
+                      ? ' · 자료 전체 선택'
+                      : ` · ${chosen.columns.length}개 컬럼 선택`
+                    : ''}
                 </span>
               </button>
             </li>
@@ -385,6 +444,11 @@ function AnalysisTargetDialog({
             </Button>
           </div>
         </div>
+        {missingInitialSource && (
+          <p role="status" className="text-amber-800">
+            열려던 원천을 찾을 수 없어 첫 원천을 보여 줍니다.
+          </p>
+        )}
 
         <div className="grid gap-4 md:grid-cols-[16rem_1fr]">
           <section
@@ -434,6 +498,8 @@ function AnalysisTargetDialog({
                 onChange={(columns, allColumns) =>
                   pickColumns(active, columns, allColumns)
                 }
+                included={selection[active.id]?.whole ?? false}
+                onInclude={(include) => includeWhole(active, include)}
               />
             ) : (
               <EmptyState message="왼쪽에서 표를 골라 주세요." />
