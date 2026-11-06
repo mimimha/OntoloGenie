@@ -141,15 +141,10 @@ pipeline {
         stage('AI check') {
             when { expression { env.IS_DEPLOY_JOB != 'true' && env.CHECK_AI == 'true' } }
             steps {
-                sh '''
-                    HOST_WS=$(echo "$WORKSPACE" | sed 's#^/var/jenkins_home#/home/ubuntu/axcore/jenkins-data#')
-                    docker run --rm --memory 1g \
-                        -e CI=true \
-                        -v "$HOST_WS/ai:/app" -w /app \
-                        -v axcore-pip-cache:/root/.cache/pip \
-                        python:3.11-slim \
-                        sh -c "pip install -q -r requirements-dev.txt && ruff check . && pytest -q --junitxml=test-results/pytest.xml"
-                '''
+                script {
+                    def coverageOptions = isManualSonarCheck() ? ' --cov --cov-report=xml' : ''
+                    runAiCommands("ruff check . && pytest -q --junitxml=test-results/pytest.xml${coverageOptions}")
+                }
             }
             post {
                 always {
@@ -367,6 +362,11 @@ pipeline {
                                     }
                                     sh 'test -s build/reports/jacoco/test/jacocoTestReport.xml'
                                 }
+                            } else if (component == 'ai') {
+                                if (env.IS_DEPLOY_JOB == 'true') {
+                                    runAiCommands('pytest -q --cov --cov-report=xml')
+                                }
+                                sh 'test -s ai/coverage/coverage.xml'
                             }
                             def credentialId = component == 'frontend' ? 'axcore-sonarqube-token' : "axcore-sonarqube-${component}-token"
                             withCredentials([string(credentialsId: credentialId, variable: 'SONAR_TOKEN')]) {
@@ -474,6 +474,20 @@ def runFrontendCommands(String commands) {
                 -v axcore-npm-cache:/root/.npm \
                 node:24.18.0-alpine \
                 sh -c "npm ci --no-audit --no-fund && $FRONTEND_COMMANDS"
+        '''
+    }
+}
+
+def runAiCommands(String commands) {
+    withEnv(["AI_COMMANDS=${commands}"]) {
+        sh '''
+            HOST_WS=$(printf '%s' "$WORKSPACE" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
+            docker run --rm --memory 1g \
+                -e CI=true \
+                -v "$HOST_WS/ai:/app" -w /app \
+                -v axcore-pip-cache:/root/.cache/pip \
+                python:3.11-slim \
+                sh -c "pip install -q -r requirements-dev.txt && $AI_COMMANDS"
         '''
     }
 }

@@ -39,6 +39,7 @@
 - SonarQube가 UP이면 배포 대상인 frontend·backend·AI를 고정 태그의 스캐너 컨테이너로 순서대로 분석한다. `RUN_SONARQUBE`를 선택하면 세 서비스 모두 분석한다. 분석 단계는 결과를 병합 조건으로 사용하지 않는다.
 - 프론트 분석은 `npm run test:coverage`로 생성한 `frontend/coverage/lcov.info`를 읽는다. 배포 Job에서는 프론트 분석 직전에 생성하고, `axcore-mr-check` 수동 분석에서는 `Frontend check`의 테스트 실행에서 생성한다.
 - 백엔드 분석은 Gradle `jacocoTestReport`로 생성한 `backend/build/reports/jacoco/test/jacocoTestReport.xml`을 읽는다. 배포 Job에서는 백엔드 분석 직전에 테스트와 보고서 생성을 실행하고, `axcore-mr-check` 수동 분석에서는 `Backend check`에서 기존 테스트 실행과 함께 보고서를 생성한다.
+- AI 분석은 `pytest --cov --cov-report=xml`로 생성한 `ai/coverage/coverage.xml`을 읽는다. 배포 Job에서는 AI 분석 직전에 생성하고, `axcore-mr-check` 수동 분석에서는 `AI check`의 테스트 실행에서 생성한다.
 - 새 Compose는 SonarQube가 UP에 도달한 뒤 활성 파일로 저장한다. 갱신이 실패하면 이전 Compose를 다시 적용하고 UP을 확인한다. Jenkins는 해당 실행을 실패로 표시하고 분석을 생략한다. 복구도 실패하면 로그와 백업을 확인한다.
 - DB 덤프에는 SonarQube 운영 데이터가 포함된다. 백업 폴더에 운영자만 접근하도록 하고 보존 기간은 팀에서 정한다.
 
