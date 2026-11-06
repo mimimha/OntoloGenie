@@ -1,0 +1,12 @@
+[run]
+branch = True
+relative_files = True
+source = .
+
+[report]
+include =
+    app/*
+    main.py
+
+[xml]
+output = coverage/coverage.xml
