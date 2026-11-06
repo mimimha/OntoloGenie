@@ -16,5 +16,13 @@
   "snapshot.mode": "no_data",
   "decimal.handling.mode": "string",
   "tombstones.on.delete": "false",
-  "heartbeat.interval.ms": "60000"
+  "heartbeat.interval.ms": "60000",
+  "provide.transaction.metadata": "true",
+  "skipped.operations": "none",
+  "topic.creation.default.replication.factor": "1",
+  "topic.creation.default.partitions": "1",
+  "transforms": "route",
+  "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
+  "transforms.route.regex": "(ERP_MAIN[.].*|__debezium-heartbeat[.]ERP_MAIN)",
+  "transforms.route.replacement": "ERP_MAIN.all"
 }

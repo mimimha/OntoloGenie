@@ -50,12 +50,33 @@ docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:90
 
 | 커넥터 | 원천 | `topic.prefix` | 복제 슬롯 | 토픽 |
 |---|---|---|---|---|
-| `cdc-erp` | ERP `3.35.230.145:15432/erp` | `ERP_MAIN` | `axcore_erp` | `ERP_MAIN.erp.<표>` |
-| `cdc-mes` | MES `3.34.192.251:15432/mes` | `MES_MAIN` | `axcore_mes` | `MES_MAIN.mes.<표>` |
+| `cdc-erp` | ERP `3.35.230.145:15432/erp` | `ERP_MAIN` | `axcore_erp` | `ERP_MAIN.all` |
+| `cdc-mes` | MES `3.34.192.251:15432/mes` | `MES_MAIN` | `axcore_mes` | `MES_MAIN.all` |
 
 **커넥터는 첫 적재보다 먼저 떠 있어야 합니다.** 스냅샷 없이(`no_data`) 등록한 순간부터의 변경만 받으므로, 플랫폼이 테이블 전체를 읽기 전에 슬롯이 있어야 그 사이 변경을 놓치지 않습니다. 전체 읽기와 이벤트가 겹치는 경계는 LSN이 아니라 읽기 트랜잭션의 스냅샷으로 판단합니다(V11). 소비자가 없어도 이벤트는 토픽에 7일간 쌓였다 지워질 뿐이고, Connect가 WAL을 계속 읽어 가므로 원천에 WAL이 쌓이지 않습니다.
 
-`topic.prefix`는 플랫폼 `data_source.code`와 같아야 합니다. **플랫폼에 원천을 등록할 때 코드를 `ERP_MAIN`·`MES_MAIN`으로 씁니다**(API 009~012 예시와 같음). 토픽은 표에 첫 변경이 생길 때 만들어집니다.
+`topic.prefix`는 플랫폼 `data_source.code`와 같아야 합니다. **플랫폼에 원천을 등록할 때 코드를 `ERP_MAIN`·`MES_MAIN`으로 씁니다**(API 009~012 예시와 같음). 원천 토픽(`<prefix>.all`)은 첫 heartbeat나 첫 변경 때 파티션 1개로 만들어집니다.
+
+### 원천마다 토픽 하나 (S15P31C106-316, 2026-11-06)
+
+원천의 모든 표 변경, 트랜잭션 경계(BEGIN·END), heartbeat를 토픽 하나(`<prefix>.all`), 파티션 1개에 넣습니다(`RegexRouter`). Kafka는 한 파티션 안에서만 순서를 지키므로, 이렇게 해야 같은 원천의 변경이 원천 커밋 순서대로, 트랜잭션 경계와 함께 옵니다. 소비자는 원천 트랜잭션을 END까지 모아 플랫폼에 한 번에 반영합니다. 그러면 같은 원천의 플랫폼 상태는 늘 "원천의 어느 커밋 시점 상태"와 같아, 같은 원천 안 규칙의 미연결 판정이 정확해집니다(결정 문서 8·10장). 표마다 토픽이면 heartbeat 같은 표시가 앞선 변경을 앞지릅니다(시험 `troubleshooting/cdc-heartbeat-order-test.md`).
+
+- **원천 토픽의 파티션을 늘리지 않습니다.** 늘리면 순서 보장이 깨집니다. 커넥터 설정 `topic.creation.default.partitions=1`로 브로커 기본값과 상관없이 1개로 만듭니다.
+- 표마다 처리를 나누려면 토픽이 아니라 소비자 안에서 메시지의 `source.schema`·`source.table`로 나눕니다.
+- 바꾸기 전의 표별 토픽(`<prefix>.<스키마>.<표>`)과 `__debezium-heartbeat.<prefix>`에는 더 쓰지 않습니다. 보관 기간(7일)이 지나면 비고, 필요 없으면 지웁니다.
+- `cdc_offset` 테이블 설명(V5)의 "토픽 이름은 {code}.{스키마}.{테이블}"은 198 마이그레이션에서 고칩니다.
+
+확인(2026-11-06, 로컬에서 같은 이미지·같은 설정 파일로):
+
+- 설정 검증 오류 0, 커넥터·태스크 RUNNING
+- 브로커 기본 파티션을 일부러 3으로 둬도 `ERP_MAIN.all`은 파티션 1개로 만들어짐
+- 두 표의 변경과 heartbeat가 `ERP_MAIN.all` 한 토픽에 커밋 순서대로 들어옴
+- SAVEPOINT가 섞인 트랜잭션(추가 2건 + 되돌린 수정 1건 + 추가 1건)의 이벤트 3건이 모두 `txid_current()`와 같은 최상위 번호. 되돌린 수정은 오지 않음
+- 원천 로그의 `START_REPLICATION` 옵션에 `streaming`이 없음(`proto_version` 1). 약 120MB짜리 트랜잭션도 커밋 전에는 이벤트가 0건, 커밋 뒤 한꺼번에 들어옴
+- 트랜잭션 경계(`provide.transaction.metadata=true`)가 별도 토픽 없이 `ERP_MAIN.all`에 들어옴. 순서는 BEGIN → 그 트랜잭션의 변경 → END. END에 `event_count`와 표별 건수가 있음. **END는 커밋 직후 바로 옴**(뒤에 10초간 변경이 없어도 다음 트랜잭션을 기다리지 않음)
+- heartbeat가 한 트랜잭션의 변경과 END 사이에 낄 수 있음(TRUNCATE 시험에서 관측). heartbeat를 트랜잭션 경계로 보면 안 됨
+- 변경되지 않은 TOAST 값(약 9.6KB 문자열이 있는 행에서 다른 컬럼만 수정): `u`의 `after`에 `"__debezium_unavailable_value"`로 옴
+- TRUNCATE(`skipped.operations=none`): `op=t` 이벤트가 자기 트랜잭션 경계와 함께 옴
 
 등록·설정 변경은 `register-connectors.sh`로 합니다(설정 검증 → `PUT /connectors/<이름>/config` → RUNNING 확인). 다시 실행해도 됩니다.
 
@@ -71,7 +92,11 @@ ssh -i ~/.ssh/K15C106T.pem ubuntu@k15c106.p.ssafy.io '~/axcore/cdc/register-conn
 - `database.user=platform_cdc`, `database.password=${env:ERP_CDC_PASSWORD}`: 비밀번호는 참조만 적는다
 - `decimal.handling.mode=string`: numeric 값을 정확한 문자열로 보낸다(기본값은 base64 바이트라 소비자가 풀기 번거롭다)
 - `tombstones.on.delete=false`: 토픽 압축을 쓰지 않으므로 삭제 뒤 빈 메시지를 보내지 않는다
-- `heartbeat.interval.ms=60000`: 대상 표에 변경이 없어도 1분마다 슬롯 위치를 앞으로 옮겨 원천 WAL이 쌓이지 않게 한다. 토픽 `__debezium-heartbeat.<prefix>`는 소비자가 무시한다
+- `heartbeat.interval.ms=60000`: 대상 표에 변경이 없어도 1분마다 슬롯 위치를 앞으로 옮겨 원천 WAL이 쌓이지 않게 한다. heartbeat도 원천 토픽에 같이 들어온다. 값은 `{"ts_ms": Connect 서버 시각}`뿐이라 반영 완료의 증거가 아니다(화면의 "마지막 확인" 표시 정도로만 쓴다)
+- `transforms=route`(`RegexRouter`), `topic.creation.default.partitions=1`: 원천마다 토픽 하나·파티션 1개(위 절)
+- `provide.transaction.metadata=true`: 트랜잭션 BEGIN·END를 보낸다. 기본 토픽 `<prefix>.transaction`이 라우팅 정규식에 걸려 원천 토픽으로 함께 간다. 소비자는 END까지 모아 원천 트랜잭션 단위로 반영한다
+- `skipped.operations=none`: TRUNCATE도 이벤트(`op=t`)로 받는다(기본값은 건너뜀). 행별 `d`가 오지 않으므로 소비자는 그 표를 다시 읽기 대상으로 표시한다
+- **진행 중 트랜잭션 스트리밍은 쓰지 않는다.** Debezium은 `START_REPLICATION ... ("proto_version" '1', "publication_names" 'axcore_cdc', "messages" 'true')`로 접속해 커밋된 트랜잭션만 받는다. 소비자는 `txId`를 최상위 트랜잭션 번호로 보고 스냅샷 가시성을 판단하므로 이 동작을 바꾸는 옵션을 켜지 않는다
 
 이벤트 모양(소비자 S15P31C106-198·199 참고):
 
@@ -79,8 +104,12 @@ ssh -i ~/.ssh/K15C106T.pem ubuntu@k15c106.p.ssafy.io '~/axcore/cdc/register-conn
 - `payload.source.txId`: 원천 트랜잭션 번호(32비트). 소비자가 epoch를 복원해 `xid8`로 바꾸고, 객체의 적재 스냅샷과 비교한다(`pg_visible_in_snapshot`)
 - 원천 표의 REPLICA IDENTITY가 기본값(PK)이라 `u`의 `before`는 비어 있고, `d`의 `before`에는 PK 컬럼만 있다
 - 메시지마다 컬럼 구성(`schema`)이 같이 온다. 원천 컬럼이 바뀌면 여기서 알 수 있다
-- TRUNCATE는 보내지 않는다(Debezium 기본값)
-- 토픽이 표마다 따로라 표 사이의 순서는 보장되지 않는다
+- TRUNCATE는 `op=t` 이벤트로 온다(`skipped.operations=none`). 행별 삭제가 오지 않는다
+- 트랜잭션 경계 메시지는 `status`(`BEGIN`/`END`)와 `id`(`txId:LSN`)가 있고, END에는 `event_count`·`data_collections`(표별 건수)가 있다. BEGIN과 END의 `id` 뒤쪽 LSN은 다르므로 `txId` 부분으로 맞춘다. 변경 이벤트에는 `transaction`(`id`, `total_order`, `data_collection_order`)이 붙는다
+- 변경되지 않은 TOAST 값은 `__debezium_unavailable_value`로 온다(REPLICA IDENTITY DEFAULT). 소비자는 이 값으로 기존 값을 덮어쓰지 않는다
+- 같은 원천 안에서는 표가 달라도 원천 커밋 순서대로 온다(원천마다 토픽 하나). ERP와 MES 사이의 순서는 없다
+- 한 트랜잭션의 이벤트는 모두 같은 `txId`(최상위 번호)다. SAVEPOINT·하위 트랜잭션 안의 변경도 같고, 되돌린 SAVEPOINT의 변경은 오지 않는다
+- heartbeat 메시지는 `source`가 없고 `ts_ms`만 있다. 소비자는 `source`·`status` 유무로 변경·트랜잭션 경계·heartbeat를 가린다
 
 멈추기·다시 켜기(슬롯은 남아 있어 그동안의 변경을 이어서 받는다):
 

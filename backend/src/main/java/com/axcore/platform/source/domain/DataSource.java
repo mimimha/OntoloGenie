@@ -18,8 +18,8 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 /**
- * 원천 시스템(ERP·MES 등)과 연결 상태 (FN-SRC-01). code는 CDC 토픽 이름의 앞부분({code}.{스키마}.{테이블})이라 만든 뒤 바꾸지 않는다. 접속
- * 계정은 data_source_credential에 따로 둔다.
+ * 원천 시스템(ERP·MES 등)과 연결 상태 (FN-SRC-01). code는 CDC 토픽 이름({code}.all, 원천마다 하나)이라 만든 뒤 바꾸지 않는다. 접속 계정은
+ * data_source_credential에 따로 둔다.
  */
 @Getter
 @Entity
