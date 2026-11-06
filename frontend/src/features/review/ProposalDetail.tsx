@@ -17,6 +17,7 @@ import ProposalComparison from './ProposalComparison'
 import CheckResults from './CheckResults'
 import ProposalDecision from './ProposalDecision'
 import { fetchProposal } from './api'
+import type { ProposalOption } from './types'
 import {
   applyLabels,
   confidence,
@@ -73,6 +74,10 @@ export default function ProposalDetail() {
   const validId =
     /^\d+$/.test(id ?? '') && Number.isSafeInteger(proposalId) && proposalId > 0
   const [refreshing, setRefreshing] = useState(false)
+  const [selection, setSelection] = useState<{
+    key: string
+    option: ProposalOption
+  }>()
   const queryClient = useQueryClient()
   const queryKey = ['proposals', 'detail', proposalId]
   // 화면을 연 시점의 조회 횟수. 같은 제안에 다시 들어와도 그때부터 다시 센다(캐시에 남은 횟수 제외).
@@ -84,6 +89,7 @@ export default function ProposalDetail() {
     queryFn: ({ signal }) => fetchProposal(proposalId, signal),
     enabled: validId,
     retry: false,
+    refetchOnMount: 'always',
     refetchInterval: (query) =>
       shouldPoll(
         query.state.data,
@@ -93,6 +99,14 @@ export default function ProposalDetail() {
         ? CHECK_POLL_MS
         : false,
   })
+  async function refreshProposal() {
+    setRefreshing(true)
+    try {
+      return (await query.refetch()).isSuccess
+    } finally {
+      setRefreshing(false)
+    }
+  }
   // 같은 내용이 와도 확인할 때마다 다시 그리도록 dataUpdatedAt을 읽는다.
   const polling =
     query.dataUpdatedAt > 0 &&
@@ -116,6 +130,14 @@ export default function ProposalDetail() {
     )
   else {
     const item = query.data
+    const selectionKey = `${item.id}:${item.revision}:${item.reviewStatus}`
+    const unavailable =
+      refreshing || !query.isFetchedAfterMount || !!query.error
+    const historyUrl = `/admin/rules/${item.id}/history`
+    const activityParams = new URLSearchParams(search)
+    activityParams.set('view', 'activity')
+    const heldParams = new URLSearchParams(search)
+    heldParams.set('view', 'held')
     content = (
       <article className="space-y-6">
         <header className="space-y-3">
@@ -126,7 +148,7 @@ export default function ProposalDetail() {
           <div className="flex flex-wrap items-center gap-3">
             <Link
               className="inline-block text-sm text-violet-700 underline"
-              to={`/admin/rules/${item.id}/history${search}`}
+              to={`${historyUrl}${search}`}
             >
               이력
             </Link>
@@ -157,7 +179,14 @@ export default function ProposalDetail() {
             </StatusBadge>
           </div>
         </header>
-        <ProposalComparison proposal={item} />
+        <ProposalComparison
+          proposal={item}
+          onSelect={
+            unavailable
+              ? undefined
+              : (option) => setSelection({ key: selectionKey, option })
+          }
+        />
         <section className="rounded-xl border border-slate-200 p-5">
           <h3 className="font-semibold">AI 신뢰도</h3>
           <p className="mt-2 text-2xl font-semibold text-violet-700">
@@ -201,15 +230,20 @@ export default function ProposalDetail() {
           polling={polling}
           refreshError={query.error}
           onRefresh={() => {
-            setRefreshing(true)
-            void query.refetch().finally(() => setRefreshing(false))
+            void refreshProposal()
           }}
         />
         <ProposalDecision
-          key={`${item.id}:${item.revision}:${item.reviewStatus}`}
+          key={item.id}
           proposal={item}
-          // 자동 확인(백그라운드 조회) 중에는 입력을 막지 않는다. 직접 새로고침할 때만 막는다.
-          unavailable={refreshing || !!query.error}
+          unavailable={unavailable}
+          selectedOption={
+            selection?.key === selectionKey ? selection.option : undefined
+          }
+          onClearSelection={() => setSelection(undefined)}
+          onRefresh={refreshProposal}
+          historyUrl={`${historyUrl}?${activityParams}`}
+          heldItemsUrl={`${historyUrl}?${heldParams}`}
         />
         {item.applyError && (
           <p role="alert" className="rounded-lg bg-red-50 p-4 text-red-800">

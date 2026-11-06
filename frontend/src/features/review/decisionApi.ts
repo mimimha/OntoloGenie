@@ -1,4 +1,44 @@
-import { apiGet, ApiError } from '../../api/client'
+import { apiGet, apiPost, ApiError } from '../../api/client'
+
+export type Decision = 'APPROVE' | 'HOLD' | 'REJECT'
+
+export type DecisionInput = {
+  revision: number
+  decision: Decision
+  reason: string
+  selectedOptionId?: number
+}
+
+export type DecisionResult = {
+  decisionId: number
+  decision: Decision
+  reviewStatus: string
+  applyStatus: string
+  appliedEntityIds: number[]
+  heldItemIds: number[]
+  actionExecutionId: number
+}
+
+export async function saveProposalDecision(
+  proposalId: number,
+  input: DecisionInput,
+) {
+  const response = await apiPost<DecisionResult>(
+    `/proposals/${proposalId}/decisions`,
+    input,
+  )
+  const result = response?.data
+  if (
+    result?.decision !== input.decision ||
+    !Number.isSafeInteger(result.decisionId) ||
+    !Array.isArray(result.appliedEntityIds) ||
+    !Array.isArray(result.heldItemIds)
+  )
+    throw new ApiError('결정 저장 응답을 확인할 수 없습니다.', {
+      kind: 'invalid-response',
+    })
+  return result
+}
 
 export type ProposalDecisionRecord = {
   id: number

@@ -41,13 +41,13 @@ const options: ProposalOption[] = [
     aiConfidence: null,
   },
 ]
-function open() {
+function open(onSelect = vi.fn()) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   render(
     <QueryClientProvider client={client}>
-      <ProposalComparison proposal={proposal} />
+      <ProposalComparison proposal={proposal} onSelect={onSelect} />
     </QueryClientProvider>,
   )
   return userEvent.setup()
@@ -76,10 +76,8 @@ test('목업의 이전·다음 후보 이동으로 근거와 신뢰도·변환 �
   expect(
     within(dialog).getByRole('button', { name: '← 이전 후보' }),
   ).toBeDisabled()
-  await user.type(within(dialog).getByRole('textbox'), '임시 사유')
   await user.click(within(dialog).getByRole('button', { name: '다음 후보 →' }))
   expect(within(dialog).getByText('설비 코드 대안 B')).toBeInTheDocument()
-  expect(within(dialog).getByRole('textbox')).toHaveValue('')
   expect(
     within(dialog).getByRole('button', { name: '다음 후보 →' }),
   ).toBeDisabled()
@@ -90,20 +88,19 @@ test('목업의 이전·다음 후보 이동으로 근거와 신뢰도·변환 �
   ).toBeInTheDocument()
 })
 
-test('저장 API 연결 전 선택·보류를 비활성화하고 쓰기 요청을 보내지 않는다', async () => {
+test('후보 선택은 승인 전 입력만 전달하고 쓰기 요청을 보내지 않는다', async () => {
   respond()
   const write = vi.fn(() => HttpResponse.json({ data: {} }))
   server.use(http.post('/api/v1/*', write), http.patch('/api/v1/*', write))
-  const user = open()
+  const onSelect = vi.fn()
+  const user = open(onSelect)
   await user.click(screen.getByRole('button', { name: '대안 후보 비교' }))
   await screen.findByText('설비 코드 대안 A')
-  for (const name of ['이 후보 선택', '이 후보 보류', '이 관계 판단 보류'])
-    expect(screen.getByRole('button', { name })).toBeDisabled()
-  await user.type(screen.getByRole('textbox'), '비교 중')
-  expect(screen.getByText(/입력한 사유는 저장되지 않으며/)).toBeInTheDocument()
+  expect(screen.getByText(/보류는 제안 전체에 적용/)).toBeInTheDocument()
   expect(screen.getByText(/개별 대안의 검사 결과는 아직/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '이 후보 선택' }))
+  expect(onSelect).toHaveBeenCalledWith(options[0])
   expect(write).not.toHaveBeenCalled()
-  await user.keyboard('{Escape}')
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '대안 후보 비교' })).toHaveFocus()
 })
@@ -124,6 +121,7 @@ test('최신 제안 개정을 먼저 조회하고 그 개정의 후보만 표시
     await screen.findByText(/제안이 변경되어 최신 개정 3/),
   ).toBeInTheDocument()
   expect(screen.getByText('후보 번호 1 · 개정 3')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '이 후보 선택' })).toBeDisabled()
 })
 
 test('다른 개정 후보가 섞이면 표시하지 않고 충돌 안내를 보여준다', async () => {

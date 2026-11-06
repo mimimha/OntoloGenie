@@ -117,12 +117,13 @@ function RuleContent({ value }: { value: Record<string, unknown> }) {
 function ComparisonDialog({
   proposal,
   onClose,
+  onSelect,
 }: {
   proposal: Proposal
   onClose: () => void
+  onSelect?: (option: ProposalOption) => void
 }) {
   const [index, setIndex] = useState(0)
-  const [reason, setReason] = useState('')
   const query = useQuery({
     queryKey: ['proposals', 'comparison', proposal.id, proposal.revision],
     queryFn: async ({ signal }) => {
@@ -155,6 +156,10 @@ function ComparisonDialog({
     const { latest, options } = query.data
     const option: ProposalOption | undefined =
       options[Math.min(index, options.length - 1)]
+    const selectable =
+      latest.revision === proposal.revision &&
+      latest.reviewStatus === proposal.reviewStatus &&
+      ['PENDING', 'HELD'].includes(latest.reviewStatus)
     content = (
       <div className="mt-5 space-y-5">
         <p>
@@ -163,11 +168,12 @@ function ComparisonDialog({
         {latest.revision !== proposal.revision && (
           <p role="status" className="rounded-lg bg-amber-50 p-3">
             제안이 변경되어 최신 개정 {latest.revision}의 후보를 표시합니다.
+            후보를 선택하려면 제안 상세를 새로고침해 주세요.
           </p>
         )}
         <p className="text-sm text-slate-600">
-          이전·다음 화살표로 후보를 비교하세요. 후보 선택은 별도 승인을 거쳐
-          반영됩니다.
+          이전·다음 화살표로 후보를 비교하세요. 선택한 대안은 검토 결정에서
+          승인할 때 전송됩니다. 보류는 제안 전체에 적용됩니다.
         </p>
         {!option ? (
           <EmptyState message="이 개정에 비교할 대안 후보가 없습니다." />
@@ -180,10 +186,7 @@ function ComparisonDialog({
               <Button
                 variant="secondary"
                 disabled={index === 0}
-                onClick={() => {
-                  setIndex(index - 1)
-                  setReason('')
-                }}
+                onClick={() => setIndex(index - 1)}
               >
                 ← 이전 후보
               </Button>
@@ -193,10 +196,7 @@ function ComparisonDialog({
               <Button
                 variant="secondary"
                 disabled={index >= options.length - 1}
-                onClick={() => {
-                  setIndex(index + 1)
-                  setReason('')
-                }}
+                onClick={() => setIndex(index + 1)}
               >
                 다음 후보 →
               </Button>
@@ -230,29 +230,16 @@ function ComparisonDialog({
                   개별 대안의 검사 결과는 아직 제공되지 않았습니다.
                 </p>
               </section>
-              <div className="flex flex-wrap gap-3">
-                <Button disabled>이 후보 선택</Button>
-                <Button variant="secondary" disabled>
-                  이 후보 보류
-                </Button>
-              </div>
+              <Button
+                disabled={!selectable || !onSelect}
+                onClick={() => {
+                  onSelect?.(option)
+                  onClose()
+                }}
+              >
+                이 후보 선택
+              </Button>
             </article>
-            <label className="block space-y-2">
-              <span>선택·보류 사유</span>
-              <textarea
-                className="w-full rounded-xl border border-slate-300 p-3"
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-                placeholder="현재 후보를 선택하거나 판단을 보류하는 이유"
-              />
-            </label>
-            <p role="status" className="text-sm text-slate-600">
-              선택·보류 저장 기능은 준비 중입니다. 입력한 사유는 저장되지 않으며
-              창을 닫으면 사라집니다.
-            </p>
-            <Button variant="secondary" disabled>
-              이 관계 판단 보류
-            </Button>
           </>
         )}
         <section className="rounded-xl border border-slate-200 p-4">
@@ -289,8 +276,10 @@ function ComparisonDialog({
 
 export default function ProposalComparison({
   proposal,
+  onSelect,
 }: {
   proposal: Proposal
+  onSelect?: (option: ProposalOption) => void
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -302,6 +291,7 @@ export default function ProposalComparison({
         <ComparisonDialog
           key={`${proposal.id}:${proposal.revision}`}
           proposal={proposal}
+          onSelect={onSelect}
           onClose={() => setOpen(false)}
         />
       )}
