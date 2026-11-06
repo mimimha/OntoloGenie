@@ -29,7 +29,7 @@
 
 ## 다시 적재와 `reloadReason`
 
-매핑이 바뀌면 같은 트랜잭션에서 그 원천 자원의 `loaded_lsn`을 비운다(`SourceCatalogService.requireFullReload`). 다음 수집이 테이블을 처음부터 읽어 저장된 객체와 비교한다. 소속 객체 매핑이 멈춰 있으면 비우지 않는다. 다시 켤 때 비운다.
+매핑이 바뀌면 같은 트랜잭션에서 그 원천 자원의 `loaded_lsn`을 비워 다시 읽기를 요청한다(`SourceCatalogService.requireFullReload`). 다음 수집이 테이블을 처음부터 읽어 저장된 객체와 비교한다. 그동안에도 CDC 이벤트는 계속 반영하고, 겹치는 객체는 전체 읽기의 스냅샷으로 판단한다(V11, [개발 가이드](development-guide.md) 원천 연동). 소속 객체 매핑이 멈춰 있으면 비우지 않는다. 다시 켤 때 비운다.
 
 036·038·039·101 응답의 `reloadRequired`가 true면 `reloadReason`에 아래 값 중 하나가 온다. false면 `null`이다. Java 타입은 `mapping.domain.ReloadReason` enum이고, JSON에는 이름 문자열로 나간다. 035 응답에는 두 필드가 없다(켜진 매핑 등록은 항상 다시 읽는다).
 
@@ -71,6 +71,8 @@ AI 후보는 대상을 코드로 가리키고, 이 서비스는 ID를 받는다.
 ### 수집 (197)
 
 - 다시 읽을 대상은 켜진 객체 매핑이 있고 `loaded_lsn`이 null인 CDC 자원이다.
+- 한 트랜잭션(`REPEATABLE READ`)에서 `pg_current_snapshot()`과 SELECT를 같이 한다. 객체는 `source_txid`가 그 스냅샷에서 보일 때만, 그리고 `loaded_gen`이 이번 세대 이하일 때만 덮어쓴다. 값이 같아도 `loaded_snapshot`·`loaded_gen`은 갱신한다.
+- 새 객체를 만들기 전에 `source_delete_mark`를 본다. 흔적 번호가 스냅샷에서 안 보이면 읽은 뒤 지워진 행이라 만들지 않는다. 끝나면 스냅샷에서 보이는 흔적을 지우고 `source_resource.full_load_done_gen`을 올린다. 그보다 옛 세대 적재는 쓰지 않는다.
 - 속성 매핑이 지워지거나 다른 객체 매핑으로 옮겨진 뒤 다시 읽을 때, 객체의 속성을 매핑 기준으로 통째로 다시 만들어야 지운 속성 값이 남지 않는다.
 
 DB 스키마 변경은 없다(V1의 `object_source_mapping`·`property_source_mapping` 그대로).
