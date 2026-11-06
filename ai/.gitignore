@@ -3,3 +3,6 @@
 # 에디터 개인 설정
 .vscode/
 
+# 평가 실행 결과는 로컬에만 둔다. API 105 형식 샘플만 Git에 올린다 (docs/evaluation.md)
+results/*.json
+!results/proposals-v1.0.api.json

@@ -1,0 +1,164 @@
+{
+  "tables": {
+    "equipment": {
+      "description": "SMT 라인 설비 마스터",
+      "primary_key": [
+        "eqp_id"
+      ],
+      "columns": {
+        "eqp_id": {
+          "type": "varchar(6)",
+          "comment": "설비 ID"
+        },
+        "eqp_name": {
+          "type": "varchar(30)",
+          "comment": "설비명"
+        },
+        "eqp_type": {
+          "type": "varchar(20)",
+          "comment": "설비 종류"
+        },
+        "line_cd": {
+          "type": "char(3)",
+          "comment": "설치 라인 코드"
+        },
+        "install_date": {
+          "type": "date",
+          "comment": "설치일"
+        },
+        "eqp_status": {
+          "type": "varchar(10)",
+          "comment": "설비 상태"
+        }
+      }
+    },
+    "work_order": {
+      "description": "생산 작업지시",
+      "primary_key": [
+        "wo_id"
+      ],
+      "columns": {
+        "wo_id": {
+          "type": "varchar(10)",
+          "comment": "작업지시 번호"
+        },
+        "order_no": {
+          "type": "varchar(10)",
+          "comment": "연결 수주 번호(재고 생산은 비어 있음)"
+        },
+        "order_seq": {
+          "type": "char(2)",
+          "comment": "연결 수주 행 순번"
+        },
+        "product_code": {
+          "type": "varchar(10)",
+          "comment": "생산 제품 코드"
+        },
+        "line_cd": {
+          "type": "char(3)",
+          "comment": "배정 라인 코드"
+        },
+        "plan_qty": {
+          "type": "int",
+          "comment": "계획 수량"
+        },
+        "plan_date": {
+          "type": "date",
+          "comment": "생산 계획일"
+        },
+        "wo_status": {
+          "type": "varchar(10)",
+          "comment": "작업지시 상태"
+        }
+      }
+    },
+    "production_result": {
+      "description": "설비별 생산 실적",
+      "primary_key": [
+        "result_id"
+      ],
+      "columns": {
+        "result_id": {
+          "type": "int",
+          "comment": "생산 실적 번호"
+        },
+        "wo_id": {
+          "type": "varchar(10)",
+          "comment": "작업지시 번호"
+        },
+        "eqp_id": {
+          "type": "varchar(6)",
+          "comment": "생산 설비 ID"
+        },
+        "worker_no": {
+          "type": "int",
+          "comment": "작업자 사번"
+        },
+        "shift_cd": {
+          "type": "char(1)",
+          "comment": "근무조"
+        },
+        "start_ts": {
+          "type": "timestamp",
+          "comment": "작업 시작 시각"
+        },
+        "end_ts": {
+          "type": "timestamp",
+          "comment": "작업 종료 시각"
+        },
+        "input_qty": {
+          "type": "int",
+          "comment": "투입 수량"
+        },
+        "good_qty": {
+          "type": "int",
+          "comment": "양품 수량"
+        },
+        "defect_qty": {
+          "type": "int",
+          "comment": "불량 수량"
+        }
+      }
+    },
+    "defect_log": {
+      "description": "검사 불량 기록",
+      "primary_key": [
+        "defect_id"
+      ],
+      "columns": {
+        "defect_id": {
+          "type": "int",
+          "comment": "불량 기록 번호"
+        },
+        "result_id": {
+          "type": "int",
+          "comment": "생산 실적 번호"
+        },
+        "defect_cd": {
+          "type": "char(4)",
+          "comment": "불량 유형 코드"
+        },
+        "defect_name": {
+          "type": "varchar(20)",
+          "comment": "불량 유형명"
+        },
+        "part_no": {
+          "type": "varchar(10)",
+          "comment": "불량 발생 부품 번호"
+        },
+        "ref_designator": {
+          "type": "varchar(5)",
+          "comment": "기판 내 부품 위치 기호"
+        },
+        "defect_count": {
+          "type": "int",
+          "comment": "불량 개수"
+        },
+        "detected_ts": {
+          "type": "timestamp",
+          "comment": "검출 시각"
+        }
+      }
+    }
+  }
+}

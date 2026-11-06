@@ -1,0 +1,87 @@
+{
+  "systems": [
+    "erp",
+    "mes"
+  ],
+  "relations": [
+    {
+      "from": "erp.sales_order.cust_cd",
+      "to": "erp.customer.cust_cd",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.sales_order_line.so_no",
+      "to": "erp.sales_order.so_no",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.sales_order_line.item_no",
+      "to": "erp.item.item_no",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.work_order.order_no+mes.work_order.order_seq",
+      "to": "erp.sales_order_line.so_no+erp.sales_order_line.line_no",
+      "transform": "order_no는 하이픈이 빠진 형식(SO20260001)이므로 SO-2026-0001처럼 2번째 문자 뒤와 6번째 문자 뒤에 하이픈을 넣고, order_seq는 2자리 0 채움 문자('01')이므로 앞자리 0을 없애 정수(1)로 바꿈",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.work_order.product_code",
+      "to": "erp.item.item_no",
+      "transform": "소문자·하이픈 없는 형식(pba10001)을 대문자로 바꾸고 앞 3글자 뒤에 하이픈을 넣음(PBA-10001)",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.production_result.wo_id",
+      "to": "mes.work_order.wo_id",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.production_result.eqp_id",
+      "to": "mes.equipment.eqp_id",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.defect_log.result_id",
+      "to": "mes.production_result.result_id",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.defect_log.part_no",
+      "to": "erp.item.item_no",
+      "transform": "구분자 밑줄을 하이픈으로 바꿈(CMP_20001 → CMP-20001)",
+      "cardinality": "N:1"
+    }
+  ],
+  "traps": [
+    {
+      "column": "mes.production_result.worker_no",
+      "looks_like": "mes.production_result.result_id",
+      "why": "작업자 사번(101~380)이라 생산 실적 번호 범위 안에 모두 들어가지만 실적 행을 가리키지 않음"
+    },
+    {
+      "column": "erp.sales_order_line.order_qty",
+      "looks_like": "mes.production_result.result_id",
+      "why": "주문 수량(10~600)이 실적 번호(1~600)와 숫자만 겹치는 수량 값임"
+    },
+    {
+      "column": "erp.item.moq",
+      "looks_like": "mes.defect_log.defect_id",
+      "why": "최소 발주 수량(1~250)이 불량 기록 번호(1~260)와 숫자만 겹치는 수량 값임"
+    }
+  ],
+  "dirty": [
+    "erp.sales_order.cust_cd: 빈 값 3개, 없는 코드 2개(C099, 영문 O 오타 C0O7)",
+    "mes.work_order.order_no+mes.work_order.order_seq: 재고 생산 작업지시 30개는 둘 다 빈 값",
+    "mes.work_order.product_code: 빈 값 4개, 없는 코드 3개(pba1O012, pba-10023, pba19999)",
+    "mes.production_result.wo_id: 없는 코드 2개(WO26000999, WO2600O150)",
+    "mes.production_result.eqp_id: 빈 값 3개",
+    "mes.defect_log.part_no: 빈 값 4개, 없는 코드 2개(CMP_29999, CMP-2O044)"
+  ]
+}

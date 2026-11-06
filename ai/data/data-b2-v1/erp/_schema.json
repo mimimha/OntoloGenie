@@ -1,0 +1,133 @@
+{
+  "tables": {
+    "customer": {
+      "description": "거래처 마스터",
+      "primary_key": [
+        "cust_cd"
+      ],
+      "columns": {
+        "cust_cd": {
+          "type": "char(4)",
+          "comment": "거래처 코드"
+        },
+        "cust_name": {
+          "type": "varchar(50)",
+          "comment": "거래처명"
+        },
+        "industry": {
+          "type": "varchar(20)",
+          "comment": "거래처 업종"
+        },
+        "region": {
+          "type": "varchar(10)",
+          "comment": "소재 권역"
+        },
+        "active_yn": {
+          "type": "char(1)",
+          "comment": "거래 활성 여부"
+        },
+        "reg_date": {
+          "type": "date",
+          "comment": "거래처 등록일"
+        }
+      }
+    },
+    "item": {
+      "description": "품목 마스터(완제품 조립기판과 실장 부품)",
+      "primary_key": [
+        "item_no"
+      ],
+      "columns": {
+        "item_no": {
+          "type": "varchar(10)",
+          "comment": "품목 번호"
+        },
+        "item_name": {
+          "type": "varchar(50)",
+          "comment": "품목명"
+        },
+        "item_type": {
+          "type": "varchar(10)",
+          "comment": "품목 구분(완제품/부품)"
+        },
+        "uom": {
+          "type": "varchar(5)",
+          "comment": "재고 단위"
+        },
+        "std_cost": {
+          "type": "numeric(12,2)",
+          "comment": "표준 단가"
+        },
+        "moq": {
+          "type": "int",
+          "comment": "최소 발주 수량"
+        },
+        "lead_time_days": {
+          "type": "int",
+          "comment": "조달 리드타임(일)"
+        }
+      }
+    },
+    "sales_order": {
+      "description": "수주 헤더",
+      "primary_key": [
+        "so_no"
+      ],
+      "columns": {
+        "so_no": {
+          "type": "varchar(12)",
+          "comment": "수주 번호"
+        },
+        "cust_cd": {
+          "type": "char(4)",
+          "comment": "주문 거래처 코드"
+        },
+        "order_date": {
+          "type": "date",
+          "comment": "수주일"
+        },
+        "status": {
+          "type": "varchar(10)",
+          "comment": "수주 진행 상태"
+        },
+        "currency": {
+          "type": "char(3)",
+          "comment": "거래 통화"
+        }
+      }
+    },
+    "sales_order_line": {
+      "description": "수주 품목 상세",
+      "primary_key": [
+        "so_no",
+        "line_no"
+      ],
+      "columns": {
+        "so_no": {
+          "type": "varchar(12)",
+          "comment": "수주 번호"
+        },
+        "line_no": {
+          "type": "int",
+          "comment": "수주 내 행 번호"
+        },
+        "item_no": {
+          "type": "varchar(10)",
+          "comment": "주문 품목 번호"
+        },
+        "order_qty": {
+          "type": "int",
+          "comment": "주문 수량"
+        },
+        "unit_price": {
+          "type": "numeric(12,2)",
+          "comment": "판매 단가"
+        },
+        "due_date": {
+          "type": "date",
+          "comment": "납기일"
+        }
+      }
+    }
+  }
+}
