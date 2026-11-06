@@ -13,6 +13,9 @@ export const issueFixture: Issue = {
   objectInstanceId: 501,
   linkMappingId: 12,
   proposalItemId: null,
+  forwardedAt: null,
+  forwardedBy: null,
+  rowVersion: 0,
 }
 
 export const issueHandlers = [

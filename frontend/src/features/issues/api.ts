@@ -1,4 +1,4 @@
-import { apiGet } from '../../api/client'
+import { apiGet, apiPatch } from '../../api/client'
 
 export type Issue = {
   id: number
@@ -12,6 +12,9 @@ export type Issue = {
   objectInstanceId: number | null
   linkMappingId: number | null
   proposalItemId: number | null
+  forwardedAt: string | null
+  forwardedBy: number | null
+  rowVersion: number
 }
 
 const ISSUE_PAGE_SIZE = 20
@@ -32,4 +35,16 @@ export function fetchIssues(
 
 export function fetchIssue(id: number, signal?: AbortSignal) {
   return apiGet<Issue>(`/issues/${id}`, { signal })
+}
+
+export function changeIssueStatus(
+  id: number,
+  request: {
+    status: string
+    reason: string
+    rowVersion: number
+    resolvedCheckRunId?: number
+  },
+) {
+  return apiPatch<Issue>(`/issues/${id}/status`, request)
 }
