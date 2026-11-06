@@ -1,5 +1,7 @@
 package com.axcore.platform.agent.service;
 
+import com.axcore.platform.agent.domain.AnswerStage;
+import java.time.Clock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -18,6 +20,9 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class AgentAnswerProcessor {
     private final AgentAnswerService answers;
     private final QuestionInterpreter interpreter;
+    private final AgentResponder responder;
+    private final AgentQueryRecorder recorder;
+    private final Clock clock;
     private final TaskExecutor applicationTaskExecutor;
 
     @TransactionalEventListener
@@ -44,11 +49,16 @@ public class AgentAnswerProcessor {
             if (event.pending() != null) {
                 interpretation = interpretation.fillFrom(event.pending().previous());
             }
-            if (interpretation.missing().isEmpty()) {
-                answers.answerUnderstood(answerId, interpretation);
-            } else {
+            if (!interpretation.missing().isEmpty()) {
                 answers.answerClarification(answerId, interpretation);
+                return;
             }
+            answers.moveTo(answerId, AnswerStage.QUERYING);
+            AgentQuerySession session =
+                    new AgentQuerySession(event.asker(), event.questionId(), recorder, clock);
+            String content = responder.answer(event.question(), interpretation, session);
+            session.requireRecorded();
+            answers.answerWithResults(answerId, content, interpretation, session.results());
         } catch (RuntimeException ex) {
             log.error("Agent 답변 {}의 AI 처리가 실패했습니다.", answerId, ex);
             try {

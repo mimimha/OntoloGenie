@@ -1,6 +1,7 @@
 package com.axcore.platform.agent.service;
 
 import com.axcore.platform.agent.domain.AgentMessage;
+import com.axcore.platform.agent.domain.AnswerStage;
 import com.axcore.platform.agent.repository.AgentMessageRepository;
 import java.util.List;
 import java.util.Map;
@@ -20,21 +21,36 @@ public class AgentAnswerService {
     static final String FAILED_REASON = "AI 응답 실패";
 
     private static final String CLARIFY_INTRO = "질문을 정확히 이해하려면 몇 가지를 더 알려 주세요.";
-    private static final String NOT_QUERIED = "실제 데이터 조회는 아직 연결되지 않아 값은 알려 드릴 수 없습니다.";
 
     private final AgentMessageRepository messages;
 
-    /** 기능 흐름 4단계(조회) 전까지의 답변: 이해한 조건만 알려 준다. 값은 지어내지 않는다(145). */
+    /** 처리 중 단계를 바꾼다. 화면은 084를 다시 읽어 단계 문구를 보여 준다(정책 문서 3.3). */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void answerUnderstood(long answerId, QuestionInterpretation interpretation) {
+    public void moveTo(long answerId, AnswerStage stage) {
+        running(answerId).ifPresent(answer -> answer.moveTo(stage));
+    }
+
+    /**
+     * 조회 도구로 답했다(144). 답변 문장은 AI가 도구 결과로 쓰고, 정보별 결과(results)는 서버가 남긴 조회 기록에서 만든다. 질문 시 동기화는 아직 없어
+     * syncStatus는 NONE이다.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void answerWithResults(
+            long answerId,
+            String content,
+            QuestionInterpretation interpretation,
+            List<AgentQueryResult> results) {
         running(answerId)
                 .ifPresent(
                         answer ->
                                 answer.succeed(
-                                        understoodAnswer(interpretation),
+                                        content,
                                         Map.of(
                                                 "syncStatus", "NONE",
-                                                "results", List.of(),
+                                                "results",
+                                                        results.stream()
+                                                                .map(AgentQueryResult::toMap)
+                                                                .toList(),
                                                 "conditions", interpretation.toConditions())));
     }
 
@@ -57,25 +73,6 @@ public class AgentAnswerService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void fail(long answerId, String content, String reason) {
         running(answerId).ifPresent(answer -> answer.fail(content, reason));
-    }
-
-    static String understoodAnswer(QuestionInterpretation interpretation) {
-        String targets =
-                interpretation.targets().isEmpty()
-                        ? "화면에서 고른 객체"
-                        : String.join(", ", interpretation.targets());
-        String period =
-                interpretation.hasPeriod()
-                        ? interpretation.from() + " ~ " + interpretation.to()
-                        : "지정하지 않음";
-        String purpose = interpretation.purpose();
-        return """
-                질문을 이렇게 이해했습니다.
-                - 대상: %s
-                - 기간: %s
-                - 알고 싶은 것: %s
-                %s"""
-                .formatted(targets, period, purpose, NOT_QUERIED);
     }
 
     static String clarifyingQuestion(QuestionInterpretation interpretation) {
