@@ -15,6 +15,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -50,6 +51,15 @@ public class AgentConversationController {
     public ApiResponse<AgentConversationResponse> create(
             @AuthenticationPrincipal LoginAccount account) {
         return ApiResponse.of(service.create(account.id()));
+    }
+
+    /** 임시(개발 데이터 정리용, 나중에 제거). API 명세에 없다. */
+    @Operation(summary = "임시: 대화 삭제")
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteTemporarily(
+            @PathVariable("id") @Min(1) long id, @AuthenticationPrincipal LoginAccount account) {
+        service.deleteTemporarily(account.id(), id);
     }
 
     @Operation(summary = "083 대화 상세")

@@ -1,4 +1,4 @@
-import { ApiError, apiGet, apiPost } from '../../api/client'
+import { ApiError, apiDelete, apiGet, apiPost } from '../../api/client'
 import type { AgentConversation, AgentMessage, QuestionRequest } from './types'
 
 export const CONVERSATION_PAGE_SIZE = 50
@@ -19,6 +19,11 @@ export async function createConversation() {
     throw new ApiError('대화를 만들지 못했어요.', { kind: 'invalid-response' })
   }
   return body.data
+}
+
+// 임시(개발 데이터 정리용, 나중에 제거): 대화를 DB에서 지운다. API 명세에 없다.
+export async function deleteConversationTemporarily(conversationId: number) {
+  await apiDelete(`/agent/conversations/${conversationId}`)
 }
 
 // 084 대화 메시지 목록 (시간순)

@@ -169,6 +169,17 @@ export const agentHandlers = [
     return HttpResponse.json({ data: created }, { status: 201 })
   }),
 
+  // 임시(개발 데이터 정리용, 나중에 제거): 대화 삭제
+  http.delete('/api/v1/agent/conversations/:id', async ({ params }) => {
+    await delay(150)
+    const id = Number(params.id)
+    conversations = conversations.filter(
+      (conversation) => conversation.id !== id,
+    )
+    messages = messages.filter((message) => message.conversationId !== id)
+    return new HttpResponse(null, { status: 204 })
+  }),
+
   // 084 대화 메시지 목록. 처리 중인 답변은 읽을 때마다 한 단계씩 진행한다.
   http.get('/api/v1/agent/conversations/:id/messages', async ({ params }) => {
     await delay(150)

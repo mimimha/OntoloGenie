@@ -3,7 +3,11 @@ import { useSearchParams } from 'react-router'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import ConversationList from './ConversationList'
 import ConversationPanel from './ConversationPanel'
-import { createConversation, fetchConversations } from './api'
+import {
+  createConversation,
+  deleteConversationTemporarily,
+  fetchConversations,
+} from './api'
 import type { AgentConversation } from './types'
 
 function AgentPage() {
@@ -27,6 +31,20 @@ function AgentPage() {
         queryKey: ['agent', 'conversations'],
       })
       setSearchParams({ conversation: String(created.id) })
+    },
+  })
+
+  // 임시(개발 데이터 정리용, 나중에 제거): 지운 뒤 목록을 다시 읽고, 열려 있던 대화면 주소에서 뺀다.
+  const deleteMutation = useMutation({
+    mutationFn: deleteConversationTemporarily,
+    onSuccess: (_, deletedId) => {
+      queryClient.removeQueries({ queryKey: ['agent', 'messages', deletedId] })
+      void queryClient.invalidateQueries({
+        queryKey: ['agent', 'conversations'],
+      })
+      if (Number(searchParams.get('conversation')) === deletedId) {
+        setSearchParams({})
+      }
     },
   })
 
@@ -57,6 +75,8 @@ function AgentPage() {
           creating={createMutation.isPending}
           onSelect={(id) => setSearchParams({ conversation: String(id) })}
           onCreate={() => createMutation.mutate()}
+          deleting={deleteMutation.isPending}
+          onDelete={(id) => deleteMutation.mutate(id)}
         />
         {selected ? (
           <ConversationPanel key={selected.id} conversation={selected} />
@@ -85,6 +105,14 @@ function AgentPage() {
           <ErrorState
             error={createMutation.error}
             title="대화를 만들지 못했습니다."
+          />
+        </div>
+      )}
+      {deleteMutation.isError && (
+        <div className="mb-4">
+          <ErrorState
+            error={deleteMutation.error}
+            title="대화를 지우지 못했습니다."
           />
         </div>
       )}

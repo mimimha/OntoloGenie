@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,29 @@ public class AgentConversationService {
 
     public Page<AgentConversationResponse> search(long accountId, Pageable pageable) {
         return repository.findByAccountId(accountId, pageable).map(AgentConversationResponse::from);
+    }
+
+    /**
+     * 임시(개발 데이터 정리용, 나중에 제거): 내 대화를 DB에서 지운다. 메시지는 함께 지워진다. 조회 기록이나 재배정 계획이 이 대화를 가리키면 DB가 막으므로
+     * 409로 답한다.
+     */
+    @Transactional
+    public void deleteTemporarily(long accountId, long id) {
+        AgentConversation conversation =
+                repository
+                        .findByIdAndAccountId(id, accountId)
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                CommonErrorCode.RESOURCE_NOT_FOUND,
+                                                Map.of("resource", "agent_conversation")));
+        try {
+            repository.delete(conversation);
+            repository.flush();
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessException(
+                    CommonErrorCode.CONFLICT, "실행 기록이 있는 대화는 지울 수 없습니다.", Map.of());
+        }
     }
 
     /** 다른 사용자의 대화는 없는 대화와 같게 404로 답한다(존재 여부를 알리지 않는다). */
