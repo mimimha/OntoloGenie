@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
-import { fetchColumns, fetchResources } from './api'
-import type { SourceResource } from './types'
+import { fetchAllResources, fetchColumns } from './api'
+import SourceSyncSchedule from './SourceSyncSchedule'
+import type { Source, SourceResource } from './types'
 
 function ResourceColumns({
   sourceId,
@@ -88,7 +89,8 @@ function ResourceItem({
 }
 
 // 수집 대상 탭: 원천에서 읽을 수 있는 표(014)와 컬럼(015)
-function ReadableScope({ sourceId }: { sourceId: number }) {
+function ReadableScope({ source }: { source: Source }) {
+  const sourceId = source.id
   const {
     data: resources,
     isPending,
@@ -96,8 +98,8 @@ function ReadableScope({ sourceId }: { sourceId: number }) {
     error,
     refetch,
   } = useQuery({
-    queryKey: ['sources', sourceId, 'resources'],
-    queryFn: () => fetchResources(sourceId),
+    queryKey: ['sources', sourceId, 'resources', 'all'],
+    queryFn: () => fetchAllResources(sourceId),
   })
 
   let content
@@ -140,6 +142,10 @@ function ReadableScope({ sourceId }: { sourceId: number }) {
         <p className="text-xs text-slate-500">{`표 ${resources.length}개`}</p>
       )}
       {content}
+      {!isError &&
+        resources?.some(
+          (resource) => resource.syncStrategy === 'FULL_COMPARE',
+        ) && <SourceSyncSchedule key={source.rowVersion} schedule={source} />}
     </div>
   )
 }

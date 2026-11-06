@@ -200,7 +200,7 @@ function SourcesPage() {
               }
             />
           ) : tab === 'scope' ? (
-            <ReadableScope key={selected.id} sourceId={selected.id} />
+            <ReadableScope key={selected.id} source={selected} />
           ) : (
             <MappingPanel key={selected.id} sourceId={selected.id} />
           )}

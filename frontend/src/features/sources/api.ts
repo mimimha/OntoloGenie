@@ -82,6 +82,15 @@ export async function fetchResources(sourceId: number) {
   return body.data
 }
 
+export async function fetchAllResources(sourceId: number) {
+  const resources: SourceResource[] = []
+  for (let page = 0; ; page += 1) {
+    const body = await fetchResourcePage(sourceId, page, 200)
+    resources.push(...body.data)
+    if (!body.meta?.hasNext) return resources
+  }
+}
+
 // 015 자원의 컬럼 조회
 export async function fetchColumns(sourceId: number, resourceId: number) {
   const body = await apiGet<SourceColumn[]>(
