@@ -91,16 +91,4 @@ public class ProposalReferenceRepository {
                 .query((rs, row) -> new ObjectType(rs.getLong("id"), rs.getString("code")))
                 .optional();
     }
-
-    public boolean propertyExists(ObjectType type, String propertyCode) {
-        return type.id() != null
-                && jdbc.sql(
-                                """
-                select exists(select 1 from property_definition where object_type_id=:id and code=:code)
-                """)
-                        .param("id", type.id())
-                        .param("code", propertyCode)
-                        .query(Boolean.class)
-                        .single();
-    }
 }

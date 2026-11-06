@@ -4,6 +4,7 @@ import com.axcore.platform.check.domain.CheckCondition;
 import com.axcore.platform.check.domain.TransformOperation;
 import com.axcore.platform.check.domain.TransformStep;
 import com.axcore.platform.global.error.BusinessException;
+import com.axcore.platform.ontology.repository.PropertyDefinitionRepository;
 import com.axcore.platform.review.repository.ProposalReferenceRepository;
 import com.axcore.platform.review.repository.ProposalReferenceRepository.ObjectType;
 import com.axcore.platform.review.repository.ProposalReferenceRepository.Relation;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class ProposalPayloadValidator {
     private final ProposalReferenceRepository references;
+    private final PropertyDefinitionRepository properties;
 
     public Set<Long> validate(
             String kind, Map<String, Object> payload, Long analysisRunId, String field) {
@@ -173,7 +175,9 @@ public class ProposalPayloadValidator {
             }
             property = reference.substring(dot + 1);
         }
-        if (references.propertyExists(type, property)) return;
+        // 아직 승인 전인 객체 유형 후보(id 없음)는 확정 속성이 없으므로 후보 데이터만 본다.
+        if (type.id() != null && properties.existsByObjectTypeIdAndCode(type.id(), property))
+            return;
         if (analysisRunId != null
                 && references.pendingDefinitions(analysisRunId, "PROPERTY", property).stream()
                         .anyMatch(candidate -> type.code().equals(candidate.get("objectTypeCode"))))
