@@ -12,6 +12,8 @@ export type Issue = {
   objectInstanceId: number | null
   linkMappingId: number | null
   proposalItemId: number | null
+  detectedCheckRunId: number
+  resolvedCheckRunId: number | null
   forwardedAt: string | null
   forwardedBy: number | null
   rowVersion: number

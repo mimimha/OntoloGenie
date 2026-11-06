@@ -28,7 +28,7 @@ function valueText(value: unknown) {
   return typeof value === 'object' ? JSON.stringify(value) : String(value)
 }
 
-function Result({ result }: { result: CheckResult }) {
+export function Result({ result }: { result: CheckResult }) {
   return (
     <article className="space-y-4 rounded-xl border border-violet-200 bg-violet-50/20 p-4">
       <h4 className="font-semibold">
