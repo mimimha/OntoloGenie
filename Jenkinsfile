@@ -128,15 +128,10 @@ pipeline {
         stage('Frontend check') {
             when { expression { env.IS_DEPLOY_JOB != 'true' && env.CHECK_FRONTEND == 'true' } }
             steps {
-                sh '''
-                    HOST_WS=$(echo "$WORKSPACE" | sed 's#^/var/jenkins_home#/home/ubuntu/axcore/jenkins-data#')
-                    docker run --rm --memory 2g \
-                        -e CI=true \
-                        -v "$HOST_WS/frontend:/app" -w /app \
-                        -v axcore-npm-cache:/root/.npm \
-                        node:24.18.0-alpine \
-                        sh -c "npm ci --no-audit --no-fund && npm run lint && npx vitest run && npm run build"
-                '''
+                script {
+                    def testCommand = isManualSonarCheck() ? 'npm run test:coverage' : 'npx vitest run'
+                    runFrontendCommands("npm run lint && ${testCommand} && npm run build")
+                }
             }
         }
 
@@ -342,8 +337,7 @@ pipeline {
                             (params.RUN_SONARQUBE || env.DEPLOY_FRONTEND == 'true' ||
                                 env.DEPLOY_BACKEND == 'true' || env.DEPLOY_AI == 'true')
                     }
-                    return env.JOB_NAME == 'axcore-mr-check' && params.RUN_SONARQUBE &&
-                        !env.gitlabActionType
+                    return isManualSonarCheck()
                 }
             }
             steps {
@@ -358,7 +352,12 @@ pipeline {
                     components.findAll { component, deploy -> params.RUN_SONARQUBE || deploy == 'true' }.each { component, deploy ->
                         catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', catchInterruptions: false) {
                             echo "SonarQube analysis: ${component}"
-                            if (component == 'backend') {
+                            if (component == 'frontend') {
+                                if (env.IS_DEPLOY_JOB == 'true') {
+                                    runFrontendCommands('npm run test:coverage')
+                                }
+                                sh 'test -s frontend/coverage/lcov.info'
+                            } else if (component == 'backend') {
                                 dir('backend') {
                                     sh './gradlew --no-daemon testClasses'
                                 }
@@ -451,6 +450,25 @@ pipeline {
                 }
             }
         }
+    }
+}
+
+def isManualSonarCheck() {
+    return env.JOB_NAME == 'axcore-mr-check' && params.RUN_SONARQUBE &&
+        env.CHECK_REF == 'origin/develop' && !env.gitlabActionType
+}
+
+def runFrontendCommands(String commands) {
+    withEnv(["FRONTEND_COMMANDS=${commands}"]) {
+        sh '''
+            HOST_WS=$(printf '%s' "$WORKSPACE" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
+            docker run --rm --memory 2g \
+                -e CI=true \
+                -v "$HOST_WS/frontend:/app" -w /app \
+                -v axcore-npm-cache:/root/.npm \
+                node:24.18.0-alpine \
+                sh -c "npm ci --no-audit --no-fund && $FRONTEND_COMMANDS"
+        '''
     }
 }
 
