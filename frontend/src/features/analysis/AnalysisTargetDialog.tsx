@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Button from '../../components/Button'
 import DataTable from '../../components/DataTable'
 import Dialog from '../../components/Dialog'
@@ -8,7 +8,7 @@ import Pagination from '../../components/Pagination'
 import { fetchColumns, fetchResources, fetchSources } from '../sources/api'
 import type { SourceColumn, SourceResource } from '../sources/types'
 import { startAnalysis } from './api'
-import type { AnalysisRun, AnalysisTarget } from './types'
+import type { AnalysisKind, AnalysisRun, AnalysisTarget } from './types'
 
 const inputClass = 'w-full rounded-lg border border-slate-300 px-3 py-2'
 
@@ -231,6 +231,7 @@ function ColumnPicker({
 }
 
 type Props = {
+  runKind?: AnalysisKind
   initialSourceId?: number
   onClose: () => void
   onStarted: (run: AnalysisRun) => void
@@ -241,6 +242,7 @@ type Props = {
 
 // 분석 대상 선택(S15P31C106-107): 원천의 표·컬럼을 골라 018로 분석을 맡긴다.
 function AnalysisTargetDialog({
+  runKind = 'INITIAL',
   initialSourceId,
   onClose,
   onStarted,
@@ -253,6 +255,7 @@ function AnalysisTargetDialog({
   const [listPage, setListPage] = useState(0)
   const [activeId, setActiveId] = useState<number>()
   const [selection, setSelection] = useState<Selection>({})
+  const requesting = useRef(false)
 
   const sources = useQuery({
     queryKey: ['sources', 'list'],
@@ -284,9 +287,13 @@ function AnalysisTargetDialog({
             ? { sourceResourceId: resource.id }
             : { sourceResourceId: resource.id, columns },
       )
-      return startAnalysis(targets)
+      return startAnalysis(targets, runKind)
     },
+    retry: false,
     onSuccess: onStarted,
+    onSettled: () => {
+      requesting.current = false
+    },
   })
 
   const picked = Object.values(selection)
@@ -409,8 +416,19 @@ function AnalysisTargetDialog({
   }
 
   return (
-    <Dialog title="분석 대상 선택" size="wide" onClose={onClose}>
+    <Dialog
+      title={runKind === 'REANALYSIS' ? '변경 데이터 재분석' : '분석 대상 선택'}
+      size="wide"
+      onClose={onClose}
+    >
       <div className="mt-4 space-y-4 text-sm">
+        {runKind === 'REANALYSIS' && (
+          <p className="rounded-lg bg-amber-50 p-3 text-amber-900">
+            변경된 테이블·컬럼을 직접 선택하세요. 선택한 범위의 현재 데이터를
+            다시 분석합니다. 변경 행만 분석하는 방식은 아니며, 기존 확정 내용은
+            자동으로 변경하지 않습니다.
+          </p>
+        )}
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex w-full max-w-sm flex-col gap-2">
             등록된 원천
@@ -509,6 +527,41 @@ function AnalysisTargetDialog({
 
         {start.isError && <ErrorState error={start.error} />}
 
+        {runKind === 'REANALYSIS' && (
+          <section
+            aria-label="재분석 범위 확인"
+            className="space-y-2 rounded-lg bg-slate-50 p-3"
+          >
+            <h3 className="font-semibold">재분석 범위 확인</h3>
+            {picked.length ? (
+              <ul className="space-y-2">
+                {picked.map((item) => (
+                  <li key={item.resource.id}>
+                    <p>
+                      {sources.data?.find(
+                        (source) => source.id === item.resource.dataSourceId,
+                      )?.name ?? `원천 #${item.resource.dataSourceId}`}{' '}
+                      · {item.resource.resourceKey}
+                    </p>
+                    <p className="break-words">
+                      {item.whole
+                        ? '자료 전체'
+                        : item.columns.length === item.allColumns
+                          ? '전체 컬럼'
+                          : item.columns.join(', ')}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>변경된 자료와 컬럼을 선택해 주세요.</p>
+            )}
+            <p className="text-slate-500">
+              같은 범위의 분석이 진행 중이면 기존 실행에 합류합니다.
+            </p>
+          </section>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
           <p aria-live="polite" className="text-slate-700">
             {`${summary.sources}개 원천 · ${summary.tables}개 테이블 · ${summary.columns}개 컬럼 · ${summary.documents}개 문서·자료`}
@@ -520,9 +573,15 @@ function AnalysisTargetDialog({
             <Button
               disabled={picked.length === 0}
               pending={start.isPending}
-              onClick={() => start.mutate()}
+              onClick={() => {
+                if (requesting.current || picked.length === 0) return
+                requesting.current = true
+                start.mutate()
+              }}
             >
-              분석하고 후보 받기
+              {runKind === 'REANALYSIS'
+                ? '재분석하고 후보 받기'
+                : '분석하고 후보 받기'}
             </Button>
           </div>
         </div>
