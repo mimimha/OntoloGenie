@@ -1,14 +1,22 @@
 import { apiGet, apiPost, ApiError } from '../../api/client'
 import { PROPOSAL_PAGE_SIZE } from '../review/api'
 import type { Proposal, ProposalFilters } from '../review/types'
-import type { Analysis, AnalysisRun, AnalysisTarget } from './types'
+import type {
+  Analysis,
+  AnalysisKind,
+  AnalysisRun,
+  AnalysisTarget,
+} from './types'
 
 export const RECENT_ANALYSIS_COUNT = 5
 
 // 018 선택 범위 AI 분석 실행
-export async function startAnalysis(targets: AnalysisTarget[]) {
+export async function startAnalysis(
+  targets: AnalysisTarget[],
+  runKind: AnalysisKind = 'INITIAL',
+) {
   const body = await apiPost<AnalysisRun>('/analyses', {
-    runKind: 'INITIAL',
+    runKind,
     targets,
   })
   if (!body?.data || !Number.isSafeInteger(body.data.id)) {

@@ -1,6 +1,7 @@
 import { delay, http, HttpResponse } from 'msw'
 import type {
   Analysis,
+  AnalysisKind,
   AnalysisRun,
   AnalysisTarget,
 } from '../features/analysis/types'
@@ -108,17 +109,46 @@ export const analysisHandlers = [
   // 018 선택 범위 AI 분석 실행. 같은 대상이 대기·실행 중이면 그 실행에 합류한다.
   http.post('/api/v1/analyses', async ({ request }) => {
     await delay(150)
-    const body = (await request.json()) as { targets: AnalysisTarget[] }
-    const ids = JSON.stringify(body.targets.map((t) => t.sourceResourceId))
+    const body = (await request.json()) as {
+      targets: AnalysisTarget[]
+      runKind: AnalysisKind
+    }
+    const key = (targets: AnalysisTarget[]) =>
+      JSON.stringify(
+        targets
+          .map((target) => ({
+            sourceResourceId: target.sourceResourceId,
+            columns: target.columns ? [...target.columns].sort() : undefined,
+          }))
+          .sort((a, b) => a.sourceResourceId - b.sourceResourceId),
+      )
+    const ids = key(body.targets)
     const running = runs.find(
       (item) =>
         (item.status === 'QUEUED' || item.status === 'RUNNING') &&
-        JSON.stringify(item.targets.map((t) => t.sourceResourceId)) === ids,
+        key(
+          item.targets.map((target) => ({
+            ...target,
+            columns:
+              item.analysisRange?.columns?.[String(target.sourceResourceId)],
+          })),
+        ) === ids,
     )
     const accepted: Analysis =
       running ??
       run({
         id: Math.max(...runs.map((item) => item.id)) + 1,
+        runKind: body.runKind,
+        analysisRange: {
+          columns: Object.fromEntries(
+            body.targets
+              .filter((target) => target.columns)
+              .map((target) => [
+                String(target.sourceResourceId),
+                target.columns!,
+              ]),
+          ),
+        },
         status: 'QUEUED',
         targets: body.targets.map(({ sourceResourceId }) => ({
           sourceResourceId,

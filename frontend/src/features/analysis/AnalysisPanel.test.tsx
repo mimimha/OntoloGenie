@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { resetAnalysisMocks } from '../../mocks/analysisHandlers'
 import { server } from '../../mocks/node'
 import { resetProposalMocks } from '../../mocks/proposalHandlers'
@@ -42,6 +42,115 @@ async function startFromRules(user: ReturnType<typeof userEvent.setup>) {
     within(dialog).getByRole('button', { name: '분석하고 후보 받기' }),
   )
 }
+
+async function chooseReanalysis(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: '변경 데이터 재분석' }))
+  const dialog = within(
+    screen.getByRole('dialog', { name: '변경 데이터 재분석' }),
+  )
+  expect(
+    dialog.getByRole('button', { name: '재분석하고 후보 받기' }),
+  ).toBeDisabled()
+  await user.click(
+    await dialog.findByRole('checkbox', { name: 'item_code 선택' }),
+  )
+  expect(
+    within(dialog.getByRole('region', { name: '재분석 범위 확인' })).getByText(
+      'item_code',
+    ),
+  ).toBeInTheDocument()
+  return dialog
+}
+
+test('선택 범위를 확인해 REANALYSIS로 접수하고 진행·결과와 실제 컬럼 범위를 표시한다', async () => {
+  const user = userEvent.setup()
+  renderRules()
+  const dialog = await chooseReanalysis(user)
+  await user.click(dialog.getByRole('button', { name: '재분석하고 후보 받기' }))
+  const current = within(
+    await screen.findByRole('region', { name: '이번 분석' }),
+  )
+  await current.findByRole('region', { name: '요청한 재분석 범위' })
+  expect(current.getByText(/자료 #11 · item_code/)).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: '변경 데이터 재분석' }),
+  ).toBeDisabled()
+  await current.findByText('이번 분석 후보 1건', {}, { timeout: 8000 })
+  expect(
+    screen.getByRole('button', { name: '변경 데이터 재분석' }),
+  ).toBeEnabled()
+  await user.click(screen.getByRole('button', { name: '최근 분석 보기' }))
+  expect(
+    await screen.findByText('재분석', { selector: 'td' }),
+  ).toBeInTheDocument()
+}, 15000)
+
+test('재분석은 선택 컬럼을 전송하고 기존 INITIAL 실행에 합류하면 실제 실행 종류를 보존한다', async () => {
+  const user = userEvent.setup()
+  const post = vi.fn(async ({ request }: { request: Request }) => {
+    expect(await request.json()).toEqual({
+      runKind: 'REANALYSIS',
+      targets: [{ sourceResourceId: 11, columns: ['item_code'] }],
+    })
+    return HttpResponse.json(
+      {
+        data: {
+          id: 50,
+          runKind: 'INITIAL',
+          status: 'QUEUED',
+          targets: [{ sourceResourceId: 11 }],
+          requestedAt: '2026-11-07T01:00:00Z',
+          joined: true,
+        },
+      },
+      { status: 202 },
+    )
+  })
+  server.use(http.post('/api/v1/analyses', post))
+  renderRules()
+  const dialog = await chooseReanalysis(user)
+  await user.dblClick(
+    dialog.getByRole('button', { name: '재분석하고 후보 받기' }),
+  )
+  await screen.findByText(
+    '같은 대상의 분석이 이미 진행 중이라 그 분석에 합류했습니다.',
+  )
+  expect(post).toHaveBeenCalledTimes(1)
+  expect(
+    screen.queryByRole('region', { name: '요청한 재분석 범위' }),
+  ).not.toBeInTheDocument()
+})
+
+test.each([403, 404, 409, 422])(
+  '재분석 접수 %s 오류를 표시하고 자동 재접수하지 않는다',
+  async (status) => {
+    const user = userEvent.setup()
+    const post = vi.fn(() =>
+      HttpResponse.json(
+        {
+          error: {
+            code: 'TEST_ERROR',
+            message: '재분석 요청 실패',
+            details: {},
+            requestId: 'test-121',
+          },
+        },
+        { status },
+      ),
+    )
+    server.use(http.post('/api/v1/analyses', post))
+    renderRules()
+    const dialog = await chooseReanalysis(user)
+    await user.click(
+      dialog.getByRole('button', { name: '재분석하고 후보 받기' }),
+    )
+    await dialog.findByText('재분석 요청 실패')
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(
+      screen.queryByRole('region', { name: '이번 분석' }),
+    ).not.toBeInTheDocument()
+  },
+)
 
 test('분석을 맡기면 진행 상태를 다시 조회하고 끝나면 이번 분석 후보만 보여준다', async () => {
   const user = userEvent.setup()

@@ -14,7 +14,7 @@ import {
   summaryNotices,
 } from './labels'
 import TestAnalysisDelete from './TestAnalysisDelete'
-import type { Analysis, AnalysisRun } from './types'
+import type { Analysis, AnalysisKind, AnalysisRun } from './types'
 
 // 분석이 끝날 때까지 019를 다시 부르는 간격
 export const ANALYSIS_POLL_MS = 2000
@@ -41,7 +41,8 @@ function CurrentAnalysis({
     queryKey: ['analyses', id],
     queryFn: ({ signal }) => fetchAnalysis(id, signal),
     refetchInterval: (current) =>
-      current.state.data && !isAnalysisRunning(current.state.data.status)
+      current.state.error ||
+      (current.state.data && !isAnalysisRunning(current.state.data.status))
         ? false
         : ANALYSIS_POLL_MS,
     retry: false,
@@ -96,6 +97,21 @@ function CurrentAnalysis({
             ? ` · 문서 연결 ${run.resultSummary.documentLinks}건`
             : ''}
         </p>
+        {run.runKind === 'REANALYSIS' && (
+          <section aria-label="요청한 재분석 범위" className="space-y-1">
+            <h3 className="font-semibold">변경 데이터 재분석</h3>
+            <ul>
+              {run.targets.map((target) => (
+                <li key={target.sourceResourceId}>
+                  자료 #{target.sourceResourceId} ·{' '}
+                  {run.analysisRange?.columns?.[
+                    String(target.sourceResourceId)
+                  ]?.join(', ') || '전체 컬럼·자료'}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {summaryNotices(run).length > 0 && (
           <ul
             aria-label="분석 범위 안내"
@@ -162,7 +178,7 @@ function RecentAnalyses({
     <DataTable label="최근 분석">
       <thead className="bg-slate-50 text-left text-xs text-slate-500">
         <tr>
-          {['분석', '상태', '요청 시각', '결과', ''].map((title) => (
+          {['분석', '종류', '상태', '요청 시각', '결과', ''].map((title) => (
             <th key={title} className="px-4 py-2 font-medium">
               {title}
             </th>
@@ -173,6 +189,9 @@ function RecentAnalyses({
         {query.data.map((run) => (
           <tr key={run.id}>
             <td className="px-4 py-2 font-medium">{analysisCode(run.id)}</td>
+            <td className="px-4 py-2">
+              {run.runKind === 'REANALYSIS' ? '재분석' : '최초 분석'}
+            </td>
             <td className="px-4 py-2">
               <StatusBadge tone={analysisStatusLabels[run.status].tone}>
                 {analysisStatusLabels[run.status].label}
@@ -216,6 +235,7 @@ type Props = {
 function AnalysisPanel({ currentId, joined, onSelect, onStarted }: Props) {
   const navigate = useNavigate()
   const [choosing, setChoosing] = useState(false)
+  const [runKind, setRunKind] = useState<AnalysisKind>('INITIAL')
   const [showRecent, setShowRecent] = useState(false)
   // CurrentAnalysis가 채우는 019 결과를 같이 읽는다.
   const current = useQuery({
@@ -241,8 +261,24 @@ function AnalysisPanel({ currentId, joined, onSelect, onStarted }: Props) {
           >
             {showRecent ? '최근 분석 닫기' : '최근 분석 보기'}
           </Button>
-          <Button disabled={running} onClick={() => setChoosing(true)}>
+          <Button
+            disabled={running}
+            onClick={() => {
+              setRunKind('INITIAL')
+              setChoosing(true)
+            }}
+          >
             AI 관계 제안 받기
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={running}
+            onClick={() => {
+              setRunKind('REANALYSIS')
+              setChoosing(true)
+            }}
+          >
+            변경 데이터 재분석
           </Button>
           {/* 임시(S15P31C106-307): 시연 전 이 줄과 import를 지운다 */}
           <TestAnalysisDelete onDeleted={() => onSelect(undefined)} />
@@ -266,6 +302,7 @@ function AnalysisPanel({ currentId, joined, onSelect, onStarted }: Props) {
       )}
       {choosing && (
         <AnalysisTargetDialog
+          runKind={runKind}
           onClose={() => setChoosing(false)}
           onStarted={(run) => {
             setChoosing(false)
