@@ -133,7 +133,7 @@ pipeline {
             steps {
                 script {
                     def testCommand = isManualSonarCheck() ? 'npm run test:coverage' : 'npx vitest run'
-                    runFrontendCommands("npm run lint && ${testCommand} && npm run build")
+                    runFrontendCommands("npm run format:check && npm run lint && ${testCommand} && npm run build")
                 }
             }
         }

@@ -205,7 +205,7 @@ Jenkins 관리 → Nodes → Built-In Node → Configure에서 **Number of execu
 | 폴더 | 검사 | 어디서 | 비고 |
 | --- | --- | --- | --- |
 | `backend/` | `./gradlew --no-daemon spotlessCheck build` (스타일 → 컴파일 → 테스트) | Jenkins 컨테이너 안 | Testcontainers가 docker.sock으로 테스트 DB를 띄움. gradle 캐시 `jenkins-data/.gradle` |
-| `frontend/` | `npm ci` → `npm run lint` → `vitest run` → `npm run build` | 일회용 `node:24.18.0-alpine` 컨테이너 | Node 버전은 프론트 담당 기준(24.18.0). npm 캐시 볼륨 `axcore-npm-cache` |
+| `frontend/` | `npm ci` → `npm run format:check` → `npm run lint` → `vitest run` → `npm run build` | 일회용 `node:24.18.0-alpine` 컨테이너 | 포맷 검사 실패 시 이후 명령을 실행하지 않고 MR 검사를 실패 처리한다. Node 버전은 프론트 담당 기준(24.18.0). npm 캐시 볼륨 `axcore-npm-cache` |
 | `ai/` | `pip install -r requirements-dev.txt` → `ruff check .` → `pytest` | 일회용 `python:3.11-slim` 컨테이너 | pip 캐시 볼륨 `axcore-pip-cache` |
 
 frontend · ai 컨테이너에는 docker.sock을 붙이지 않는다. 작업 폴더는 호스트 경로(`/home/ubuntu/axcore/jenkins-data/workspace/axcore-mr-check/...`)로 마운트한다(Jenkins 컨테이너의 `/var/jenkins_home`이 호스트의 `jenkins-data`). 컨테이너가 만든 `node_modules` · `dist` · `.pytest_cache`는 root 소유로 작업 폴더에 남지만 다음 검사도 같은 방식이라 문제없다. 지워야 하면 `docker run --rm -v /home/ubuntu/axcore/jenkins-data/workspace/axcore-mr-check/frontend:/app alpine rm -rf /app/node_modules /app/dist`.
