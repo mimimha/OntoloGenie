@@ -105,6 +105,10 @@ export function fetchPropertyMappings(mappingId: number, page: number) {
   )
 }
 
+export function fetchAllPropertyMappings(mappingId: number) {
+  return allPages((page) => fetchPropertyMappings(mappingId, page))
+}
+
 export async function saveObjectMapping(
   input: ObjectInput,
   existing?: ObjectMapping,

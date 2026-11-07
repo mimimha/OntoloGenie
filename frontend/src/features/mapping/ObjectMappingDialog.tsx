@@ -8,10 +8,17 @@ import { fetchColumns } from '../sources/api'
 import type { SourceResource } from '../sources/types'
 import {
   mappingSaveMessage,
+  fetchAllPropertyMappings,
   saveObjectMapping,
   type Definition,
   type ObjectMapping,
 } from './api'
+import MappingPreview from './MappingPreview'
+import {
+  PreviewDraftError,
+  type MappingPreviewAccess,
+  type MappingPreviewDraft,
+} from './previewModel'
 
 export default function ObjectMappingDialog({
   sourceId,
@@ -22,6 +29,7 @@ export default function ObjectMappingDialog({
   onClose,
   onReload,
   onSaved,
+  previewAccess,
 }: {
   sourceId: number
   initialResourceId: number
@@ -31,6 +39,7 @@ export default function ObjectMappingDialog({
   onClose: () => void
   onReload: () => void
   onSaved: (mapping: ObjectMapping, message: string) => void
+  previewAccess?: MappingPreviewAccess
 }) {
   const [resourceId, setResourceId] = useState(initialResourceId)
   const [typeId, setTypeId] = useState(existing?.objectTypeId ?? 0)
@@ -59,18 +68,55 @@ export default function ObjectMappingDialog({
     save.error instanceof ApiError && save.error.code === 'VERSION_CONFLICT'
   const hasRowFilter = !!existing && Object.keys(existing.rowFilter).length > 0
 
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (save.isPending || stale || hasRowFilter || !columns.isSuccess) return
-    if (!objectTypes.some((item) => item.id === typeId)) {
-      setValidation('객체 유형을 선택해 주세요.')
-      return
-    }
+  function currentDraft() {
+    if (!objectTypes.some((item) => item.id === typeId))
+      throw new PreviewDraftError('객체 유형을 선택해 주세요.')
     if (
       !keys.length ||
       keys.some((key) => !present.some((column) => column.columnName === key))
-    ) {
-      setValidation('현재 존재하는 키 컬럼을 한 개 이상 선택해 주세요.')
+    )
+      throw new PreviewDraftError(
+        '현재 존재하는 키 컬럼을 한 개 이상 선택해 주세요.',
+      )
+    return {
+      sourceResourceId: resourceId,
+      objectTypeId: typeId,
+      keyColumns: keys,
+      rowFilter: {},
+      isActive: active,
+    }
+  }
+
+  async function preparePreview(): Promise<MappingPreviewDraft> {
+    const draft = currentDraft()
+    const saved = existing ? await fetchAllPropertyMappings(existing.id) : []
+    return {
+      ...draft,
+      sourceMappingId: existing?.id,
+      rowVersion: existing?.rowVersion,
+      properties: saved.map(
+        ({
+          propertyDefinitionId,
+          sourceColumnId,
+          sourcePath,
+          transformSteps,
+        }) => ({
+          propertyDefinitionId,
+          sourceColumnId,
+          sourcePath,
+          transformSteps,
+        }),
+      ),
+    }
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (save.isPending || stale || hasRowFilter || !columns.isSuccess) return
+    try {
+      currentDraft()
+    } catch (error) {
+      if (error instanceof Error) setValidation(error.message)
       return
     }
     setValidation('')
@@ -80,6 +126,7 @@ export default function ObjectMappingDialog({
   return (
     <Dialog
       title={existing ? '객체 매핑 편집' : '객체 매핑 등록'}
+      size="wide"
       onClose={() => {
         if (!save.isPending) onClose()
       }}
@@ -214,6 +261,29 @@ export default function ObjectMappingDialog({
             최신 매핑 다시 불러오기
           </Button>
         )}
+        <MappingPreview
+          key={JSON.stringify([
+            resourceId,
+            typeId,
+            keys,
+            active,
+            existing,
+            previewAccess?.policyDescription,
+            save.isPending,
+            stale,
+          ])}
+          access={previewAccess}
+          prepareDraft={preparePreview}
+          disabled={
+            save.isPending ||
+            stale ||
+            hasRowFilter ||
+            !columns.isSuccess ||
+            !resources.some(
+              (resource) => resource.id === resourceId && resource.isReadable,
+            )
+          }
+        />
         <div className="flex justify-end">
           <Button
             type="submit"

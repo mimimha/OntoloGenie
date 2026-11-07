@@ -13,6 +13,7 @@ import TransformEditor from '../review/TransformEditor'
 import type { SourceColumn } from '../sources/types'
 import {
   fetchTransformFunctions,
+  fetchAllPropertyMappings,
   mappingSaveMessage,
   savePropertyMapping,
   type Definition,
@@ -20,6 +21,12 @@ import {
   type PropertyMapping,
   type TransformStep,
 } from './api'
+import MappingPreview from './MappingPreview'
+import {
+  PreviewDraftError,
+  type MappingPreviewAccess,
+  type MappingPreviewDraft,
+} from './previewModel'
 
 export default function PropertyMappingDialog({
   parent,
@@ -29,6 +36,8 @@ export default function PropertyMappingDialog({
   onClose,
   onReload,
   onSaved,
+  previewAccess,
+  previewReadable = false,
 }: {
   parent: ObjectMapping
   existing?: PropertyMapping
@@ -37,6 +46,8 @@ export default function PropertyMappingDialog({
   onClose: () => void
   onReload: () => void
   onSaved: (message: string) => void
+  previewAccess?: MappingPreviewAccess
+  previewReadable?: boolean
 }) {
   const [columnId, setColumnId] = useState(existing?.sourceColumnId ?? 0)
   const [propertyId, setPropertyId] = useState(
@@ -74,22 +85,71 @@ export default function PropertyMappingDialog({
     (property) => property.id === propertyId,
   )
 
+  function currentTransforms() {
+    if (!selectedColumnExists || !selectedPropertyExists)
+      throw new PreviewDraftError(
+        '현재 사용할 수 있는 원천 컬럼과 대상 속성을 선택해 주세요.',
+      )
+    return steps.map((step) => {
+      if (!functions.some((fn) => fn.op === step.op))
+        throw new PreviewDraftError(
+          '현재 사용할 수 있는 변환 함수를 선택해 주세요.',
+        )
+      try {
+        return buildTransform(step)
+      } catch (error) {
+        throw new PreviewDraftError(
+          error instanceof Error ? error.message : '변환 단계를 확인해 주세요.',
+        )
+      }
+    })
+  }
+
+  async function preparePreview(): Promise<MappingPreviewDraft> {
+    const transformSteps = currentTransforms()
+    const saved = await fetchAllPropertyMappings(parent.id)
+    const { sourceResourceId, objectTypeId, keyColumns, rowFilter, isActive } =
+      parent
+    return {
+      sourceResourceId,
+      objectTypeId,
+      keyColumns,
+      rowFilter,
+      isActive,
+      sourceMappingId: parent.id,
+      rowVersion: parent.rowVersion,
+      properties: [
+        ...saved
+          .filter((mapping) => mapping.id !== existing?.id)
+          .map(
+            ({
+              propertyDefinitionId,
+              sourceColumnId,
+              sourcePath,
+              transformSteps,
+            }) => ({
+              propertyDefinitionId,
+              sourceColumnId,
+              sourcePath,
+              transformSteps,
+            }),
+          ),
+        {
+          propertyDefinitionId: propertyId,
+          sourceColumnId: columnId,
+          sourcePath: null,
+          transformSteps,
+        },
+      ],
+    }
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (save.isPending || stale || hasPath || !catalog.isSuccess) return
-    if (!selectedColumnExists || !selectedPropertyExists) {
-      setValidation(
-        '현재 사용할 수 있는 원천 컬럼과 대상 속성을 선택해 주세요.',
-      )
-      return
-    }
     let transformSteps: TransformStep[]
     try {
-      transformSteps = steps.map((step) => {
-        if (!functions.some((fn) => fn.op === step.op))
-          throw new Error('현재 사용할 수 있는 변환 함수를 선택해 주세요.')
-        return buildTransform(step)
-      })
+      transformSteps = currentTransforms()
     } catch (error) {
       if (error instanceof Error) setValidation(error.message)
       return
@@ -101,6 +161,7 @@ export default function PropertyMappingDialog({
   return (
     <Dialog
       title={existing ? '속성 매핑 편집' : '속성 매핑 등록'}
+      size="wide"
       onClose={() => {
         if (!save.isPending) onClose()
       }}
@@ -191,6 +252,27 @@ export default function PropertyMappingDialog({
             최신 매핑 다시 불러오기
           </Button>
         )}
+        <MappingPreview
+          key={JSON.stringify([
+            columnId,
+            propertyId,
+            steps,
+            parent,
+            existing,
+            previewAccess?.policyDescription,
+            save.isPending,
+            stale,
+          ])}
+          access={previewAccess}
+          prepareDraft={preparePreview}
+          disabled={
+            !previewReadable ||
+            save.isPending ||
+            stale ||
+            hasPath ||
+            !catalog.isSuccess
+          }
+        />
         <div className="flex justify-end">
           <Button
             type="submit"
