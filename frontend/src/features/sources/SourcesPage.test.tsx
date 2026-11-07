@@ -30,6 +30,16 @@ function renderSourcesPage(path = '/admin/sources') {
   )
 }
 
+test('원천 표본 탭은 API·정책 확정 전 준비 중으로 표시한다', async () => {
+  renderSourcesPage('/admin/sources?tab=samples')
+  await screen.findByRole('region', { name: '원천 표본 조회' })
+  expect(screen.getByRole('button', { name: '원천 표본' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(screen.getByText(/표본 조회는 준비 중/)).toBeInTheDocument()
+})
+
 test('수집 이력 탭에서 미제공 API의 요청을 비활성화하고 안내한다', async () => {
   renderSourcesPage('/admin/sources?tab=sync')
   await screen.findByRole('region', { name: '수동 수집' })

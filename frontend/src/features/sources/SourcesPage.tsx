@@ -13,10 +13,12 @@ import { connectionStatusLabels, sourceKindLabels } from './labels'
 import ReadableScope from './ReadableScope'
 import SourceFormDialog from './SourceFormDialog'
 import SourceSyncRuns from './SourceSyncRuns'
+import SourceSamples from './SourceSamples'
 
 const tabs = [
   { key: 'connection', label: '접속 정보' },
   { key: 'scope', label: '수집 대상' },
+  { key: 'samples', label: '원천 표본' },
   { key: 'mapping', label: '원천 매핑' },
   { key: 'sync', label: '수집 이력' },
 ] as const
@@ -204,6 +206,8 @@ function SourcesPage() {
             <ReadableScope key={selected.id} source={selected} />
           ) : tab === 'sync' ? (
             <SourceSyncRuns key={selected.id} sourceId={selected.id} />
+          ) : tab === 'samples' ? (
+            <SourceSamples key={selected.id} sourceId={selected.id} />
           ) : (
             <MappingPanel key={selected.id} sourceId={selected.id} />
           )}
