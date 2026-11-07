@@ -17,6 +17,7 @@ import { proposalFixtures } from '../../mocks/proposalHandlers'
 import ProposalHistoryPage from './ProposalHistoryPage'
 import ProposalDetail from './ProposalDetail'
 import type { ProposalDecisionRecord } from './decisionApi'
+import type { BusinessApprovalSource } from './businessApproval'
 
 const clients: QueryClient[] = []
 afterEach(async () => {
@@ -26,7 +27,10 @@ afterEach(async () => {
   clients.length = 0
 })
 
-function open(path = '/admin/rules/303/history?view=activity') {
+function open(
+  path = '/admin/rules/303/history?view=activity',
+  businessApprovalSource?: BusinessApprovalSource,
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -37,7 +41,11 @@ function open(path = '/admin/rules/303/history?view=activity') {
         <Routes>
           <Route
             path="/admin/rules/:id/history"
-            element={<ProposalHistoryPage />}
+            element={
+              <ProposalHistoryPage
+                businessApprovalSource={businessApprovalSource}
+              />
+            }
           />
           <Route path="/admin/rules/:id" element={<ProposalDetail />} />
         </Routes>
@@ -46,6 +54,47 @@ function open(path = '/admin/rules/303/history?view=activity') {
   )
   return client
 }
+
+test('현업 승인 상태는 별도 탭에서 준비 중으로 표시하고 기존 승인 결과를 사용하지 않는다', async () => {
+  open('/admin/rules/301/history?view=business&reviewStatus=APPROVED')
+  expect(
+    await screen.findByRole('region', { name: '현업 승인 후 적용 상태' }),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: '현업 승인 상태' }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: '승인 상태' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  )
+  expect(screen.getAllByText('미확인')).toHaveLength(4)
+  expect(screen.queryByText('반영 실패')).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('link', { name: '제안 상세로 돌아가기' }),
+  ).toHaveAttribute('href', '/admin/rules/301?reviewStatus=APPROVED')
+  await userEvent.click(screen.getByRole('button', { name: '승인 상태' }))
+  expect(
+    await screen.findByRole('region', { name: '승인·반영 상태' }),
+  ).toHaveTextContent('반영 실패')
+})
+
+test('현업 상태 조회는 탭 선택 후 현재 제안 개정으로만 실행한다', async () => {
+  const load = vi.fn().mockResolvedValue({
+    proposalId: 303,
+    revision: 2,
+    approvalStatus: 'PENDING',
+    request: null,
+    decisions: [],
+    application: null,
+  })
+  open('/admin/rules/303/history', { load })
+  await screen.findByRole('region', { name: '승인·반영 상태' })
+  expect(load).not.toHaveBeenCalled()
+  await userEvent.click(screen.getByRole('button', { name: '현업 승인 상태' }))
+  expect(await screen.findByText('승인 대기')).toBeInTheDocument()
+  expect(load).toHaveBeenCalledWith(303, 2, expect.any(AbortSignal))
+  expect(load).toHaveBeenCalledOnce()
+})
 
 function record(
   overrides: Partial<ProposalDecisionRecord> = {},
