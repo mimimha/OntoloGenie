@@ -15,6 +15,7 @@ import {
 } from './api'
 import ObjectMappingDialog from './ObjectMappingDialog'
 import PropertyMappings from './PropertyMappings'
+import type { MappingPreviewAccess } from './previewModel'
 
 const originLabels = {
   MANUAL: '직접 등록',
@@ -22,7 +23,13 @@ const originLabels = {
   SEED: '초기 설정',
 } satisfies Record<ObjectMapping['origin'], string>
 
-export default function MappingPanel({ sourceId }: { sourceId: number }) {
+export default function MappingPanel({
+  sourceId,
+  previewAccess,
+}: {
+  sourceId: number
+  previewAccess?: MappingPreviewAccess
+}) {
   const [resourceId, setResourceId] = useState<number>()
   const [notice, setNotice] = useState('')
   const resources = useQuery({
@@ -94,6 +101,7 @@ export default function MappingPanel({ sourceId }: { sourceId: number }) {
         resource={current}
         resources={available}
         objectTypes={types.data}
+        previewAccess={previewAccess}
         onSaved={(mapping, message) => {
           setResourceId(mapping.sourceResourceId)
           setNotice(message)
@@ -109,12 +117,14 @@ function ObjectMappings({
   resources,
   objectTypes,
   onSaved,
+  previewAccess,
 }: {
   sourceId: number
   resource: SourceResource
   resources: SourceResource[]
   objectTypes: Definition[]
   onSaved: (mapping: ObjectMapping, message: string) => void
+  previewAccess?: MappingPreviewAccess
 }) {
   const client = useQueryClient()
   const [page, setPage] = useState(0)
@@ -246,6 +256,8 @@ function ObjectMappings({
               sourceId={sourceId}
               parent={selected}
               objectName={objectName(selected.objectTypeId)}
+              previewAccess={previewAccess}
+              previewReadable={resource.isReadable}
             />
           )}
         </>
@@ -257,6 +269,7 @@ function ObjectMappings({
           resources={resources}
           objectTypes={objectTypes}
           existing={editing === 'new' ? undefined : editing}
+          previewAccess={previewAccess}
           onClose={() => setEditing(undefined)}
           onReload={() => {
             setEditing(undefined)

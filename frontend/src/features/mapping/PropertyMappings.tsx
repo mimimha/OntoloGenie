@@ -14,15 +14,20 @@ import {
   type PropertyMapping,
 } from './api'
 import PropertyMappingDialog from './PropertyMappingDialog'
+import type { MappingPreviewAccess } from './previewModel'
 
 export default function PropertyMappings({
   sourceId,
   parent,
   objectName,
+  previewAccess,
+  previewReadable = false,
 }: {
   sourceId: number
   parent: ObjectMapping
   objectName: string
+  previewAccess?: MappingPreviewAccess
+  previewReadable?: boolean
 }) {
   const client = useQueryClient()
   const [page, setPage] = useState(0)
@@ -203,6 +208,8 @@ export default function PropertyMappings({
           existing={editing === 'new' ? undefined : editing}
           columns={presentColumns}
           properties={definitions.data}
+          previewAccess={previewAccess}
+          previewReadable={previewReadable}
           onClose={() => setEditing(undefined)}
           onReload={() => {
             setEditing(undefined)
