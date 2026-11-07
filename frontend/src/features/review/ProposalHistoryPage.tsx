@@ -7,6 +7,8 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import { fetchProposal } from './api'
 import { DECISION_PAGE_SIZE, fetchProposalDecisions } from './decisionApi'
 import HeldItems from './HeldItems'
+import BusinessApprovalStatus from './BusinessApprovalStatus'
+import type { BusinessApprovalSource } from './businessApproval'
 import { applyLabels, proposalTitle, reviewLabels } from './labels'
 import type { Proposal } from './types'
 
@@ -165,7 +167,11 @@ function DecisionHistory({
   )
 }
 
-export default function ProposalHistoryPage() {
+export default function ProposalHistoryPage({
+  businessApprovalSource,
+}: {
+  businessApprovalSource?: BusinessApprovalSource
+}) {
   const { id } = useParams()
   const [params, setParams] = useSearchParams()
   const proposalId = Number(id)
@@ -174,6 +180,7 @@ export default function ProposalHistoryPage() {
   const view = params.get('view')
   const activity = view === 'activity'
   const held = view === 'held'
+  const business = view === 'business'
   const rawPage = params.get('historyPage') ?? '0'
   const page =
     /^\d+$/.test(rawPage) && Number.isSafeInteger(Number(rawPage))
@@ -191,7 +198,7 @@ export default function ProposalHistoryPage() {
   })
 
   function changeView(
-    nextView: 'approval' | 'activity' | 'held',
+    nextView: 'approval' | 'activity' | 'held' | 'business',
     nextPage = 0,
   ) {
     const next = new URLSearchParams(params)
@@ -236,8 +243,8 @@ export default function ProposalHistoryPage() {
             className="flex flex-wrap gap-2"
           >
             <Button
-              variant={activity || held ? 'secondary' : 'primary'}
-              aria-pressed={!activity && !held}
+              variant={activity || held || business ? 'secondary' : 'primary'}
+              aria-pressed={!activity && !held && !business}
               onClick={() => changeView('approval')}
             >
               승인 상태
@@ -256,12 +263,26 @@ export default function ProposalHistoryPage() {
             >
               개별 보류 건
             </Button>
+            <Button
+              variant={business ? 'primary' : 'secondary'}
+              aria-pressed={business}
+              onClick={() => changeView('business')}
+            >
+              현업 승인 상태
+            </Button>
           </div>
           {activity ? (
             <DecisionHistory
               proposalId={proposalId}
               page={page}
               onPageChange={(next) => changeView('activity', next)}
+            />
+          ) : business ? (
+            <BusinessApprovalStatus
+              key={`${proposalId}:${query.data.revision}`}
+              proposalId={proposalId}
+              revision={query.data.revision}
+              source={businessApprovalSource}
             />
           ) : held ? (
             <HeldItems
