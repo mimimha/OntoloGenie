@@ -30,6 +30,17 @@ function renderSourcesPage(path = '/admin/sources') {
   )
 }
 
+test('수집 이력 탭에서 미제공 API의 요청을 비활성화하고 안내한다', async () => {
+  renderSourcesPage('/admin/sources?tab=sync')
+  await screen.findByRole('region', { name: '수동 수집' })
+  expect(screen.getByRole('button', { name: '수집 이력' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(screen.getByRole('button', { name: '수동 수집 요청' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '이력 새로고침' })).toBeDisabled()
+})
+
 test.each(['CDC', 'FULL_COMPARE'] as const)(
   '수집 주기 설정은 FULL_COMPARE 자원이 있을 때만 표시한다 (%s)',
   async (strategy) => {
