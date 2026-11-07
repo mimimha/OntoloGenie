@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useIsMutating, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import Button from '../../components/Button'
 import DataTable from '../../components/DataTable'
@@ -10,6 +10,8 @@ import {
   fetchHeldItems,
   HELD_ITEM_PAGE_SIZE,
 } from './heldItemApi'
+import HeldItemResolution from './HeldItemResolution'
+import type { HeldResolutionAccess } from './heldResolution'
 
 const statusLabels: Record<string, string> = {
   HELD: '보류',
@@ -18,17 +20,36 @@ const statusLabels: Record<string, string> = {
   DISMISSED: '종결',
 }
 
-function HeldItemDetail({ id, onClose }: { id: number; onClose: () => void }) {
+function HeldItemDetail({
+  id,
+  onClose,
+  resolutionAccess,
+}: {
+  id: number
+  onClose: () => void
+  resolutionAccess?: HeldResolutionAccess
+}) {
+  const saving =
+    useIsMutating({ mutationKey: ['held-item-resolution', id] }) > 0
   const query = useQuery({
     queryKey: ['held-items', 'detail', id],
     queryFn: ({ signal }) => fetchHeldItem(id, signal),
     retry: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
   const item = query.data
   return (
-    <Dialog title={`개별 보류 건 #${id}`} onClose={onClose}>
+    <Dialog
+      title={`개별 보류 건 #${id}`}
+      onClose={() => {
+        if (!saving) onClose()
+      }}
+      size="wide"
+    >
       <div className="mt-4">
-        {query.isPending ? (
+        {query.isPending || query.isFetching || query.isPaused ? (
           <LoadingState message="보류 건 상세를 불러오는 중…" />
         ) : query.isError ? (
           <ErrorState
@@ -36,35 +57,45 @@ function HeldItemDetail({ id, onClose }: { id: number; onClose: () => void }) {
             onRetry={() => void query.refetch()}
           />
         ) : item ? (
-          <dl className="grid gap-4 sm:grid-cols-2">
-            {[
-              ['상태', statusLabels[item.status] ?? item.status],
-              ['보류 사유', item.holdReason],
-              ['원천 객체 ID', item.sourceObjectId],
-              ['원천 값', item.rawValue],
-              ['변환 값', item.transformedValue],
-              ['관련 제안 ID', item.proposalItemId],
-              ['관계 유형 ID', item.linkTypeId],
-              ['연결 규칙 ID', item.linkMappingId],
-              ['등록 시각', new Date(item.createdAt).toLocaleString('ko-KR')],
-              [
-                '처리 시각',
-                item.resolvedAt &&
-                  new Date(item.resolvedAt).toLocaleString('ko-KR'),
-              ],
-              ['처리자 ID', item.resolvedBy],
-              ['처리 연결 ID', item.resolvedLinkId],
-              ['처리 수집 실행 ID', item.resolvedSyncRunId],
-              ['처리 기록', item.resolutionNote],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <dt className="text-sm text-slate-500">{label}</dt>
-                <dd className="whitespace-pre-wrap break-words">
-                  {value ?? '제공되지 않음'}
-                </dd>
-              </div>
-            ))}
-          </dl>
+          <>
+            <dl className="grid gap-4 sm:grid-cols-2">
+              {[
+                ['상태', statusLabels[item.status] ?? item.status],
+                ['보류 사유', item.holdReason],
+                ['원천 객체 ID', item.sourceObjectId],
+                ['원천 값', item.rawValue],
+                ['변환 값', item.transformedValue],
+                ['관련 제안 ID', item.proposalItemId],
+                ['관계 유형 ID', item.linkTypeId],
+                ['연결 규칙 ID', item.linkMappingId],
+                ['등록 시각', new Date(item.createdAt).toLocaleString('ko-KR')],
+                [
+                  '처리 시각',
+                  item.resolvedAt &&
+                    new Date(item.resolvedAt).toLocaleString('ko-KR'),
+                ],
+                ['처리자 ID', item.resolvedBy],
+                ['처리 연결 ID', item.resolvedLinkId],
+                ['처리 수집 실행 ID', item.resolvedSyncRunId],
+                ['처리 기록', item.resolutionNote],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-sm text-slate-500">{label}</dt>
+                  <dd className="whitespace-pre-wrap break-words">
+                    {value ?? '제공되지 않음'}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <HeldItemResolution
+              item={item}
+              access={resolutionAccess}
+              onRefresh={async () => {
+                const result = await query.refetch()
+                return result.isSuccess ? result.data : undefined
+              }}
+            />
+          </>
         ) : null}
       </div>
     </Dialog>
@@ -74,9 +105,11 @@ function HeldItemDetail({ id, onClose }: { id: number; onClose: () => void }) {
 export default function HeldItems({
   page,
   onPageChange,
+  resolutionAccess,
 }: {
   page: number
   onPageChange: (page: number) => void
+  resolutionAccess?: HeldResolutionAccess
 }) {
   const [detailId, setDetailId] = useState<number>()
   const query = useQuery({
@@ -150,7 +183,12 @@ export default function HeldItems({
         </>
       )}
       {detailId !== undefined && (
-        <HeldItemDetail id={detailId} onClose={() => setDetailId(undefined)} />
+        <HeldItemDetail
+          key={detailId}
+          id={detailId}
+          resolutionAccess={resolutionAccess}
+          onClose={() => setDetailId(undefined)}
+        />
       )}
     </section>
   )
