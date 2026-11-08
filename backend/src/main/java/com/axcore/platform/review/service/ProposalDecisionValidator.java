@@ -23,9 +23,9 @@ public class ProposalDecisionValidator {
     private final ProposalOptionRepository options;
     private final ProposalDecisionCheckRepository checks;
 
-    /** Bean Validation을 통과한 결정 요청을 검증하고 잠긴 후보를 반환한다. 호출자는 같은 트랜잭션에서 결정 이력 저장·반영·감사를 마쳐야 한다. */
+    /** 잠긴 후보와 승인 근거 검사를 반환한다. 호출자는 같은 트랜잭션에서 결정 이력 저장·반영·감사를 마쳐야 한다. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public ProposalItem validate(
+    public ValidatedDecision validate(
             long proposalId, ProposalDecisionRequest request, LoginAccount account) {
         if (account == null) {
             throw new BusinessException(CommonErrorCode.UNAUTHENTICATED);
@@ -71,18 +71,24 @@ public class ProposalDecisionValidator {
                     "selectedOptionId", "같은 후보·revision의 선택지를 지정해 주세요.");
         }
 
-        if ("APPROVE".equals(request.decision())
-                && !checks.hasSuccessfulCheck(proposalId, item.getRevision())) {
-            Map<String, Object> details = new LinkedHashMap<>();
-            details.put("revision", item.getRevision());
-            checks.findLatestCheck(proposalId, item.getRevision())
-                    .ifPresent(
-                            check -> {
-                                details.put("latestCheckRunId", check.checkRunId());
-                                details.put("latestCheckStatus", check.status());
-                            });
-            throw new BusinessException(ReviewErrorCode.REVIEW_VALIDATION_FAILED, details);
+        Long basisCheckRunId = null;
+        if ("APPROVE".equals(request.decision())) {
+            basisCheckRunId =
+                    checks.findSuccessfulCheckRunId(proposalId, item.getRevision()).orElse(null);
+            if (basisCheckRunId == null) {
+                Map<String, Object> details = new LinkedHashMap<>();
+                details.put("revision", item.getRevision());
+                checks.findLatestCheck(proposalId, item.getRevision())
+                        .ifPresent(
+                                check -> {
+                                    details.put("latestCheckRunId", check.checkRunId());
+                                    details.put("latestCheckStatus", check.status());
+                                });
+                throw new BusinessException(ReviewErrorCode.REVIEW_VALIDATION_FAILED, details);
+            }
         }
-        return item;
+        return new ValidatedDecision(item, basisCheckRunId);
     }
+
+    public record ValidatedDecision(ProposalItem item, Long basisCheckRunId) {}
 }

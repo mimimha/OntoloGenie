@@ -43,9 +43,10 @@ class ProposalDecisionValidatorTests {
     @Test
     void acceptsAnApprovalWithASuccessfulCheckForTheCurrentRevision() {
         given(items.findForUpdate(10L)).willReturn(Optional.of(item));
-        given(checks.hasSuccessfulCheck(10L, 2)).willReturn(true);
+        given(checks.findSuccessfulCheckRunId(10L, 2)).willReturn(Optional.of(401L));
 
-        assertThat(validator.validate(10L, request(2, "APPROVE", null), admin)).isSameAs(item);
+        assertThat(validator.validate(10L, request(2, "APPROVE", null), admin).item())
+                .isSameAs(item);
         assertThat(item.getReviewStatus()).isEqualTo("PENDING");
         assertThat(item.getApplyStatus()).isEqualTo("NOT_APPLIED");
     }
@@ -155,8 +156,9 @@ class ProposalDecisionValidatorTests {
     void acceptsAHeldCandidateWithAnEligibleCheck() {
         ReflectionTestUtils.setField(item, "reviewStatus", "HELD");
         given(items.findForUpdate(10L)).willReturn(Optional.of(item));
-        given(checks.hasSuccessfulCheck(10L, 2)).willReturn(true);
-        assertThat(validator.validate(10L, request(2, "APPROVE", null), admin)).isSameAs(item);
+        given(checks.findSuccessfulCheckRunId(10L, 2)).willReturn(Optional.of(401L));
+        assertThat(validator.validate(10L, request(2, "APPROVE", null), admin).item())
+                .isSameAs(item);
         assertThat(item.getReviewStatus()).isEqualTo("HELD");
     }
 
@@ -176,8 +178,9 @@ class ProposalDecisionValidatorTests {
     void acceptsAnOptionFromTheSameCandidateAndRevision() {
         given(items.findForUpdate(10L)).willReturn(Optional.of(item));
         given(options.existsByIdAndProposalItemIdAndRevision(99L, 10L, 2)).willReturn(true);
-        given(checks.hasSuccessfulCheck(10L, 2)).willReturn(true);
-        assertThat(validator.validate(10L, request(2, "APPROVE", 99L), admin)).isSameAs(item);
+        given(checks.findSuccessfulCheckRunId(10L, 2)).willReturn(Optional.of(401L));
+        assertThat(validator.validate(10L, request(2, "APPROVE", 99L), admin).item())
+                .isSameAs(item);
     }
 
     private static ProposalDecisionRequest request(int revision, String decision, Long optionId) {

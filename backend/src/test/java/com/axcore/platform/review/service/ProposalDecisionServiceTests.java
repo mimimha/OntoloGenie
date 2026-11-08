@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -81,6 +82,7 @@ class ProposalDecisionServiceTests {
     private DecisionHistoryFixtures data;
     private long account;
     private long proposal;
+    private long basisCheckRunId;
 
     @TestConfiguration
     static class ApplyConfiguration {
@@ -107,6 +109,7 @@ class ProposalDecisionServiceTests {
         volatile boolean nullResult;
         volatile CountDownLatch entered;
         volatile CountDownLatch release;
+        volatile Runnable duringApply;
 
         RecordingApplier(JdbcClient jdbc) {
             this.jdbc = jdbc;
@@ -149,6 +152,7 @@ class ProposalDecisionServiceTests {
                         .update();
             }
             if (nullResult) return null;
+            if (duringApply != null) duringApply.run();
             if (failBeforeCommit) {
                 TransactionSynchronizationManager.registerSynchronization(
                         new TransactionSynchronization() {
@@ -181,7 +185,7 @@ class ProposalDecisionServiceTests {
         jdbc.sql("update proposal_item set item_kind='OBJECT_TYPE' where id=:id")
                 .param("id", proposal)
                 .update();
-        data.successfulCheck(proposal, 1, account);
+        basisCheckRunId = data.successfulCheck(proposal, 1, account);
         applier.calls.set(0);
         applier.command = null;
         applier.failure = null;
@@ -190,6 +194,7 @@ class ProposalDecisionServiceTests {
         applier.nullResult = false;
         applier.entered = null;
         applier.release = null;
+        applier.duringApply = null;
     }
 
     @ParameterizedTest
@@ -260,6 +265,7 @@ class ProposalDecisionServiceTests {
                                 .query(String.class)
                                 .single());
         assertThat(audit.path("decisionId").asLong()).isEqualTo(result.decisionId());
+        assertThat(audit.path("basisCheckRunId").asLong()).isEqualTo(basisCheckRunId);
         assertThat(audit.path("targetTable").asText()).isEqualTo("object_type");
         assertThat(audit.path("targetId").asLong()).isEqualTo(targetId());
         assertThat(audit.at("/reloadResourceIds/0").asLong()).isEqualTo(91L);
@@ -329,13 +335,7 @@ class ProposalDecisionServiceTests {
                                             .longValue());
                         });
         assertRolledBack("PENDING");
-        assertThat(
-                        jdbc.sql(
-                                        "select count(*) from action_execution where target_type='proposal_item' and target_id=:id and status='SUCCEEDED'")
-                                .param("id", proposal)
-                                .query(Long.class)
-                                .single())
-                .isZero();
+        assertThat(countSuccessfulAudits()).isZero();
     }
 
     @Test
@@ -413,6 +413,7 @@ class ProposalDecisionServiceTests {
         assertThat(applier.calls).hasValue(1);
         assertThat(data.count(proposal)).isEqualTo(1);
         assertThat(targetId()).isPositive();
+        assertThat(countSuccessfulAudits()).isEqualTo(1);
     }
 
     @Test
@@ -508,6 +509,58 @@ class ProposalDecisionServiceTests {
         assertRolledBack("PENDING");
     }
 
+    @Test
+    void keepsTheValidatedBasisWhenAnotherCheckCompletesDuringApply() {
+        applier.duringApply = () -> data.successfulCheck(proposal, 1, account);
+        var result = service.decide(proposal, request(null), login());
+        long savedBasis =
+                jdbc.sql(
+                                "select (result->>'basisCheckRunId')::bigint from action_execution where id=:id")
+                        .param("id", result.actionExecutionId())
+                        .query(Long.class)
+                        .single();
+        assertThat(savedBasis).isEqualTo(basisCheckRunId);
+        long latest =
+                jdbc.sql("select max(id) from check_run where requested_by=:account")
+                        .param("account", account)
+                        .query(Long.class)
+                        .single();
+        assertThat(latest).isGreaterThan(basisCheckRunId);
+    }
+
+    @Test
+    void preservesTheApprovalBasisWhenANewerCheckIsRecorded() throws Exception {
+        var result = service.decide(proposal, request(null), login());
+        long laterCheck = data.successfulCheck(proposal, 1, account);
+        assertThat(laterCheck).isNotEqualTo(basisCheckRunId);
+
+        mvc.perform(
+                        get("/api/v1/audit/actions/{id}", result.actionExecutionId())
+                                .with(authentication(login().toAuthentication())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.result.basisCheckRunId").value(basisCheckRunId))
+                .andExpect(jsonPath("$.data.result.decisionId").value(result.decisionId()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"REJECT", "HOLD"})
+    void doesNotAttachAnApprovalBasisToOtherDecisions(String decision) {
+        var result =
+                service.decide(
+                        proposal,
+                        new ProposalDecisionRequest(1, decision, null, "승인하지 않음"),
+                        login());
+        var audit =
+                json.readTree(
+                        jdbc.sql("select result::text from action_execution where id=:id")
+                                .param("id", result.actionExecutionId())
+                                .query(String.class)
+                                .single());
+        assertThat(audit.has("basisCheckRunId")).isTrue();
+        assertThat(audit.path("basisCheckRunId").isNull()).isTrue();
+        assertThat(applier.calls).hasValue(0);
+    }
+
     private ProposalDecisionRequest request(Long option) {
         return new ProposalDecisionRequest(1, "APPROVE", option, "검사 결과 확인");
     }
@@ -544,7 +597,23 @@ class ProposalDecisionServiceTests {
                 .isZero();
     }
 
+    private long countSuccessfulAudits() {
+        return jdbc.sql(
+                        "select count(*) from action_execution where target_type='proposal_item' and target_id=:id and status='SUCCEEDED'")
+                .param("id", proposal)
+                .query(Long.class)
+                .single();
+    }
+
     private void assertFailureAudit(long id) {
+        var result =
+                json.readTree(
+                        jdbc.sql("select result::text from action_execution where id=:id")
+                                .param("id", id)
+                                .query(String.class)
+                                .single());
+        assertThat(result.path("basisCheckRunId").asLong()).isEqualTo(basisCheckRunId);
+        assertThat(result.has("decisionId")).isFalse();
         assertThat(
                         jdbc.sql("select status from action_execution where id=:id")
                                 .param("id", id)

@@ -118,7 +118,7 @@ public class ProposalDecisionService {
                             definition,
                             auditRequestId,
                             requestedAt,
-                            attempt.validationComplete,
+                            attempt,
                             failure);
             if (failure instanceof BusinessException business) {
                 if (failureAuditId == null) throw business;
@@ -159,7 +159,9 @@ public class ProposalDecisionService {
         if (!definition.isActive()) {
             throw new BusinessException(CommonErrorCode.BUSINESS_RULE_VIOLATION);
         }
-        long decisionId = history.recordValidated(id, request, account);
+        var recorded = history.recordValidated(id, request, account);
+        long decisionId = recorded.decisionId();
+        attempt.basisCheckRunId = recorded.basisCheckRunId();
         // 130 has already validated and locked this managed entity in this transaction.
         ProposalItem item = items.findById(id).orElseThrow();
         attempt.validationComplete = true;
@@ -199,6 +201,7 @@ public class ProposalDecisionService {
         List<Long> heldIds = applied == null ? List.of() : applied.heldItemIds();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("decisionId", decisionId);
+        result.put("basisCheckRunId", recorded.basisCheckRunId());
         result.put("revision", item.getRevision());
         result.put("decision", request.decision());
         result.put("reviewStatus", item.getReviewStatus());
@@ -237,9 +240,9 @@ public class ProposalDecisionService {
             ActionDefinition definition,
             UUID requestId,
             Instant requestedAt,
-            boolean validated,
+            Attempt attempt,
             RuntimeException failure) {
-        boolean blocked = !validated && failure instanceof BusinessException;
+        boolean blocked = !attempt.validationComplete && failure instanceof BusinessException;
         String code =
                 failure instanceof BusinessException business
                         ? business.getErrorCode().code()
@@ -248,12 +251,16 @@ public class ProposalDecisionService {
                 failure instanceof BusinessException business
                         ? business.getMessage()
                         : CommonErrorCode.INTERNAL_ERROR.message();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("errorCode", code);
+        result.put("reason", reason);
+        result.put("basisCheckRunId", attempt.basisCheckRunId);
         try {
             return audits.recordSeparately(
                     entry(id, request, account, definition, requestId, requestedAt)
                             .status(blocked ? ExecutionStatus.BLOCKED : ExecutionStatus.FAILED)
                             .blockedReason(blocked ? reason : null)
-                            .result(Map.of("errorCode", code, "reason", reason))
+                            .result(result)
                             .build());
         } catch (RuntimeException auditFailure) {
             log.error(
@@ -293,5 +300,6 @@ public class ProposalDecisionService {
 
     private static final class Attempt {
         private boolean validationComplete;
+        private Long basisCheckRunId;
     }
 }
