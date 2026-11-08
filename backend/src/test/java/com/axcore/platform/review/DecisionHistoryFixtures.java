@@ -74,7 +74,7 @@ public final class DecisionHistoryFixtures {
                 .single();
     }
 
-    public void successfulCheck(long proposal, int revision, long account) {
+    public long successfulCheck(long proposal, int revision, long account) {
         long run =
                 jdbc.sql(
                                 """
@@ -101,6 +101,7 @@ public final class DecisionHistoryFixtures {
                 .param("id", proposal)
                 .param("revision", revision)
                 .update();
+        return run;
     }
 
     public long decision(

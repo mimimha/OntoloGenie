@@ -259,7 +259,8 @@ class ProposalDecisionApiTests {
                 jdbc.sql(
                                 """
                         select status, blocked_reason, target_type, target_id,
-                            result->>'errorCode' as error_code
+                            result->>'errorCode' as error_code,
+                            jsonb_typeof(result->'basisCheckRunId') as basis_type
                         from action_execution where id=:id
                         """)
                         .param("id", auditId)
@@ -269,7 +270,8 @@ class ProposalDecisionApiTests {
                 .containsEntry("status", "BLOCKED")
                 .containsEntry("target_type", "proposal_item")
                 .containsEntry("target_id", targetId)
-                .containsEntry("error_code", errorCode);
+                .containsEntry("error_code", errorCode)
+                .containsEntry("basis_type", "null");
         assertThat((String) audit.get("blocked_reason")).isNotBlank();
         assertThat(
                         jdbc.sql("select count(*) from entity_change where action_execution_id=:id")

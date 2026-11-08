@@ -107,7 +107,7 @@ ApplyResult(targetTable, targetId, heldItemIds, reloadResourceIds, summary, chan
 → 커밋 후 HTTP 200
 ```
 
-- 130의 `ProposalDecisionHistoryService.recordValidated`는 내부에서 129를 호출하고 이력 ID를 반환한다. 승인 완료 결과가 아니며 검증기를 다시 호출할 필요도 없다.
+- 130의 `ProposalDecisionHistoryService.recordValidated`는 내부에서 129를 호출하고 `RecordedDecision(decisionId, basisCheckRunId)`를 반환한다. 승인 완료 결과가 아니며 검증기를 다시 호출할 필요도 없다. 139는 검증에서 선택한 검사 번호를 감사에 그대로 전달한다([검사 근거 연결](review-audit-link.md)).
 - 같은 트랜잭션의 관리 대상 후보를 사용하고 후보 잠금은 커밋까지 유지한다. `ProposalApplyPayloadResolver`와 반영 서비스는 호출자 트랜잭션을 벗어나지 않는다.
 - DB 설계 U6 및 `object_link.status` 주석의 동기 재조정 기준을 따른다. 관계 재계산 작업 표·큐·커밋 후 작업 예약을 131에서 새로 만들지 않는다.
 - 관계 규칙의 `APPLIED`는 규칙 저장·관계 재조정·해당 보류 건 생성까지 성공한 상태다.

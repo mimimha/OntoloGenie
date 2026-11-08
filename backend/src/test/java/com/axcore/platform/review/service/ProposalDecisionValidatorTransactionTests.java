@@ -82,7 +82,7 @@ class ProposalDecisionValidatorTransactionTests {
                                         id,
                                         new ProposalDecisionRequest(1, "HOLD", null, "검토 보류"),
                                         new LoginAccount(account, "admin", "ADMIN", false));
-                        assertThat(candidate.getId()).isEqualTo(id);
+                        assertThat(candidate.item().getId()).isEqualTo(id);
                         var competingEdit =
                                 executor.submit(
                                         () ->

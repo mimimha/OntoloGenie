@@ -39,7 +39,7 @@ class ProposalDecisionCheckRepositoryTests {
 
     @Test
     void doesNotApproveWithoutAnyCheck() {
-        assertThat(repository.hasSuccessfulCheck(proposalId, 1)).isFalse();
+        assertThat(repository.findSuccessfulCheckRunId(proposalId, 1)).isEmpty();
         assertThat(repository.findLatestCheck(proposalId, 1)).isEmpty();
     }
 
@@ -47,7 +47,7 @@ class ProposalDecisionCheckRepositoryTests {
     void acceptsASuccessfulCheckWithUnmatchedRows() {
         long run = insertRun(proposalId, 1, "CANDIDATE", "SUCCEEDED", "2026-11-03T00:00:00Z");
         insertResult(run, proposalId, 1);
-        assertThat(repository.hasSuccessfulCheck(proposalId, 1)).isTrue();
+        assertThat(repository.findSuccessfulCheckRunId(proposalId, 1)).contains(run);
     }
 
     @ParameterizedTest
@@ -55,7 +55,7 @@ class ProposalDecisionCheckRepositoryTests {
     void excludesUnsuccessfulRunsEvenIfAResultExists(String status) {
         long run = insertRun(proposalId, 1, "CANDIDATE", status, "2026-11-03T00:00:00Z");
         insertResult(run, proposalId, 1);
-        assertThat(repository.hasSuccessfulCheck(proposalId, 1)).isFalse();
+        assertThat(repository.findSuccessfulCheckRunId(proposalId, 1)).isEmpty();
         assertThat(repository.findLatestCheck(proposalId, 1))
                 .contains(new CheckRunStatus(run, status));
     }
@@ -63,7 +63,7 @@ class ProposalDecisionCheckRepositoryTests {
     @Test
     void requiresAResultInAdditionToASuccessfulRun() {
         insertRun(proposalId, 1, "CANDIDATE", "SUCCEEDED", "2026-11-03T00:00:00Z");
-        assertThat(repository.hasSuccessfulCheck(proposalId, 1)).isFalse();
+        assertThat(repository.findSuccessfulCheckRunId(proposalId, 1)).isEmpty();
     }
 
     @Test
@@ -71,7 +71,7 @@ class ProposalDecisionCheckRepositoryTests {
         long run = insertRun(proposalId, 1, "CANDIDATE", "SUCCEEDED", "2026-11-03T00:00:00Z");
         insertResult(run, proposalId, 1);
         addRevision(proposalId, 2);
-        assertThat(repository.hasSuccessfulCheck(proposalId, 2)).isFalse();
+        assertThat(repository.findSuccessfulCheckRunId(proposalId, 2)).isEmpty();
         assertThat(repository.findLatestCheck(proposalId, 2)).isEmpty();
     }
 
@@ -80,7 +80,7 @@ class ProposalDecisionCheckRepositoryTests {
         addRevision(proposalId, 2);
         long run = insertRun(proposalId, 2, "CANDIDATE", "SUCCEEDED", "2026-11-03T00:00:00Z");
         insertResult(run, proposalId, 2);
-        assertThat(repository.hasSuccessfulCheck(proposalId, 2)).isTrue();
+        assertThat(repository.findSuccessfulCheckRunId(proposalId, 2)).contains(run);
     }
 
     @Test
@@ -88,8 +88,8 @@ class ProposalDecisionCheckRepositoryTests {
         long other = insertProposal();
         long run = insertRun(proposalId, 1, "CANDIDATE", "SUCCEEDED", "2026-11-03T00:00:00Z");
         insertResult(run, other, 1);
-        assertThat(repository.hasSuccessfulCheck(proposalId, 1)).isFalse();
-        assertThat(repository.hasSuccessfulCheck(other, 1)).isFalse();
+        assertThat(repository.findSuccessfulCheckRunId(proposalId, 1)).isEmpty();
+        assertThat(repository.findSuccessfulCheckRunId(other, 1)).isEmpty();
     }
 
     @Test
@@ -97,14 +97,14 @@ class ProposalDecisionCheckRepositoryTests {
         addRevision(proposalId, 2);
         long run = insertRun(proposalId, 2, "CANDIDATE", "SUCCEEDED", "2026-11-03T00:00:00Z");
         insertResult(run, proposalId, 1);
-        assertThat(repository.hasSuccessfulCheck(proposalId, 2)).isFalse();
+        assertThat(repository.findSuccessfulCheckRunId(proposalId, 2)).isEmpty();
     }
 
     @Test
     void excludesNonCandidateChecks() {
         long run = insertRun(proposalId, 1, "MANUAL", "SUCCEEDED", "2026-11-03T00:00:00Z");
         insertResult(run, proposalId, 1);
-        assertThat(repository.hasSuccessfulCheck(proposalId, 1)).isFalse();
+        assertThat(repository.findSuccessfulCheckRunId(proposalId, 1)).isEmpty();
         assertThat(repository.findLatestCheck(proposalId, 1)).isEmpty();
     }
 
@@ -113,9 +113,25 @@ class ProposalDecisionCheckRepositoryTests {
         long success = insertRun(proposalId, 1, "CANDIDATE", "SUCCEEDED", "2026-11-03T00:00:00Z");
         insertResult(success, proposalId, 1);
         long failed = insertRun(proposalId, 1, "CANDIDATE", "FAILED", "2026-11-03T01:00:00Z");
-        assertThat(repository.hasSuccessfulCheck(proposalId, 1)).isTrue();
+        assertThat(repository.findSuccessfulCheckRunId(proposalId, 1)).contains(success);
         assertThat(repository.findLatestCheck(proposalId, 1))
                 .contains(new CheckRunStatus(failed, "FAILED"));
+    }
+
+    @Test
+    void selectsTheLatestEligibleSuccessByRequestedTimeThenId() {
+        long latest = insertRun(proposalId, 1, "CANDIDATE", "SUCCEEDED", "2026-11-03T02:00:00Z");
+        insertResult(latest, proposalId, 1);
+        long older = insertRun(proposalId, 1, "CANDIDATE", "SUCCEEDED", "2026-11-03T01:00:00Z");
+        insertResult(older, proposalId, 1);
+        assertThat(repository.findSuccessfulCheckRunId(proposalId, 1)).contains(latest);
+
+        long tie = insertRun(proposalId, 1, "CANDIDATE", "SUCCEEDED", "2026-11-03T02:00:00Z");
+        insertResult(tie, proposalId, 1);
+        assertThat(repository.findSuccessfulCheckRunId(proposalId, 1)).contains(tie);
+
+        insertRun(proposalId, 1, "CANDIDATE", "SUCCEEDED", "2026-11-03T03:00:00Z");
+        assertThat(repository.findSuccessfulCheckRunId(proposalId, 1)).contains(tie);
     }
 
     @Test

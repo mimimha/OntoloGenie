@@ -76,9 +76,10 @@ class ProposalDecisionHistoryTransactionTests {
         if (decision.equals("APPROVE")) data.successfulCheck(proposal, 1, account);
         long id =
                 history.recordValidated(
-                        proposal,
-                        new ProposalDecisionRequest(1, decision, option, "검토 완료"),
-                        login("ADMIN"));
+                                proposal,
+                                new ProposalDecisionRequest(1, decision, option, "검토 완료"),
+                                login("ADMIN"))
+                        .decisionId();
         assertThat(data.count(proposal)).isEqualTo(1);
         jdbc.sql("select * from review_decision where id=:id")
                 .param("id", id)
@@ -217,11 +218,12 @@ class ProposalDecisionHistoryTransactionTests {
                                             long candidate = data.proposal(actor);
                                             id.set(
                                                     history.recordValidated(
-                                                            candidate,
-                                                            request(),
-                                                            new LoginAccount(
-                                                                    actor, "admin", "ADMIN",
-                                                                    false)));
+                                                                    candidate,
+                                                                    request(),
+                                                                    new LoginAccount(
+                                                                            actor, "admin", "ADMIN",
+                                                                            false))
+                                                            .decisionId());
                                             assertThat(data.count(candidate)).isEqualTo(1);
                                             throw new IllegalStateException(
                                                     "후속 반영 실패를 대신하는 테스트 예외");

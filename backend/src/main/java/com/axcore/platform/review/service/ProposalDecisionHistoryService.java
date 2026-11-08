@@ -1,7 +1,6 @@
 package com.axcore.platform.review.service;
 
 import com.axcore.platform.global.security.LoginAccount;
-import com.axcore.platform.review.domain.ProposalItem;
 import com.axcore.platform.review.domain.ReviewDecision;
 import com.axcore.platform.review.dto.ProposalDecisionRequest;
 import com.axcore.platform.review.repository.ReviewDecisionRepository;
@@ -24,22 +23,25 @@ public class ProposalDecisionHistoryService {
     private final ReviewDecisionRepository decisions;
     private final Clock clock;
 
-    /** 호출자는 같은 트랜잭션에서 후보 상태 변경·반영·감사를 마쳐야 한다. 반환값은 승인 완료가 아닌 이력 ID다. */
+    /** 호출자는 같은 트랜잭션에서 후보 상태 변경·반영·감사를 마쳐야 한다. 결정 ID와 검증에 사용한 검사 ID를 반환한다. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public long recordValidated(
+    public RecordedDecision recordValidated(
             @Min(1) long proposalId,
             @NotNull @Valid ProposalDecisionRequest request,
             LoginAccount account) {
-        ProposalItem item = validator.validate(proposalId, request, account);
+        var validated = validator.validate(proposalId, request, account);
         ReviewDecision decision =
                 ReviewDecision.record(
-                        item,
+                        validated.item(),
                         request.decision(),
                         request.selectedOptionId(),
                         request.reason(),
                         account.id(),
                         Instant.now(clock));
         // 호출자가 같은 트랜잭션에서 이 행을 SQL(ProposalDecisionAuditRepository)로 다시 읽으므로 바로 DB에 쓴다.
-        return decisions.saveAndFlush(decision).getId();
+        long decisionId = decisions.saveAndFlush(decision).getId();
+        return new RecordedDecision(decisionId, validated.basisCheckRunId());
     }
+
+    public record RecordedDecision(long decisionId, Long basisCheckRunId) {}
 }
