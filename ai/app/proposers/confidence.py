@@ -1,48 +1,99 @@
-"""FN-AIP-05 신뢰도. 규칙은 docs/evaluation.md 2절.
+"""FN-AIP-05 신뢰도. 규칙과 근거 수치는 docs/evaluation.md 2절.
 
-- 신호는 묶음(구조·값 비교·완전성·의미·반복 일치)으로 나누고, 묶음 안에서는 가장 큰 점수 하나만 더한다.
-- 보류(HELD)할 만한 치명적 문제가 있으면 최대 0.49(낮음).
+신뢰도 = "같은 근거로 나온 제안이 정답이 있는 평가 데이터에서 실제로 맞은 비율"이다(2026-11-09 확정안).
+현장에서 "왜 85%냐"고 물으면 "이런 근거의 제안은 평가 데이터에서 44개 중 39개가 맞았다"로 답할 수 있게 한다.
+
+- 근거 수치: 규칙만으로 돌린 평가 데이터 9개(A, B~B8)의 연결 규칙 후보 201개(정답 대조). 점수는
+  (맞은 수 + 1) / (전체 + 2)를 0.05 단위로 맞춘 값이다. 개수가 적은 근거가 100%로 튀지 않게 한다.
+- 보류 권고는 보류 사유마다 같은 방식으로 잰 비율을 상한으로 둔다. 보류는 관리자가 꼭 확인해야 하는 제안이라
+  실제 비율이 더 높아도 0.6을 넘기지 않는다(검토 화면에 보류 표시가 없어 점수로 구분되게).
 - LLM 판단은 점수에 더하지 않는다(llm_judgement로 따로 표시). LLM이 '맞지 않다'고 하면 보류·상한만 적용한다.
-- 관계 점수는 값 포함·도착 키·이름 근거를 더해 최대 0.8이다(이름 근거는 10-28 추가).
-- 서버 매칭률(FN-CHK)은 넣지 않는다.
+- 서버의 시험 매칭률·정합성 검사(FN-CHK)는 넣지 않는다.
 """
 
 from app.models.candidate import Confidence, ScoreItem
 
-CAP = 0.49
-STRUCTURE, VALUE, COMPLETE, NAME, MEANING, REPEAT = (
-    "구조",
-    "값 비교",
-    "완전성",
-    "이름",
-    "의미(LLM)",
-    "반복 일치(LLM)",
-)
+# LLM이 업무상 맞지 않다고 본 관계의 상한(평가 수치 없음, 보수적으로 둠)
+CAP = 0.3
+BASIS = "근거"
+STRUCTURE, VALUE, COMPLETE = "구조", "값 비교", "완전성"
+
+# 보류 사유(links.py·llm_links.py·notes.py가 쓰는 문장)의 앞부분 → (상한, 맞은 수, 전체). 위에서부터 먼저 맞는 것
+HOLD_CAPS: list[tuple[str, float, int, int]] = [
+    ("LLM이 업무상 맞지 않다고 봄", CAP, 0, 0),
+    ("접두어 '", 0.2, 1, 8),  # 접두어를 바꿔야 같아짐(거래처 C001 ↔ 설비 EQ-001)
+    ("숫자뿐인 값에", 0.3, 4, 14),
+    ("원래 값이 하나도 같지 않고 숫자만", 0.3, 1, 3),
+    ("출발 값에 글자가 없고 숫자만 같음", 0.3, 0, 0),
+    ("출발 값의 글자를 떼야", 0.3, 0, 0),
+    ("다른 시스템의 두 컬럼을 변환해", 0.35, 0, 1),
+    ("값 종류 ", 0.4, 0, 1),  # 값 몇 개가 순번 키 일부에만 닿음
+    ("거쳐야 이어지는", 0.4, 0, 0),
+    ("도착이 1, 2, 3", 0.45, 5, 11),  # 순번 키에 숫자만 겹침
+    ("값 종류가", 0.5, 4, 6),
+    ("서로 다른 값 기준", 0.5, 2, 4),
+    ("행 기준으로만", 0.5, 1, 1),
+    ("대소문자·구분자만 달라", 0.6, 5, 7),
+    ("끝의 차수 글자를 떼면", 0.6, 1, 2),
+    ("숫자 묶음만 같아", 0.6, 1, 1),
+    ("구분자만 달라 숫자만", 0.6, 0, 0),
+    ("숫자만 남기고 앞자리", 0.6, 4, 5),
+    ("다른 시스템의 번호를 숫자로만", 0.6, 3, 3),
+    ("LLM이 제안한", 0.6, 0, 0),
+    ("수량·개수 컬럼이라", 0.4, 0, 0),
+    ("식별 키 없음", 0.6, 0, 0),  # 객체 유형: 행을 구분할 키가 없음
+    ("후보", 0.3, 0, 0),  # 문서 연결: 후보 설비가 여럿
+    ("대상을 정한 언급이 없음", 0.3, 0, 0),
+]
+HOLD_DEFAULT = 0.45  # 보류 전체 32/67
+
+
+def hold_cap(reason: str) -> tuple[float, str]:
+    """(상한, 화면에 보일 설명)."""
+    for prefix, cap, ok, total in HOLD_CAPS:
+        if reason.startswith(prefix) or (len(prefix) > 6 and prefix in reason):
+            stat = (
+                f" — 이런 보류는 평가 데이터에서 {total}개 중 {ok}개가 맞음"
+                if total
+                else ""
+            )
+            return cap, f"{reason}{stat}"
+    return HOLD_DEFAULT, reason
 
 
 def build(items: list[tuple[str, str, float]], hold: str | None = None) -> Confidence:
+    cap, cap_reason = hold_cap(hold) if hold else (None, None)
     return Confidence(
         items=[
             ScoreItem(group=g, label=label, weight=round(w, 4))
             for g, label, w in items
             if w > 0
         ],
-        cap=CAP if hold else None,
-        cap_reason=hold,
+        cap=cap,
+        cap_reason=cap_reason,
     )
 
 
 def object_type(
     declared_pk: bool, observed_key: bool, referenced_by: int
 ) -> list[tuple]:
-    items = []
-    if declared_pk:
-        items.append((STRUCTURE, "기본키 선언", 0.25))
-    elif observed_key:
-        items.append((STRUCTURE, "값이 모두 다른 키 컬럼", 0.15))
-    if referenced_by:
-        items.append(("참조", f"다른 표 {referenced_by}개가 가리킴", 0.25))
-    return items
+    """원천 표 한 행 = 객체 하나. 평가 데이터 9개의 표는 모두 정답 객체 유형이었다."""
+    keyed = declared_pk or observed_key
+    key = (
+        "기본키 선언"
+        if declared_pk
+        else "값이 모두 다른 키 컬럼"
+        if observed_key
+        else "행을 구분할 키 없음"
+    )
+    refs = f", 다른 표 {referenced_by}개가 가리킴" if referenced_by else ""
+    return [
+        (
+            BASIS,
+            f"원천 표의 한 행을 객체 하나로 옮김({key}{refs}) — 평가 데이터의 표는 모두 맞음",
+            0.95 if keyed else 0.85,
+        )
+    ]
 
 
 def object_mapping(declared_pk: bool) -> list[tuple]:
@@ -50,7 +101,7 @@ def object_mapping(declared_pk: bool) -> list[tuple]:
         (
             STRUCTURE,
             "기본키로 행 구분" if declared_pk else "값으로 찾은 키로 행 구분",
-            0.5 if declared_pk else 0.3,
+            0.95 if declared_pk else 0.85,
         )
     ]
 
@@ -60,16 +111,24 @@ def property_(declared_type: bool, null_ratio: float) -> list[tuple]:
         (
             VALUE,
             "선언된 자료형" if declared_type else "값 모양으로 추정한 자료형",
-            0.35 if declared_type else 0.25,
+            0.8 if declared_type else 0.65,
         ),
         (COMPLETE, f"값 채움 {1 - null_ratio:.0%}", 0.15 * (1 - null_ratio)),
     ]
 
 
 def property_mapping() -> list[tuple]:
-    return [(STRUCTURE, "원천 컬럼을 그대로 옮김(원천에서 확인)", 0.5)]
+    return [(STRUCTURE, "원천 컬럼을 그대로 옮김(원천에서 확인)", 0.95)]
 
 
+# 대기로 낸 연결 규칙: (도착 키, 이름 근거) → (점수, 맞은 수, 전체)
+PENDING = {
+    ("primary", True): (0.95, 82, 83),
+    ("primary", False): (0.85, 39, 44),
+    ("alternate", None): (0.75, 5, 6),
+    ("none", None): (0.65, 1, 1),
+}
+CROSS_SAME_VALUE = (0.7, 6, 8)
 KEY_TEXT = {
     "primary": "도착이 기본키",
     "alternate": "도착이 다른 유일 키",
@@ -78,20 +137,50 @@ KEY_TEXT = {
 
 
 def link(
-    distinct_coverage: float, row_coverage: float, target_key: str, name: bool = False
+    distinct_coverage: float,
+    row_coverage: float,
+    target_key: str,
+    name: bool = False,
+    cross_same_value: bool = False,
 ) -> list[tuple]:
     coverage = min(distinct_coverage, row_coverage)
+    key = (target_key, name if target_key == "primary" else None)
+    score, ok, total = PENDING[key]
+    text = KEY_TEXT[target_key] + (", 컬럼 이름도 대상과 이어짐" if name else "")
     items = [
-        (VALUE, f"값 포함 {coverage:.0%}", 0.5 * coverage),
         (
-            STRUCTURE,
-            KEY_TEXT[target_key],
-            {"primary": 0.2, "alternate": 0.1}.get(target_key, 0.0),
-        ),
+            BASIS,
+            f"{text}, 값 포함 {coverage:.0%} — 평가 데이터에서 {total}개 중 {ok}개가 맞음",
+            score,
+        )
     ]
-    if name:
-        items.append((NAME, "컬럼 이름이 대상 표·키와 이어짐", 0.1))
+    if cross_same_value:
+        # 다른 시스템인데 값이 글자 그대로 같으면 같은 모양의 다른 코드일 수 있다(라인 C0001 ↔ 고객 C0001)
+        score, ok, total = CROSS_SAME_VALUE
+        items = [
+            (
+                BASIS,
+                (
+                    f"다른 시스템인데 값이 글자 그대로 같음({text}, 값 포함 {coverage:.0%}) — "
+                    f"평가 데이터에서 {total}개 중 {ok}개가 맞음"
+                ),
+                score,
+            )
+        ]
     return items
+
+
+def document_link(exact_key: bool) -> list[tuple]:
+    """메모 속 언급 → 원천 객체. 원천 키가 그대로 적힌 언급은 평가에서 잘못 찾은 것이 없었다."""
+    if exact_key:
+        return [
+            (
+                BASIS,
+                "글에 원천 키가 그대로 적혀 있음 — 평가에서 잘못 찾은 것 0건(20개 중 20개)",
+                0.95,
+            )
+        ]
+    return [(BASIS, "글의 설비 이름·별명을 설비 목록과 맞춤", 0.8)]
 
 
 def band(score: float | None) -> str:

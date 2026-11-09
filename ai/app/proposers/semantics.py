@@ -6,7 +6,7 @@
 합치는 규칙 (LLM 판단은 신뢰도 점수에 더하지 않고 llm_judgement에 따로 적는다)
 - 객체 종류: LLM 판단을 쓰고 규칙 판단은 llm_judgement에 남긴다.
 - 속성: 뜻을 설명에 넣는다. 개인정보는 규칙 OR LLM.
-- 관계: LLM이 맞다고 해도 점수·상태는 그대로. 아니라고 하면 보류(HELD)로 바꾸고 상한 0.49.
+- 관계: LLM이 맞다고 해도 점수·상태는 그대로. 아니라고 하면 보류(HELD)로 바꾸고 상한 0.3(confidence.CAP).
 - 형식에 안 맞는 답, 표에 없는 컬럼, 목록에 없는 관계는 버린다.
 
 실제 GMS 호출은 크레딧을 쓰므로 사용자 승인 뒤에만 한다. 테스트는 가짜 응답(MockLLMClient)으로만 한다.
@@ -306,8 +306,13 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
                 c = _note(c, f"업무상 맞는 관계: {judged.reason}")
             elif judged:
                 # 부정 판단만 반영한다: 보류로 바꾸고 상한을 둔다
+                # 이미 더 낮은 보류 상한이 있으면 그대로 둔다(LLM 부정으로 점수가 오르지 않게)
+                cap, cap_reason = CAP, "LLM이 업무상 맞지 않다고 봄"
+                if c.confidence.cap is not None and c.confidence.cap < CAP:
+                    cap = c.confidence.cap
+                    cap_reason = f"{c.confidence.cap_reason} / {cap_reason}"
                 conf = c.confidence.model_copy(
-                    update={"cap": CAP, "cap_reason": "LLM이 업무상 맞지 않다고 봄"}
+                    update={"cap": cap, "cap_reason": cap_reason}
                 )
                 c = _note(
                     c,

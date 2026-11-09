@@ -226,7 +226,10 @@ def to_api_proposals(candidates: list[Candidate]) -> list[dict]:
             out.append(to_api(rule))
     out += [to_api(t) for code, t in types.items() if code not in paired]
     out += [to_api(c) for c in loose + groups.get("DOCUMENT_LINK", [])]
-    return out
+    # 검토 화면 목록 제목·관계 설명을 한국어로 붙인다(코드 대신 객체·속성 이름)
+    from app.proposers.readable import readable
+
+    return readable(out)
 
 
 SNAKE = re.compile(r"_[a-z]")
