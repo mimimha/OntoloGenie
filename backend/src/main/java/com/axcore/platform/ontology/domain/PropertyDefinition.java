@@ -114,4 +114,10 @@ public class PropertyDefinition extends BaseAuditEntity {
         this.sensitivity = sensitivity;
         this.temporalRole = temporalRole;
     }
+
+    /** 만든 출처를 남긴다. 저장하기 전에 한 번만 부른다(관리자 직접 등록이면 부르지 않아도 MANUAL이다). */
+    public void recordSource(DefinitionSource source) {
+        this.origin = source.origin();
+        this.proposalItemId = source.proposalItemId();
+    }
 }

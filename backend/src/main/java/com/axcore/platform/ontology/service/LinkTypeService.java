@@ -2,6 +2,7 @@ package com.axcore.platform.ontology.service;
 
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
+import com.axcore.platform.ontology.domain.DefinitionSource;
 import com.axcore.platform.ontology.domain.LinkCardinality;
 import com.axcore.platform.ontology.domain.LinkType;
 import com.axcore.platform.ontology.dto.DefinitionReference;
@@ -45,6 +46,12 @@ public class LinkTypeService {
     /** API 031. 코드는 전체에서 유일하다. 동시에 같은 코드로 등록하면 DB 제약이 하나만 남긴다. */
     @Transactional
     public LinkTypeResponse create(LinkTypeCreateRequest request) {
+        return create(request, DefinitionSource.MANUAL);
+    }
+
+    /** 승인한 후보 반영(189)도 이 경로로 만든다. 출처만 다르다. */
+    @Transactional
+    public LinkTypeResponse create(LinkTypeCreateRequest request, DefinitionSource source) {
         requireObjectTypes(request.sourceTypeId(), request.targetTypeId());
         if (linkTypeRepository.existsByCode(request.code())) {
             throw new BusinessException(CommonErrorCode.CONFLICT);
@@ -58,6 +65,7 @@ public class LinkTypeService {
                         .cardinality(LinkCardinality.valueOf(request.cardinality()))
                         .description(request.description())
                         .build();
+        linkType.recordSource(source);
         return LinkTypeResponse.from(linkTypeRepository.saveAndFlush(linkType));
     }
 

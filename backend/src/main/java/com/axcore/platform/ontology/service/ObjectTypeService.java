@@ -2,6 +2,7 @@ package com.axcore.platform.ontology.service;
 
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
+import com.axcore.platform.ontology.domain.DefinitionSource;
 import com.axcore.platform.ontology.domain.ObjectType;
 import com.axcore.platform.ontology.dto.DefinitionReference;
 import com.axcore.platform.ontology.dto.ObjectTypeCreateRequest;
@@ -42,6 +43,12 @@ public class ObjectTypeService {
     /** API 022. 코드는 전체에서 유일하다. 동시에 같은 코드로 등록하면 DB 제약이 하나만 남긴다. */
     @Transactional
     public ObjectTypeResponse create(ObjectTypeCreateRequest request) {
+        return create(request, DefinitionSource.MANUAL);
+    }
+
+    /** 승인한 후보 반영(189)도 이 경로로 만든다. 출처만 다르다. */
+    @Transactional
+    public ObjectTypeResponse create(ObjectTypeCreateRequest request, DefinitionSource source) {
         if (objectTypeRepository.existsByCode(request.code())) {
             throw new BusinessException(CommonErrorCode.CONFLICT);
         }
@@ -52,6 +59,7 @@ public class ObjectTypeService {
                         request.description(),
                         request.synonyms() == null ? List.of() : request.synonyms(),
                         request.accessGroup());
+        objectType.recordSource(source);
         return ObjectTypeResponse.from(objectTypeRepository.saveAndFlush(objectType));
     }
 

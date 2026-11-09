@@ -2,6 +2,7 @@ package com.axcore.platform.ontology.service;
 
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
+import com.axcore.platform.ontology.domain.DefinitionSource;
 import com.axcore.platform.ontology.domain.PropertyConstraints;
 import com.axcore.platform.ontology.domain.PropertyDataType;
 import com.axcore.platform.ontology.domain.PropertyDefinition;
@@ -45,6 +46,13 @@ public class PropertyService {
     /** API 027. 코드는 같은 유형 안에서 유일하다. 동시에 같은 코드로 등록하면 DB 제약이 하나만 남긴다. */
     @Transactional
     public PropertyResponse create(Long objectTypeId, PropertyCreateRequest request) {
+        return create(objectTypeId, request, DefinitionSource.MANUAL);
+    }
+
+    /** 승인한 후보 반영(189)도 이 경로로 만든다. 출처만 다르다. */
+    @Transactional
+    public PropertyResponse create(
+            Long objectTypeId, PropertyCreateRequest request, DefinitionSource source) {
         requireObjectType(objectTypeId);
         PropertyDataType dataType = PropertyDataType.valueOf(request.dataType());
         TemporalRole temporalRole = enumOrNull(TemporalRole.class, request.temporalRole());
@@ -68,6 +76,7 @@ public class PropertyService {
                         .sensitivity(enumOrNull(PropertySensitivity.class, request.sensitivity()))
                         .temporalRole(temporalRole)
                         .build();
+        property.recordSource(source);
         return PropertyResponse.from(propertyDefinitionRepository.saveAndFlush(property));
     }
 

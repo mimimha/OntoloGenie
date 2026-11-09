@@ -17,6 +17,12 @@ public interface SourceResourceRepository extends JpaRepository<SourceResource, 
 
     Optional<SourceResource> findByIdAndDataSourceId(Long id, Long dataSourceId);
 
+    /** 자원 ID만. 엔티티를 미리 읽어 두지 않아, 뒤에 잠그고 읽는 쪽(매핑 등록의 lockResource)이 최신 값을 본다. */
+    @Query(
+            "select r.id from SourceResource r where r.dataSourceId = :dataSourceId and r.resourceKey = :resourceKey")
+    Optional<Long> findIdByDataSourceIdAndResourceKey(
+            @Param("dataSourceId") Long dataSourceId, @Param("resourceKey") String resourceKey);
+
     /** CDC 이벤트의 표({스키마}.{이름})를 찾는다(198-5). */
     Optional<SourceResource> findByDataSourceIdAndResourceKey(
             Long dataSourceId, String resourceKey);
