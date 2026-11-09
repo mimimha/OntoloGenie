@@ -6,6 +6,7 @@ import { afterEach, expect, test } from 'vitest'
 import { resetAgentMocks } from '../../mocks/agentHandlers'
 import { server } from '../../mocks/node'
 import AgentPage from './AgentPage'
+import { http, HttpResponse } from 'msw'
 
 afterEach(() => {
   resetAgentMocks()
@@ -114,7 +115,7 @@ test('새 대화를 만들면 목록에 추가하고 그 대화를 연다', asyn
 test('객체에서 들어오면 질문을 미리 채우고 첫 질문에 그 객체를 함께 보낸다', async () => {
   const user = userEvent.setup()
   const bodies: unknown[] = []
-  server.events.on('request:start', ({ request }) => {
+  const recordBody = ({ request }: { request: Request }) => {
     if (
       request.method === 'POST' &&
       request.url.endsWith('/agent/conversations/2/messages')
@@ -124,7 +125,8 @@ test('객체에서 들어오면 질문을 미리 채우고 첫 질문에 그 객
         .json()
         .then((body) => bodies.push(body))
     }
-  })
+  }
+  server.events.on('request:start', recordBody)
   render(
     <QueryClientProvider
       client={
@@ -164,5 +166,54 @@ test('객체에서 들어오면 질문을 미리 채우고 첫 질문에 그 객
       },
     ]),
   )
-  server.events.removeAllListeners()
+  server.events.removeListener('request:start', recordBody)
+})
+
+test('답변의 정보별 결과에서 출처 객체와 실행 이력으로 이동할 수 있다', async () => {
+  server.use(
+    http.get('/api/v1/agent/conversations/:id/messages', () =>
+      HttpResponse.json({
+        data: [
+          {
+            id: 900,
+            conversationId: 1,
+            sender: 'AGENT',
+            content: '프레스 3호기의 최근 실행 이력은 1건입니다.',
+            context: {},
+            status: 'SUCCEEDED',
+            errorMessage: null,
+            answerMeta: {
+              syncStatus: 'NONE',
+              results: [
+                {
+                  label: '실행 이력',
+                  toolCode: 'OBJECT_EXECUTIONS',
+                  status: 'SUCCEEDED',
+                  resultCategory: 'FOUND',
+                  sources: [{ objectId: 301 }, { objectId: 301 }],
+                  dataAsOf: null,
+                  estimated: false,
+                  errorMessage: null,
+                },
+              ],
+            },
+            createdAt: '2026-11-06T01:00:00Z',
+          },
+        ],
+        meta: { page: 0, size: 100, totalElements: 1, hasNext: false },
+      }),
+    ),
+  )
+  renderAgentPage('/agent?conversation=1')
+
+  expect(
+    await screen.findByRole('link', { name: '#301 열기 ↗' }),
+  ).toHaveAttribute('href', '/explorer?object=301')
+  expect(screen.getByRole('link', { name: '실행 이력 ↗' })).toHaveAttribute(
+    'href',
+    '/audit?objectId=301',
+  )
+  expect(
+    screen.getByText('응답 시점의 값 · 이후 수정은 다시 질문해 확인'),
+  ).toBeInTheDocument()
 })

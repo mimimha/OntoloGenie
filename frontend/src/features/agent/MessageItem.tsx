@@ -1,4 +1,7 @@
+import { Link } from 'react-router'
+import { formatObjectCode } from '../explorer/format'
 import {
+  ANSWER_SNAPSHOT_NOTICE,
   DATA_AS_OF_UNKNOWN,
   RESULT_FAILED_LABEL,
   resultCategoryLabels,
@@ -6,6 +9,9 @@ import {
   syncStatusNotices,
 } from './labels'
 import type { AgentMessage, AgentResult } from './types'
+
+// 실행 이력 도구의 결과면 그 객체의 실행 이력으로도 이동한다(080).
+const EXECUTION_TOOL_CODE = 'OBJECT_EXECUTIONS'
 
 function formatAsOf(value: string) {
   return new Date(value).toLocaleString('ko-KR', {
@@ -22,6 +28,17 @@ function resultLabel(result: AgentResult) {
     return RESULT_FAILED_LABEL
   }
   return resultCategoryLabels[result.resultCategory]
+}
+
+// 결과의 출처 중 객체만 골라, 같은 객체는 한 번만 보여 준다.
+function sourceObjectIds(result: AgentResult) {
+  return [
+    ...new Set(
+      result.sources.flatMap((source) =>
+        source.objectId === undefined ? [] : [source.objectId],
+      ),
+    ),
+  ]
 }
 
 function MessageItem({ message }: { message: AgentMessage }) {
@@ -60,25 +77,48 @@ function MessageItem({ message }: { message: AgentMessage }) {
         <p className="mt-1 text-xs text-amber-700">{syncNotice}</p>
       )}
       {results.length > 0 && (
-        <ul className="mt-2 space-y-1 rounded-lg border border-slate-200 p-2 text-xs">
-          {results.map((result, index) => (
-            <li
-              key={`${result.label}-${index}`}
-              className="flex flex-wrap gap-x-2"
-            >
-              <span className="font-medium">{result.label}</span>
-              <span>
-                {resultLabel(result)}
-                {result.estimated ? ' · 추정' : ''}
-              </span>
-              <span className="text-slate-500">
-                {result.dataAsOf
-                  ? `기준 시점 ${formatAsOf(result.dataAsOf)}`
-                  : DATA_AS_OF_UNKNOWN}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="mt-2 space-y-1 rounded-lg border border-slate-200 p-2 text-xs">
+            {results.map((result, index) => (
+              <li
+                key={`${result.label}-${index}`}
+                className="flex flex-wrap gap-x-2"
+              >
+                <span className="font-medium">{result.label}</span>
+                <span>
+                  {resultLabel(result)}
+                  {result.estimated ? ' · 추정' : ''}
+                </span>
+                <span className="text-slate-500">
+                  {result.dataAsOf
+                    ? `기준 시점 ${formatAsOf(result.dataAsOf)}`
+                    : DATA_AS_OF_UNKNOWN}
+                </span>
+                {sourceObjectIds(result).map((objectId) => (
+                  <span key={objectId} className="flex gap-2">
+                    <Link
+                      to={`/explorer?object=${objectId}`}
+                      className="text-blue-700 hover:underline"
+                    >
+                      {formatObjectCode(objectId)} 열기 ↗
+                    </Link>
+                    {result.toolCode === EXECUTION_TOOL_CODE && (
+                      <Link
+                        to={`/audit?objectId=${objectId}`}
+                        className="text-blue-700 hover:underline"
+                      >
+                        실행 이력 ↗
+                      </Link>
+                    )}
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs text-slate-500">
+            {ANSWER_SNAPSHOT_NOTICE}
+          </p>
+        </>
       )}
     </article>
   )

@@ -24,3 +24,6 @@ export const syncStatusNotices: Partial<Record<SyncStatus, string>> = {
 export const NEW_CONVERSATION_TITLE = '새 대화'
 
 export const DATA_AS_OF_UNKNOWN = '기준 시점 확인 불가'
+
+export const ANSWER_SNAPSHOT_NOTICE =
+  '응답 시점의 값 · 이후 수정은 다시 질문해 확인'

@@ -610,3 +610,22 @@ test('객체 상세의 질문하기는 새 대화를 만들어 그 객체로 질
     screen.getByText('301 · 프레스 3호기에 연결된 업무 정보를 알려줘'),
   ).toBeInTheDocument()
 })
+
+test('주소에 객체 번호가 있으면 그 객체 상세를 연다', async () => {
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <MemoryRouter initialEntries={['/explorer?object=301']}>
+        <ExplorerPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+
+  expect(
+    await screen.findByRole('heading', { name: '프레스 3호기' }),
+  ).toBeInTheDocument()
+  expect(screen.getByText('설비 / #301')).toBeInTheDocument()
+})
