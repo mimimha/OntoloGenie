@@ -213,5 +213,6 @@ def test_credits_follow_model_and_unknown_model_counts_as_most_expensive():
     assert token_credits("gpt-6-luna", 1000, 200) == pytest.approx(2.0)
     # 6.1 sol은 GMS 등급(20)으로 잡은 추정 단가
     assert token_credits("gpt-6.1-sol", 1000, 200) == pytest.approx(40.0)
+    assert token_credits("gpt-6-astra", 1000, 200) == pytest.approx(200.0)
     # 표에 없는 모델은 적게 세지 않도록 가장 비싼 단가로 센다
-    assert token_credits("gpt-new", 1000, 200) == pytest.approx(40.0)
+    assert token_credits("gpt-new", 1000, 200) == pytest.approx(200.0)
