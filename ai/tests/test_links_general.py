@@ -262,8 +262,8 @@ def test_independent_datasets_keep_their_scores(name, found, wrong_pending, wron
     from app.validators.evaluate_relations import evaluate
 
     data = Path(__file__).resolve().parents[1] / "data"
-    answer = json.loads((data / f"gold-{name}-v1" / "answer.json").read_text("utf-8"))
-    report = evaluate(run(data / f"data-{name}-v1"), answer)
+    answer = json.loads((data / "eval" / name / "answer.json").read_text("utf-8"))
+    report = evaluate(run(data / "eval" / name / "data"), answer)
     assert report["found_pending"] + report["found_held"] >= found
     # 틀린 후보가 늘어도 알 수 있게 둔다(2026-11-09 값)
     assert len(report["wrong_pending"]) <= wrong_pending

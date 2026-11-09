@@ -2,7 +2,7 @@
 
 원천 데이터를 분석해 온톨로지·매핑·규칙 후보를 만드는 FastAPI 서비스와, 00프레스(가상) ERP·MES 원천 데이터·정답셋입니다.
 
-- 설명: [데이터셋·정답셋](docs/dataset.md) · [분석 연동](docs/api-internal.md)
+- 설명: [데이터셋·정답셋](docs/dataset.md) · [분석 연동](docs/api-internal.md) · [평가](docs/evaluation.md) · [평가 기록](docs/evaluation-log.md)
 - 담당: 김서연 (DAT-01~05)
 
 ## 폴더 구조
@@ -10,25 +10,30 @@
 ```text
 ai/
 ├── data/
-│   ├── data-v1.0/       원천 데이터 (ERP 18·MES 15개 표, 표 정의, 적재 스크립트)
-│   ├── gold-v1.0/       정답셋 (원천 DB·AI 입력에 넣지 않음)
-│   └── scenario-v1.0/   시나리오 5 시연용 원천 수정분
+│   ├── data-v1.0/          개발용 원천 A (ERP 18·MES 15개 표, 표 정의, 적재 스크립트)
+│   ├── gold-v1.0/          A 정답셋 (원천 DB·AI 입력에 넣지 않음)
+│   ├── eval/b ~ b8/        독립 평가 데이터 B~B8: data/(원천) + answer.json(정답). 코드를 보지 않은 에이전트가 명세만 보고 만듦
+│   └── scenario-v1.0/      시나리오 5 원천 수정분, CDC 변경 재현 단계
 ├── results/
-│   └── proposals-v1.0.api.json   분석 결과 후보 샘플 (API 105 형식)
+│   └── proposals-v1.0.api.json   분석 결과 샘플 (API 105 형식, 나머지 결과 JSON은 로컬에만)
 ├── app/
 │   ├── api/             내부 API (/health, 분석 시작 수신)
-│   ├── analysis/        분석 실행: 원천 확인 → 엔진 실행 → 결과를 backend(API 105)로 전송
-│   ├── sources/         원천 읽기 (PostgreSQL 읽기 전용, CSV)
+│   ├── analysis/        분석 실행: 원천 확인 → 엔진 실행 → 결과를 backend(API 105)로 전송, 모델 요약(043) 받기
+│   ├── sources/         원천 읽기 (PostgreSQL 읽기 전용, CSV), 스냅샷
 │   ├── analyzers/       정형 데이터 구조·분포 분석
 │   ├── extractors/      메모·정비 기록 정보 추출, 설비 별칭·ID 연결
-│   ├── proposers/       후보·근거·신뢰도 조립
-│   ├── llm/             LLM 호출, 개인정보 가림
+│   ├── proposers/       후보·근거·신뢰도 조립, LLM 의미 해석·시스템 간 연결, 105 형식·한국어 제목
+│   ├── llm/             LLM 호출(GMS·OpenAI·사내 서버), 크레딧 계산, 개인정보 가림
 │   ├── models/          후보·분석 데이터 모델
 │   ├── dataset/         데이터·정답 생성기
-│   ├── validators/      정답 점검·후보 평가 (gold_check, gold_source_check, evaluate_ontology)
+│   ├── validators/      정답 점검·후보 평가 (gold_check, gold_source_check, evaluate_ontology, evaluate_notes)
 │   └── rules/           연결 규칙 변환 단계 (transforms.py)
-├── tests/
+├── tests/               pytest (fixtures: 가짜 원천·변환 사례)
 └── docs/
+    ├── api-internal.md   백엔드 연동 계약 (018 수신, 105 전송, 043 모델 요약, 후보 형식)
+    ├── dataset.md        데이터셋·정답셋 설명, 작업별로 볼 파일
+    ├── evaluation.md     평가 기준, 신뢰도 확정안, 지금 기준 결과, LLM 모델 선정
+    └── evaluation-log.md 날짜별 실험·수정 기록
 ```
 
 ## 처음 설정 (Windows PowerShell)
