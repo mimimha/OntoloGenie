@@ -44,6 +44,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Action 실행 요청(API 091)과 재배정 계획 Handler를 실제 보안 설정과 DB로 확인한다. 객체는 시연 정답 온톨로지의 S4와 같은 모양으로 만든다: 정지 설비
@@ -70,6 +72,8 @@ class ActionExecutionApiTests {
     @Autowired PasswordEncoder passwordEncoder;
 
     @Autowired ActionExecutionService actionExecutionService;
+
+    @Autowired JsonMapper json;
 
     private S4 s4;
 
@@ -431,12 +435,92 @@ class ActionExecutionApiTests {
                 .andExpect(jsonPath("$.data.entityChanges[0].tableName").value("reassignment_plan"))
                 .andExpect(jsonPath("$.data.entityChanges[0].rowKey.id").value(planId))
                 .andExpect(jsonPath("$.data.entityChanges[0].afterData.status").value("CREATED"));
-        // 080: 정지 설비의 실행 이력에서 이 계획 실행을 찾는다.
+        // 080: 정지 설비의 실행 이력에서 이 계획 실행을 찾는다. 080은 역할의 객체 조회 범위를 따른다.
+        allowPlannerToSeeType("Equipment");
         mockMvc.perform(get("/api/v1/objects/" + s4.p103 + "/executions").cookie(planner.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[*].id", hasItem((int) executionId)));
         // 원천에서 온 설비·작업지시·공정 객체는 그대로다(결정 O3).
         assertThat(sourceObjectsOf()).isEqualTo(sourceBefore);
+    }
+
+    @Test
+    void historyHidesRestrictedSnapshotValuesFromRolesWithoutRestrictedView() throws Exception {
+        LoginSession planner = login(createAccount("PLANNER"));
+        LoginSession admin = login(createAccount("ADMIN"));
+        execute(
+                        PLAN,
+                        planner,
+                        body(
+                                UUID.randomUUID(),
+                                s4.p103,
+                                """
+                                [{"workOrderId": %d, "operationCode": "20", "toEquipmentId": %d}]
+                                """
+                                        .formatted(s4.order, s4.p101)))
+                .andExpect(jsonPath("$.data.status").value("SUCCEEDED"));
+        long restricted = restrictProperty("WorkOrder", "wo_no");
+        try {
+            JsonNode plannerRow = historyRowOf(planner);
+            assertThat(plannerRow.get("restrictedPropertyCodes").toString())
+                    .isEqualTo("[\"wo_no\"]");
+            JsonNode plannerSnapshot = snapshotIn(plannerRow);
+            assertThat(plannerSnapshot.has("workOrderNo")).isTrue();
+            assertThat(plannerSnapshot.get("workOrderNo").isNull()).isTrue();
+            assertThat(plannerSnapshot.get("workOrderStatus").asString()).isEqualTo("진행");
+
+            JsonNode adminRow = historyRowOf(admin);
+            assertThat(adminRow.get("restrictedPropertyCodes").isEmpty()).isTrue();
+            assertThat(snapshotIn(adminRow).get("workOrderNo").asString()).isEqualTo(s4.orderNo);
+        } finally {
+            jdbcClient
+                    .sql("delete from property_definition where id = :id")
+                    .param("id", restricted)
+                    .update();
+        }
+    }
+
+    @Test
+    void objectHistoryHidesRestrictedOperationCodeEverywhereItWasRecorded() throws Exception {
+        LoginSession planner = login(createAccount("PLANNER"));
+        execute(
+                        PLAN,
+                        planner,
+                        body(
+                                UUID.randomUUID(),
+                                s4.p103,
+                                """
+                                [{"workOrderId": %d, "operationCode": "20", "toEquipmentId": %d}]
+                                """
+                                        .formatted(s4.order, s4.p101)))
+                .andExpect(jsonPath("$.data.status").value("SUCCEEDED"));
+        allowPlannerToSeeType("Equipment");
+        long restricted = restrictProperty("WorkOrderOperation", "op_seq");
+        try {
+            MvcResult result =
+                    mockMvc.perform(
+                                    get("/api/v1/objects/" + s4.p103 + "/executions")
+                                            .cookie(planner.session()))
+                            .andExpect(status().isOk())
+                            .andReturn();
+            JsonNode rows = json.readTree(result.getResponse().getContentAsString()).get("data");
+            assertThat(rows.size()).isEqualTo(1);
+            JsonNode row = rows.get(0);
+
+            assertThat(row.get("restrictedPropertyCodes").toString()).isEqualTo("[\"op_seq\"]");
+            assertThat(row.get("input").get("items").get(0).get("operationCode").isNull()).isTrue();
+            JsonNode item = itemChangeIn(row);
+            assertThat(item.get("operation_code").isNull()).isTrue();
+            for (JsonNode operation : item.get("source_snapshot").get("operations")) {
+                assertThat(operation.get("sequence").isNull()).isTrue();
+                assertThat(operation.get("equipmentCode").asString()).isEqualTo(s4.p103Code);
+            }
+        } finally {
+            jdbcClient
+                    .sql("delete from property_definition where id = :id")
+                    .param("id", restricted)
+                    .update();
+        }
     }
 
     @Test
@@ -1145,6 +1229,70 @@ class ActionExecutionApiTests {
                 .param("id", fromEquipmentId)
                 .query(Long.class)
                 .single();
+    }
+
+    private long restrictProperty(String typeCode, String propertyCode) {
+        return jdbcClient
+                .sql(
+                        """
+                        insert into property_definition (object_type_id, code, name, data_type, sensitivity)
+                        select id, :property, :property, 'STRING', 'RESTRICTED' from object_type where code = :type
+                        returning id
+                        """)
+                .param("type", typeCode)
+                .param("property", propertyCode)
+                .query(Long.class)
+                .single();
+    }
+
+    /** 096에서 정지 설비를 대상으로 한 이 사용자의 실행 한 줄. */
+    private JsonNode historyRowOf(LoginSession session) throws Exception {
+        MvcResult result =
+                mockMvc.perform(
+                                get("/api/v1/audit/actions")
+                                        .cookie(session.session())
+                                        .param("targetType", "object_instance")
+                                        .param("targetId", String.valueOf(s4.p103))
+                                        .param("actionCode", "CREATE_REASSIGNMENT_PLAN"))
+                        .andExpect(status().isOk())
+                        .andReturn();
+        JsonNode rows = json.readTree(result.getResponse().getContentAsString()).get("data");
+        assertThat(rows.size()).isEqualTo(1);
+        return rows.get(0);
+    }
+
+    private static JsonNode snapshotIn(JsonNode row) {
+        return itemChangeIn(row).get("source_snapshot");
+    }
+
+    private static JsonNode itemChangeIn(JsonNode row) {
+        for (JsonNode change : row.get("entityChanges")) {
+            if ("reassignment_plan_item".equals(change.get("tableName").asString())) {
+                return change.get("afterData");
+            }
+        }
+        throw new AssertionError("재배정 항목 변경 기록이 없습니다: " + row);
+    }
+
+    private void allowPlannerToSeeType(String typeCode) {
+        jdbcClient
+                .sql(
+                        """
+                        update object_type set access_group = 'ACTION_TEST_' || code
+                        where code = :code and access_group is null
+                        """)
+                .param("code", typeCode)
+                .update();
+        jdbcClient
+                .sql(
+                        """
+                        insert into role_data_scope (role_id, access_group)
+                        select r.id, t.access_group from role r, object_type t
+                        where r.code = 'PLANNER' and t.code = :code
+                        on conflict do nothing
+                        """)
+                .param("code", typeCode)
+                .update();
     }
 
     private static long longAt(MvcResult result, String field) throws Exception {

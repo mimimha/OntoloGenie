@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 public final class DataAccess {
 
     private final Map<Long, ObjectTypeScope> scopes;
+    private final Map<String, ObjectTypeScope> scopesByCode;
 
     DataAccess(List<ObjectTypeScope> scopes) {
         this.scopes =
@@ -33,6 +34,22 @@ public final class DataAccess {
                         .collect(
                                 Collectors.toUnmodifiableMap(
                                         ObjectTypeScope::objectTypeId, Function.identity()));
+        this.scopesByCode =
+                scopes.stream()
+                        .collect(
+                                Collectors.toUnmodifiableMap(
+                                        ObjectTypeScope::objectTypeCode, Function.identity()));
+    }
+
+    /**
+     * 그 유형의 그 속성 값을 가려야 하는가. RESTRICTED 속성인데 민감 값을 볼 수 없으면 true다. 객체 ID 없이 유형 코드와 속성 코드만 아는 기록(실행
+     * 이력의 스냅샷 등)에 쓴다. 없는 유형이면 가릴 속성도 없으니 false다.
+     */
+    public boolean hidesValue(String objectTypeCode, String propertyCode) {
+        ObjectTypeScope scope = scopesByCode.get(objectTypeCode);
+        return scope != null
+                && !canViewRestricted(scope.objectTypeId())
+                && scope.restrictedPropertyCodes().contains(propertyCode);
     }
 
     /** 볼 수 있는 객체 유형 ID. 목록 검색은 이 값으로 SQL에서 거른다(건수에도 넣지 않는다). 비어 있으면 아무것도 보이지 않는다. */

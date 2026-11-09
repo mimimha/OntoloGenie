@@ -84,7 +84,9 @@ class AuditExecutionApiTests {
         admin = createAccount("ADMIN");
         plannerA = createAccount("PLANNER");
         plannerB = createAccount("PLANNER");
-        object = createObject("프레스 3호기");
+        String plannerGroup = "AUDIT_" + UUID.randomUUID().toString().substring(0, 8);
+        allowGroup("PLANNER", plannerGroup);
+        object = createObject("프레스 3호기", plannerGroup);
         long planDefinition = definitionId("CREATE_REASSIGNMENT_PLAN");
 
         directRun =
@@ -333,6 +335,30 @@ class AuditExecutionApiTests {
                 .andExpect(jsonPath("$.error.details.resource").value("object_instance"));
     }
 
+    @Test
+    void objectHistoryHidesObjectsOutsideRoleScope() throws Exception {
+        long hidden = createObject("금형 보관대", null);
+        long run =
+                record(
+                        action(
+                                        plannerA,
+                                        EntryPoint.WEB,
+                                        definitionId("CREATE_REASSIGNMENT_PLAN"),
+                                        ExecutionStatus.SUCCEEDED)
+                                .targetType("object_instance")
+                                .targetId(hidden));
+        String path = "/api/v1/objects/" + hidden + "/executions";
+
+        mockMvc.perform(withSession(get(path), login(admin, true)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].id", contains(intValue(run))));
+        mockMvc.perform(withSession(get(path), login(plannerA, true)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.error.details.resource").value("object_instance"))
+                .andExpect(jsonPath("$.error.details.id").doesNotExist());
+    }
+
     // ---------------------------------------------------------------- 도우미
 
     private AuditEntry.AuditEntryBuilder action(
@@ -365,14 +391,30 @@ class AuditExecutionApiTests {
         return Math.toIntExact(id);
     }
 
-    private long createObject(String name) {
+    private void allowGroup(String roleCode, String accessGroup) {
+        jdbcClient
+                .sql(
+                        """
+                        insert into role_data_scope (role_id, access_group)
+                        values ((select id from role where code = :roleCode), :accessGroup)
+                        """)
+                .param("roleCode", roleCode)
+                .param("accessGroup", accessGroup)
+                .update();
+    }
+
+    private long createObject(String name, String accessGroup) {
         long typeId =
                 jdbcClient
                         .sql(
-                                "insert into object_type (code, name) values (:code, '테스트 설비') returning id")
+                                """
+                                insert into object_type (code, name, access_group)
+                                values (:code, '테스트 설비', :accessGroup) returning id
+                                """)
                         .param(
                                 "code",
                                 "EQ_" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
+                        .param("accessGroup", accessGroup)
                         .query(Long.class)
                         .single();
         return jdbcClient

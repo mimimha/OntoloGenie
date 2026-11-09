@@ -167,6 +167,19 @@ class DataAccessPolicyTests {
     }
 
     @Test
+    void hidesRestrictedValueByTypeCode() {
+        DataAccess viewer = policy.of(account("VIEWER"));
+
+        assertThat(viewer.hidesValue(codeOf(closedType), "purchase_price")).isTrue();
+        assertThat(viewer.hidesValue(codeOf(closedType), "equipment_code")).isFalse();
+        assertThat(viewer.hidesValue(codeOf(openType), "purchase_price")).isFalse();
+        assertThat(viewer.hidesValue(codeOf(ungroupedType), "purchase_price")).isTrue();
+        assertThat(viewer.hidesValue("no_such_type", "purchase_price")).isFalse();
+        assertThat(policy.of(account("ADMIN")).hidesValue(codeOf(closedType), "purchase_price"))
+                .isFalse();
+    }
+
+    @Test
     void scopeReflectsRoleSettingChangesOnNextRead() {
         String later = group();
         long type = objectType(later);
@@ -205,6 +218,14 @@ class DataAccessPolicyTests {
                 .param("code", code)
                 .param("group", accessGroup)
                 .query(Long.class)
+                .single();
+    }
+
+    private String codeOf(long objectTypeId) {
+        return jdbcClient
+                .sql("select code from object_type where id = :id")
+                .param("id", objectTypeId)
+                .query(String.class)
                 .single();
     }
 
