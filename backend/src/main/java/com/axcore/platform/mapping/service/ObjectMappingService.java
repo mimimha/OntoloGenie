@@ -10,6 +10,7 @@ import com.axcore.platform.mapping.dto.ObjectMappingResponse;
 import com.axcore.platform.mapping.dto.ObjectMappingUpdateRequest;
 import com.axcore.platform.mapping.dto.ObjectMappingUpdateResponse;
 import com.axcore.platform.mapping.repository.ObjectSourceMappingRepository;
+import com.axcore.platform.ontology.domain.DefinitionSource;
 import com.axcore.platform.ontology.repository.ObjectTypeRepository;
 import com.axcore.platform.source.domain.SourceResource;
 import com.axcore.platform.source.service.SourceCatalogService;
@@ -48,6 +49,13 @@ public class ObjectMappingService {
     /** API 035. 활성 매핑이면 다음 수집이 그 테이블을 처음부터 읽는다. */
     @Transactional
     public ObjectMappingResponse create(ObjectMappingCreateRequest request) {
+        return create(request, DefinitionSource.MANUAL);
+    }
+
+    /** 승인한 후보 반영(189)도 이 경로로 만든다. 출처만 다르다. */
+    @Transactional
+    public ObjectMappingResponse create(
+            ObjectMappingCreateRequest request, DefinitionSource source) {
         requireEmptyRowFilter(request.rowFilter());
         requireDistinct(request.keyColumns());
         SourceResource resource = lockResource(request.sourceResourceId());
@@ -59,13 +67,14 @@ public class ObjectMappingService {
                         request.sourceResourceId(), request.objectTypeId(), null)) {
             throw duplicateActive();
         }
-        ObjectSourceMapping mapping =
-                mappingRepository.saveAndFlush(
-                        ObjectSourceMapping.createManual(
-                                request.sourceResourceId(),
-                                request.objectTypeId(),
-                                request.keyColumns(),
-                                active));
+        ObjectSourceMapping created =
+                ObjectSourceMapping.createManual(
+                        request.sourceResourceId(),
+                        request.objectTypeId(),
+                        request.keyColumns(),
+                        active);
+        created.recordSource(source);
+        ObjectSourceMapping mapping = mappingRepository.saveAndFlush(created);
         if (active) {
             catalogService.requireFullReload(resource);
         }

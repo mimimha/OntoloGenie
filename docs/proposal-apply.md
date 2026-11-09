@@ -45,13 +45,13 @@ code를 DB ID로 바꾸는 일은 이 서비스가 한다. 아직 승인되지 �
 | LINK_RULE | 이전 `link_mapping` 개정본 RETIRED, 새 개정본·비교 항목 추가, `object_link` 재조정, `held_item` 추가 | 2 (186·189) |
 | DOCUMENT_LINK | `object_link`(origin=DOCUMENT) 추가 | 3 (181) |
 
-반영기가 없는 종류는 `APPLY_KIND_NOT_SUPPORTED`로 거절한다. 지금은 모든 종류가 이 상태이고, 단계마다 반영기를 더한다. 호출 방식은 바뀌지 않는다.
+반영기가 없는 종류는 `APPLY_KIND_NOT_SUPPORTED`로 거절한다. 1단계(정의·매핑 5종)는 반영기가 있고, LINK_RULE·DOCUMENT_LINK는 아직 이 상태다. 호출 방식은 바뀌지 않는다.
 
 선행 후보가 먼저 반영돼야 한다: 객체 유형 → 속성·관계 유형 → 객체 매핑 → 속성 매핑 → 관계 규칙.
 
 ### AI 묶음 후보 (API-105)
 
-아래는 반영기(S15P31C106-189)가 따를 기준이다. 아직 반영기 구현은 없다.
+아래는 반영기(S15P31C106-189)가 따르는 기준이다. OBJECT_TYPE 묶음은 1단계에서 구현했고, LINK_RULE 묶음은 2단계에서 구현한다.
 
 AI 제안기는 관리자가 판단하는 단위로 후보를 묶어 보낸다. 표 하나가 객체 후보 한 건, 관계 하나가 관계 후보 한 건이다. 그래서 AI 후보에는 PROPERTY·OBJECT_MAPPING·PROPERTY_MAPPING이 따로 오지 않고, 연결 규칙이 있는 관계의 LINK_TYPE도 따로 오지 않는다.
 
@@ -63,6 +63,23 @@ AI 제안기는 관리자가 판단하는 단위로 후보를 묶어 보낸다. 
 - 묶음 안 하나라도 실패하면 묶음 전체가 실패한다(같은 트랜잭션).
 - `objectMapping`·`properties`·`linkType`이 없는 OBJECT_TYPE·LINK_RULE은 지금까지처럼 정의 하나만 반영한다. 관리자가 직접 추가한 연결 규칙(MANUAL)도 그대로다.
 - 규칙이 없는 관계 유형(문서 연결용 등)과 문서 연결은 지금처럼 LINK_TYPE·DOCUMENT_LINK 한 건씩 온다.
+
+## 1단계 반영기 (정의·매핑 5종)
+
+`ontology/service/apply` 패키지. 실제 저장과 검증은 관리자 직접 등록과 같은 서비스(API 022·027·031·035·038)가 하고, 반영기는 후보의 code를 ID로 바꿔 그 서비스를 부른다. 출처만 다르다.
+
+| 종류 | payload | 만드는 것 |
+| --- | --- | --- |
+| OBJECT_TYPE | `code`, `name`, `description`, `synonyms`, `accessGroup`. 묶음이면 `properties[]`, `objectMapping` | 객체 유형. 묶음이면 속성 → 객체 매핑 → 속성 매핑(`properties[].sourceColumn`이 있는 것만) 순서 |
+| PROPERTY | `objectTypeCode`, `code`, `name`, `dataType`, `isRequired`(생략 = false), `isIdentifier`, `unit`, `sensitivity`, `temporalRole`, `constraints`, `description` | 속성 |
+| LINK_TYPE | `code`, `name`, `sourceTypeCode`, `targetTypeCode`, `cardinality`, `description` | 관계 유형. 설명이 비어 있으면 이름을 쓴다(DB 필수 칸) |
+| OBJECT_MAPPING | `objectTypeCode`, `sourceId`, `resourceKey`, `keyColumns` | 켜진 객체 매핑. 그 표를 다시 읽기 대상으로 표시한다(`loaded_lsn = NULL`, 감시 작업이 첫 적재를 넣는다) |
+| PROPERTY_MAPPING | `objectTypeCode`, `propertyCode`, `sourceColumn` {`sourceId`, `resourceKey`, `column`}, `transformSteps` | 속성 매핑. 부모는 그 표에서 이 유형을 만드는 켜진 객체 매핑 |
+
+- 출처: AI 후보는 `origin = AI_PROPOSAL`, 관리자가 등록한 후보는 `MANUAL`이고 둘 다 `proposal_item_id`를 남긴다(속성 매핑 표에는 출처 칸이 없다).
+- 원천은 `sourceId`(data_source.code)와 `resourceKey`로 가리킨다. 원천·자원·컬럼은 후보가 만들지 않으므로 없으면 `APPLY_REFERENCE_MISSING`(`requiredKind` DATA_SOURCE·SOURCE_RESOURCE·SOURCE_COLUMN)이다.
+- 등록 서비스가 낸 오류는 반영 오류로 바꾼다: 중복(409) → `APPLY_TARGET_EXISTS`, 없음(404) → `APPLY_REFERENCE_MISSING`, 그 밖 입력 오류 → `APPLY_PAYLOAD_INVALID`. `field`는 `payload.`로 시작한다.
+- 결과 `changes`에는 만든 행마다 INSERT 한 줄, `reloadResourceIds`에는 다시 읽기를 요청한 원천 자원이 들어간다.
 
 ## 실패
 

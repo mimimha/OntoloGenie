@@ -3,6 +3,7 @@ package com.axcore.platform.source.repository;
 import com.axcore.platform.source.domain.SourceColumn;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface SourceColumnRepository extends JpaRepository<SourceColumn, Long> {
@@ -12,4 +13,7 @@ public interface SourceColumnRepository extends JpaRepository<SourceColumn, Long
 
     /** 여러 자원의 현재 컬럼(isPresent=true)만. 순서는 정하지 않는다 (API 018 분석 대상 컬럼 확인). */
     List<SourceColumn> findBySourceResourceIdInAndIsPresentTrue(Collection<Long> sourceResourceIds);
+
+    Optional<SourceColumn> findBySourceResourceIdAndColumnName(
+            Long sourceResourceId, String columnName);
 }
