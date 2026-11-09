@@ -108,9 +108,14 @@ public class AgentMessage {
 
     /** 답변을 끝내지 못했다. 사용자에게 보여 줄 안내와 실패 이유를 남기고 단계 정보는 지운다. */
     public void fail(String content, String errorMessage) {
+        fail(content, errorMessage, Map.of("syncStatus", "NONE", "results", List.of()));
+    }
+
+    /** 답변을 끝내지 못했지만 그 전에 얻은 결과는 answerMeta에 남긴다(정책 문서 3.2). 이미 실행한 Action을 화면이 보여 주게 한다. */
+    public void fail(String content, String errorMessage, Map<String, Object> answerMeta) {
         this.status = MessageStatus.FAILED;
         this.content = content;
         this.errorMessage = errorMessage;
-        this.answerMeta = new LinkedHashMap<>(Map.of("syncStatus", "NONE", "results", List.of()));
+        this.answerMeta = new LinkedHashMap<>(answerMeta);
     }
 }

@@ -2,7 +2,6 @@ package com.axcore.platform.agent.service;
 
 import com.axcore.platform.action.service.ActionCatalogService;
 import com.axcore.platform.action.service.ActionExecutionService;
-import com.axcore.platform.global.security.LoginAccount;
 import java.util.List;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
@@ -26,8 +25,8 @@ public class AgentActionTools {
     private final ActionExecutionService executions;
     private final JsonMapper json;
 
-    public List<ToolCallback> forAnswer(LoginAccount asker, long questionId) {
-        return catalog.executableFor(asker).stream()
+    public List<ToolCallback> forAnswer(AgentQuerySession session) {
+        return catalog.executableFor(session.asker()).stream()
                 .filter(
                         action -> {
                             boolean valid = TOOL_NAME.matcher(action.code()).matches();
@@ -39,8 +38,7 @@ public class AgentActionTools {
                 .map(
                         action ->
                                 (ToolCallback)
-                                        new AgentActionTool(
-                                                action, asker, questionId, executions, json))
+                                        new AgentActionTool(action, session, executions, json))
                 .toList();
     }
 }

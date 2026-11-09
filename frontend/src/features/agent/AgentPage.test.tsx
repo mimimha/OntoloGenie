@@ -7,6 +7,7 @@ import { afterEach, expect, test } from 'vitest'
 import { resetAgentMocks } from '../../mocks/agentHandlers'
 import { server } from '../../mocks/node'
 import AgentPage from './AgentPage'
+import type { AgentAction } from './types'
 
 afterEach(() => {
   resetAgentMocks()
@@ -50,6 +51,12 @@ test('답변의 정보별 결과와 기준 시점을 구분해 보여 준다', a
   renderAgentPage('/agent?conversation=1')
 
   expect(await screen.findByText(SAMPLE_ANSWER)).toBeInTheDocument()
+  // 정보별 결과는 정보 하나가 한 줄인 표다(머리줄 + 4줄).
+  expect(
+    within(screen.getByRole('table', { name: '정보별 결과' })).getAllByRole(
+      'row',
+    ),
+  ).toHaveLength(5)
   expect(screen.getByText('확인됨')).toBeInTheDocument()
   expect(screen.getByText('확인됨 · 추정')).toBeInTheDocument()
   expect(screen.getByText('권한 없음')).toBeInTheDocument()
@@ -227,4 +234,186 @@ test('실행 이력 도구가 아닌 결과에는 실행 이력 링크를 달지
   expect(
     screen.queryByRole('link', { name: '실행 이력 ↗' }),
   ).not.toBeInTheDocument()
+})
+
+// 대화 1에 Agent 답변 하나만 있고, 그 답변이 실행한 작업이 actions인 상태로 바꾼다(160).
+// failed면 Action을 실행한 뒤 답변을 끝내지 못한 경우다.
+function mockAnswerWithActions(actions: AgentAction[], failed = false) {
+  server.use(
+    http.get('/api/v1/agent/conversations/:id/messages', () =>
+      HttpResponse.json({
+        data: [
+          {
+            id: 901,
+            conversationId: 1,
+            sender: 'AGENT',
+            content: failed
+              ? '답변을 끝내지 못했습니다. 잠시 후 다시 질문해 주세요.'
+              : '재배정 계획 요청을 처리했습니다.',
+            context: {},
+            status: failed ? 'FAILED' : 'SUCCEEDED',
+            errorMessage: failed ? 'AI 응답 실패' : null,
+            answerMeta: { syncStatus: 'NONE', results: [], actions },
+            createdAt: '2026-11-09T01:00:00Z',
+          },
+        ],
+        meta: { page: 0, size: 100, totalElements: 1, hasNext: false },
+      }),
+    ),
+  )
+}
+
+test('재배정 계획을 만든 답변 안에서 계획을 펼치고 접는다', async () => {
+  const user = userEvent.setup()
+  mockAnswerWithActions([
+    {
+      code: 'CREATE_REASSIGNMENT_PLAN',
+      name: '재배정 계획 생성',
+      status: 'SUCCEEDED',
+      executionId: 512,
+      result: { planId: 3, itemCount: 1 },
+      blockedReason: null,
+    },
+  ])
+  renderAgentPage('/agent?conversation=1')
+
+  expect(
+    await screen.findByText('계획 #3 · 실제 MES 배정은 바뀌지 않아요'),
+  ).toBeInTheDocument()
+  // 펼치기 전에는 계획을 불러오지 않는다.
+  expect(
+    screen.queryByRole('region', { name: '재배정 계획 #3' }),
+  ).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '계획 펼치기' }))
+
+  const plan = await screen.findByRole('region', { name: '재배정 계획 #3' })
+  expect(await within(plan).findByText('WO-101')).toBeInTheDocument()
+  expect(within(plan).getByText('남은 공정 전체')).toBeInTheDocument()
+  expect(
+    within(plan).getByText('같은 프레스 공정이고 지금 가동 중인 설비'),
+  ).toBeInTheDocument()
+  expect(within(plan).getByRole('link', { name: '#302' })).toHaveAttribute(
+    'href',
+    '/explorer?object=302',
+  )
+
+  await user.click(screen.getByRole('button', { name: '계획 접기' }))
+  expect(
+    screen.queryByRole('region', { name: '재배정 계획 #3' }),
+  ).not.toBeInTheDocument()
+})
+
+test('막힌 작업은 이유를 보여 주고 계획 펼치기를 달지 않는다', async () => {
+  mockAnswerWithActions([
+    {
+      code: 'CREATE_REASSIGNMENT_PLAN',
+      name: '재배정 계획 생성',
+      status: 'BLOCKED',
+      executionId: 513,
+      result: {},
+      blockedReason: 'PLAN_CREATE 권한이 없습니다.',
+    },
+  ])
+  renderAgentPage('/agent?conversation=1')
+
+  expect(
+    await screen.findByText('PLAN_CREATE 권한이 없습니다.'),
+  ).toBeInTheDocument()
+  expect(screen.getByText('실행하지 않음')).toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: '계획 펼치기' }),
+  ).not.toBeInTheDocument()
+})
+
+test('답변이 실패해도 그 전에 만든 계획은 보여 준다', async () => {
+  mockAnswerWithActions(
+    [
+      {
+        code: 'CREATE_REASSIGNMENT_PLAN',
+        name: '재배정 계획 생성',
+        status: 'SUCCEEDED',
+        executionId: 512,
+        result: { planId: 3, itemCount: 1 },
+        blockedReason: null,
+      },
+    ],
+    true,
+  )
+  renderAgentPage('/agent?conversation=1')
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('AI 응답 실패')
+  // 계획은 이미 저장됐으므로 다시 요청하지 않도록 계획을 보여 준다.
+  expect(
+    screen.getByText('계획 #3 · 실제 MES 배정은 바뀌지 않아요'),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: '계획 펼치기' }),
+  ).toBeInTheDocument()
+})
+
+test('실패·실행하지 못함·확인 필요는 성공처럼 보이지 않는다', async () => {
+  mockAnswerWithActions([
+    {
+      code: 'CREATE_REASSIGNMENT_PLAN',
+      name: '재배정 계획 생성',
+      status: 'FAILED',
+      executionId: 514,
+      result: { errorMessage: '실행 중 오류가 발생했습니다.' },
+      blockedReason: null,
+    },
+    {
+      code: 'CREATE_REASSIGNMENT_PLAN',
+      name: '재배정 계획 생성',
+      status: 'NOT_RUN',
+      executionId: null,
+      result: {},
+      blockedReason: null,
+    },
+    {
+      code: 'CLOSE_ORDER',
+      name: '작업지시 종료',
+      status: 'CONFIRMATION_REQUIRED',
+      executionId: null,
+      result: {},
+      blockedReason: null,
+    },
+  ])
+  renderAgentPage('/agent?conversation=1')
+
+  const list = await screen.findByRole('list', { name: '실행한 작업' })
+  expect(within(list).getByText('실패')).toBeInTheDocument()
+  expect(
+    within(list).getByText('실행 중 오류가 발생했습니다.'),
+  ).toBeInTheDocument()
+  expect(within(list).getByText('실행하지 못함')).toBeInTheDocument()
+  expect(
+    within(list).getByText('확인이 필요해 실행하지 않음'),
+  ).toBeInTheDocument()
+  expect(within(list).queryByText('완료')).not.toBeInTheDocument()
+  expect(
+    within(list).queryByRole('button', { name: '계획 펼치기' }),
+  ).not.toBeInTheDocument()
+})
+
+test('계획을 불러오지 못하면 오류를 보여 준다', async () => {
+  const user = userEvent.setup()
+  mockAnswerWithActions([
+    {
+      code: 'CREATE_REASSIGNMENT_PLAN',
+      name: '재배정 계획 생성',
+      status: 'SUCCEEDED',
+      executionId: 515,
+      // 목 서버에 없는 계획 번호라 094가 404를 돌려준다.
+      result: { planId: 99, itemCount: 1 },
+      blockedReason: null,
+    },
+  ])
+  renderAgentPage('/agent?conversation=1')
+
+  await user.click(await screen.findByRole('button', { name: '계획 펼치기' }))
+
+  const plan = screen.getByRole('region', { name: '재배정 계획 #99' })
+  expect(
+    await within(plan).findByText('요청한 항목을 찾을 수 없습니다.'),
+  ).toBeInTheDocument()
 })
