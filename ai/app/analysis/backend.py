@@ -36,3 +36,28 @@ def results_reporter(settings: Settings) -> Report:
             raise BackendError(type(error).__name__) from None
 
     return report
+
+
+def fetch_model_summary(settings: Settings) -> dict:
+    """API 043 모델 요약(GET /api/v1/internal/ontology/model-summary)의 data. 못 받으면 BackendError."""
+    request = urllib.request.Request(
+        f"{settings.backend_url.rstrip('/')}/api/v1/internal/ontology/model-summary",
+        method="GET",
+        headers={
+            "Accept": "application/json",
+            "X-Internal-Token": settings.internal_token or "",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT_SEC) as response:
+            body = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        raise BackendError(f"HTTP {error.code}") from None
+    except OSError as error:  # 접속 실패·시간 초과
+        raise BackendError(type(error).__name__) from None
+    except ValueError:  # JSON이 아님
+        raise BackendError("응답 형식 오류") from None
+    data = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(data, dict):
+        raise BackendError("응답 형식 오류")
+    return data

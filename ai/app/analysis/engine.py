@@ -13,6 +13,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.analysis.backend import BackendError, fetch_model_summary
 from app.config import get_settings
 from app.extractors.notes import _equipment as note_equipment
 from app.extractors.notes import (
@@ -26,6 +27,7 @@ from app.models.analysis import AnalysisStartRequest
 from app.models.candidate import Candidate
 from app.proposers.api_format import to_api_proposals
 from app.proposers.evidence import verify
+from app.proposers.existing import filter_existing
 from app.proposers.links import Tables
 from app.proposers.llm_links import estimate_credits as estimate_cross_links
 from app.proposers.llm_links import prepare as prepare_cross_links
@@ -62,17 +64,40 @@ def get_llm() -> LLMClient | None:
     return create_llm_client(settings) if settings.llm_ready else None
 
 
+def get_model_summary() -> tuple[dict | None, str | None]:
+    """(모델 요약, 못 받은 이유). 내부 토큰이 없으면(로컬·테스트) 부르지 않는다. 못 받아도 분석은 그대로 한다."""
+    settings = get_settings()
+    if not settings.internal_token:
+        return None, "내부 토큰 없음"
+    try:
+        return fetch_model_summary(settings), None
+    except BackendError as error:
+        return None, f"모델 요약을 받지 못함({error})"
+
+
 def analyze(
     request: AnalysisStartRequest,
     sources: Sources,
     llm: LLMClient | None = None,
+    model_summary: dict | None = None,
 ) -> AnalysisResult:
     if llm is None:
         llm = get_llm()
+    summary_skip = None
+    if model_summary is None:
+        model_summary, summary_skip = get_model_summary()
     workdir = Path(tempfile.mkdtemp(prefix="ai-run-"))
     try:
         report = _snapshot(request, sources, workdir)
         result = _analyze(request, workdir, llm, get_settings().llm_credit_limit)
+        # 이미 확정된 모델과 같은 후보는 보내지 않는다(S15P31C106-281)
+        result.proposals, skipped = filter_existing(result.proposals, model_summary)
+        result.summary["proposals"] = len(result.proposals)
+        result.summary["holdRecommended"] = sum(
+            p["evidence"]["holdRecommended"] for p in result.proposals
+        )
+        result.summary["existingSkipped"] = skipped
+        result.summary["modelSummarySkipReason"] = summary_skip
         result.summary["missingColumns"] = report.missing_columns
         result.summary["sampledTables"] = report.sampled_tables
         return result

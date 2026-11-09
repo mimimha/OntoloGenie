@@ -23,7 +23,7 @@
 | API | 언제 | 보내는 것 |
 | --- | --- | --- |
 | 105 `POST /api/v1/internal/analyses/{id}/results` | 시작·끝·실패 | `status`, `resultSummary`, `proposals[]` 또는 `errorMessage` |
-| 043 `GET /api/v1/internal/ontology/model-summary` | 분석 전 | 없음. 이미 있는 정의와 같은 후보를 내지 않으려고 받음. `objectTypes[].code`, `properties[].objectTypeId`·`code`, `linkTypes[].code`를 씀. 실패하면 빈 요약으로 계속함 |
+| 043 `GET /api/v1/internal/ontology/model-summary` | 분석 전 | 없음(`X-Internal-Token`). 이미 있는 정의와 같은 후보를 내지 않으려고 받음(#281). `objectTypes[].id`·`code`, `properties[].id`·`objectTypeId`·`code`, `linkTypes[].code`, `activeRules[].code`·`conditions[].sourcePropertyId`·`targetPropertyId`를 씀. 내부 토큰이 없거나 실패하면 요약 없이 계속함(`modelSummarySkipReason`) |
 
 **105 `proposals[]` 한 건**
 
@@ -84,7 +84,7 @@ DOCUMENT_LINK `payload`는 `name`, `linkTypeCode`, `documentId`, `spanStart`·`s
 - 토큰이 없거나 틀리면 401(공통 오류 형식). `AI_ONTOLOGY_INTERNAL_TOKEN`이 비어 있으면 모두 거절합니다. 토큰은 본문보다 먼저 봅니다.
 - 받으면 바로 202로 답하고 백그라운드에서 105 `RUNNING` → 원천 확인 → 분석 → 105 `SUCCEEDED`/`FAILED` 순서로 돕니다. `RUNNING` 알림이 실패하면(예: 백엔드가 이미 끝낸 실행, 409) 분석하지 않습니다.
 - 원천 확인: POSTGRES는 AI 계정으로 `schema`에 접속해 고른 표(`resourceKey`의 점 뒤)를 읽을 수 있는지 봅니다. CSV는 `path` 폴더에 `<표>.csv`가 있는지 봅니다. 실패 문구는 4절입니다.
-- 분석 엔진은 `app/analysis/engine.py`의 `analyze()`입니다(#168). 고른 표·컬럼만 임시 폴더로 옮겨 구조·분포를 분석하고 후보를 만듭니다. LLM 설정이 있으면 표 의미 해석을 더합니다. `mes.handover_note`·`mes.maintenance_order`를 고르면 글 속 언급을 DOCUMENT_LINK 후보로 더합니다(#166). 원천 키(설비 코드·작업지시 번호·정비 번호·로트 번호)는 코드로 찾고, LLM 설정이 있으면 설비 별명('3호기')·증상과 부정·추정도 뽑습니다. 문서 10개마다 LLM을 한 번 부르고, 호출이 실패한 묶음은 코드로 찾은 언급만 냅니다. 043·과거 결정 반영(#168 후속), 재분석 비교(#170)는 아직 연결하지 않았습니다.
+- 분석 엔진은 `app/analysis/engine.py`의 `analyze()`입니다(#168). 고른 표·컬럼만 임시 폴더로 옮겨 구조·분포를 분석하고 후보를 만듭니다. LLM 설정이 있으면 표 의미 해석을 더합니다. `mes.handover_note`·`mes.maintenance_order`를 고르면 글 속 언급을 DOCUMENT_LINK 후보로 더합니다(#166). 원천 키(설비 코드·작업지시 번호·정비 번호·로트 번호)는 코드로 찾고, LLM 설정이 있으면 설비 별명('3호기')·증상과 부정·추정도 뽑습니다. 문서 10개마다 LLM을 한 번 부르고, 호출이 실패한 묶음은 코드로 찾은 언급만 냅니다. 043 모델 요약은 분석 전에 받아 이미 있는 것과 같은 후보를 뺍니다(#281, `app/proposers/existing.py`). 과거 승인·거절 결정 반영과 재분석 비교(#170)는 백엔드가 줄 API가 없어 아직 연결하지 않았습니다.
 - 진행 중인 `runId`는 프로세스 메모리에만 둡니다. AI 컨테이너는 하나만 띄웁니다.
 - 선택 필드(`allowedTransforms`·`pastDecisions`·`previousProposals`·`options.useLlm`)는 Spring이 아직 보내지 않고(11-03 결정), 받아도 버립니다.
 - Spring은 알리지 못하면(AI 오류·시간 초과·응답 형식 오류) 실행을 직접 FAILED로 바꿉니다(`AI 서비스에 분석 시작을 알리지 못했습니다`). AI 계정 없음, 한 원천에 schema 둘 이상, CSV `path` 없음, DOCUMENT 원천도 보내기 전에 FAILED입니다.
@@ -156,6 +156,8 @@ LLM 설정이 없거나 LLM 호출이 실패해도 실행은 실패로 끝내지
 | `llmRejectedLinks` | 규칙이 보류로 둔 관계를 LLM도 업무상 맞지 않다고 봐서 보내지 않은 수(관계 유형·연결 규칙 한 쌍을 1로 셈). 규칙이 대기로 둔 관계는 LLM이 반대해도 빼지 않고 보류로만 바꿈 |
 | `llmCrossLinks` | 규칙이 못 이은 시스템 간 참조 컬럼을 LLM에게 묻고, 받은 변환을 실제 값으로 확인해 낸 연결 수. 모두 보류 권고(`method`=`llm`) |
 | `documents`, `documentLinks` | 읽은 메모·정비 기록 수, DOCUMENT_LINK 후보 수 |
+| `existingSkipped` | 043 모델 요약과 같아서 보내지 않은 수 `{"objectTypes": n, "linkRules": n, "linkTypes": n}`. 객체 유형은 속성이 모두 이미 있을 때, 연결 규칙은 같은 코드의 ACTIVE 규칙이 같은 속성끼리 비교할 때만 뺌. 새 속성·다른 비교면 보내고 제안 이유에 적음 |
+| `modelSummarySkipReason` | 043 모델 요약 없이 분석한 이유. `내부 토큰 없음` · `모델 요약을 받지 못함(HTTP 403 등)`, 받았으면 null |
 | `missingColumns` | 고른 컬럼 중 원천에서 사라진 것 `{"mes.work_order": ["컬럼"]}`. 빼고 나머지로 분석함 |
 | `sampledTables` | 행이 많아 앞에서 자른 표 `{"mes.sensor_reading": 100000}`. 기본키가 있으면 기본키 순서 |
 
