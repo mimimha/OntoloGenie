@@ -1,5 +1,7 @@
 package com.axcore.platform.batch.config;
 
+import com.axcore.platform.batch.service.BatchTimeoutProperties;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -8,4 +10,5 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @Configuration(proxyBeanMethods = false)
 @Profile("batch")
 @EnableScheduling
+@EnableConfigurationProperties(BatchTimeoutProperties.class)
 public class BatchSchedulingConfig {}

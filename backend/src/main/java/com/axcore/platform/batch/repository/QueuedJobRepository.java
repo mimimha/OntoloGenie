@@ -5,6 +5,7 @@ import com.axcore.platform.batch.domain.QueuedJobType;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -65,6 +66,48 @@ public class QueuedJobRepository {
                         .param("id", id)
                         .update()
                 == 1;
+    }
+
+    /** RUNNING인 행의 heartbeat_at을 올린다. heartbeat 칸이 있는 표만 부른다. 이미 끝났거나 정리된 행이면 false. */
+    public boolean touchHeartbeat(QueuedJobType type, long id, Instant now) {
+        return jdbcClient
+                        .sql(
+                                "update %s set heartbeat_at = :now where id = :id and status = 'RUNNING'"
+                                        .formatted(type.table()))
+                        .param("now", toTimestamp(now))
+                        .param("id", id)
+                        .update()
+                == 1;
+    }
+
+    /**
+     * 기준 시각보다 오래 응답이 없는 RUNNING 행을 FAILED로 바꾸고 바꾼 행을 돌려준다. heartbeat 칸이 있으면 마지막 heartbeat(없으면 시작
+     * 시각), 없으면 시작 시각으로 판단한다. 같은 행을 잠근 트랜잭션(결과 저장 중인 complete)이 있으면 끝나기를 기다린 뒤 다시 RUNNING인지 본다.
+     */
+    public List<ClaimedJob> failStale(
+            QueuedJobType type, Instant cutoff, String errorMessage, Instant now) {
+        String lastSign = type.hasHeartbeat() ? "coalesce(heartbeat_at, started_at)" : "started_at";
+        return jdbcClient
+                .sql(
+                        """
+                        update %s set status = 'FAILED', finished_at = :now, error_message = :errorMessage
+                        where status = 'RUNNING' and %s < :cutoff
+                        returning id, requested_at, started_at
+                        """
+                                .formatted(type.table(), lastSign))
+                .param("now", toTimestamp(now))
+                .param("errorMessage", errorMessage)
+                .param("cutoff", toTimestamp(cutoff))
+                .query(
+                        (rs, rowNum) ->
+                                new ClaimedJob(
+                                        type,
+                                        rs.getLong("id"),
+                                        rs.getObject("requested_at", OffsetDateTime.class)
+                                                .toInstant(),
+                                        rs.getObject("started_at", OffsetDateTime.class)
+                                                .toInstant()))
+                .list();
     }
 
     private static OffsetDateTime toTimestamp(Instant instant) {

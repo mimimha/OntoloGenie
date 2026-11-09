@@ -8,11 +8,14 @@ import com.axcore.platform.audit.service.AuditRecorder;
 import com.axcore.platform.batch.domain.ClaimedJob;
 import com.axcore.platform.batch.repository.QueuedJobRepository;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ScheduledFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -22,7 +25,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <ol>
  *   <li>가져오기: QUEUED → RUNNING을 바로 커밋한다. 다른 인스턴스가 같은 행을 가져가지 않는다.
- *   <li>실행: {@link QueuedJobHandler#run}을 트랜잭션 밖에서 부른다. 원천을 읽는 동안 DB 연결을 잡지 않는다.
+ *   <li>실행: {@link QueuedJobHandler#run}을 트랜잭션 밖에서 부른다. 원천을 읽는 동안 DB 연결을 잡지 않는다. heartbeat 칸이 있는 표는
+ *       그동안 스케줄러 스레드가 heartbeat_at을 주기적으로 올린다(S15P31C106-218). 작업 스레드가 쿼리가 아닌 곳에서 멈추면 heartbeat는 계속
+ *       오르므로 정리되지 않는다(MVP 한계). 쿼리가 멈추는 경우는 원천 읽기의 statement_timeout이 막는다.
  *   <li>마무리: 결과 저장과 감사 기록 결과 줄(SYSTEM + BATCH)을 함께 커밋한다. 실패하면 FAILED와 실패 기록을 함께 커밋한다.
  * </ol>
  *
@@ -38,16 +43,22 @@ public class QueuedJobRunner {
     private final QueuedJobRepository queuedJobRepository;
     private final AuditRecorder auditRecorder;
     private final TransactionTemplate transactionTemplate;
+    private final TaskScheduler taskScheduler;
+    private final Duration heartbeatInterval;
     private final Clock clock;
 
     public QueuedJobRunner(
             QueuedJobRepository queuedJobRepository,
             AuditRecorder auditRecorder,
             PlatformTransactionManager transactionManager,
+            TaskScheduler taskScheduler,
+            BatchTimeoutProperties timeouts,
             Clock clock) {
         this.queuedJobRepository = queuedJobRepository;
         this.auditRecorder = auditRecorder;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.taskScheduler = taskScheduler;
+        this.heartbeatInterval = timeouts.heartbeat();
         this.clock = clock;
     }
 
@@ -62,12 +73,42 @@ public class QueuedJobRunner {
         }
         ClaimedJob job = claimed.get();
         try {
-            R result = handler.run(job.id());
+            R result = runWithHeartbeat(handler, job);
             transactionTemplate.executeWithoutResult(status -> complete(handler, job, result));
         } catch (RuntimeException e) {
             fail(handler, job, e);
         }
         return true;
+    }
+
+    /**
+     * run이 도는 동안만 heartbeat를 올린다. complete는 실행 행을 잠그므로 그동안 올리지 않는다. 결과 저장이 길어져 정리 작업이 같은 행을 바꾸려 해도
+     * 잠금이 풀린 뒤 다시 RUNNING인지 보므로, 성공으로 끝난 실행을 FAILED로 바꾸지 않는다.
+     */
+    private <R> R runWithHeartbeat(QueuedJobHandler<R> handler, ClaimedJob job) {
+        if (!job.type().hasHeartbeat()) {
+            return handler.run(job.id());
+        }
+        ScheduledFuture<?> heartbeat =
+                taskScheduler.scheduleAtFixedRate(
+                        () -> beat(job),
+                        Instant.now(clock).plus(heartbeatInterval),
+                        heartbeatInterval);
+        try {
+            return handler.run(job.id());
+        } finally {
+            heartbeat.cancel(false);
+        }
+    }
+
+    private void beat(ClaimedJob job) {
+        try {
+            if (!queuedJobRepository.touchHeartbeat(job.type(), job.id(), Instant.now(clock))) {
+                log.warn("RUNNING이 아니어서 heartbeat를 올리지 않음 type={} id={}", job.type(), job.id());
+            }
+        } catch (RuntimeException e) {
+            log.warn("heartbeat 갱신 실패 type={} id={}", job.type(), job.id(), e);
+        }
     }
 
     private <R> void complete(QueuedJobHandler<R> handler, ClaimedJob job, R result) {
@@ -105,7 +146,7 @@ public class QueuedJobRunner {
                 });
     }
 
-    private static AuditEntry resultLine(
+    static AuditEntry resultLine(
             ClaimedJob job, ExecutionStatus status, Map<String, Object> result) {
         return AuditEntry.builder()
                 .eventKind(job.type().eventKind())
