@@ -42,7 +42,7 @@ Agent가 답변을 화면에 보내는 방식, 답변에 붙는 기준 시점의
    2. 질문 시 동기화 `SYNCING` (5장)
    3. 조회 도구 호출 `QUERYING`. 호출마다 `action_execution`(AGENT_QUERY)에 기록하고 `agent_message_id`에 이 답변의 질문(USER) 메시지를 넣는다. Agent의 Action 실행(091)과 같은 기준이다(2026-11-05 결정).
    4. 답변 작성 `ANSWERING`
-4. 끝나면 AGENT 메시지의 `status`, `content`, `answerMeta`(`syncStatus`, `results`)를 최종 값으로 저장한다. `stage`는 지운다.
+4. 끝나면 AGENT 메시지의 `status`, `content`, `answerMeta`(`syncStatus`, `results`, `actions`)를 최종 값으로 저장한다. `stage`는 지운다.
 
 질문 하나에 답변이 하나이므로, 조회 도구 기록은 질문 메시지로 해당 답변을 찾을 수 있다.
 
@@ -53,10 +53,15 @@ Agent가 답변을 화면에 보내는 방식, 답변에 붙는 기준 시점의
 | `status` | `content` | `answerMeta` | 뜻 |
 |---|---|---|---|
 | `RUNNING` | `""` | `{"stage": "INTERPRETING" \| "SYNCING" \| "QUERYING" \| "ANSWERING"}` | 처리 중 |
-| `SUCCEEDED` | 최종 답변 | `syncStatus`, `results`, `conditions`, `clarification`(되묻기만) | 답변을 끝냄 (데이터 없음·미연결·권한 제한 설명 포함) |
-| `FAILED` | 실패 안내 | `syncStatus`, `results` (얻은 만큼) | 답변을 끝내지 못함. `errorMessage` 필수 |
+| `SUCCEEDED` | 최종 답변 | `syncStatus`, `results`, `conditions`, `actions`, `clarification`(되묻기만) | 답변을 끝냄 (데이터 없음·미연결·권한 제한 설명 포함) |
+| `FAILED` | 실패 안내 | `syncStatus`, `results`·`actions` (얻은 만큼) | 답변을 끝내지 못함. `errorMessage` 필수 |
 
 - `conditions`는 이번 답변에서 확정한 조건이다(`purpose`, `targets`, `period`{`from`,`to`} 또는 null, `referenceObjectIds`). 다음 질문 때 마지막 답변의 값을 읽어 이어 간다.
+- `actions`는 이 답변에서 Agent가 부른 Action 결과다(160). 한 건은 `code`, `name`, `status`, `executionId`, `result`, `blockedReason`이다.
+  - `status`: 실행했으면 실행 기록 상태 `SUCCEEDED`·`BLOCKED`·`FAILED`, 실행하지 않았으면 `CONFIRMATION_REQUIRED`(확인 필요)·`NOT_RUN`(입력 오류·실행 중 오류)
+  - `executionId`: 실행 기록(`action_execution`) ID. 실행하지 않았으면 null
+  - `result`: 재배정 계획이면 `planId`·`itemCount`(계획은 094로 조회), `FAILED`면 `errorMessage`, 그 밖에는 빈 객체
+  - Action을 실행한 뒤 답변 작성이 실패해도 `FAILED` 답변에 `actions`를 남긴다. 이미 만든 계획을 화면이 보여 줘, 사용자가 같은 요청을 다시 해 계획이 겹치지 않게 한다.
 - `clarification`은 되묻는 답변에만 있다(`missing`: `TARGET`·`PURPOSE`·`PERIOD` 중 부족한 것, `vaguePeriod`: "최근"처럼 범위가 정해지지 않은 기간 표현 또는 null). 되묻는 답변도 `SUCCEEDED`이며 `syncStatus=NONE`, `results=[]`다. 다음 질문은 그 답으로 보고, 새로 알려 준 값만 이전 `conditions`를 덮는다(143).
 
 ### 3.3 화면 처리

@@ -4,6 +4,7 @@ import { analysisHandlers } from './analysisHandlers'
 import { authHandlers } from './auth'
 import { accountHandlers } from './accountHandlers'
 import { proposalHandlers } from './proposalHandlers'
+import { reassignmentHandlers } from './reassignmentHandlers'
 import { issueHandlers } from './issueHandlers'
 import { mappingHandlers } from './mappingHandlers'
 import { sourceHandlers } from './sourceHandlers'
@@ -681,6 +682,7 @@ export const handlers = [
   ...mappingHandlers,
   ...analysisHandlers,
   ...agentHandlers,
+  ...reassignmentHandlers,
   // 042 객체 유형 관계도
   http.get('/api/v1/ontology/model-graph', async () => {
     await delay()

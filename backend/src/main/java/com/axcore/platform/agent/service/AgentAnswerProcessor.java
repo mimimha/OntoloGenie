@@ -36,6 +36,8 @@ public class AgentAnswerProcessor {
 
     private void answer(AgentAnswerRequested event) {
         long answerId = event.answerId();
+        // 도구를 부르기 시작한 뒤 실패하면, 그때까지 얻은 결과와 실행한 Action을 실패 답변에 남긴다(160).
+        AgentQuerySession session = null;
         try {
             if (!interpreter.isConfigured()) {
                 answers.fail(
@@ -54,18 +56,27 @@ public class AgentAnswerProcessor {
                 return;
             }
             answers.moveTo(answerId, AnswerStage.QUERYING);
-            AgentQuerySession session =
-                    new AgentQuerySession(event.asker(), event.questionId(), recorder, clock);
+            session = new AgentQuerySession(event.asker(), event.questionId(), recorder, clock);
             String content = responder.answer(event.question(), interpretation, session);
             session.requireRecorded();
-            answers.answerWithResults(answerId, content, interpretation, session.results());
+            answers.answerWithResults(
+                    answerId, content, interpretation, session.results(), session.actions());
         } catch (RuntimeException ex) {
             log.error("Agent 답변 {}의 AI 처리가 실패했습니다.", answerId, ex);
             try {
-                answers.fail(
-                        answerId,
-                        AgentAnswerService.FAILED_CONTENT,
-                        AgentAnswerService.FAILED_REASON);
+                if (session == null) {
+                    answers.fail(
+                            answerId,
+                            AgentAnswerService.FAILED_CONTENT,
+                            AgentAnswerService.FAILED_REASON);
+                } else {
+                    answers.failWithResults(
+                            answerId,
+                            AgentAnswerService.FAILED_CONTENT,
+                            AgentAnswerService.FAILED_REASON,
+                            session.results(),
+                            session.actions());
+                }
             } catch (RuntimeException saveEx) {
                 log.error("Agent 답변 {}을 실패로 저장하지 못했습니다. 처리 중으로 남습니다.", answerId, saveEx);
             }

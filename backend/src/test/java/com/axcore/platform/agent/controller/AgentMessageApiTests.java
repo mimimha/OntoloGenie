@@ -124,7 +124,9 @@ class AgentMessageApiTests {
                         jsonPath("$.data[1].answerMeta.conditions.period.from").value("2026-10-01"))
                 .andExpect(
                         jsonPath("$.data[1].answerMeta.conditions.referenceObjectIds[0]")
-                                .value(301));
+                                .value(301))
+                // 이 질문은 Action을 부르지 않았으므로 실행 결과는 비어 있다(160).
+                .andExpect(jsonPath("$.data[1].answerMeta.actions.length()").value(0));
         assertThat(title(conversation)).isEqualTo("PR-03 비가동 이력 알려줘");
         // 조회 기록은 질문 메시지에 연결되고, Agent가 질문한 사용자를 대신한 것으로 남는다.
         Map<String, Object> query =

@@ -31,15 +31,16 @@ public class AgentAnswerService {
     }
 
     /**
-     * 조회 도구로 답했다(144). 답변 문장은 AI가 도구 결과로 쓰고, 정보별 결과(results)는 서버가 남긴 조회 기록에서 만든다. 질문 시 동기화는 아직 없어
-     * syncStatus는 NONE이다.
+     * 도구로 답했다(144). 답변 문장은 AI가 도구 결과로 쓰고, 정보별 결과(results)는 서버가 남긴 조회 기록에서 만든다. 실행한 Action(actions)은
+     * 실행 결과에서 만든다(160). 질문 시 동기화는 아직 없어 syncStatus는 NONE이다.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void answerWithResults(
             long answerId,
             String content,
             QuestionInterpretation interpretation,
-            List<AgentQueryResult> results) {
+            List<AgentQueryResult> results,
+            List<AgentActionOutcome> actions) {
         running(answerId)
                 .ifPresent(
                         answer ->
@@ -51,7 +52,11 @@ public class AgentAnswerService {
                                                         results.stream()
                                                                 .map(AgentQueryResult::toMap)
                                                                 .toList(),
-                                                "conditions", interpretation.toConditions())));
+                                                "conditions", interpretation.toConditions(),
+                                                "actions",
+                                                        actions.stream()
+                                                                .map(AgentActionOutcome::toMap)
+                                                                .toList())));
     }
 
     /** 대상·목적·기간이 부족하면 되묻는다(143). 지금까지 알아낸 조건은 conditions에 남겨 다음 답과 합친다. */
@@ -73,6 +78,35 @@ public class AgentAnswerService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void fail(long answerId, String content, String reason) {
         running(answerId).ifPresent(answer -> answer.fail(content, reason));
+    }
+
+    /**
+     * 도구를 부른 뒤 답변을 끝내지 못했다. 얻은 조회 결과와 이미 실행한 Action은 남긴다(정책 문서 3.2, 160). 계획을 만든 뒤 AI 응답이 실패해도 화면이
+     * 그 계획을 보여 줘, 사용자가 같은 요청을 다시 해 계획이 겹치지 않게 한다.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void failWithResults(
+            long answerId,
+            String content,
+            String reason,
+            List<AgentQueryResult> results,
+            List<AgentActionOutcome> actions) {
+        running(answerId)
+                .ifPresent(
+                        answer ->
+                                answer.fail(
+                                        content,
+                                        reason,
+                                        Map.of(
+                                                "syncStatus", "NONE",
+                                                "results",
+                                                        results.stream()
+                                                                .map(AgentQueryResult::toMap)
+                                                                .toList(),
+                                                "actions",
+                                                        actions.stream()
+                                                                .map(AgentActionOutcome::toMap)
+                                                                .toList())));
     }
 
     static String clarifyingQuestion(QuestionInterpretation interpretation) {
