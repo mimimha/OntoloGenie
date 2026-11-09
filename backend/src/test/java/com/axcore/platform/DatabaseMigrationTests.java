@@ -17,17 +17,18 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * ERD의 온톨로지(V1)·운영(V2)·교차 FK(V3)·세션(V4)·CDC 수집(V5)·Spring Batch(V6)와 전체 읽기 경계(V11) migration이
- * PostgreSQL 18에 그대로 적용되는지 확인한다.
+ * ERD의 온톨로지(V1)·운영(V2)·교차 FK(V3)·세션(V4)·CDC 수집(V5)·Spring Batch(V6)·전체 읽기 경계(V11)·CDC 소비 상태와 확인
+ * 대기(V12) migration이 PostgreSQL 18에 그대로 적용되는지 확인한다.
  */
 @SpringBootTest
 @ActiveProfiles("api")
 @Import(TestcontainersConfiguration.class)
 class DatabaseMigrationTests {
 
-    // V1 18개 + V5 cdc_offset + V11 source_delete_mark
-    private static final int ONTOLOGY_TABLES = 20;
-    private static final int OPERATION_TABLES = 23;
+    // V1 18개 + V5 cdc_offset + V11 source_delete_mark + V12 source_load_failure
+    private static final int ONTOLOGY_TABLES = 21;
+    // V2 23개 + V12 link_check_pending
+    private static final int OPERATION_TABLES = 24;
     private static final int SESSION_TABLES = 2;
     private static final int SPRING_BATCH_TABLES = 6;
 
@@ -44,7 +45,7 @@ class DatabaseMigrationTests {
                         .toArray(MigrationInfo[]::new);
 
         assertThat(Arrays.stream(applied).map(info -> info.getVersion().getVersion()))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
         assertThat(applied).allMatch(info -> info.getState() == MigrationState.SUCCESS);
         assertThat(flyway.info().pending()).isEmpty();
     }
@@ -548,6 +549,260 @@ class DatabaseMigrationTests {
                                         .update())
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .hasMessageContaining("ck_source_delete_mark_key");
+    }
+
+    @Test
+    @Transactional
+    void cdcOffsetKeepsConsumerState() {
+        long sourceId = insertDataSource();
+
+        jdbcClient
+                .sql(
+                        """
+                        insert into cdc_offset (topic, partition_no, data_source_id, next_offset, last_txid,
+                                                last_commit_at, last_message_at, processing_lag_ms, healthy_since)
+                        values ('ERP.all', 0, :source, 42, pg_current_xact_id(), now(), now(), 15, now())
+                        """)
+                .param("source", sourceId)
+                .update();
+
+        assertThat(
+                        jdbcClient
+                                .sql(
+                                        "select last_txid = pg_current_xact_id() from cdc_offset where topic = 'ERP.all'")
+                                .query(Boolean.class)
+                                .single())
+                .isTrue();
+        violates(
+                "ck_cdc_offset_recovery\"",
+                () -> updateCdcOffset("recovery_reason = 'SLOT_LOST', healthy_since = null"));
+        violates(
+                "ck_cdc_offset_recovery_unhealthy",
+                () -> updateCdcOffset("recovery_reason = 'SLOT_LOST', recovery_at = now()"));
+        violates(
+                "ck_cdc_offset_recovery_reason",
+                () ->
+                        updateCdcOffset(
+                                "recovery_reason = 'BROKEN', recovery_at = now(), healthy_since = null"));
+        updateCdcOffset(
+                "recovery_reason = 'EPOCH_UNCERTAIN', recovery_at = now(), healthy_since = null");
+        updateCdcOffset(
+                "recovery_reason = 'SOURCE_CHANGED', recovery_at = now(), healthy_since = null");
+    }
+
+    @Test
+    @Transactional
+    void loadFailureKeepsOneOpenRecordEvenWithoutKey() {
+        long mappingId = insertObjectMapping();
+        long resourceId = resourceOf(mappingId);
+        long runId = insertCdcRun(resourceId);
+
+        long first = insertLoadFailure(mappingId, resourceId, runId, null);
+        violates(
+                "uq_source_load_failure_open",
+                () -> insertLoadFailure(mappingId, resourceId, runId, null));
+        insertLoadFailure(mappingId, resourceId, runId, "{\"id\": \"7\"}");
+
+        jdbcClient
+                .sql(
+                        "update source_load_failure set status = 'CLOSED', closed_at = now() where id = :id")
+                .param("id", first)
+                .update();
+        insertLoadFailure(mappingId, resourceId, runId, null);
+        violates(
+                "ck_source_load_failure_closed",
+                () ->
+                        jdbcClient
+                                .sql(
+                                        "update source_load_failure set closed_at = null where id = :id")
+                                .param("id", first)
+                                .update());
+    }
+
+    @Test
+    @Transactional
+    void pendingCheckWaitsOnceAndPromotesOnlyWithIssue() {
+        long mappingId = insertObjectMapping();
+        long objectId = insertObject(mappingId);
+        long ruleId = insertLinkRule();
+        long checkId = insertSyncCheck();
+
+        long pending = insertPending(ruleId, objectId, checkId);
+        violates("uq_link_check_pending_waiting", () -> insertPending(ruleId, objectId, checkId));
+        violates(
+                "ck_link_check_pending_issue",
+                () ->
+                        jdbcClient
+                                .sql(
+                                        """
+                                                update link_check_pending
+                                                set status = 'PROMOTED', closed_at = now(), close_reason = 'PROMOTED'
+                                                where id = :id
+                                                """)
+                                .param("id", pending)
+                                .update());
+
+        jdbcClient
+                .sql(
+                        """
+                        update link_check_pending
+                        set status = 'TRANSIENT', closed_at = now(), close_reason = 'LINKED'
+                        where id = :id
+                        """)
+                .param("id", pending)
+                .update();
+        long next = insertPending(ruleId, objectId, checkId);
+        long issueId = insertIssue(ruleId, checkId);
+        jdbcClient
+                .sql(
+                        """
+                        update link_check_pending
+                        set status = 'PROMOTED', closed_at = now(), close_reason = 'PROMOTED', issue_id = :issue
+                        where id = :id
+                        """)
+                .param("issue", issueId)
+                .param("id", next)
+                .update();
+    }
+
+    @Test
+    @Transactional
+    void syncCheckMayOmitSyncRunButOthersMayNotHaveOne() {
+        insertSyncCheck();
+        long runId = insertCdcRun(insertSourceResource("TABLE"));
+
+        violates(
+                "ck_check_run_sync",
+                () ->
+                        jdbcClient
+                                .sql(
+                                        """
+                                                insert into check_run (trigger_kind, work_key, sync_run_id)
+                                                values ('CANDIDATE', 'CANDIDATE:' || gen_random_uuid(), :run)
+                                                """)
+                                .param("run", runId)
+                                .update());
+    }
+
+    // 같은 트랜잭션 안에서 위반을 여러 번 확인하려고 savepoint로 되돌린다(위반 뒤에는 트랜잭션이 중단된다).
+    private void violates(String constraint, Runnable statement) {
+        jdbcClient.sql("savepoint before_violation").update();
+        assertThatThrownBy(statement::run)
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining(constraint);
+        jdbcClient.sql("rollback to savepoint before_violation").update();
+    }
+
+    private void updateCdcOffset(String set) {
+        jdbcClient.sql("update cdc_offset set " + set + " where topic = 'ERP.all'").update();
+    }
+
+    private long resourceOf(long mappingId) {
+        return jdbcClient
+                .sql("select source_resource_id from object_source_mapping where id = :id")
+                .param("id", mappingId)
+                .query(Long.class)
+                .single();
+    }
+
+    private long insertLoadFailure(long mappingId, long resourceId, long runId, String sourceKey) {
+        return jdbcClient
+                .sql(
+                        """
+                        insert into source_load_failure (source_resource_id, object_source_mapping_id, source_key,
+                                                         column_name, reason, last_sync_run_id)
+                        values (:resource, :mapping, cast(:key as jsonb), 'id', 'KEY_MISSING', :run)
+                        returning id
+                        """)
+                .param("resource", resourceId)
+                .param("mapping", mappingId)
+                .param("key", sourceKey)
+                .param("run", runId)
+                .query(Long.class)
+                .single();
+    }
+
+    private long insertObject(long mappingId) {
+        return jdbcClient
+                .sql(
+                        """
+                        insert into object_instance (object_type_id, source_mapping_id, source_key, display_name)
+                        select object_type_id, id, '{"id": "7"}', 'WO-7' from object_source_mapping where id = :id
+                        returning id
+                        """)
+                .param("id", mappingId)
+                .query(Long.class)
+                .single();
+    }
+
+    private long insertLinkRule() {
+        long linkTypeId =
+                jdbcClient
+                        .sql(
+                                """
+                                insert into link_type (code, name, source_type_id, target_type_id, cardinality,
+                                                       description)
+                                values ('LT-' || gen_random_uuid(), '작업 설비', :source, :target, 'MANY_TO_ONE',
+                                        '시험')
+                                returning id
+                                """)
+                        .param("source", insertObjectType())
+                        .param("target", insertObjectType())
+                        .query(Long.class)
+                        .single();
+        return jdbcClient
+                .sql(
+                        """
+                        insert into link_mapping (link_type_id, code, revision)
+                        values (:type, 'RULE-' || gen_random_uuid(), 1)
+                        returning id
+                        """)
+                .param("type", linkTypeId)
+                .query(Long.class)
+                .single();
+    }
+
+    private long insertSyncCheck() {
+        return jdbcClient
+                .sql(
+                        """
+                        insert into check_run (trigger_kind, work_key)
+                        values ('SYNC', 'SYNC:' || gen_random_uuid())
+                        returning id
+                        """)
+                .query(Long.class)
+                .single();
+    }
+
+    private long insertPending(long ruleId, long objectId, long checkId) {
+        return jdbcClient
+                .sql(
+                        """
+                        insert into link_check_pending (link_mapping_id, source_object_id, last_check_run_id)
+                        values (:rule, :object, :check)
+                        returning id
+                        """)
+                .param("rule", ruleId)
+                .param("object", objectId)
+                .param("check", checkId)
+                .query(Long.class)
+                .single();
+    }
+
+    private long insertIssue(long ruleId, long checkId) {
+        return jdbcClient
+                .sql(
+                        """
+                        insert into issue (issue_kind, dedupe_key, link_mapping_id, failure_reason, evidence,
+                                           detected_check_run_id)
+                        values ('UNMATCHED', 'UNMATCHED:' || gen_random_uuid(), :rule,
+                                '수집 정상 상태에서 10분 넘게 연결 대상 없음', '{}', :check)
+                        returning id
+                        """)
+                .param("rule", ruleId)
+                .param("check", checkId)
+                .query(Long.class)
+                .single();
     }
 
     private long insertObjectType() {
