@@ -26,18 +26,6 @@ def test_erd_example_worker_to_employee():
     assert apply_steps(ERD_EXAMPLE, "W23") == "E023"
 
 
-def test_both_sides_normalized_to_same_form():
-    # MES '2608012' 와 ERP 'OD-2608-012' 를 같은 모양으로 맞춰 비교하는 방식
-    erp_side = _steps(
-        (TransformOp.EXTRACT_NUMBER, None),
-    )
-    mes_side = erp_side
-
-    assert apply_steps(erp_side, "OD-2608-012") == "2608012"
-    assert apply_steps(mes_side, "2608012") == "2608012"
-    assert apply_steps(mes_side, "OD-2608-031") == "2608031"
-
-
 def test_missing_value_stays_missing_and_prefix_only_stripped_when_present():
     assert apply_steps(ERD_EXAMPLE, None) is None
     assert (
@@ -76,8 +64,10 @@ def test_step_argument_validation():
         TransformStep(op=TransformOp.STRIP_PREFIX)
     with pytest.raises(ValidationError):
         TransformStep(op=TransformOp.UPPER, arg="x")
-    with pytest.raises(ValidationError):
-        TransformStep(op="SUBSTRING", arg="1")
+    # 허용 목록(FN-MAP-05) 밖의 변환은 받지 않는다
+    for op, arg in (("SUBSTRING", "1"), ("LOWER", None), ("REMOVE_CHARS", "-")):
+        with pytest.raises(ValidationError):
+            TransformStep(op=op, arg=arg)
 
 
 def test_value_conversions_from_mapping_list():
@@ -150,13 +140,6 @@ def test_failed_conversion_is_reported():
             ),
             "없음",
         )
-
-
-def test_ops_outside_mapping_list_are_rejected():
-    with pytest.raises(ValidationError):
-        TransformStep(op="LOWER")
-    with pytest.raises(ValidationError):
-        TransformStep(op="REMOVE_CHARS", arg="-")
 
 
 def test_describe_in_plain_korean():

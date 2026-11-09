@@ -1,0 +1,152 @@
+{
+  "tables": {
+    "T_INSP_RSLT": {
+      "description": "검사 실적",
+      "primary_key": [
+        "INSP_NO"
+      ],
+      "columns": {
+        "INSP_NO": {
+          "type": "varchar(10)",
+          "comment": "검사번호"
+        },
+        "INSP_TP": {
+          "type": "varchar(4)",
+          "comment": "수입/공정/출하"
+        },
+        "ITM_NO": {
+          "type": "varchar(7)",
+          "comment": "품번"
+        },
+        "VNDR_ID": {
+          "type": "varchar(6)",
+          "comment": "협력사"
+        },
+        "LOT_NO": {
+          "type": "varchar(10)",
+          "comment": ""
+        },
+        "CHK_DT": {
+          "type": "char(8)",
+          "comment": "검사일"
+        },
+        "INSP_QTY": {
+          "type": "int",
+          "comment": "시료 수"
+        },
+        "NG_QTY": {
+          "type": "int",
+          "comment": "불량 수"
+        },
+        "RSLT_CD": {
+          "type": "char(2)",
+          "comment": "OK/NG"
+        },
+        "INSP_GRP": {
+          "type": "varchar(4)",
+          "comment": ""
+        }
+      }
+    },
+    "TB_DEFECT_CD": {
+      "description": "불량 유형 코드",
+      "primary_key": [
+        "DFCT_CD"
+      ],
+      "columns": {
+        "DFCT_CD": {
+          "type": "char(2)",
+          "comment": "불량코드"
+        },
+        "DFCT_NM": {
+          "type": "varchar(30)",
+          "comment": "불량명"
+        },
+        "DFCT_GRP": {
+          "type": "varchar(4)",
+          "comment": "불량군"
+        },
+        "USE_YN": {
+          "type": "char(1)",
+          "comment": ""
+        }
+      }
+    },
+    "TB_DEFECT": {
+      "description": "불량 내역",
+      "primary_key": [
+        "DFCT_ID"
+      ],
+      "columns": {
+        "DFCT_ID": {
+          "type": "varchar(8)",
+          "comment": "불량 ID"
+        },
+        "INSP_NO": {
+          "type": "varchar(10)",
+          "comment": "검사번호"
+        },
+        "DFCT_CD": {
+          "type": "char(2)",
+          "comment": "불량코드"
+        },
+        "DFCT_QTY": {
+          "type": "int",
+          "comment": "불량 수량"
+        },
+        "EQP_CD": {
+          "type": "varchar(7)",
+          "comment": "원인 설비"
+        },
+        "OCCR_DT": {
+          "type": "char(8)",
+          "comment": "발생일"
+        },
+        "RMK": {
+          "type": "varchar(100)",
+          "comment": ""
+        }
+      }
+    },
+    "TB_CLAIM": {
+      "description": "고객 클레임",
+      "primary_key": [
+        "CLM_NO"
+      ],
+      "columns": {
+        "CLM_NO": {
+          "type": "varchar(8)",
+          "comment": "클레임번호"
+        },
+        "CUST_CD": {
+          "type": "varchar(5)",
+          "comment": "고객"
+        },
+        "SO_NO": {
+          "type": "varchar(12)",
+          "comment": "관련 주문번호"
+        },
+        "SO_SEQ": {
+          "type": "int",
+          "comment": ""
+        },
+        "CLM_DT": {
+          "type": "char(8)",
+          "comment": "접수일"
+        },
+        "CLM_TP": {
+          "type": "varchar(6)",
+          "comment": "클레임 유형"
+        },
+        "CLM_AMT": {
+          "type": "numeric(12,2)",
+          "comment": "보상 금액"
+        },
+        "STTS": {
+          "type": "char(1)",
+          "comment": "R접수 P처리중 C종결"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "systems": ["erp", "wms", "qms"],
+  "relations": [
+    {"from": "erp.주문.고객", "to": "erp.거래처.거래처코드", "transform": null, "cardinality": "N:1"},
+    {"from": "erp.주문상세.주문번호", "to": "erp.주문.주문번호", "transform": null, "cardinality": "N:1"},
+    {"from": "erp.주문상세.품목코드", "to": "erp.품목.품목코드", "transform": null, "cardinality": "N:1"},
+    {"from": "erp.출하.주문번호", "to": "erp.주문.주문번호", "transform": null, "cardinality": "N:1"},
+    {"from": "wms.plt_mst.cur_bin", "to": "wms.loc_mst.loc_cd", "transform": null, "cardinality": "N:1"},
+    {"from": "wms.plt_mst.itm_cd+wms.plt_mst.lot_no", "to": "wms.lot_mst.itm_cd+wms.lot_mst.lot_no", "transform": null, "cardinality": "N:1"},
+    {"from": "wms.io_hist.plt_no", "to": "wms.plt_mst.plt_no", "transform": null, "cardinality": "N:1"},
+    {"from": "qms.customer_complaint.related_finished_goods_inspection_identifier", "to": "qms.finished_goods_inspection.inspection_identifier", "transform": null, "cardinality": "N:1"},
+    {"from": "qms.finished_goods_inspection.product_code", "to": "erp.품목.품목코드", "transform": null, "cardinality": "N:1"},
+    {"from": "wms.lot_mst.itm_cd", "to": "erp.품목.품목코드", "transform": "WMS는 하이픈 없는 소문자 코드(cs0123)를 쓰므로 대문자로 바꾸고 앞 2글자 분류 뒤에 하이픈을 넣으면 ERP 품목코드(CS-0123)가 됨", "cardinality": "N:1"},
+    {"from": "wms.plt_mst.itm_cd", "to": "erp.품목.품목코드", "transform": "WMS는 하이픈 없는 소문자 코드(cs0123)를 쓰므로 대문자로 바꾸고 앞 2글자 분류 뒤에 하이픈을 넣으면 ERP 품목코드(CS-0123)가 됨", "cardinality": "N:1"},
+    {"from": "wms.io_hist.ref_no", "to": "erp.출하.출하번호", "transform": "출고 근거 번호는 '일련번호-출하일(YYMMDD)' 순서(0042-260312)이므로 두 부분 순서를 바꾸고 앞에 SH를 붙이면 출하번호(SH260312-0042)가 됨. IN/MOV 행은 비어 있음", "cardinality": "N:1"},
+    {"from": "qms.raw_material_receiving_inspection.supplier_business_registration_number", "to": "erp.거래처.사업자번호", "transform": "QMS는 숫자 10자리만 저장(일부는 하이픈 포함 혼재)하므로 숫자만 남긴 뒤 3-2-5 자리로 하이픈을 넣으면 ERP 사업자번호(고유 컬럼, PK 아님)와 같아짐", "cardinality": "N:1"},
+    {"from": "qms.finished_goods_inspection.product_code+qms.finished_goods_inspection.production_batch_number", "to": "wms.lot_mst.itm_cd+wms.lot_mst.lot_no", "transform": "제품코드는 하이픈 제거 후 소문자로 바꿈. 배치번호 'PL공장-YYYYMMDD-라인'(PL2-20260315-C)에서 공장 접두어를 버리고 날짜를 YYMMDD로 줄인 뒤 라인 문자를 붙이면 로트번호(260315C)가 됨", "cardinality": "N:1"},
+    {"from": "qms.customer_complaint.customer_account_reference", "to": "erp.거래처.거래처코드", "transform": "'CUST-12'처럼 접두어와 0 채움 없는 숫자이므로(대소문자 혼재) 접두어를 떼고 4자리로 0을 채운 뒤 C를 붙이면 거래처코드(C0012)가 됨", "cardinality": "N:1"},
+    {"from": "qms.customer_complaint.shipment_reference", "to": "erp.출하.출하번호", "transform": "'SH-260312-0042-7' 형식으로 SH 뒤 하이픈이 더 있고 끝에 검증숫자(날짜·일련번호 숫자 합의 일의 자리)가 붙어 있음. 마지막 검증숫자와 SH 뒤 하이픈을 제거하면 출하번호(SH260312-0042)가 됨", "cardinality": "N:1"},
+    {"from": "qms.customer_complaint.product_gtin_code", "to": "erp.품목.바코드", "transform": "GTIN-14는 EAN-13 앞에 0을 하나 붙인 14자리이므로 첫 자리 0을 제거하면 ERP 바코드(고유 컬럼, PK 아님)와 같아짐", "cardinality": "N:1"}
+  ],
+  "traps": [
+    {"column": "erp.주문상세.행번호", "looks_like": "wms.io_hist.io_seq", "why": "주문 안 순번(1~3)일 뿐이며 입출고 이력 일련번호와 값 범위가 겹칠 뿐 관계가 아님"},
+    {"column": "erp.품목.용량ml", "looks_like": "wms.plt_mst.plt_no", "why": "용기 용량(250·330·355·500 등)이 팔레트 번호 범위(1~700)에 들어갈 뿐 관계가 아님"},
+    {"column": "qms.finished_goods_inspection.inspection_sample_count", "looks_like": "qms.raw_material_receiving_inspection.inspection_id", "why": "시료 수(3~12)가 원료 검사 번호와 값이 겹칠 뿐 관계가 아님"},
+    {"column": "wms.plt_mst.box_qty", "looks_like": "qms.raw_material_receiving_inspection.inspection_id", "why": "팔레트 적재 박스 수(20~150)가 원료 검사 번호(1~200) 안에 들어갈 뿐 관계가 아님"}
+  ],
+  "dirty": [
+    {"column": "erp.주문.고객", "what": "약 2% 존재하지 않는 거래처코드(C0081 이상), 약 1% NULL"},
+    {"column": "erp.주문.주문일자", "what": "약 4%가 YYYY/MM/DD 형식(나머지 YYYY-MM-DD)"},
+    {"column": "erp.주문상세.품목코드", "what": "약 2.5% 품목 마스터에 없는 코드"},
+    {"column": "erp.출하.차량번호", "what": "약 5% NULL"},
+    {"column": "erp.거래처.담당자명", "what": "약 8% NULL"},
+    {"column": "wms.plt_mst.cur_bin", "what": "출고(OUT) 팔레트는 NULL, 약 2% 없는 위치(F 구역), 약 1% 소문자 위치코드"},
+    {"column": "wms.io_hist.plt_no", "what": "약 2% 존재하지 않는 팔레트 번호(701 이상)"},
+    {"column": "wms.io_hist.ref_no", "what": "OUT 행 약 1.5% 존재하지 않는 출하 참조, IN/MOV 행은 NULL"},
+    {"column": "qms.raw_material_receiving_inspection.supplier_business_registration_number", "what": "약 8% 하이픈 포함 형식 혼재, 약 2% 없는 사업자번호, 약 1% NULL"},
+    {"column": "qms.finished_goods_inspection.production_batch_number", "what": "약 2% 로트 마스터에 없는 생산일자"},
+    {"column": "qms.customer_complaint.customer_account_reference", "what": "약 4% 소문자 접두어(cust-), 약 2% 없는 고객번호"},
+    {"column": "qms.customer_complaint.shipment_reference", "what": "약 10% NULL, 약 2% 없는 출하 참조"},
+    {"column": "qms.customer_complaint.product_gtin_code", "what": "약 5% NULL"},
+    {"column": "qms.finished_goods_inspection.measured_carbonation_gas_volume", "what": "탄산음료 외 제품은 NULL"}
+  ]
+}

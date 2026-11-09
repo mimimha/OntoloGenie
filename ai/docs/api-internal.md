@@ -148,9 +148,11 @@ LLM 설정이 없거나 LLM 호출이 실패해도 실행은 실패로 끝내지
 | 필드 | 내용 |
 | --- | --- |
 | `llmUsed` | LLM 답을 하나라도 썼는지 |
-| `llmSkipReason` | LLM 없이 분석한 이유. `요청에서 LLM을 끔` · `LLM 설정 없음` · `LLM 호출이 모두 실패함`, 아니면 null |
+| `llmSkipReason` | LLM 없이 분석한 이유. `요청에서 LLM을 끔` · `LLM 설정 없음` · `LLM 호출이 모두 실패함` · `예상 크레딧 N이 한도 M를 넘음`(`AI_ONTOLOGY_LLM_CREDIT_LIMIT`, 기본 10,000), 아니면 null |
 | `llmCalls`, `llmFailedCalls` | 호출 수, 실패한 호출 수(표 의미 해석과 메모 추출을 합친 수) |
 | `llmCredits` | 사용량(GMS 크레딧 기준 환산) |
+| `llmRejectedLinks` | 규칙이 보류로 둔 관계를 LLM도 업무상 맞지 않다고 봐서 보내지 않은 수(관계 유형·연결 규칙 한 쌍을 1로 셈). 규칙이 대기로 둔 관계는 LLM이 반대해도 빼지 않고 보류로만 바꿈 |
+| `llmCrossLinks` | 규칙이 못 이은 시스템 간 참조 컬럼을 LLM에게 묻고, 받은 변환을 실제 값으로 확인해 낸 연결 수. 모두 보류 권고(`method`=`llm`) |
 | `documents`, `documentLinks` | 읽은 메모·정비 기록 수, DOCUMENT_LINK 후보 수 |
 | `missingColumns` | 고른 컬럼 중 원천에서 사라진 것 `{"mes.work_order": ["컬럼"]}`. 빼고 나머지로 분석함 |
 | `sampledTables` | 행이 많아 앞에서 자른 표 `{"mes.sensor_reading": 100000}`. 기본키가 있으면 기본키 순서 |

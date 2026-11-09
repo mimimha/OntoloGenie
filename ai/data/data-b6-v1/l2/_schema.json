@@ -1,0 +1,206 @@
+{
+  "tables": {
+    "equipment": {
+      "description": "생산 설비 목록",
+      "primary_key": [
+        "equip_code"
+      ],
+      "columns": {
+        "equip_code": {
+          "type": "varchar(10)",
+          "comment": "설비 코드"
+        },
+        "equip_name": {
+          "type": "varchar(40)",
+          "comment": "설비명"
+        },
+        "equip_type": {
+          "type": "varchar(5)",
+          "comment": "설비 종류"
+        },
+        "location_code": {
+          "type": "varchar(12)",
+          "comment": "설치 위치 코드"
+        },
+        "asset_no": {
+          "type": "varchar(12)",
+          "comment": "회계 자산 번호"
+        },
+        "install_date": {
+          "type": "date",
+          "comment": "설치일"
+        },
+        "status": {
+          "type": "varchar(10)",
+          "comment": ""
+        }
+      }
+    },
+    "heat": {
+      "description": "제강 차지(heat) 실적",
+      "primary_key": [
+        "heat_no"
+      ],
+      "columns": {
+        "heat_no": {
+          "type": "varchar(10)",
+          "comment": "차지 번호"
+        },
+        "furnace_id": {
+          "type": "varchar(10)",
+          "comment": "출강 로"
+        },
+        "steel_grade": {
+          "type": "varchar(10)",
+          "comment": "강종"
+        },
+        "tap_time": {
+          "type": "timestamp",
+          "comment": "출강 시각"
+        },
+        "tap_weight_t": {
+          "type": "numeric(6,1)",
+          "comment": "출강량(톤)"
+        },
+        "remark": {
+          "type": "text",
+          "comment": ""
+        }
+      }
+    },
+    "coil": {
+      "description": "압연 코일 실적",
+      "primary_key": [
+        "coil_id"
+      ],
+      "columns": {
+        "coil_id": {
+          "type": "varchar(14)",
+          "comment": "코일 번호"
+        },
+        "heat_no": {
+          "type": "varchar(10)",
+          "comment": "모 차지 번호"
+        },
+        "material_code": {
+          "type": "varchar(18)",
+          "comment": "제품 코드"
+        },
+        "so_no": {
+          "type": "varchar(10)",
+          "comment": "수주 번호"
+        },
+        "so_item": {
+          "type": "varchar(6)",
+          "comment": "수주 품번"
+        },
+        "thickness_mm": {
+          "type": "numeric(5,2)",
+          "comment": "두께"
+        },
+        "width_mm": {
+          "type": "integer",
+          "comment": "폭"
+        },
+        "weight_t": {
+          "type": "numeric(6,2)",
+          "comment": "중량(톤)"
+        },
+        "status": {
+          "type": "varchar(10)",
+          "comment": "진행 상태"
+        },
+        "prod_date": {
+          "type": "date",
+          "comment": ""
+        }
+      }
+    },
+    "rolling_schedule": {
+      "description": "압연 작업 일정",
+      "primary_key": [
+        "schedule_id"
+      ],
+      "columns": {
+        "schedule_id": {
+          "type": "integer",
+          "comment": "일정 ID"
+        },
+        "coil_id": {
+          "type": "varchar(14)",
+          "comment": "대상 코일"
+        },
+        "mill_id": {
+          "type": "varchar(10)",
+          "comment": "투입 압연기"
+        },
+        "planned_date": {
+          "type": "date",
+          "comment": "계획일"
+        },
+        "campaign_no": {
+          "type": "varchar(12)",
+          "comment": "압연 캠페인 번호"
+        },
+        "seq_in_campaign": {
+          "type": "integer",
+          "comment": "캠페인 내 순번"
+        },
+        "remark": {
+          "type": "text",
+          "comment": ""
+        }
+      }
+    },
+    "quality_cert": {
+      "description": "품질 성적서 (밀시트)",
+      "primary_key": [],
+      "columns": {
+        "cert_no": {
+          "type": "varchar(12)",
+          "comment": "성적서 번호"
+        },
+        "coil_id": {
+          "type": "varchar(14)",
+          "comment": "코일 번호"
+        },
+        "customer_brn": {
+          "type": "varchar(12)",
+          "comment": "고객 사업자번호"
+        },
+        "dlv_ref": {
+          "type": "varchar(12)",
+          "comment": "출하 참조번호"
+        },
+        "lab_sample_no": {
+          "type": "integer",
+          "comment": "시험 시편 번호"
+        },
+        "tensile_mpa": {
+          "type": "integer",
+          "comment": "인장강도"
+        },
+        "yield_mpa": {
+          "type": "integer",
+          "comment": "항복강도"
+        },
+        "elongation_pct": {
+          "type": "numeric(4,1)",
+          "comment": "연신율"
+        },
+        "judge": {
+          "type": "varchar(6)",
+          "comment": "판정"
+        },
+        "issued_at": {
+          "type": "date",
+          "comment": "발행일"
+        },
+        "note": {
+          "type": "text",
+          "comment": ""
+        }
+      }
+    }
+  }
+}

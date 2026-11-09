@@ -1,0 +1,171 @@
+{
+  "tables": {
+    "CustomerMaster": {
+      "description": "거래처(위탁 고객사) 마스터",
+      "primary_key": [
+        "CustCode"
+      ],
+      "columns": {
+        "CustCode": {
+          "type": "varchar(10)",
+          "comment": "거래처 코드"
+        },
+        "CustName": {
+          "type": "varchar(100)",
+          "comment": "거래처명"
+        },
+        "BizRegNo": {
+          "type": "varchar(20)",
+          "comment": "사업자등록번호"
+        },
+        "Region": {
+          "type": "varchar(20)",
+          "comment": ""
+        },
+        "Grade": {
+          "type": "char(1)",
+          "comment": "거래 등급"
+        },
+        "RegDate": {
+          "type": "date",
+          "comment": "등록일"
+        }
+      }
+    },
+    "ProductMaster": {
+      "description": "품목(제품) 마스터",
+      "primary_key": [
+        "ProdCode"
+      ],
+      "columns": {
+        "ProdCode": {
+          "type": "varchar(12)",
+          "comment": "품목 코드"
+        },
+        "ProdName": {
+          "type": "varchar(200)",
+          "comment": "품목명"
+        },
+        "Category": {
+          "type": "varchar(30)",
+          "comment": "제품 분류"
+        },
+        "UnitPrice": {
+          "type": "integer",
+          "comment": "기준 단가(원)"
+        },
+        "ShelfLifeMonths": {
+          "type": "integer",
+          "comment": "유통기한(개월)"
+        },
+        "BrandOwner": {
+          "type": "varchar(10)",
+          "comment": "브랜드 보유 고객사"
+        },
+        "UseYn": {
+          "type": "char(1)",
+          "comment": ""
+        }
+      }
+    },
+    "sales_order": {
+      "description": "수주 헤더",
+      "primary_key": [
+        "order_no"
+      ],
+      "columns": {
+        "order_no": {
+          "type": "varchar(20)",
+          "comment": "수주 번호"
+        },
+        "cust_cd": {
+          "type": "varchar(10)",
+          "comment": "주문 거래처"
+        },
+        "order_date": {
+          "type": "varchar(10)",
+          "comment": "수주일"
+        },
+        "due_date": {
+          "type": "date",
+          "comment": "납기일"
+        },
+        "status": {
+          "type": "varchar(10)",
+          "comment": "진행 상태"
+        },
+        "sales_rep": {
+          "type": "varchar(10)",
+          "comment": ""
+        }
+      }
+    },
+    "sales_order_line": {
+      "description": "수주 품목 상세",
+      "primary_key": [
+        "order_no",
+        "line_seq"
+      ],
+      "columns": {
+        "order_no": {
+          "type": "varchar(20)",
+          "comment": "수주 번호"
+        },
+        "line_seq": {
+          "type": "integer",
+          "comment": "행 번호"
+        },
+        "item": {
+          "type": "varchar(12)",
+          "comment": "주문 품목"
+        },
+        "qty": {
+          "type": "integer",
+          "comment": "수량"
+        },
+        "unit_price": {
+          "type": "integer",
+          "comment": ""
+        },
+        "remark": {
+          "type": "varchar(200)",
+          "comment": "비고"
+        }
+      }
+    },
+    "invoice": {
+      "description": "매출 세금계산서",
+      "primary_key": [],
+      "columns": {
+        "inv_id": {
+          "type": "varchar(15)",
+          "comment": "계산서 번호"
+        },
+        "bill_to": {
+          "type": "varchar(10)",
+          "comment": "청구처"
+        },
+        "order_ref": {
+          "type": "varchar(20)",
+          "comment": "관련 수주"
+        },
+        "amount": {
+          "type": "bigint",
+          "comment": "공급가액"
+        },
+        "vat": {
+          "type": "bigint",
+          "comment": "부가세"
+        },
+        "issued_on": {
+          "type": "date",
+          "comment": "발행일"
+        },
+        "pay_status": {
+          "type": "varchar(10)",
+          "comment": ""
+        }
+      }
+    }
+  }
+}

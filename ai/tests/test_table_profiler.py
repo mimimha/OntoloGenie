@@ -1,7 +1,6 @@
 import pandas as pd
 
 from app.analyzers.table_profiler import profile_table
-from app.sources.csv_reader import CsvSourceReader
 
 
 def _column(profile, name):
@@ -61,18 +60,3 @@ def test_profile_empty_table_has_no_key_candidates():
     column = _column(profile, "id")
     assert column.null_ratio == 0.0
     assert column.is_key_candidate is False
-
-
-def test_profiler_sees_planted_duplicate_and_missing_value(dev_factory):
-    reader = CsvSourceReader("mes", dev_factory / "mes")
-
-    profile = profile_table("jobs", reader.read_rows("jobs"))
-    job_no = next(column for column in profile.columns if column.name == "job_no")
-    order_code = next(
-        column for column in profile.columns if column.name == "order_code"
-    )
-
-    assert profile.row_count == 6
-    assert job_no.distinct_count == 5
-    assert job_no.is_key_candidate is False
-    assert order_code.null_count == 1

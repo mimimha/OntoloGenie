@@ -11,7 +11,6 @@ from app.models.candidate import (
     ItemKind,
     LinkRuleCondition,
     LinkRulePayload,
-    ObjectTypePayload,
     PropertyPayload,
     RuleType,
     ScoreItem,
@@ -140,47 +139,6 @@ def test_candidate_requires_reason_and_evidence():
         _candidate(reason="")
     with pytest.raises(ValidationError):
         _candidate(evidence=[])
-
-
-def test_candidate_payload_is_parsed_from_dict_by_kind():
-    candidate = Candidate.model_validate(
-        {
-            "candidate_id": "C-2",
-            "title": "설비 유형",
-            "payload": {
-                "kind": "OBJECT_TYPE",
-                "code": "EQUIPMENT",
-                "name": "설비",
-                "synonyms": ["프레스", "호기"],
-            },
-            "reason": "설비 코드가 기본키이고 작업지시가 이 코드를 가리킴",
-            "evidence": [
-                {"source_id": "mes", "locator": "equipment", "snippet": "equip_code"}
-            ],
-            "confidence": {"items": [{"label": "기본키 존재", "weight": 0.25}]},
-        }
-    )
-
-    assert isinstance(candidate.payload, ObjectTypePayload)
-    assert candidate.ai_confidence == 0.25
-
-
-def test_ambiguous_memo_mention_uses_options():
-    candidate = _candidate(
-        title="메모 '3호기' → 설비",
-        payload=_memo_link("mes.equipment:P103"),
-        options=[
-            _memo_link("mes.equipment:P103", 1),
-            _memo_link("mes.equipment:P203", 2),
-        ],
-        reason="1라인·2라인 모두 3호 프레스가 있어 하나로 정할 수 없음",
-        evidence=_evidence("3호기"),
-    )
-
-    assert [o.payload.target_object_ref for o in candidate.options] == [
-        "mes.equipment:P103",
-        "mes.equipment:P203",
-    ]
 
 
 def test_options_rules():

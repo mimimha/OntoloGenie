@@ -26,11 +26,10 @@ from app.extractors.equipment import (
 )
 from app.extractors.identifiers import find, load_dictionary
 from app.llm.client import (
-    INPUT_CREDIT,
-    OUTPUT_CREDIT,
     LLMClient,
     LLMError,
     create_llm_client,
+    token_credits,
 )
 from app.llm.privacy import mask_text
 from app.models.candidate import (
@@ -210,6 +209,8 @@ def build_prompt(docs: list[Document], equipment: list[Equipment] | None = None)
         ),
         (
             "text 규칙: 원문 글자를 그대로 옮긴다. 고치거나 요약하지 않는다."
+            " 작업지시·정비·로트 번호(JB…, RP…, LOT…)는 코드가 따로 찾으므로 증상·조치 text에 넣지 않는다"
+            " (예: 'JB2608-0103 잔량 1,100개는 주간조에 넘김.' → ACTION '주간조에 넘김')."
             " 핵심 구만 뽑고 끝의 문장부호와 '~함'·'~했는데'·'~인 듯' 같은 끝맺음은 뺀다"
             " (예: '온도 상승함.' → '온도 상승', '벨트 교체했는데' → '벨트 교체')."
         ),
@@ -223,6 +224,20 @@ def build_prompt(docs: list[Document], equipment: list[Equipment] | None = None)
         lines += ["", "설비 목록:", json.dumps(listing, ensure_ascii=False)]
     lines += ["", "문서:", json.dumps(body, ensure_ascii=False)]
     return "\n".join(lines)
+
+
+def _without_found(text: str, entities: list) -> str:
+    """text 앞뒤에 붙은, 이미 찾은 개체 글자(원천 번호 등)를 뗀다."""
+    found = sorted({e.text for e in entities if e.text}, key=len, reverse=True)
+    changed = True
+    while changed:
+        changed = False
+        for word in found:
+            if text.startswith(word):
+                text, changed = text[len(word) :].strip(" ,.·:"), True
+            elif text.endswith(word):
+                text, changed = text[: -len(word)].strip(" ,.·:"), True
+    return text.rstrip(TRAILING)
 
 
 def _locate(
@@ -292,6 +307,12 @@ def extract(
                 by_text[e.text] = existing.id
                 continue
             span = _locate(doc.text, text, taken, doc.body_start) if text else None
+            if span is None and text:
+                # LLM이 코드가 이미 찾은 원천 번호까지 붙여 뽑은 경우('JB2608-0103 잔량 ... 넘김'):
+                # 그 번호를 떼고 남은 글자를 다시 찾는다
+                rest = _without_found(text, entities)
+                if rest and rest != text:
+                    span = _locate(doc.text, rest, taken, doc.body_start)
             if span is None:
                 dropped.append(f"{e.type}:{e.text} (원문에 없음)")
                 continue
@@ -344,7 +365,9 @@ def _call_usage(llm: LLMClient, batch: list[Document], ok: bool) -> dict:
         "input_tokens": tokens_in,
         "output_tokens": tokens_out,
         "reasoning_tokens": usage.get("reasoning_tokens"),
-        "credits": round(tokens_in * INPUT_CREDIT + tokens_out * OUTPUT_CREDIT, 3),
+        "credits": round(
+            token_credits(getattr(llm, "model", None), tokens_in, tokens_out), 3
+        ),
     }
 
 
@@ -620,13 +643,15 @@ def estimate_credits(
     docs: list[Document],
     equipment: list[Equipment] | None = None,
     output_tokens_per_batch: int = 2000,  # 10-27 실측: 호출당 평균 1,834, 최대 3,315 (추론 포함)
+    model: str | None = None,
 ) -> float:
     prompts = [
         build_prompt(docs[i : i + BATCH], equipment) for i in range(0, len(docs), BATCH)
     ]
-    return (
-        sum(len(p) for p in prompts) / 2 * INPUT_CREDIT
-        + len(prompts) * output_tokens_per_batch * OUTPUT_CREDIT
+    return token_credits(
+        model,
+        sum(len(p) for p in prompts) / 2,
+        len(prompts) * output_tokens_per_batch,
     )
 
 
@@ -647,7 +672,11 @@ def main(argv=None) -> int:
         sys.stdout.reconfigure(encoding="utf-8")
     llm = None
     if args.llm_estimate or args.llm_credit_limit is not None:
-        estimate = estimate_credits(load_documents(args.root), _equipment(args.root))
+        estimate = estimate_credits(
+            load_documents(args.root),
+            _equipment(args.root),
+            model=get_settings().llm_model,
+        )
         print(f"메모 추출 예상 크레딧: {estimate:.1f}")
         if args.llm_estimate:
             return 0

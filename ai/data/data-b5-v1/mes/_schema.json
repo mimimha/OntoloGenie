@@ -1,0 +1,114 @@
+{
+  "tables": {
+    "MES_EQUIPMENT": {
+      "description": "생산 설비 마스터",
+      "primary_key": [
+        "EQP_ID"
+      ],
+      "columns": {
+        "EQP_ID": {
+          "type": "VARCHAR(12)",
+          "comment": "설비 ID"
+        },
+        "EQP_NM": {
+          "type": "VARCHAR(50)",
+          "comment": "설비명"
+        },
+        "EQP_TYPE": {
+          "type": "VARCHAR(5)",
+          "comment": "설비 유형"
+        },
+        "LINE_CD": {
+          "type": "VARCHAR(6)",
+          "comment": "청정실 라인 코드"
+        },
+        "INSTALL_YMD": {
+          "type": "CHAR(8)",
+          "comment": "설치일자"
+        },
+        "USE_FLAG": {
+          "type": "CHAR(1)",
+          "comment": ""
+        }
+      }
+    },
+    "MES_BATCH": {
+      "description": "제조 배치(로트)",
+      "primary_key": [
+        "BATCH_SEQ"
+      ],
+      "columns": {
+        "BATCH_SEQ": {
+          "type": "INTEGER",
+          "comment": "배치 일련번호"
+        },
+        "BATCH_NO": {
+          "type": "VARCHAR(12)",
+          "comment": "배치 번호"
+        },
+        "PROD_CD": {
+          "type": "VARCHAR(12)",
+          "comment": "제품 코드"
+        },
+        "SO_NO": {
+          "type": "VARCHAR(12)",
+          "comment": "수주 번호"
+        },
+        "SO_LINE_NO": {
+          "type": "VARCHAR(3)",
+          "comment": "수주 행"
+        },
+        "MAIN_EQP_ID": {
+          "type": "VARCHAR(12)",
+          "comment": "주 제조 설비"
+        },
+        "MFG_DATE": {
+          "type": "DATE",
+          "comment": "제조일"
+        },
+        "BATCH_SIZE_KG": {
+          "type": "NUMERIC(8,1)",
+          "comment": ""
+        },
+        "STATUS": {
+          "type": "VARCHAR(6)",
+          "comment": ""
+        }
+      }
+    },
+    "mes_batch_step": {
+      "description": "배치 공정 실적",
+      "primary_key": [],
+      "columns": {
+        "BATCH_SEQ": {
+          "type": "INTEGER",
+          "comment": "배치 일련번호"
+        },
+        "STEP_NO": {
+          "type": "INTEGER",
+          "comment": "공정 순번"
+        },
+        "STEP_NM": {
+          "type": "VARCHAR(20)",
+          "comment": "공정명"
+        },
+        "USED_MACHINE": {
+          "type": "VARCHAR(12)",
+          "comment": "사용 설비"
+        },
+        "START_TS": {
+          "type": "TIMESTAMP",
+          "comment": "시작 시각"
+        },
+        "END_TS": {
+          "type": "TIMESTAMP",
+          "comment": "종료 시각"
+        },
+        "WORKER_ID": {
+          "type": "VARCHAR(6)",
+          "comment": ""
+        }
+      }
+    }
+  }
+}

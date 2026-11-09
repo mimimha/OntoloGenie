@@ -1,0 +1,130 @@
+{
+  "tables": {
+    "raw_material_receiving_inspection": {
+      "description": "원료·부자재 입고 검사",
+      "primary_key": [
+        "inspection_id"
+      ],
+      "columns": {
+        "inspection_id": {
+          "type": "INTEGER",
+          "comment": "검사 번호"
+        },
+        "supplier_business_registration_number": {
+          "type": "VARCHAR(12)",
+          "comment": "공급사 사업자등록번호"
+        },
+        "raw_material_name": {
+          "type": "VARCHAR(40)",
+          "comment": "원료명"
+        },
+        "received_quantity": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "quantity_unit_of_measure": {
+          "type": "VARCHAR(4)",
+          "comment": ""
+        },
+        "received_date": {
+          "type": "DATE",
+          "comment": "입고일"
+        },
+        "inspection_result_code": {
+          "type": "VARCHAR(4)",
+          "comment": "PASS/FAIL/HOLD"
+        },
+        "inspector_full_name": {
+          "type": "VARCHAR(20)",
+          "comment": ""
+        },
+        "inspection_remarks": {
+          "type": "VARCHAR(200)",
+          "comment": ""
+        }
+      }
+    },
+    "finished_goods_inspection": {
+      "description": "완제품 출하 전 품질 검사",
+      "primary_key": [
+        "inspection_identifier"
+      ],
+      "columns": {
+        "inspection_identifier": {
+          "type": "VARCHAR(12)",
+          "comment": "완제품 검사 번호"
+        },
+        "product_code": {
+          "type": "VARCHAR(7)",
+          "comment": "검사 대상 제품"
+        },
+        "production_batch_number": {
+          "type": "VARCHAR(16)",
+          "comment": "공장-생산일자-라인"
+        },
+        "inspection_sample_count": {
+          "type": "INTEGER",
+          "comment": "시료 수"
+        },
+        "measured_brix_degree": {
+          "type": "NUMERIC(4,1)",
+          "comment": "당도(Brix)"
+        },
+        "measured_carbonation_gas_volume": {
+          "type": "NUMERIC(4,2)",
+          "comment": "탄산 가스 볼륨"
+        },
+        "overall_judgement_result": {
+          "type": "VARCHAR(6)",
+          "comment": ""
+        },
+        "inspected_datetime": {
+          "type": "TIMESTAMP",
+          "comment": ""
+        }
+      }
+    },
+    "customer_complaint": {
+      "description": "고객 불만(VOC) 접수",
+      "primary_key": [],
+      "columns": {
+        "complaint_ticket_id": {
+          "type": "VARCHAR(12)",
+          "comment": "VOC 번호"
+        },
+        "complaint_received_datetime": {
+          "type": "TIMESTAMP",
+          "comment": ""
+        },
+        "customer_account_reference": {
+          "type": "VARCHAR(10)",
+          "comment": "고객 계정"
+        },
+        "shipment_reference": {
+          "type": "VARCHAR(18)",
+          "comment": "관련 출하 참조번호(검증숫자 포함)"
+        },
+        "product_gtin_code": {
+          "type": "CHAR(14)",
+          "comment": "제품 GTIN-14"
+        },
+        "related_finished_goods_inspection_identifier": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "complaint_category_description": {
+          "type": "VARCHAR(30)",
+          "comment": "불만 유형"
+        },
+        "complaint_detail_text": {
+          "type": "VARCHAR(500)",
+          "comment": ""
+        },
+        "handling_status_description": {
+          "type": "VARCHAR(20)",
+          "comment": ""
+        }
+      }
+    }
+  }
+}

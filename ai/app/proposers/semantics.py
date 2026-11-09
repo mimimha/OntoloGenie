@@ -20,7 +20,7 @@ import pandas as pd
 from pydantic import BaseModel, Field, ValidationError
 
 from app.analyzers.structured import value_pattern
-from app.llm.client import INPUT_CREDIT, OUTPUT_CREDIT, LLMClient, LLMError
+from app.llm.client import LLMClient, LLMError, token_credits
 from app.llm.privacy import MASK, mask_text
 from app.models.candidate import Candidate, DataType, ItemKind, Sensitivity
 from app.proposers.confidence import CAP
@@ -132,9 +132,13 @@ def build_prompt(
             f"role 값: {ROLE_GUIDE}",
             f"data_type 값: {', '.join(t.value for t in DataType)}",
             (
-                '형식: {"object_name": 한 행이 무엇인지, "meaning": 표 설명, "category", "category_reason", '
+                '형식: {"object_name": 객체 유형 이름(한 행이 무엇인지 나타내는 짧은 명사, 예: 작업지시·공정 실적), "meaning": 표 설명, "category", "category_reason", '
                 '"columns": [{"name", "meaning", "role", "data_type", "is_personal"}], '
                 '"links": [{"code", "meaningful": 업무상 맞는 관계인지, "reason"}]}'
+            ),
+            (
+                "관계 meaningful 규칙: 값이 우연히 같은 것(순번·등급·수량이 다른 표의 번호와 같아짐)이면 false."
+                " 일부 행에서만 맞더라도 업무상 그 값을 가리키는 관계면 true로 두고 reason에 그 조건을 쓴다."
             ),
             "",
             f"표: {table} ({schema.description or '설명 없음'})",
@@ -204,12 +208,12 @@ def prepare(
     return out
 
 
-def estimate_credits(prompts, output_tokens_per_table: int = 1500) -> float:
+def estimate_credits(
+    prompts, output_tokens_per_table: int = 1500, model: str | None = None
+) -> float:
     """호출 전 대략 추정. 한국어·JSON이 섞인 글은 글자 2개를 토큰 약 1개로 본다."""
     tokens = sum(len(p[3]) for p in prompts) / 2
-    return (
-        tokens * INPUT_CREDIT + len(prompts) * output_tokens_per_table * OUTPUT_CREDIT
-    )
+    return token_credits(model, tokens, len(prompts) * output_tokens_per_table)
 
 
 def parse(answer: dict, column_names: set[str], link_codes: set[str]) -> TableView:
@@ -229,10 +233,35 @@ def _note(candidate: Candidate, judgement: str, **update) -> Candidate:
     )
 
 
+def rejected_codes(
+    candidates: list[Candidate], views: dict[str, TableView]
+) -> dict[str, str]:
+    """규칙이 이미 보류로 둔 관계를 LLM도 업무상 맞지 않다고 본 것 {관계 코드: LLM 이유}.
+
+    둘 다 확신이 없는 관계라 관리자 검토 목록에 올리지 않는다(관계 유형·연결 규칙 모두).
+    규칙이 대기로 둔 관계는 LLM이 반대해도 빼지 않고 보류로만 바꾼다(apply).
+    """
+    link_view = {link.code: link for v in views.values() for link in v.links}
+    out = {}
+    for c in candidates:
+        if c.payload.kind != ItemKind.LINK_RULE or c.review_status != "HELD":
+            continue
+        judged = link_view.get(c.payload.code)
+        if judged and not judged.meaningful:
+            out[c.payload.code] = judged.reason
+    return out
+
+
 def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Candidate]:
     link_view = {link.code: link for v in views.values() for link in v.links}
+    rejected = rejected_codes(candidates, views)
     out = []
     for c in candidates:
+        if (
+            c.payload.kind in (ItemKind.LINK_RULE, ItemKind.LINK_TYPE)
+            and c.payload.code in rejected
+        ):
+            continue
         table = _table_of(c)
         view = views.get(table) if table else None
         if c.candidate_id.startswith("OT-") and view:
@@ -311,14 +340,17 @@ def interpret(
             failed.append({"table": table, "error": str(error)})
             continue
         usage = getattr(llm, "last_usage", None) or {}
-        used += (
-            usage.get("input_tokens", 0) * INPUT_CREDIT
-            + usage.get("output_tokens", 0) * OUTPUT_CREDIT
+        used += token_credits(
+            getattr(llm, "model", None),
+            usage.get("input_tokens", 0),
+            usage.get("output_tokens", 0),
         )
     report = {
         "tables": len(prompts),
         "interpreted": len(views),
         "failed": failed,
         "credits_used": round(used, 2),
+        # 규칙 보류 + LLM 반대로 내보내지 않은 관계 {코드: 이유}
+        "rejected_links": rejected_codes(candidates, views),
     }
     return apply(candidates, views), report

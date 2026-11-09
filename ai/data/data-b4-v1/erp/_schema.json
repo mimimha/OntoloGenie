@@ -1,0 +1,138 @@
+{
+  "tables": {
+    "TB_GEORAECHEO": {
+      "description": "거래처 기본정보(매출처·매입처)",
+      "primary_key": [
+        "거래처코드"
+      ],
+      "columns": {
+        "거래처코드": {
+          "type": "varchar(6)",
+          "comment": "거래처 코드"
+        },
+        "거래처명": {
+          "type": "varchar(50)",
+          "comment": "거래처 상호"
+        },
+        "사업자번호": {
+          "type": "varchar(12)",
+          "comment": "사업자등록번호"
+        },
+        "거래처구분": {
+          "type": "varchar(4)",
+          "comment": "매출/매입/겸용"
+        },
+        "지역": {
+          "type": "varchar(10)",
+          "comment": ""
+        },
+        "등록일자": {
+          "type": "date",
+          "comment": "최초 등록일"
+        },
+        "비고": {
+          "type": "varchar(100)",
+          "comment": ""
+        }
+      }
+    },
+    "T_ITEM_MST": {
+      "description": "품목 마스터",
+      "primary_key": [
+        "품목번호"
+      ],
+      "columns": {
+        "품목번호": {
+          "type": "varchar(8)",
+          "comment": "품목 번호"
+        },
+        "품목명": {
+          "type": "varchar(60)",
+          "comment": "품목 이름"
+        },
+        "품목군": {
+          "type": "varchar(6)",
+          "comment": "완제품/반제품/부품/원자재"
+        },
+        "단위": {
+          "type": "varchar(4)",
+          "comment": ""
+        },
+        "표준단가": {
+          "type": "numeric(12,2)",
+          "comment": "표준 단가(원)"
+        },
+        "주공급처": {
+          "type": "varchar(6)",
+          "comment": "주 구매처"
+        },
+        "사용여부": {
+          "type": "char(1)",
+          "comment": "Y/N"
+        }
+      }
+    },
+    "TB_SUJU_HDR": {
+      "description": "수주 헤더",
+      "primary_key": [
+        "수주번호"
+      ],
+      "columns": {
+        "수주번호": {
+          "type": "varchar(10)",
+          "comment": "수주 번호"
+        },
+        "거래처코드": {
+          "type": "varchar(6)",
+          "comment": "주문 거래처"
+        },
+        "수주일자": {
+          "type": "varchar(10)",
+          "comment": "수주 접수일"
+        },
+        "상태코드": {
+          "type": "char(2)",
+          "comment": "01접수 02확정 03생산 04출하 05취소"
+        },
+        "영업부서": {
+          "type": "varchar(20)",
+          "comment": ""
+        },
+        "비고": {
+          "type": "varchar(100)",
+          "comment": ""
+        }
+      }
+    },
+    "TB_SUJU_DTL": {
+      "description": "수주 품목 상세",
+      "primary_key": [],
+      "columns": {
+        "수주번호": {
+          "type": "varchar(10)",
+          "comment": "수주 번호"
+        },
+        "순번": {
+          "type": "int",
+          "comment": "수주 내 행 번호"
+        },
+        "품목번호": {
+          "type": "varchar(8)",
+          "comment": "주문 품목"
+        },
+        "수량": {
+          "type": "int",
+          "comment": "주문 수량"
+        },
+        "단가": {
+          "type": "numeric(12,2)",
+          "comment": ""
+        },
+        "납기일자": {
+          "type": "date",
+          "comment": "요청 납기"
+        }
+      }
+    }
+  }
+}

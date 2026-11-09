@@ -1,0 +1,212 @@
+{
+  "tables": {
+    "LINE_MST": {
+      "description": "SMT 라인",
+      "primary_key": [
+        "LINE_ID"
+      ],
+      "columns": {
+        "LINE_ID": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "LINE_NM": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "FLR_NO": {
+          "type": "INTEGER",
+          "comment": "층"
+        },
+        "STD_CPH": {
+          "type": "INTEGER",
+          "comment": "표준 시간당 실장 수"
+        },
+        "USE_YN": {
+          "type": "CHAR(1)",
+          "comment": ""
+        }
+      }
+    },
+    "EQP_MST": {
+      "description": "라인 설비",
+      "primary_key": [
+        "EQP_CD"
+      ],
+      "columns": {
+        "EQP_CD": {
+          "type": "VARCHAR(6)",
+          "comment": ""
+        },
+        "EQP_NM": {
+          "type": "VARCHAR(30)",
+          "comment": ""
+        },
+        "EQP_TP": {
+          "type": "CHAR(3)",
+          "comment": "PRT/MNT/RFL"
+        },
+        "LINE_ID": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "MKR_NM": {
+          "type": "VARCHAR(20)",
+          "comment": "제조사"
+        },
+        "INST_DT": {
+          "type": "DATE",
+          "comment": "설치일"
+        },
+        "USE_YN": {
+          "type": "CHAR(1)",
+          "comment": ""
+        }
+      }
+    },
+    "DEFECT_CD": {
+      "description": "불량 코드",
+      "primary_key": [
+        "DFT_CD"
+      ],
+      "columns": {
+        "DFT_CD": {
+          "type": "VARCHAR(4)",
+          "comment": ""
+        },
+        "DFT_NM": {
+          "type": "VARCHAR(20)",
+          "comment": ""
+        },
+        "DFT_GRP": {
+          "type": "VARCHAR(6)",
+          "comment": ""
+        },
+        "SEV_LVL": {
+          "type": "INTEGER",
+          "comment": "심각도"
+        }
+      }
+    },
+    "PCB_LOT": {
+      "description": "생산 로트(보드 묶음)",
+      "primary_key": [
+        "LOT_NO"
+      ],
+      "columns": {
+        "LOT_NO": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "WO_YM": {
+          "type": "CHAR(4)",
+          "comment": "작지 연월"
+        },
+        "WO_SEQ": {
+          "type": "INTEGER",
+          "comment": "작지 순번"
+        },
+        "ITM_NO": {
+          "type": "INTEGER",
+          "comment": "제품 번호"
+        },
+        "LINE_ID": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "PNL_QTY": {
+          "type": "INTEGER",
+          "comment": "패널 수"
+        },
+        "ARRAY_CNT": {
+          "type": "INTEGER",
+          "comment": "패널당 보드 수"
+        },
+        "STRT_DTM": {
+          "type": "TIMESTAMP",
+          "comment": ""
+        },
+        "END_DTM": {
+          "type": "TIMESTAMP",
+          "comment": ""
+        },
+        "LOT_STAT": {
+          "type": "CHAR(3)",
+          "comment": "RUN/END"
+        }
+      }
+    },
+    "MAT_LOAD": {
+      "description": "피더 릴 장착 이력",
+      "primary_key": [
+        "LOAD_SEQ"
+      ],
+      "columns": {
+        "LOAD_SEQ": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "LOT_NO": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "EQP_CD": {
+          "type": "VARCHAR(6)",
+          "comment": "마운터"
+        },
+        "FDR_SLOT": {
+          "type": "INTEGER",
+          "comment": "피더 슬롯"
+        },
+        "REEL_ID": {
+          "type": "VARCHAR(24)",
+          "comment": "릴 라벨"
+        },
+        "LOAD_QTY": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "LOAD_DTM": {
+          "type": "TIMESTAMP",
+          "comment": ""
+        }
+      }
+    },
+    "AOI_RSLT": {
+      "description": "자동광학검사 결과",
+      "primary_key": [
+        "INSP_ID"
+      ],
+      "columns": {
+        "INSP_ID": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "LOT_NO": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "PNL_SEQ": {
+          "type": "INTEGER",
+          "comment": "패널 순번"
+        },
+        "JDG": {
+          "type": "CHAR(2)",
+          "comment": "OK/NG"
+        },
+        "DFT_CD": {
+          "type": "VARCHAR(4)",
+          "comment": ""
+        },
+        "REF_DES": {
+          "type": "VARCHAR(6)",
+          "comment": "부품 위치 기호"
+        },
+        "INSP_DTM": {
+          "type": "TIMESTAMP",
+          "comment": ""
+        }
+      }
+    }
+  }
+}

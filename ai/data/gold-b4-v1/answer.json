@@ -1,0 +1,191 @@
+{
+  "systems": [
+    "erp",
+    "qms",
+    "pms"
+  ],
+  "relations": [
+    {
+      "from": "erp.T_ITEM_MST.주공급처",
+      "to": "erp.TB_GEORAECHEO.거래처코드",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.TB_SUJU_HDR.거래처코드",
+      "to": "erp.TB_GEORAECHEO.거래처코드",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.TB_SUJU_DTL.수주번호",
+      "to": "erp.TB_SUJU_HDR.수주번호",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.TB_SUJU_DTL.품목번호",
+      "to": "erp.T_ITEM_MST.품목번호",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "qms.TB_DEFECT.INSP_NO",
+      "to": "qms.T_INSP_RSLT.INSP_NO",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "qms.TB_DEFECT.DFCT_CD",
+      "to": "qms.TB_DEFECT_CD.DFCT_CD",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "pms.TB_GOJANG_IREOK.SB_CD",
+      "to": "pms.TB_SEOLBI_MST.SB_CD",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "pms.TB_SURI.FAIL_REF",
+      "to": "pms.TB_GOJANG_IREOK.GJ_NO",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "qms.T_INSP_RSLT.ITM_NO",
+      "to": "erp.T_ITEM_MST.품목번호",
+      "transform": "'IT' 뒤에 하이픈을 넣으면 일치 (IT04512 → IT-04512). 일부 소문자 값은 대문자로 바꿔야 함",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "qms.T_INSP_RSLT.VNDR_ID",
+      "to": "erp.TB_GEORAECHEO.거래처코드",
+      "transform": "접두어 'V'를 'C'로 바꾸면 일치 (V00123 → C00123). 수입검사 행만 값이 있음",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "qms.TB_CLAIM.CUST_CD",
+      "to": "erp.TB_GEORAECHEO.거래처코드",
+      "transform": "숫자만 저장됨. 5자리로 0을 채우고 앞에 'C'를 붙이면 일치 (123 → C00123)",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "qms.TB_CLAIM.SO_NO+SO_SEQ",
+      "to": "erp.TB_SUJU_DTL.수주번호+순번",
+      "transform": "SO_NO 끝의 차수 접미사 '-A'/'-B'를 지우면 수주번호와 일치, SO_SEQ는 순번과 그대로 일치 (복합키)",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "qms.TB_DEFECT.EQP_CD",
+      "to": "pms.TB_SEOLBI_MST.SB_CD",
+      "transform": "소문자를 대문자로 바꾸면 일치 (eq-0012 → EQ-0012)",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "pms.TB_SEOLBI_MST.MAKER_BIZNO",
+      "to": "erp.TB_GEORAECHEO.사업자번호",
+      "transform": "하이픈 없는 10자리를 3-2-5 형식으로 하이픈을 넣으면 일치 (1234567890 → 123-45-67890). 거래처의 대체 키(사업자번호) 참조",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "pms.TB_SURI.PART_CD",
+      "to": "erp.T_ITEM_MST.품목번호",
+      "transform": "마지막 1자리 검증숫자(앞 5자리 숫자 합의 일의 자리)를 지우고 앞에 'IT-'를 붙이면 일치 (045127 → IT-04512)",
+      "cardinality": "N:1"
+    }
+  ],
+  "traps": [
+    {
+      "column": "erp.TB_SUJU_DTL.순번",
+      "looks_like": "pms.TB_GOJANG_IREOK.GJ_NO",
+      "why": "수주 안의 행 번호(1~4)가 반복될 뿐이며, 작은 정수라 고장 접수 번호 범위에 모두 들어갈 뿐 관계 아님"
+    },
+    {
+      "column": "erp.TB_SUJU_HDR.상태코드",
+      "looks_like": "qms.TB_DEFECT_CD.DFCT_CD",
+      "why": "수주 상태코드 '01'~'05'가 같은 2자리 형식의 불량코드 값과 겹칠 뿐 의미가 다름"
+    },
+    {
+      "column": "qms.TB_DEFECT.DFCT_QTY",
+      "looks_like": "pms.TB_GOJANG_IREOK.GJ_NO",
+      "why": "불량 수량(1~25)이라는 측정값이며 작은 정수라 고장 번호와 우연히 겹침"
+    },
+    {
+      "column": "pms.TB_SURI.WRK_SEQ",
+      "looks_like": "pms.TB_GOJANG_IREOK.GJ_NO",
+      "why": "고장 건 안의 작업 순번(1~3)이 반복될 뿐이며, 실제 고장 참조는 FAIL_REF"
+    }
+  ],
+  "dirty": [
+    {
+      "column": "erp.TB_SUJU_HDR.거래처코드",
+      "what": "약 1% 거래처 마스터에 없는 코드(고아), 약 1% 값 뒤에 공백"
+    },
+    {
+      "column": "erp.TB_SUJU_HDR.수주일자",
+      "what": "대부분 YYYY-MM-DD, 약 3%는 YYYY/MM/DD"
+    },
+    {
+      "column": "erp.TB_SUJU_DTL.품목번호",
+      "what": "약 2% 품목 마스터에 없는 품목번호(고아)"
+    },
+    {
+      "column": "erp.TB_SUJU_DTL.납기일자",
+      "what": "약 4% NULL"
+    },
+    {
+      "column": "erp.T_ITEM_MST.주공급처",
+      "what": "완제품과 일부 품목은 NULL"
+    },
+    {
+      "column": "qms.T_INSP_RSLT.ITM_NO",
+      "what": "약 2% 고아, 약 1.5% 소문자(it04512)"
+    },
+    {
+      "column": "qms.T_INSP_RSLT.VNDR_ID",
+      "what": "공정·출하 검사 행은 NULL"
+    },
+    {
+      "column": "qms.TB_DEFECT.INSP_NO",
+      "what": "약 2% 검사 실적에 없는 검사번호(고아)"
+    },
+    {
+      "column": "qms.TB_DEFECT.EQP_CD",
+      "what": "약 35% NULL, 값이 있는 행의 약 3% 고아"
+    },
+    {
+      "column": "qms.TB_CLAIM.CUST_CD",
+      "what": "약 4%는 0을 채운 5자리(00123)로 저장되어 형식이 섞임"
+    },
+    {
+      "column": "qms.TB_CLAIM.SO_NO",
+      "what": "약 10% NULL(SO_SEQ도 NULL), 약 2% 없는 수주번호"
+    },
+    {
+      "column": "pms.TB_SEOLBI_MST.MAKER_BIZNO",
+      "what": "약 10% NULL"
+    },
+    {
+      "column": "pms.TB_GOJANG_IREOK.SB_CD",
+      "what": "약 2% 설비 마스터에 없는 코드(고아)"
+    },
+    {
+      "column": "pms.TB_GOJANG_IREOK.GJ_DT",
+      "what": "대부분 YYYY.MM.DD, 약 4%는 YYYYMMDD"
+    },
+    {
+      "column": "pms.TB_SURI.FAIL_REF",
+      "what": "약 2% 고장 이력에 없는 번호(고아)"
+    },
+    {
+      "column": "pms.TB_SURI.PART_CD",
+      "what": "약 25% NULL(부품 미사용)"
+    },
+    {
+      "column": "(전체) 날짜 컬럼",
+      "what": "erp는 YYYY-MM-DD, qms는 YYYYMMDD, pms는 YYYY.MM.DD로 시스템마다 형식이 다름"
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "tables": {
+    "TB_SEOLBI_MST": {
+      "description": "설비 마스터",
+      "primary_key": [
+        "SB_CD"
+      ],
+      "columns": {
+        "SB_CD": {
+          "type": "varchar(7)",
+          "comment": "설비코드"
+        },
+        "SB_NM": {
+          "type": "varchar(40)",
+          "comment": "설비명"
+        },
+        "LINE_CD": {
+          "type": "varchar(3)",
+          "comment": "생산라인"
+        },
+        "MAKER_BIZNO": {
+          "type": "varchar(10)",
+          "comment": "제작사 사업자번호(하이픈 없음)"
+        },
+        "INSTL_DT": {
+          "type": "varchar(10)",
+          "comment": "설치일"
+        },
+        "SB_STAT": {
+          "type": "varchar(4)",
+          "comment": ""
+        }
+      }
+    },
+    "TB_GOJANG_IREOK": {
+      "description": "설비 고장 이력",
+      "primary_key": [
+        "GJ_NO"
+      ],
+      "columns": {
+        "GJ_NO": {
+          "type": "int",
+          "comment": "고장 접수 번호"
+        },
+        "SB_CD": {
+          "type": "varchar(7)",
+          "comment": "고장 설비"
+        },
+        "GJ_DT": {
+          "type": "varchar(10)",
+          "comment": "고장 발생일"
+        },
+        "GJ_TP": {
+          "type": "varchar(4)",
+          "comment": "고장 유형"
+        },
+        "STOP_MIN": {
+          "type": "int",
+          "comment": "정지 시간(분)"
+        },
+        "GJ_DESC": {
+          "type": "varchar(100)",
+          "comment": ""
+        }
+      }
+    },
+    "TB_SURI": {
+      "description": "설비 수리 작업 내역",
+      "primary_key": [],
+      "columns": {
+        "FAIL_REF": {
+          "type": "int",
+          "comment": "관련 고장 접수 번호"
+        },
+        "WRK_SEQ": {
+          "type": "int",
+          "comment": "작업 순번"
+        },
+        "PART_CD": {
+          "type": "varchar(6)",
+          "comment": "사용 부품 코드(검증자리 포함)"
+        },
+        "USE_QTY": {
+          "type": "int",
+          "comment": ""
+        },
+        "RPR_DT": {
+          "type": "varchar(10)",
+          "comment": "수리일"
+        },
+        "RPR_HR": {
+          "type": "numeric(5,1)",
+          "comment": "작업 시간"
+        },
+        "RPR_DESC": {
+          "type": "varchar(100)",
+          "comment": ""
+        }
+      }
+    }
+  }
+}

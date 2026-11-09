@@ -1,0 +1,149 @@
+{
+  "tables": {
+    "loc_mst": {
+      "description": "창고 적치 위치",
+      "primary_key": [
+        "loc_cd"
+      ],
+      "columns": {
+        "loc_cd": {
+          "type": "VARCHAR(8)",
+          "comment": "위치코드"
+        },
+        "wh_cd": {
+          "type": "CHAR(2)",
+          "comment": "창고"
+        },
+        "zone_cd": {
+          "type": "CHAR(1)",
+          "comment": ""
+        },
+        "rack_no": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "lvl_no": {
+          "type": "INTEGER",
+          "comment": "단"
+        },
+        "cap_plt": {
+          "type": "INTEGER",
+          "comment": "적치 가능 팔레트 수"
+        },
+        "use_yn": {
+          "type": "CHAR(1)",
+          "comment": ""
+        }
+      }
+    },
+    "lot_mst": {
+      "description": "생산 로트",
+      "primary_key": [
+        "itm_cd",
+        "lot_no"
+      ],
+      "columns": {
+        "itm_cd": {
+          "type": "VARCHAR(6)",
+          "comment": "품목"
+        },
+        "lot_no": {
+          "type": "VARCHAR(7)",
+          "comment": "생산일(YYMMDD)+라인"
+        },
+        "prd_dt": {
+          "type": "DATE",
+          "comment": "생산일"
+        },
+        "line_cd": {
+          "type": "CHAR(1)",
+          "comment": "충전 라인"
+        },
+        "plnt_cd": {
+          "type": "CHAR(2)",
+          "comment": ""
+        },
+        "exp_dt": {
+          "type": "DATE",
+          "comment": "유통기한"
+        },
+        "prd_qty": {
+          "type": "INTEGER",
+          "comment": ""
+        }
+      }
+    },
+    "plt_mst": {
+      "description": "팔레트",
+      "primary_key": [
+        "plt_no"
+      ],
+      "columns": {
+        "plt_no": {
+          "type": "INTEGER",
+          "comment": "팔레트 번호"
+        },
+        "itm_cd": {
+          "type": "VARCHAR(6)",
+          "comment": ""
+        },
+        "lot_no": {
+          "type": "VARCHAR(7)",
+          "comment": ""
+        },
+        "cur_bin": {
+          "type": "VARCHAR(8)",
+          "comment": "현재 적치 위치"
+        },
+        "box_qty": {
+          "type": "INTEGER",
+          "comment": "적재 박스 수"
+        },
+        "plt_stat": {
+          "type": "CHAR(3)",
+          "comment": "STK/OUT/HLD"
+        },
+        "crt_dt": {
+          "type": "DATE",
+          "comment": ""
+        }
+      }
+    },
+    "io_hist": {
+      "description": "팔레트 입출고 이력",
+      "primary_key": [
+        "io_seq"
+      ],
+      "columns": {
+        "io_seq": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "plt_no": {
+          "type": "INTEGER",
+          "comment": "팔레트"
+        },
+        "io_typ": {
+          "type": "VARCHAR(3)",
+          "comment": "IN/OUT/MOV"
+        },
+        "io_dt": {
+          "type": "TIMESTAMP",
+          "comment": ""
+        },
+        "io_qty": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "ref_no": {
+          "type": "VARCHAR(12)",
+          "comment": "출고 근거 번호(일련-일자)"
+        },
+        "wrk_id": {
+          "type": "VARCHAR(6)",
+          "comment": "작업자"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,173 @@
+{
+  "tables": {
+    "LOCATION": {
+      "description": "창고 로케이션 마스터",
+      "primary_key": [
+        "WH_CD",
+        "LOC_CD"
+      ],
+      "columns": {
+        "WH_CD": {
+          "type": "varchar(4)",
+          "comment": "창고 코드"
+        },
+        "LOC_CD": {
+          "type": "varchar(8)",
+          "comment": "로케이션 코드"
+        },
+        "WH_NM": {
+          "type": "varchar(30)",
+          "comment": "창고명"
+        },
+        "ZONE_NM": {
+          "type": "varchar(20)",
+          "comment": "구역명"
+        },
+        "RACK_LEVEL": {
+          "type": "int",
+          "comment": "랙 단수"
+        },
+        "MAX_PALLET": {
+          "type": "int",
+          "comment": "최대 적재 팔레트"
+        },
+        "USE_YN": {
+          "type": "char(1)",
+          "comment": "사용 여부"
+        }
+      }
+    },
+    "INBOUND_RCPT": {
+      "description": "입고 접수",
+      "primary_key": [
+        "RCPT_NO"
+      ],
+      "columns": {
+        "RCPT_NO": {
+          "type": "varchar(12)",
+          "comment": "입고 번호"
+        },
+        "PO_NO": {
+          "type": "varchar(9)",
+          "comment": "구매 오더 번호"
+        },
+        "PO_LINE_NO": {
+          "type": "int",
+          "comment": "구매 오더 라인"
+        },
+        "VENDOR_CD": {
+          "type": "varchar(6)",
+          "comment": "납품처 코드"
+        },
+        "ITEM_CD": {
+          "type": "varchar(12)",
+          "comment": "품목 코드"
+        },
+        "RCPT_QTY": {
+          "type": "int",
+          "comment": "입고 수량"
+        },
+        "RCPT_DT": {
+          "type": "date",
+          "comment": "입고일"
+        },
+        "DOCK_NO": {
+          "type": "int",
+          "comment": "하역 도크 번호"
+        },
+        "INSP_RESULT": {
+          "type": "varchar(10)",
+          "comment": "입고 검사 결과"
+        }
+      }
+    },
+    "LOT_STOCK": {
+      "description": "로트별 재고",
+      "primary_key": [
+        "LOT_NO"
+      ],
+      "columns": {
+        "LOT_NO": {
+          "type": "varchar(12)",
+          "comment": "로트 번호"
+        },
+        "RCPT_NO": {
+          "type": "varchar(12)",
+          "comment": "입고 번호"
+        },
+        "ITEM_CD": {
+          "type": "varchar(12)",
+          "comment": "품목 코드"
+        },
+        "WH_CD": {
+          "type": "varchar(4)",
+          "comment": "창고 코드"
+        },
+        "LOC_CD": {
+          "type": "varchar(8)",
+          "comment": "로케이션 코드"
+        },
+        "ONHAND_QTY": {
+          "type": "int",
+          "comment": "현재고 수량"
+        },
+        "EXP_DATE": {
+          "type": "date",
+          "comment": "유통기한 만료일"
+        },
+        "QC_GRADE": {
+          "type": "int",
+          "comment": "품질 판정 등급(1~5)"
+        },
+        "HOLD_YN": {
+          "type": "char(1)",
+          "comment": "출고 보류 여부"
+        }
+      }
+    },
+    "OUTBOUND_PICK": {
+      "description": "출고 피킹 실적",
+      "primary_key": [
+        "PICK_NO"
+      ],
+      "columns": {
+        "PICK_NO": {
+          "type": "varchar(8)",
+          "comment": "피킹 번호"
+        },
+        "SHIP_ORD_NO": {
+          "type": "char(12)",
+          "comment": "출하 오더 번호"
+        },
+        "PICK_SEQ": {
+          "type": "int",
+          "comment": "피킹 순번"
+        },
+        "LOT_NO": {
+          "type": "varchar(12)",
+          "comment": "피킹 로트"
+        },
+        "FROM_WH_CD": {
+          "type": "varchar(4)",
+          "comment": "피킹 창고"
+        },
+        "FROM_LOC_CD": {
+          "type": "varchar(8)",
+          "comment": "피킹 로케이션"
+        },
+        "PICK_QTY": {
+          "type": "int",
+          "comment": "피킹 수량"
+        },
+        "PICK_DTTM": {
+          "type": "timestamp",
+          "comment": "피킹 일시"
+        },
+        "PICKER_NM": {
+          "type": "varchar(20)",
+          "comment": "작업자"
+        }
+      }
+    }
+  }
+}
