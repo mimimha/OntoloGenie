@@ -2,6 +2,8 @@ package com.axcore.platform.ontology.repository;
 
 import com.axcore.platform.ontology.domain.LinkType;
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -13,6 +15,9 @@ import org.springframework.data.repository.query.Param;
 public interface LinkTypeRepository extends JpaRepository<LinkType, Long> {
 
     boolean existsByCode(String code);
+
+    List<LinkType> findBySourceTypeIdInOrTargetTypeIdIn(
+            Collection<Long> sourceTypeIds, Collection<Long> targetTypeIds);
 
     /** 코드·이름이 pattern(ILIKE)과 맞고 양 끝 유형 조건(null이면 무시)에 맞는 관계 유형. 등록 순서로 돌려준다 (API 030). */
     @Query(
