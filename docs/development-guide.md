@@ -869,7 +869,12 @@ AI가 생성한 객체 유형이나 연결 규칙은 곧바로 활성 데이터�
   - 실패 이유를 화면에 보여 주려면 `QueuedJobFailure`를 던진다. 다른 예외는 일반 문구로 남기고 자세한 내용은 서버 로그에만 쓴다.
   - 감사 기록 결과 줄(SYSTEM + BATCH)은 `QueuedJobRunner`가 남긴다. Handler가 따로 남기지 않는다.
 - 큰 작업(첫 적재, 테이블 전체 다시 읽기)은 Spring Batch Job으로 만들고, Handler의 `run`에서 그 Job을 시작한다. 실패하면 마지막으로 커밋한 청크 다음부터 이어서 실행한다. 업무 상태는 `sync_run`에 두고, Spring Batch 실행 기록 테이블(`batch_*`)은 화면과 API에서 읽지 않는다.
-- 멈춘 작업(RUNNING인 채로 남은 행)의 정리는 heartbeat 작업(S15P31C106-218)에서 한다.
+- 멈춘 작업 정리(S15P31C106-218). 배치가 죽거나 멈추면 행이 RUNNING으로 남고, 대기·실행 중 유일 조건 때문에 같은 대상을 다시 넣을 수 없다.
+  - heartbeat: `QueuedJobRunner`가 heartbeat 칸이 있는 표(`sync_run`)의 `run`이 도는 동안 스케줄러 스레드로 `axcore.batch.timeout.heartbeat`(기본 30초)마다 `heartbeat_at`을 올린다. `complete`는 실행 행을 잠그므로 그동안은 올리지 않는다. Handler가 따로 부를 것은 없다.
+  - 정리: `StaleJobCleanupJob`이 `axcore.batch.timeout-check-delay`(기본 1분)마다 작업 표별 기준이 지난 RUNNING을 `FAILED`(시간 초과 문구)로 바꾼다. `sync_run`은 마지막 heartbeat(없으면 시작 시각)부터 `sync-run`(기본 5분, 11-09 합의), heartbeat 칸이 없는 표는 시작 시각부터 `source-check`·`source-preview`(10분)·`check-run`(30분)을 잰다. 이 셋은 시간 초과 기준(U3)이 정해지기 전 임시값이다.
+  - 정리할 때 `QueuedJobHandler.failed`로 딸린 행(`sync_run_resource`)도 끝내고, 감사 기록 결과 줄(SYSTEM + BATCH, `reason=TIMEOUT`)을 같은 트랜잭션에 남긴다. 분석 실행(`analysis_run`)은 `AnalysisTimeoutJob`이 따로 정리한다.
+  - 한계: heartbeat는 별도 스레드라 작업 스레드가 쿼리가 아닌 곳에서 멈추면 계속 올라 정리되지 않는다(MVP 한계). 쿼리가 멈추는 경우는 원천 읽기의 `statement_timeout`(5분)이 막는다. 이 5분은 쿼리 하나 기준이라 실행 전체는 5분을 넘을 수 있다.
+- 전체 읽기(SYNC_RUN)는 다른 작업과 다른 주기(`QueuedJobPoller.pollSyncRuns`)에서 한 번에 1건만 처리한다. 스케줄러 스레드 풀(`spring.task.scheduling.pool.size`, batch 6)이 주기 작업을 나눠 맡으므로 전체 읽기가 도는 동안에도 연결 검사·정합성 검사·정리 작업이 돈다. 주기 작업을 더하면 풀 크기도 함께 본다.
 
 ---
 
