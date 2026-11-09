@@ -22,4 +22,13 @@ public class DataAccessPolicy {
         boolean admin = RoleCode.ADMIN.name().equals(actor.roleCode());
         return new DataAccess(dataScopeRepository.findAll(actor.roleCode(), admin));
     }
+
+    /**
+     * 내부 서비스 토큰으로 부른 요청의 범위. 모든 유형과 민감 속성을 본다. 지금 내부 API를 부르는 곳은 AI 분석(FastAPI)뿐이고, 분석은 ADMIN만 요청할
+     * 수 있어 ADMIN 범위와 같게 둔다(API 043). 사용자를 대신해 부르는 내부 호출이 생기면 그 사용자의 {@link #of}를 쓴다.
+     */
+    @Transactional(readOnly = true)
+    public DataAccess internalService() {
+        return new DataAccess(dataScopeRepository.findAll(RoleCode.ADMIN.name(), true));
+    }
 }
