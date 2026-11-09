@@ -11,11 +11,13 @@ import java.util.regex.Pattern;
  */
 public record FullLoad(String snapshot, long syncRunId) {
 
-    private static final Pattern SNAPSHOT = Pattern.compile("\\d+:\\d+:(\\d+(,\\d+)*)?");
+    // 소유 수량자(++, *+)로 되짚기와 묶음 반복의 재귀를 없앤다. 진행 중 트랜잭션 목록이 아주 길어도 스택이 넘치지 않는다.
+    private static final Pattern SNAPSHOT_FORMAT =
+            Pattern.compile("\\d++:\\d++:(?:\\d++(?:,\\d++)*+)?");
 
     public FullLoad {
         Objects.requireNonNull(snapshot, "snapshot");
-        if (!SNAPSHOT.matcher(snapshot).matches()) {
+        if (!SNAPSHOT_FORMAT.matcher(snapshot).matches()) {
             throw new IllegalArgumentException("스냅샷 형식이 아닙니다: " + snapshot);
         }
         if (syncRunId < 1) {
