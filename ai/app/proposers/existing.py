@@ -6,13 +6,23 @@
 
 - 객체 유형 묶음: 같은 코드의 객체 유형이 있고 묶음의 속성이 모두 이미 있으면 뺀다. 새 속성이 있으면
   (예: CDC로 추가된 납기일 컬럼) 그대로 보내고 제안 이유에 이미 있는 유형과 새 속성을 적는다.
-- 연결 규칙 묶음: 같은 코드의 ACTIVE 규칙이 같은 속성끼리 비교하면 뺀다. 관계 유형만 같으면 보내고 이유에 적는다.
+- 연결 규칙 묶음: 같은 코드의 ACTIVE 규칙이 같은 속성끼리 같은 변환(출발·도착 변환 단계, 비교 연산)으로 비교하면 뺀다.
+  속성이나 변환이 다르면(예: 0 채우기 자릿수가 바뀜) 보내고 이유에 적는다. 관계 유형만 같아도 보내고 이유에 적는다.
 - 따로 보내는 관계 유형: 같은 코드가 있으면 뺀다.
 - 문서 연결 등 나머지는 그대로 보낸다.
 
 과거 승인·거절 결정(같은 내용이 거절된 후보 거르기)은 백엔드가 주는 API가 아직 없어 하지 않는다.
+
+재분석 비교(S15P31C106-170, FN-AIP-06): 재분석(REANALYSIS)이면 같은 비교 결과로 evidence.changeType을 붙인다.
+백엔드가 이전 후보를 주는 API가 없어 비교 기준은 '이전 후보'가 아니라 '이미 확정된 모델(043)'이다.
+- ADDED: 모델에 없는 객체 유형·관계 유형·규칙 코드(이미 있는 관계 유형에 새 규칙도 ADDED)
+- CHANGED: 같은 코드가 있는데 새 속성이 생겼거나 규칙의 속성·변환이 다름
+- UNCHANGED: 모델과 같아서 보내지 않음(개수만 결과 요약에)
+- 문서 연결(DOCUMENT_LINK)은 모델 정의가 아니라 비교하지 않는다.
+이전 후보를 받게 되면 app/proposers/reanalysis.py 방식(후보 ID·지문 비교)으로 바꾼다.
 """
 
+import json
 from dataclasses import dataclass, field
 
 
@@ -21,8 +31,27 @@ class Existing:
     # 객체 유형 코드 → 속성 코드들
     types: dict[str, set[str]] = field(default_factory=dict)
     link_types: set[str] = field(default_factory=set)
-    # 규칙 코드 → 비교하는 (출발 속성, 도착 속성) 쌍들. 속성은 '객체유형코드.속성코드'
+    # 규칙 코드 → 조건들 (출발 속성, 도착 속성, 연산, 출발 변환, 도착 변환). 속성은 '객체유형코드.속성코드'
     rules: dict[str, frozenset] = field(default_factory=dict)
+
+
+def _steps(steps) -> tuple:
+    """변환 단계 목록을 비교할 수 있는 값으로. 값 순서와 무관하게 op·arg만 본다."""
+    return tuple(
+        (s.get("op"), json.dumps(s.get("arg"), ensure_ascii=False, sort_keys=True))
+        for s in steps or []
+        if isinstance(s, dict)
+    )
+
+
+def _condition(source, target, condition: dict) -> tuple:
+    return (
+        source,
+        target,
+        condition.get("operator") or "EQ",
+        _steps(condition.get("sourceTransforms")),
+        _steps(condition.get("targetTransforms")),
+    )
 
 
 def existing_index(summary: dict) -> Existing:
@@ -39,9 +68,10 @@ def existing_index(summary: dict) -> Existing:
     }
     for rule in summary.get("activeRules") or []:
         pairs = frozenset(
-            (
+            _condition(
                 prop_refs.get(c.get("sourcePropertyId")),
                 prop_refs.get(c.get("targetPropertyId")),
+                c,
             )
             for c in rule.get("conditions") or []
         )
@@ -56,10 +86,29 @@ def _note(proposal: dict, text: str) -> dict:
     return {**proposal, "evidence": evidence}
 
 
+def _mark(proposal: dict, change: str) -> dict:
+    return {**proposal, "evidence": {**proposal["evidence"], "changeType": change}}
+
+
+COMPARED = ("OBJECT_TYPE", "LINK_RULE", "LINK_TYPE")
+
+
+def change_counts(proposals: list[dict], skipped: dict[str, int]) -> dict[str, int]:
+    """재분석 결과 요약용 ADDED·CHANGED·UNCHANGED 수. UNCHANGED는 보내지 않은 수다."""
+    counts = {"ADDED": 0, "CHANGED": 0, "UNCHANGED": sum(skipped.values())}
+    for p in proposals:
+        change = (p.get("evidence") or {}).get("changeType")
+        if change in counts:
+            counts[change] += 1
+    return counts
+
+
 def filter_existing(
-    proposals: list[dict], summary: dict | None
+    proposals: list[dict], summary: dict | None, mark_changes: bool = False
 ) -> tuple[list[dict], dict[str, int]]:
-    """(보낼 후보, 종류별로 뺀 수). 모델 요약이 없거나 비면 그대로 돌려준다."""
+    """(보낼 후보, 종류별로 뺀 수). 모델 요약이 없거나 비면 그대로 돌려준다.
+
+    mark_changes(재분석)이면 비교한 후보에 evidence.changeType(ADDED·CHANGED)을 붙인다."""
     skipped = {"objectTypes": 0, "linkRules": 0, "linkTypes": 0}
     if not summary:
         return proposals, skipped
@@ -68,19 +117,21 @@ def filter_existing(
     for p in proposals:
         kind, payload = p.get("itemKind"), p.get("payload") or {}
         code = payload.get("code")
+        change = "ADDED"
         if kind == "OBJECT_TYPE" and code in index.types:
             props = {q.get("code") for q in payload.get("properties") or []}
             new = sorted(props - index.types[code])
             if not new:
                 skipped["objectTypes"] += 1
                 continue
+            change = "CHANGED"
             p = _note(
                 p,
                 f"이미 등록된 객체 유형({code})입니다. 새로 제안하는 속성: {', '.join(new)}.",
             )
         elif kind == "LINK_RULE":
             pairs = frozenset(
-                (c.get("sourceProperty"), c.get("targetProperty"))
+                _condition(c.get("sourceProperty"), c.get("targetProperty"), c)
                 for c in payload.get("conditions") or []
             )
             if index.rules.get(code) == pairs:
@@ -88,8 +139,10 @@ def filter_existing(
                 continue
             link_code = (payload.get("linkType") or {}).get("code")
             if code in index.rules:
+                change = "CHANGED"
                 p = _note(
-                    p, f"같은 코드의 쓰고 있는 규칙({code})과 비교하는 속성이 다릅니다."
+                    p,
+                    f"같은 코드의 쓰고 있는 규칙({code})과 비교하는 속성이나 변환이 다릅니다.",
                 )
             elif link_code in index.link_types:
                 p = _note(
@@ -98,5 +151,7 @@ def filter_existing(
         elif kind == "LINK_TYPE" and code in index.link_types:
             skipped["linkTypes"] += 1
             continue
+        if mark_changes and kind in COMPARED:
+            p = _mark(p, change)
         kept.append(p)
     return kept, skipped
