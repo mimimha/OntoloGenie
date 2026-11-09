@@ -3,6 +3,7 @@ package com.axcore.platform.source.repository;
 import com.axcore.platform.source.domain.RecoveryReason;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -126,6 +127,88 @@ public class CdcConsumerRepository {
                         where topic = :topic and partition_no = :partition
                         """)
                 .param("reason", reason.name())
+                .param("topic", topic)
+                .param("partition", PARTITION)
+                .update();
+    }
+
+    /**
+     * 원천의 소비 상태(잠그지 않음). 소비 루프가 시작 위치를 잡을 때 쓴다(198-6). JdbcClient: Entity가 없는 {@code cdc_offset}(기존
+     * 방식).
+     */
+    public Optional<OffsetState> findState(String topic) {
+        return jdbc.sql(
+                        """
+                        select data_source_id, next_offset, last_txid::text as last_txid, recovery_reason
+                        from cdc_offset where topic = :topic and partition_no = :partition
+                        """)
+                .param("topic", topic)
+                .param("partition", PARTITION)
+                .query(
+                        (rs, row) -> {
+                            String txid = rs.getString("last_txid");
+                            String reason = rs.getString("recovery_reason");
+                            return new OffsetState(
+                                    rs.getLong("data_source_id"),
+                                    rs.getLong("next_offset"),
+                                    txid == null ? null : Long.parseLong(txid),
+                                    reason == null ? null : RecoveryReason.valueOf(reason));
+                        })
+                .optional();
+    }
+
+    /**
+     * 처음 소비하는 원천의 상태 행을 만든다(다음 위치 = 토픽의 첫 위치). 이미 있으면 그대로 둔다. JdbcClient: 조건부 insert({@code ON
+     * CONFLICT DO NOTHING}).
+     */
+    public void ensureOffset(long dataSourceId, String topic, long startOffset) {
+        jdbc.sql(
+                        """
+                        insert into cdc_offset (topic, partition_no, data_source_id, next_offset)
+                        values (:topic, :partition, :source, :start)
+                        on conflict (topic, partition_no) do nothing
+                        """)
+                .param("topic", topic)
+                .param("partition", PARTITION)
+                .param("source", dataSourceId)
+                .param("start", startOffset)
+                .update();
+    }
+
+    /**
+     * 메시지를 받았다(198-6). 마지막 메시지 시각을 남기고 수집 정상 여부를 바꾼다. 복구가 필요한 원천은 정상으로 바꾸지 않는다(CHECK). JdbcClient:
+     * Entity가 없는 {@code cdc_offset}(기존 방식).
+     *
+     * @param advanceTo 트랜잭션 밖 heartbeat면 그 다음 위치. 위치는 앞으로만 간다. 옮기지 않으면 null
+     * @param healthy 처리 지연이 기준 안이면 true(정상이 된 시각을 처음 한 번만 남김), 아니면 false(비정상)
+     */
+    public void recordMessage(String topic, Instant receivedAt, Long advanceTo, boolean healthy) {
+        jdbc.sql(
+                        """
+                        update cdc_offset
+                        set last_message_at = cast(:at as timestamptz),
+                            next_offset = case when recovery_reason is null and cast(:advance as bigint) > next_offset
+                                               then cast(:advance as bigint) else next_offset end,
+                            healthy_since = case when recovery_reason is not null or not :healthy then null
+                                                 else coalesce(healthy_since, now()) end,
+                            updated_at = now()
+                        where topic = :topic and partition_no = :partition
+                        """)
+                .param("at", Timestamp.from(receivedAt))
+                .param("advance", advanceTo)
+                .param("healthy", healthy)
+                .param("topic", topic)
+                .param("partition", PARTITION)
+                .update();
+    }
+
+    /** 메시지가 오래 오지 않아 수집 비정상으로 본다(198-6). JdbcClient: Entity가 없는 {@code cdc_offset}(기존 방식). */
+    public void markUnhealthy(String topic) {
+        jdbc.sql(
+                        """
+                        update cdc_offset set healthy_since = null, updated_at = now()
+                        where topic = :topic and partition_no = :partition and healthy_since is not null
+                        """)
                 .param("topic", topic)
                 .param("partition", PARTITION)
                 .update();

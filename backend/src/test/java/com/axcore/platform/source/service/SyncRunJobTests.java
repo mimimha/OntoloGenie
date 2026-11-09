@@ -10,6 +10,7 @@ import com.axcore.platform.batch.service.QueuedJobRunner;
 import com.axcore.platform.ontology.domain.SourceChange;
 import com.axcore.platform.ontology.domain.SyncedObject;
 import com.axcore.platform.ontology.service.ObjectSyncService;
+import com.axcore.platform.source.cdc.CdcStartReference;
 import com.axcore.platform.source.domain.CredentialPurpose;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -57,6 +58,7 @@ class SyncRunJobTests {
     @Autowired SourceConnectionCheckJob connectionCheckJob;
     @Autowired SourceCredentialService credentialService;
     @Autowired ObjectSyncService objectSyncService;
+    @Autowired CdcStartReference startReference;
     @Autowired JdbcClient jdbc;
     @Autowired JsonMapper json;
     @Autowired PlatformTransactionManager transactionManager;
@@ -614,6 +616,21 @@ class SyncRunJobTests {
                 .param("t", linkType)
                 .query(String.class)
                 .list();
+    }
+
+    /** CDC를 처음 소비할 때의 epoch 기준값은 원천의 xmax를 SYNC 계정으로 읽는다(198-6). 원천에 쓰지 않는다. */
+    @Test
+    void startReferenceReadsSourceXmaxWithSyncAccount() {
+        long before =
+                Long.parseLong(
+                        jdbc.sql("select pg_snapshot_xmax(pg_current_snapshot())::text")
+                                .query(String.class)
+                                .single());
+
+        long xmax = startReference.read(sourceId);
+
+        // 시험 원천은 같은 컨테이너다. 읽는 사이 다른 트랜잭션이 번호를 받을 수 있어 범위로 본다
+        assertThat(xmax).isBetween(before, before + 1_000);
     }
 
     private long resourceId(String key) {

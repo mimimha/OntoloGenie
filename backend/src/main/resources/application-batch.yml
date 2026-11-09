@@ -14,3 +14,21 @@ axcore:
   batch:
     # 작업 표에서 QUEUED 행을 확인하는 간격(QueuedJobPoller). 한 번에 작업 종류마다 최대 20건을 처리한다.
     poll-delay: 2s
+  # CDC 소비 루프(198-6). 원천 토픽({data_source.code}.all)마다 전용 스레드의 KafkaConsumer가 cdc_offset 위치부터 읽는다.
+  # 켜는 것은 배포 설정(AXCORE_CDC_CONSUMER_ENABLED)으로 한다. 꺼져 있으면 소비자를 하나도 띄우지 않는다.
+  cdc:
+    consumer:
+      enabled: ${AXCORE_CDC_CONSUMER_ENABLED:false}
+      # 배치·backend와 Kafka는 같은 axcore-net에 있다(infra/cdc/compose.yaml).
+      bootstrap-servers: ${AXCORE_CDC_BOOTSTRAP_SERVERS:kafka:9092}
+      poll-timeout: 1s
+      # 원천 트랜잭션 하나의 변경 수 상한. 넘으면 그 원천을 복구(TRANSACTION_TOO_LARGE)로 돌린다.
+      max-events: 50000
+      # 받은 메시지의 시각(heartbeat·변경 처리 시각)보다 이만큼 늦게 처리하면 수집 비정상(healthy_since = NULL)으로 본다.
+      max-lag: 2m
+      # 커넥터 heartbeat(60초)가 이만큼 없으면 수집 비정상으로 본다.
+      stale-after: 3m
+      # 처리 장애 뒤 같은 위치부터 다시 시도하기까지 기다리는 시간.
+      retry-delay: 5s
+      # 소비할 원천(CDC 표가 있는 원천)을 다시 찾는 간격, 복구 중인 원천이 풀렸는지 확인하는 간격.
+      refresh-interval: 30s
