@@ -218,7 +218,7 @@ class DebeziumRowDecoderParityTests {
         List<PropertyPlan> properties = new ArrayList<>();
         long id = 1;
         for (String column : columns.get(table)) {
-            properties.add(new PropertyPlan(id++, 0, column, type, 0, column, List.of()));
+            properties.add(new PropertyPlan(id, 0, id++, column, type, 0, column, List.of()));
         }
         return new MappingPlan(1, 0, 1, 0, KEYS.get(table), "code", properties);
     }

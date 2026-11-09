@@ -4,9 +4,11 @@ import com.axcore.platform.ontology.domain.FullLoad;
 import com.axcore.platform.ontology.domain.SourceChange;
 import com.axcore.platform.ontology.domain.SyncedObject;
 import com.axcore.platform.ontology.repository.ObjectSyncRepository;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -29,9 +31,28 @@ public class ObjectSyncService {
     /** CDC 추가·수정 이벤트. 쓴 객체 ID, 쓰지 않았으면(이미 적재값에 있음·재전송) 빈 값. */
     @Transactional(propagation = Propagation.MANDATORY)
     public Optional<Long> applyChange(SyncedObject object, SourceChange change) {
+        return applyChange(object, change, Set.of());
+    }
+
+    /**
+     * CDC 추가·수정 이벤트. 값을 받지 못한 속성(변경되지 않은 TOAST 값)은 기존 값을 유지한다(결정 문서 10.2). 객체가 아직 없으면 그 속성 없이 만든다.
+     * 그때는 부르는 쪽(198-5)이 그 테이블을 다시 읽기 대상으로 표시한다.
+     *
+     * @param keepPropertyCodes 기존 값을 유지할 속성 코드
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<Long> applyChange(
+            SyncedObject object, SourceChange change, Set<String> keepPropertyCodes) {
         Objects.requireNonNull(object, "object");
         Objects.requireNonNull(change, "change");
-        return repository.upsertChange(object, change);
+        Objects.requireNonNull(keepPropertyCodes, "keepPropertyCodes");
+        return repository.upsertChange(object, change, keepPropertyCodes);
+    }
+
+    /** 그 매핑·원천 키의 객체가 있는가(상태 무관). */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean exists(long mappingId, Map<String, Object> sourceKey) {
+        return repository.exists(mappingId, sourceKey);
     }
 
     /**
@@ -44,7 +65,7 @@ public class ObjectSyncService {
         Objects.requireNonNull(sourceKey, "sourceKey");
         Objects.requireNonNull(change, "change");
         repository.lockResourceForChange(sourceResourceId);
-        int marked = repository.markDeletedByChange(sourceResourceId, sourceKey, change);
+        List<Long> marked = repository.markDeletedByChange(sourceResourceId, sourceKey, change);
         if (!repository.hasMappingWithoutObject(sourceResourceId, sourceKey)) {
             return new DeleteResult(marked, false);
         }
@@ -75,10 +96,20 @@ public class ObjectSyncService {
     }
 
     /**
-     * @param objectsMarked 삭제 표시한 객체 수
+     * @param markedObjectIds 삭제 표시한 객체 ID(연결 재계산 대상)
      * @param markRecorded 그 행의 객체가 없는 매핑이 있어 삭제 흔적을 남겼는지
      */
-    public record DeleteResult(int objectsMarked, boolean markRecorded) {}
+    public record DeleteResult(List<Long> markedObjectIds, boolean markRecorded) {
+
+        public DeleteResult {
+            markedObjectIds = List.copyOf(markedObjectIds);
+        }
+
+        /** 삭제 표시한 객체 수. */
+        public int objectsMarked() {
+            return markedObjectIds.size();
+        }
+    }
 
     /**
      * @param objectsMarkedMissing 이번 읽기에 나오지 않아 삭제 표시한 객체 수

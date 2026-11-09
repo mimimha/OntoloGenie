@@ -3,8 +3,10 @@ package com.axcore.platform.ontology.repository;
 import com.axcore.platform.ontology.domain.FullLoad;
 import com.axcore.platform.ontology.domain.SourceChange;
 import com.axcore.platform.ontology.domain.SyncedObject;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -33,23 +35,16 @@ public class ObjectSyncRepository {
     /** 같은 원천 테이블의 전체 읽기 잠금 이름(ERD 9-6 "sync:resource:{id}"). */
     private static final String RESOURCE_LOCK = "sync:resource:";
 
-    /** DO UPDATE 안에서 내용이 바뀌었는지. o는 기존 행, excluded는 넣으려던 행이다. */
-    private static final String CONTENT_CHANGED =
-            "(o.display_name is distinct from excluded.display_name"
-                    + " or o.properties is distinct from excluded.properties"
-                    + " or o.status <> 'ACTIVE')";
+    /**
+     * CDC 이벤트의 새 속성 값. 값을 받지 못한 속성(TOAST, :keep)은 기존 값을 유지한다(결정 문서 10.2). o는 기존 행, excluded는 넣으려던
+     * 행이다.
+     */
+    private static final String CHANGE_PROPERTIES =
+            "(excluded.properties || coalesce((select jsonb_object_agg(k.key, k.value)"
+                    + " from jsonb_each(o.properties) k where k.key = any(:keep)), '{}'::jsonb))";
 
-    /** 내용이 바뀌었을 때만 갱신하는 칸. */
-    private static final String TOUCH_IF_CHANGED =
-            "last_synced_at = case when "
-                    + CONTENT_CHANGED
-                    + " then now() else o.last_synced_at end,"
-                    + " last_sync_run_id = case when "
-                    + CONTENT_CHANGED
-                    + " then excluded.last_sync_run_id else o.last_sync_run_id end,"
-                    + " updated_at = case when "
-                    + CONTENT_CHANGED
-                    + " then now() else o.updated_at end";
+    /** 전체 읽기의 새 속성 값. 읽은 값 그대로다. */
+    private static final String LOADED_PROPERTIES = "excluded.properties";
 
     /** 원천 테이블의 켜진 매핑. 삭제 이벤트에는 원천 키만 있어 이 테이블의 어느 매핑 객체인지 여기서 찾는다. */
     private static final String ACTIVE_MAPPINGS_OF_RESOURCE =
@@ -58,6 +53,28 @@ public class ObjectSyncRepository {
 
     private final JdbcClient jdbc;
     private final JsonMapper json;
+
+    /** DO UPDATE 안에서 내용이 바뀌었는지. */
+    private static String contentChanged(String newProperties) {
+        return "(o.display_name is distinct from excluded.display_name"
+                + " or o.properties is distinct from "
+                + newProperties
+                + " or o.status <> 'ACTIVE')";
+    }
+
+    /** 내용이 바뀌었을 때만 갱신하는 칸. */
+    private static String touchIfChanged(String newProperties) {
+        String changed = contentChanged(newProperties);
+        return "last_synced_at = case when "
+                + changed
+                + " then now() else o.last_synced_at end,"
+                + " last_sync_run_id = case when "
+                + changed
+                + " then excluded.last_sync_run_id else o.last_sync_run_id end,"
+                + " updated_at = case when "
+                + changed
+                + " then now() else o.updated_at end";
+    }
 
     /** 전체 읽기 쓰기 동안 같은 테이블의 삭제 흔적 기록을 막는다(트랜잭션 끝까지). */
     public void lockResourceForLoad(long sourceResourceId) {
@@ -75,8 +92,13 @@ public class ObjectSyncRepository {
                 .singleRow();
     }
 
-    /** CDC 추가·수정 이벤트를 객체에 쓴다. 쓰지 않았으면(이미 적재값에 있음·재전송) 빈 값이다. */
-    public Optional<Long> upsertChange(SyncedObject object, SourceChange change) {
+    /**
+     * CDC 추가·수정 이벤트를 객체에 쓴다. 쓰지 않았으면(이미 적재값에 있음·재전송) 빈 값이다.
+     *
+     * @param keepPropertyCodes 값을 받지 못해 기존 값을 유지할 속성(TOAST). 객체가 없으면 그 속성 없이 만든다
+     */
+    public Optional<Long> upsertChange(
+            SyncedObject object, SourceChange change, Set<String> keepPropertyCodes) {
         return jdbc.sql(
                         """
                         insert into object_instance as o
@@ -87,12 +109,14 @@ public class ObjectSyncRepository {
                         on conflict (source_mapping_id, source_key) where source_mapping_id is not null
                         do update set
                             display_name = excluded.display_name,
-                            properties = excluded.properties,
                             status = 'ACTIVE',
                             source_txid = excluded.source_txid,
                             source_lsn = excluded.source_lsn,
                         """
-                                + TOUCH_IF_CHANGED
+                                + "properties = "
+                                + CHANGE_PROPERTIES
+                                + ", "
+                                + touchIfChanged(CHANGE_PROPERTIES)
                                 + """
 
                         where not (o.loaded_snapshot is not null
@@ -108,12 +132,27 @@ public class ObjectSyncRepository {
                 .param("txid", change.transactionId())
                 .param("lsn", change.lsn())
                 .param("run", change.syncRunId())
+                .param("keep", keepPropertyCodes.toArray(String[]::new))
                 .query(Long.class)
                 .optional();
     }
 
-    /** CDC 삭제 이벤트로 그 원천 행의 객체(켜진 매핑마다)를 삭제 표시한다. 바꾼 객체 수를 돌려준다. */
-    public int markDeletedByChange(
+    /** 그 매핑·원천 키의 객체가 있는가(상태 무관). */
+    public boolean exists(long mappingId, Map<String, Object> sourceKey) {
+        return jdbc.sql(
+                        """
+                        select exists (select 1 from object_instance
+                                       where source_mapping_id = :mapping
+                                         and source_key = cast(:key as jsonb))
+                        """)
+                .param("mapping", mappingId)
+                .param("key", toJson(sourceKey))
+                .query(Boolean.class)
+                .single();
+    }
+
+    /** CDC 삭제 이벤트로 그 원천 행의 객체(켜진 매핑마다)를 삭제 표시한다. 바꾼 객체 ID를 돌려준다. */
+    public List<Long> markDeletedByChange(
             long sourceResourceId, Map<String, Object> sourceKey, SourceChange change) {
         return jdbc.sql(
                         """
@@ -137,13 +176,15 @@ public class ObjectSyncRepository {
                                    and pg_visible_in_snapshot(cast(cast(:txid as text) as xid8),
                                                               o.loaded_snapshot))
                           and (o.source_lsn is null or o.source_lsn < :lsn)
+                        returning o.id
                         """)
                 .param("resource", sourceResourceId)
                 .param("key", toJson(sourceKey))
                 .param("txid", change.transactionId())
                 .param("lsn", change.lsn())
                 .param("run", change.syncRunId())
-                .update();
+                .query(Long.class)
+                .list();
     }
 
     /**
@@ -214,7 +255,7 @@ public class ObjectSyncRepository {
                             loaded_snapshot = excluded.loaded_snapshot,
                             loaded_gen = excluded.loaded_gen,
                         """
-                                + TOUCH_IF_CHANGED
+                                + touchIfChanged(LOADED_PROPERTIES)
                                 + """
 
                         where (o.source_txid is null

@@ -146,6 +146,7 @@ public class FullLoadPlanner {
         return new PropertyPlan(
                 mapping.getId(),
                 mapping.getRowVersion(),
+                property.getId(),
                 property.getCode(),
                 property.getDataType(),
                 property.getRowVersion(),

@@ -7,6 +7,7 @@ import com.axcore.platform.TestcontainersConfiguration;
 import com.axcore.platform.ontology.domain.FullLoad;
 import com.axcore.platform.ontology.domain.SourceChange;
 import com.axcore.platform.ontology.domain.SyncedObject;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -194,12 +195,12 @@ class ObjectSyncServiceTests {
 
         ObjectSyncService.DeleteResult older =
                 service.applyDelete(resourceId, Map.of("id", 1), change(50, 5));
-        assertThat(older).isEqualTo(new ObjectSyncService.DeleteResult(0, false));
+        assertThat(older).isEqualTo(new ObjectSyncService.DeleteResult(List.of(), false));
         assertThat(status(id)).isEqualTo("ACTIVE");
 
         ObjectSyncService.DeleteResult newer =
                 service.applyDelete(resourceId, Map.of("id", 1), change(150, 6));
-        assertThat(newer).isEqualTo(new ObjectSyncService.DeleteResult(1, false));
+        assertThat(newer).isEqualTo(new ObjectSyncService.DeleteResult(List.of(id), false));
         assertThat(status(id)).isEqualTo("DELETED_AT_SOURCE");
         assertThat(countMarks()).isZero();
     }
@@ -238,7 +239,7 @@ class ObjectSyncServiceTests {
         ObjectSyncService.DeleteResult result =
                 service.applyDelete(resourceId, Map.of("id", 1), change(150, 5));
 
-        assertThat(result).isEqualTo(new ObjectSyncService.DeleteResult(1, true));
+        assertThat(result).isEqualTo(new ObjectSyncService.DeleteResult(List.of(objectOfA), true));
         assertThat(status(objectOfA)).isEqualTo("DELETED_AT_SOURCE");
         // 삭제 전에 읽은 매핑 B의 적재가 늦게 와도 지운 행을 만들지 않는다
         SyncedObject rowForB =

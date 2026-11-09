@@ -7,6 +7,8 @@ import com.axcore.platform.ontology.domain.PropertyDataType;
 import com.axcore.platform.ontology.domain.SyncedObject;
 import com.axcore.platform.source.domain.FullLoadPlan.MappingPlan;
 import com.axcore.platform.source.domain.FullLoadPlan.PropertyPlan;
+import com.axcore.platform.source.domain.LoadFailure;
+import com.axcore.platform.source.domain.LoadFailure.Reason;
 import com.axcore.platform.source.domain.SourceRow;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -16,9 +18,12 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
@@ -57,26 +62,57 @@ public class SourceRowConverter {
 
     /** 원천 키가 비어 있으면 object가 null이다. */
     public Conversion convert(long resourceId, MappingPlan mapping, SourceRow row) {
+        return convert(resourceId, mapping, row, Set.of(), Set.of());
+    }
+
+    /**
+     * CDC(198-5)용. 값을 받지 못한 컬럼을 구분한다.
+     *
+     * @param unavailableColumns 변경되지 않은 TOAST 값이라 받지 못한 컬럼. 그 속성은 빼고 {@link
+     *     Conversion#keptPropertyCodes()}로 알린다(기존 값 유지)
+     * @param unsupportedColumns 원천 형식을 해석하지 못한 컬럼. 키면 객체를 만들지 않고, 속성이면 그 속성만 빼고 실패로 남긴다
+     */
+    public Conversion convert(
+            long resourceId,
+            MappingPlan mapping,
+            SourceRow row,
+            Set<String> unavailableColumns,
+            Set<String> unsupportedColumns) {
         Map<String, Object> sourceKey = new LinkedHashMap<>();
         for (String column : mapping.keyColumns()) {
+            if (unsupportedColumns.contains(column)) {
+                return Conversion.keyFailure(LoadFailure.key(column, Reason.KEY_UNSUPPORTED));
+            }
             String text = row.keyTexts().get(column);
             if (text == null) {
-                return new Conversion(null, 0);
+                return Conversion.keyFailure(LoadFailure.key(column, Reason.KEY_MISSING));
             }
             sourceKey.put(column, text);
         }
         Map<String, Object> properties = new LinkedHashMap<>();
-        int failedValues = 0;
+        List<LoadFailure> failures = new ArrayList<>();
+        Set<String> kept = new LinkedHashSet<>();
         for (PropertyPlan property : mapping.properties()) {
+            String column = property.columnName();
+            if (unavailableColumns.contains(column)) {
+                kept.add(property.propertyCode());
+                continue;
+            }
+            if (unsupportedColumns.contains(column)) {
+                failures.add(
+                        LoadFailure.value(
+                                column, property.propertyDefinitionId(), Reason.UNSUPPORTED_TYPE));
+                continue;
+            }
             try {
                 properties.put(
                         property.propertyCode(),
                         propertyValue(
-                                row.values().get(property.columnName()),
-                                property.steps(),
-                                property.dataType()));
+                                row.values().get(column), property.steps(), property.dataType()));
             } catch (ConversionException e) {
-                failedValues++;
+                failures.add(
+                        LoadFailure.value(
+                                column, property.propertyDefinitionId(), Reason.VALUE_CONVERSION));
             }
         }
         Object display =
@@ -100,7 +136,8 @@ public class SourceRowConverter {
                         sourceKey,
                         displayName,
                         properties),
-                failedValues);
+                failures,
+                kept);
     }
 
     // PostgreSQL varchar(n)은 문자(코드 포인트) 수로 센다. 서로게이트 쌍을 가르지 않는다.
@@ -230,10 +267,27 @@ public class SourceRowConverter {
     }
 
     /**
-     * @param object 만든 객체 값. 원천 키가 비어 있어 만들지 못했으면 null
-     * @param failedValues 자료형으로 바꾸지 못해 뺀 속성 수
+     * @param object 만든 객체 값. 원천 키가 비었거나 해석하지 못해 만들지 못했으면 null
+     * @param failures 데이터 불량. object가 null이면 키 실패 하나다
+     * @param keptPropertyCodes 값을 받지 못해 뺀 속성(TOAST). 저장할 때 기존 값을 유지한다
      */
-    public record Conversion(SyncedObject object, int failedValues) {}
+    public record Conversion(
+            SyncedObject object, List<LoadFailure> failures, Set<String> keptPropertyCodes) {
+
+        public Conversion {
+            failures = List.copyOf(failures);
+            keptPropertyCodes = Set.copyOf(keptPropertyCodes);
+        }
+
+        static Conversion keyFailure(LoadFailure failure) {
+            return new Conversion(null, List.of(failure), Set.of());
+        }
+
+        /** 자료형으로 바꾸지 못해 뺀 속성 수(키 실패 제외). */
+        public int failedValues() {
+            return (int) failures.stream().filter(f -> !f.reason().isKey()).count();
+        }
+    }
 
     /** 값을 속성 자료형으로 바꾸지 못했다. 원천 값을 담지 않는다. */
     static class ConversionException extends RuntimeException {

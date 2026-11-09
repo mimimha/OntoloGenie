@@ -35,8 +35,9 @@
 
 | 메서드 | 부르는 곳 | 하는 일 | 쓰지 않는 경우 |
 |---|---|---|---|
-| `applyChange(object, change)` | 198 `c`·`u` | 객체를 만들거나 바꾼다 | 번호가 객체의 `loaded_snapshot`에서 보임(이미 적재값에 있음), `source_lsn` 이하(재전송) |
-| `applyDelete(resourceId, key, change)` | 198 `d` | 그 원천 행의 객체(켜진 매핑마다)를 `DELETED_AT_SOURCE`로 바꾼다. 켜진 매핑 중 그 행의 객체가 없는 매핑이 있으면 `source_delete_mark`에 흔적도 남긴다(새로 만든 매핑이 아직 적재 전인 경우 포함) | 위와 같음 |
+| `applyChange(object, change[, keep])` | 198 `c`·`u` | 객체를 만들거나 바꾼다. `keep`(속성 코드)은 값을 받지 못한 속성(변경되지 않은 TOAST 값)이라 기존 값을 유지한다. 객체가 없으면 그 속성 없이 만든다(198-5가 그 표를 다시 읽기 대상으로 표시) | 번호가 객체의 `loaded_snapshot`에서 보임(이미 적재값에 있음), `source_lsn` 이하(재전송) |
+| `applyDelete(resourceId, key, change)` | 198 `d` | 그 원천 행의 객체(켜진 매핑마다)를 `DELETED_AT_SOURCE`로 바꾸고 바꾼 객체 ID를 돌려준다(연결 재계산 대상). 켜진 매핑 중 그 행의 객체가 없는 매핑이 있으면 `source_delete_mark`에 흔적도 남긴다(새로 만든 매핑이 아직 적재 전인 경우 포함) | 위와 같음 |
+| `exists(mappingId, key)` | 198 TOAST 처리 | 그 매핑·키의 객체가 있는가(상태 무관) | |
 | `applyLoaded(object, load)` | 197 행마다 | 객체를 만들거나 바꾼다. 값이 같으면 `loaded_snapshot`·`loaded_gen`만 갱신한다 | 객체의 `source_txid`가 스냅샷에서 안 보임(객체가 더 새로움), 옛 세대, 객체가 없는데 스냅샷 뒤에 지워진 흔적이 있음 |
 | `finishLoad(resourceId, mappingId, load)` | 197 매핑마다 끝에서 | 이번 읽기에 안 나온 객체를 삭제 표시하고, 스냅샷에서 보이는 삭제 흔적을 지운다 | 스냅샷 뒤에 CDC로 바뀐 객체는 두고, 옛 세대면 아무것도 안 한다 |
 
@@ -51,4 +52,4 @@
 ## 아직 하지 않은 것
 
 - 객체가 바뀌거나 지워진 뒤의 연결 재계산(U6)은 부르는 쪽(197·198)에서 같은 트랜잭션으로 붙인다.
-- 같은 원천 행이 매핑 여러 개로 객체 여러 개가 되면, 198이 매핑마다 `applyChange`를 부른다(같은 `SourceChange`).
+- 같은 원천 행이 매핑 여러 개로 객체 여러 개가 되면, 198이 매핑마다 `applyChange`를 부른다(같은 `SourceChange`). 198-5(`CdcTransactionApplier`)가 그렇게 한다.
