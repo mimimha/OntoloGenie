@@ -7,7 +7,7 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 | 198-1 | Debezium 값 해석, 197과 같은 정규형 행(`SourceRow`) | 완료, 이 문서 아래 |
 | 198-2 | 메시지 해석·원천 트랜잭션 조립(BEGIN~END) | [cdc-message-contract.md](cdc-message-contract.md) |
 | 198-3 | txId epoch 복원 | 예정 |
-| 198-4 | V12(epoch 기준, 수집 실패 기록 표) | 예정 |
+| 198-4 | V12(원천별 소비 상태, 수집 실패 기록, 확인 대기) | 이 문서 아래 |
 | 198-5 | 원천 트랜잭션 하나 → 플랫폼 트랜잭션 하나 | 예정 |
 | 198-6 | Kafka 소비 루프 | 예정 |
 | 198-7 | 연결 재계산 호출(189) | 예정 |
@@ -48,3 +48,16 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 - 원천 행: `src/test/resources/cdc-parity/typed.sql`(형식 17가지 + 복합 키·날짜 키·시각 키·문자 키 표, 빈 값·NaN·1970년 이전·마이크로초·시간대·이모지 포함)
 - Debezium 쪽: 같은 SQL을 Debezium 3.6.3(서버와 같은 커넥터 설정, 원천 토픽 하나)에 흘려 받은 **실제 메시지** `cdc-parity/debezium-typed-events.jsonl`. SQL을 고치면 메시지도 다시 받는다.
 - 확인: 모든 행의 정규형 값과 키 문자열이 같다. 모든 속성 자료형(STRING~JSON)으로 매핑했을 때 같은 객체가 나오고 변환 실패 수도 같다.
+
+## 198-4 V12 표
+
+`V12__track_cdc_consumer_and_pending_checks.sql`. 표만 만들고, 쓰는 코드는 198-5 이후에 붙인다.
+
+| 표 | 바뀐 것 | 쓰는 곳 |
+|---|---|---|
+| `cdc_offset` | 원천마다 한 행(`{code}.all`, 파티션 0). `last_txid`(epoch 복원 기준값), `last_commit_at`, `last_message_at`, `processing_lag_ms`, `healthy_since`, `recovery_reason`·`recovery_at` 추가 | 198-5가 원천 트랜잭션을 반영하는 같은 트랜잭션에서 쓴다. 복구가 필요하면(`recovery_reason`) `healthy_since`는 NULL(CHECK) |
+| `source_load_failure` | 새 표. 객체로 만들지 못한 행(키 없음·키 형식)과 값 변환 실패. 열린 기록은 같은 실패당 하나이고 횟수만 올린다 | 197·198이 쓴다. issue로 올리지 않는다. 도착 표의 연결 기준 컬럼에 열린 기록이 있으면 미연결 판정 보류 |
+| `link_check_pending` | 새 표. 원천 사이 규칙의 미연결 확인 대기(WAITING → TRANSIENT 또는 PROMOTED) | SYNC 검사(199·241). 승격과 issue 등록은 한 트랜잭션 |
+| `check_run` | `sync_run_id`가 SYNC에서도 선택(`ck_check_run_sync`) | 배치가 모아서 돌리는 SYNC는 `data_basis`로 기준을 남긴다 |
+
+시험은 `DatabaseMigrationTests`(제약마다 정상·거부).
