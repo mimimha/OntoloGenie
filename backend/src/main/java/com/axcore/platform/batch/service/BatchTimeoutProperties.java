@@ -6,8 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * 멈춘 작업 정리 기준(S15P31C106-218). sync_run은 실행 틀이 heartbeat마다 heartbeat_at을 올리고, syncRun 동안 갱신이 없으면 멈춘
- * 것으로 본다. heartbeat 칸이 없는 표는 시작 시각부터 잰다. 시간 초과 기준(U3)은 결정 대기라 sync_run 외에는
- * 임시값이다(application-batch.yml 주석).
+ * 것으로 본다. heartbeat 칸이 없는 표는 시작 시각부터 잰다. 기준(U3)은 2026-11-09에 정했다. 근거는 application-batch.yml 주석에 있다.
  */
 @ConfigurationProperties("axcore.batch.timeout")
 public record BatchTimeoutProperties(

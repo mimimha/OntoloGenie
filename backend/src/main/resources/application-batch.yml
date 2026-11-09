@@ -25,7 +25,7 @@ axcore:
       # 원천 쿼리 하나는 statement_timeout 5분으로 끊기지만 실행 전체는 5분을 넘을 수 있다. heartbeat는 별도 스레드라 영향이 없다.
       heartbeat: 30s
       sync-run: 5m
-      # 아래는 heartbeat 칸이 없어 시작 시각부터 잰다. 시간 초과 기준(U3)이 정해지기 전 임시값이다.
+      # 아래는 heartbeat 칸이 없어 시작 시각부터 잰다. 2026-11-09 이 값으로 정했다(김산이, U3). 실제 소요 시간을 잰 뒤 바꿀 수 있다.
       # 연결 검사·미리보기: 원천 접속 10초, 카탈로그 쿼리 30초, 소켓 60초를 계정 두 개에 써도 몇 분 안에 끝난다.
       source-check: 10m
       source-preview: 10m
