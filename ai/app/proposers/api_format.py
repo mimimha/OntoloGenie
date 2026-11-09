@@ -20,9 +20,15 @@ def camel(name: str) -> str:
     return head + "".join(part[:1].upper() + part[1:] for part in rest)
 
 
+# 키가 아니라 데이터인 칸. MAP_VALUE의 arg는 원천 값 → 바꿀 값 대응표라 원천 값(in_progress)을 그대로 둔다
+DATA_KEYS = {"arg"}
+
+
 def camel_keys(value):
     if isinstance(value, dict):
-        return {camel(k): camel_keys(v) for k, v in value.items()}
+        return {
+            camel(k): v if k in DATA_KEYS else camel_keys(v) for k, v in value.items()
+        }
     if isinstance(value, list):
         return [camel_keys(v) for v in value]
     return value
@@ -239,7 +245,7 @@ def has_snake_keys(value) -> bool:
     """연동 JSON에 snake_case 키가 남았는지 (테스트용)."""
     if isinstance(value, dict):
         return any(SNAKE.search(k) for k in value) or any(
-            has_snake_keys(v) for v in value.values()
+            has_snake_keys(v) for k, v in value.items() if k not in DATA_KEYS
         )
     if isinstance(value, list):
         return any(has_snake_keys(v) for v in value)
