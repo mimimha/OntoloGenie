@@ -8,11 +8,14 @@ from typing import Protocol
 
 from app.config import Settings
 
-# GMS 모델별 토큰당 크레딧 (입력, 출력). luna는 GMS 안내 값이다.
-# sol은 GMS 모델 목록의 등급(luna 1 · 6.1 sol 20)을 같은 비율로 곱한 추정값이라 실제 사용량과 다를 수 있다.
+# GMS 모델별 토큰당 크레딧 (입력, 출력). luna·astra는 GMS 안내 값이다.
+# sol은 GMS 모델 목록의 등급(luna 1 · 6.1 sol 20)을 같은 비율로 곱한 추정값이다. 이 값으로 센 1회 평균(약 121)이
+# GMS 사용량 화면의 실제 1회 평균(118)과 거의 같았다(2026-11-09).
+# 기본 모델은 sol이다. 세 모델 비교에서 astra는 sol과 결과가 같고 크레딧만 5~8배였다(docs/evaluation.md 모델 선정).
 MODEL_CREDITS: dict[str, tuple[float, float]] = {
     "gpt-6-luna": (0.001, 0.005),
     "gpt-6.1-sol": (0.02, 0.1),
+    "gpt-6-astra": (0.1, 0.5),
 }
 INPUT_CREDIT, OUTPUT_CREDIT = MODEL_CREDITS["gpt-6-luna"]
 
