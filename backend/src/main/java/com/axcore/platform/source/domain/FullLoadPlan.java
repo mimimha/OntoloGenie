@@ -51,9 +51,13 @@ public record FullLoadPlan(
         }
     }
 
+    /**
+     * @param propertyDefinitionId 속성 정의. 수집 실패 기록(source_load_failure)에 남긴다
+     */
     public record PropertyPlan(
             long propertyMappingId,
             int rowVersion,
+            long propertyDefinitionId,
             String propertyCode,
             PropertyDataType dataType,
             int propertyVersion,

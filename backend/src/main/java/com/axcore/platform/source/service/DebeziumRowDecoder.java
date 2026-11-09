@@ -200,8 +200,16 @@ public class DebeziumRowDecoder {
     /** 지원하지 않는 원천 형식. 값은 메시지에 넣지 않는다. */
     public static class UnsupportedValueException extends RuntimeException {
 
+        private final String column;
+
         public UnsupportedValueException(String column, String type) {
             super("지원하지 않는 원천 값 형식입니다: %s(%s)".formatted(column, type));
+            this.column = column;
+        }
+
+        /** 해석하지 못한 컬럼. */
+        public String column() {
+            return column;
         }
     }
 }
