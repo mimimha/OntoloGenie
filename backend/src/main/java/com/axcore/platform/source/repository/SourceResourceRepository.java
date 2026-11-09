@@ -23,6 +23,10 @@ public interface SourceResourceRepository extends JpaRepository<SourceResource, 
     Optional<Long> findIdByDataSourceIdAndResourceKey(
             @Param("dataSourceId") Long dataSourceId, @Param("resourceKey") String resourceKey);
 
+    /** 이 수집 방식의 표가 하나라도 있는 원천. CDC 소비 루프가 소비할 원천을 고른다(198-6). */
+    @Query("select distinct r.dataSourceId from SourceResource r where r.syncStrategy = :strategy")
+    List<Long> findDataSourceIdsBySyncStrategy(@Param("strategy") SyncStrategy strategy);
+
     /** CDC 이벤트의 표({스키마}.{이름})를 찾는다(198-5). */
     Optional<SourceResource> findByDataSourceIdAndResourceKey(
             Long dataSourceId, String resourceKey);
