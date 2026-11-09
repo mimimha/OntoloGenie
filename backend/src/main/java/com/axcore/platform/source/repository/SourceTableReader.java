@@ -102,6 +102,12 @@ public class SourceTableReader {
         }
     }
 
+    /**
+     * 표 하나를 읽는다. 표·컬럼 이름은 SQL 문법상 바인딩 변수로 넘길 수 없어 문자열로 만든다. 사용자 입력은 들어가지 않는다: 표 이름은 원천이 {@code
+     * quote_ident}로 따옴표 처리한 값({@link #relation}, 카탈로그 키는 바인딩 변수로 넘김)이고, 컬럼 이름은 카탈로그 값을 {@link
+     * #quote}로 감싼 식별자다. 그래서 SonarQube java:S2077(동적 SQL)을 이 메서드에서만 끈다(Jira 332).
+     */
+    @SuppressWarnings("java:S2077")
     private List<SourceRow> readTable(Connection connection, Table table, int remaining)
             throws SQLException {
         String relation = relation(connection, table.resourceKey());
