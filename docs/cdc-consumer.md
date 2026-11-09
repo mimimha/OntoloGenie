@@ -10,7 +10,7 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 | 198-4 | V12(원천별 소비 상태, 수집 실패 기록, 확인 대기) | 이 문서 아래 |
 | 198-5 | 원천 트랜잭션 하나 → 플랫폼 트랜잭션 하나 | 이 문서 아래 |
 | 198-6 | Kafka 소비 루프 | 예정 |
-| 198-7 | 연결 재계산 호출(189) | 예정 |
+| 198-7 | 연결 재계산 호출(181 `LinkRecomputeService`) | 이 문서 아래 |
 
 ## 198-1 값 해석
 
@@ -82,7 +82,7 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 5. 변경이 있으면 `sync_run`(CDC, SUCCEEDED) 하나와 표별 `sync_run_resource`(INCREMENTAL, LSN 구간·건수)를 남긴다. 반영한 변경이 없으면 만들지 않는다.
 6. `cdc_offset`에 다음 위치(END + 1)·`last_txid`·`last_commit_at`·`last_message_at`·`processing_lag_ms`를 쓰고, `healthy_since`가 비어 있으면 지금으로 채운다.
 
-처리 장애(DB 예외 등)는 잡지 않는다. 전체가 롤백되어 위치가 그대로이고 198-6이 같은 트랜잭션을 다시 반영한다. 결과의 `changedObjectIds`(쓰거나 삭제 표시한 객체)는 198-7 연결 재계산의 입력이다.
+처리 장애(DB 예외 등)는 잡지 않는다. 전체가 롤백되어 위치가 그대로이고 198-6이 같은 트랜잭션을 다시 반영한다. 결과의 `changedObjectIds`(쓰거나 삭제 표시한 객체)로 같은 트랜잭션 마지막에 연결을 다시 계산한다(198-7, 아래).
 
 `markRecovery(source, reason)`는 198-6(트랜잭션 크기 초과·메시지 순서 오류·보관 초과)도 부른다. 다시 읽기 실행은 배치 감시 작업이 `RECOVERY`로 넣고, 표시를 푸는 일은 199다.
 
@@ -101,3 +101,23 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 - 객체 없이 TOAST 미제공 값 → 속성 없이 만들고 다시 읽기 표시
 - epoch 불확실 → 복구 표시, 위치·객체 그대로, 다음 트랜잭션도 반영 안 함
 - 매핑된 변경이 없는 트랜잭션 → 실행 없이 위치만 전진
+
+## 198-7 연결 재계산 호출
+
+181의 `LinkRecomputeService`(`docs/link-recompute.md`)를 수집 트랜잭션 안에서 부른다(결정 문서 9.4). issue는 만들지 않는다(SYNC 검사가 만든다).
+
+| 부르는 곳 | 호출 | 언제 |
+|---|---|---|
+| 198-5 `CdcTransactionApplier.apply` | `recomputeObjects(changedObjectIds)` | 소비 위치까지 저장한 뒤 마지막에. 쓰거나 삭제 표시한 객체가 없으면 부르지 않는다. 결과는 `Result.links`로 돌려준다(보류 건 처리 238에 넘길 수 있다) |
+| 197 `SyncRunJob.complete` | `recomputeObjectTypes(읽은 매핑의 객체 유형)` | 모든 표를 쓰고 표별 기록을 남긴 뒤 마지막에 |
+
+- 재계산 서비스는 관계 유형 잠금을 트랜잭션 끝까지 쌓는다. 그래서 트랜잭션당 한 번, 객체를 다 쓴 뒤에만 부른다(잠금 순서: 원천 테이블 행 → 객체 → 관계 유형).
+- 같은 트랜잭션이라 반영이 롤백되면 연결도 같이 롤백된다. 객체와 연결이 갈라지지 않는다.
+- 늦게 들어온 쪽이 양쪽으로 다시 계산해 연결을 완성한다. 예: 작업지시만 있을 때는 연결이 없고, 설비가 들어오는 트랜잭션이 그 설비 유형이 도착인 관계 유형을 다시 계산해 이어 준다.
+- 원천에서 지운 객체(`DELETED_AT_SOURCE`)의 연결은 INACTIVE가 된다(지우지 않음).
+
+### 시험
+
+- `CdcTransactionApplierTests.recomputesLinksOfChangedObjectsInSameTransaction`: 실제 메시지로 756에서 7→3·8→3 생성, 758에서 8 삭제로 꺼지고 9→3 생성, 761(설비 PK 변경)에서 모두 INACTIVE, issue 없음
+- `SyncRunJobTests.fullLoadRecomputesLinksOfLoadedTypes`: 작업지시만 읽으면 연결 없음, 열린 주문(뷰)을 읽은 실행이 연결을 완성
+

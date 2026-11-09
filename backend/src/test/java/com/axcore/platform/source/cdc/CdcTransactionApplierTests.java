@@ -439,6 +439,47 @@ class CdcTransactionApplierTests {
         }
     }
 
+    /** 반영한 트랜잭션 안에서 바뀐 객체의 연결을 다시 계산한다(198-7). 작업지시.eq_id = 설비.id 규칙(MANY_TO_ONE)으로 실제 메시지를 흘린다. */
+    @Test
+    void recomputesLinksOfChangedObjectsInSameTransaction() {
+        long equipmentKey = addProperty(equipmentMapping, "id", "eq_id", "INTEGER");
+        long linkType = linkRule(workOrderMapping, "eq_id", equipmentMapping, equipmentKey);
+        List<SourceTransaction> txs = transactions();
+
+        // 756: 설비 3, 작업지시 7·8 → 7→3, 8→3
+        Result first = apply(txs.get(0));
+        assertThat(first.links().activatedLinkIds()).hasSize(2);
+        assertThat(activeLinks(linkType)).containsExactlyInAnyOrder("7->3", "8->3");
+
+        // 757 수정, 758 작업지시 9 추가·8 삭제 → 8의 연결은 꺼지고 9가 이어진다
+        apply(txs.get(1));
+        Result third = apply(txs.get(2));
+        assertThat(third.links().activatedLinkIds()).hasSize(1);
+        assertThat(third.links().inactivatedLinkIds()).hasSize(1);
+        assertThat(activeLinks(linkType)).containsExactlyInAnyOrder("7->3", "9->3");
+
+        // 761 설비 PK 3 → 30: 작업지시의 eq_id는 아직 3이라 연결이 모두 꺼진다(지우지 않고 INACTIVE)
+        Result pkChange = apply(txs.get(3));
+        assertThat(pkChange.links().inactivatedLinkIds()).hasSize(2);
+        assertThat(activeLinks(linkType)).isEmpty();
+        assertThat(
+                        count(
+                                "select count(*) from object_link l join link_type t on t.id = l.link_type_id"
+                                        + " join object_instance o on o.id = l.source_object_id"
+                                        + " join object_source_mapping m on m.id = o.source_mapping_id"
+                                        + " join source_resource r on r.id = m.source_resource_id"
+                                        + " where r.data_source_id = :s and l.status = 'INACTIVE'"))
+                .isEqualTo(3);
+        // issue는 만들지 않는다(SYNC 검사가 만든다)
+        assertThat(
+                        jdbc.sql(
+                                        "select count(*) from issue where link_mapping_id in (select id from link_mapping where link_type_id = :t)")
+                                .param("t", linkType)
+                                .query(Integer.class)
+                                .single())
+                .isZero();
+    }
+
     private Result apply(SourceTransaction tx) {
         return applier.apply(source, tx, START, Instant.now());
     }
@@ -554,6 +595,72 @@ class CdcTransactionApplierTests {
                 .param("m", mappingId)
                 .update();
         return propertyId;
+    }
+
+    /** 출발 매핑의 속성 = 도착 매핑의 속성인 관계 유형과 규칙(MANY_TO_ONE). 관계 유형 ID를 돌려준다. */
+    private long linkRule(
+            long sourceMapping, String sourceCode, long targetMapping, long targetProperty) {
+        long sourceProperty =
+                jdbc.sql(
+                                """
+                                select p.id from property_definition p
+                                join object_source_mapping m on m.object_type_id = p.object_type_id
+                                where m.id = :m and p.code = :code
+                                """)
+                        .param("m", sourceMapping)
+                        .param("code", sourceCode)
+                        .query(Long.class)
+                        .single();
+        long linkType =
+                jdbc.sql(
+                                """
+                                insert into link_type (code, name, source_type_id, target_type_id, cardinality, description)
+                                values ('LT-' || gen_random_uuid(), '작업지시 설비', :s, :t, 'MANY_TO_ONE', '198-7 시험')
+                                returning id
+                                """)
+                        .param("s", typeOf(sourceMapping))
+                        .param("t", typeOf(targetMapping))
+                        .query(Long.class)
+                        .single();
+        // 비교 조건은 규칙을 만든 트랜잭션 안에서만 넣을 수 있다(DB 트리거)
+        transactions.executeWithoutResult(
+                status -> {
+                    long rule =
+                            jdbc.sql(
+                                            """
+                                            insert into link_mapping (link_type_id, code, revision)
+                                            values (:t, 'R-' || gen_random_uuid(), 1) returning id
+                                            """)
+                                    .param("t", linkType)
+                                    .query(Long.class)
+                                    .single();
+                    jdbc.sql(
+                                    """
+                                    insert into link_mapping_condition
+                                        (link_mapping_id, source_property_id, target_property_id, sequence_no)
+                                    values (:r, :s, :t, 1)
+                                    """)
+                            .param("r", rule)
+                            .param("s", sourceProperty)
+                            .param("t", targetProperty)
+                            .update();
+                });
+        return linkType;
+    }
+
+    /** 그 관계 유형의 활성 연결("출발 id->도착 id"). */
+    private List<String> activeLinks(long linkType) {
+        return jdbc.sql(
+                        """
+                        select (s.source_key ->> 'id') || '->' || (t.source_key ->> 'id')
+                        from object_link l
+                        join object_instance s on s.id = l.source_object_id
+                        join object_instance t on t.id = l.target_object_id
+                        where l.link_type_id = :t and l.status = 'ACTIVE'
+                        """)
+                .param("t", linkType)
+                .query(String.class)
+                .list();
     }
 
     private long typeOf(long mappingId) {
