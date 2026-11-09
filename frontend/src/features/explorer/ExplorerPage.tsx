@@ -13,12 +13,18 @@ import ObjectGraph from './ObjectGraph'
 import ObjectSearchBar from './ObjectSearchBar'
 import TypeRelations from './TypeRelations'
 import { formatObjectCode } from './format'
+import { useSearchParams } from 'react-router'
 
 // 유형 관계도는 그래프 라이브러리(React Flow)가 커서, 처음 화면에 그릴 때 따로 받아 온다.
 const ModelGraph = lazy(() => import('./ModelGraph'))
 
 function ExplorerPage() {
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [searchParams] = useSearchParams()
+  // Agent 답변의 [객체 열기]처럼 주소에 객체 번호가 있으면 그 객체를 고른 상태로 연다(151).
+  const [selectedId, setSelectedId] = useState<number | null>(() => {
+    const id = Number(searchParams.get('object'))
+    return Number.isInteger(id) && id > 0 ? id : null
+  })
   const [filters, setFilters] = useState<ObjectFilters>({})
   const [page, setPage] = useState(0)
 
