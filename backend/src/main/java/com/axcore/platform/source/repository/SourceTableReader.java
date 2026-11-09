@@ -3,6 +3,7 @@ package com.axcore.platform.source.repository;
 import com.axcore.platform.source.domain.SourceAccount;
 import com.axcore.platform.source.domain.SourceEndpoint;
 import com.axcore.platform.source.domain.SourceKeyText;
+import com.axcore.platform.source.domain.SourceRow;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -87,10 +88,10 @@ public class SourceTableReader {
                     snapshot = rs.getString(1);
                     lsn = rs.getLong(2);
                 }
-                Map<Long, List<Row>> rows = new HashMap<>();
+                Map<Long, List<SourceRow>> rows = new HashMap<>();
                 int total = 0;
                 for (Table table : tables) {
-                    List<Row> tableRows = readTable(connection, table, maxRows - total);
+                    List<SourceRow> tableRows = readTable(connection, table, maxRows - total);
                     total += tableRows.size();
                     rows.put(table.resourceId(), tableRows);
                 }
@@ -101,7 +102,7 @@ public class SourceTableReader {
         }
     }
 
-    private List<Row> readTable(Connection connection, Table table, int remaining)
+    private List<SourceRow> readTable(Connection connection, Table table, int remaining)
             throws SQLException {
         String relation = relation(connection, table.resourceKey());
         String sql =
@@ -111,7 +112,7 @@ public class SourceTableReader {
                                 .collect(Collectors.joining(", "))
                         + " from "
                         + relation;
-        List<Row> rows = new ArrayList<>();
+        List<SourceRow> rows = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setFetchSize(FETCH_SIZE);
             try (ResultSet rs = statement.executeQuery()) {
@@ -131,7 +132,7 @@ public class SourceTableReader {
                             keyTexts.put(column, keyText(rs, i, typeName, value));
                         }
                     }
-                    rows.add(new Row(values, keyTexts));
+                    rows.add(new SourceRow(values, keyTexts));
                 }
             }
         }
@@ -237,17 +238,11 @@ public class SourceTableReader {
     }
 
     /**
-     * @param values 컬럼 → 값(null 포함)
-     * @param keyTexts 원천 키 컬럼 → 키 문자열({@link SourceKeyText}, 키로 쓸 값이 없으면 null)
-     */
-    public record Row(Map<String, Object> values, Map<String, String> keyTexts) {}
-
-    /**
      * @param snapshot 읽기에 쓴 스냅샷({@code xmin:xmax:xip,...})
      * @param lsn 읽기 시점의 원천 WAL 위치(참고값)
      * @param rows 원천 테이블 ID → 행
      */
-    public record Result(String snapshot, long lsn, Map<Long, List<Row>> rows) {}
+    public record Result(String snapshot, long lsn, Map<Long, List<SourceRow>> rows) {}
 
     /** 한 번에 읽을 수 있는 행 수를 넘었다. */
     public static class TooManyRowsException extends RuntimeException {

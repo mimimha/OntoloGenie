@@ -13,9 +13,9 @@ import com.axcore.platform.source.domain.FullLoadPlan.MappingPlan;
 import com.axcore.platform.source.domain.SourceAccount;
 import com.axcore.platform.source.domain.SourceEndpoint;
 import com.axcore.platform.source.domain.SourceKind;
+import com.axcore.platform.source.domain.SourceRow;
 import com.axcore.platform.source.domain.SyncStrategy;
 import com.axcore.platform.source.repository.SourceTableReader;
-import com.axcore.platform.source.repository.SourceTableReader.Row;
 import com.axcore.platform.source.repository.SourceTableReader.Table;
 import com.axcore.platform.source.repository.SourceTableReader.TooManyRowsException;
 import com.axcore.platform.source.repository.SyncRunRepository;
@@ -150,7 +150,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
                 loads.add(ResourceLoad.empty(plan));
                 continue;
             }
-            List<Row> rows = read.rows().get(plan.resourceId());
+            List<SourceRow> rows = read.rows().get(plan.resourceId());
             List<SyncedObject> objects = new ArrayList<>();
             int skippedRows = 0;
             int failedValues = 0;
@@ -158,7 +158,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
             for (MappingPlan mapping : plan.mappings()) {
                 // 한 매핑 안에서 같은 원천 키는 한 객체다. 뒤 행이 앞 행을 조용히 덮지 않게 첫 행만 쓰고 나머지는 센다.
                 Map<Map<String, Object>, SyncedObject> byKey = new LinkedHashMap<>();
-                for (Row row : rows) {
+                for (SourceRow row : rows) {
                     Conversion conversion = converter.convert(plan.resourceId(), mapping, row);
                     failedValues += conversion.failedValues();
                     if (conversion.object() == null) {

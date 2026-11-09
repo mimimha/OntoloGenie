@@ -7,7 +7,7 @@ import com.axcore.platform.ontology.domain.PropertyDataType;
 import com.axcore.platform.ontology.domain.SyncedObject;
 import com.axcore.platform.source.domain.FullLoadPlan.MappingPlan;
 import com.axcore.platform.source.domain.FullLoadPlan.PropertyPlan;
-import com.axcore.platform.source.repository.SourceTableReader.Row;
+import com.axcore.platform.source.domain.SourceRow;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
@@ -56,7 +56,7 @@ public class SourceRowConverter {
     }
 
     /** 원천 키가 비어 있으면 object가 null이다. */
-    public Conversion convert(long resourceId, MappingPlan mapping, Row row) {
+    public Conversion convert(long resourceId, MappingPlan mapping, SourceRow row) {
         Map<String, Object> sourceKey = new LinkedHashMap<>();
         for (String column : mapping.keyColumns()) {
             String text = row.keyTexts().get(column);
