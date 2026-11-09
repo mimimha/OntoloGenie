@@ -27,7 +27,7 @@ from app.models.analysis import AnalysisStartRequest
 from app.models.candidate import Candidate
 from app.proposers.api_format import to_api_proposals
 from app.proposers.evidence import verify
-from app.proposers.existing import filter_existing
+from app.proposers.existing import change_counts, filter_existing
 from app.proposers.links import Tables
 from app.proposers.llm_links import estimate_credits as estimate_cross_links
 from app.proposers.llm_links import prepare as prepare_cross_links
@@ -90,14 +90,23 @@ def analyze(
     try:
         report = _snapshot(request, sources, workdir)
         result = _analyze(request, workdir, llm, get_settings().llm_credit_limit)
-        # 이미 확정된 모델과 같은 후보는 보내지 않는다(S15P31C106-281)
-        result.proposals, skipped = filter_existing(result.proposals, model_summary)
+        # 이미 확정된 모델과 같은 후보는 보내지 않는다(S15P31C106-281).
+        # 재분석이면 같은 비교로 추가·변경·유지를 표시한다(S15P31C106-170, 기준: 모델 요약 043)
+        reanalysis = request.run_kind == "REANALYSIS"
+        result.proposals, skipped = filter_existing(
+            result.proposals, model_summary, mark_changes=reanalysis
+        )
         result.summary["proposals"] = len(result.proposals)
         result.summary["holdRecommended"] = sum(
             p["evidence"]["holdRecommended"] for p in result.proposals
         )
         result.summary["existingSkipped"] = skipped
         result.summary["modelSummarySkipReason"] = summary_skip
+        compared = reanalysis and bool(model_summary)
+        result.summary["changeBasis"] = "MODEL_SUMMARY" if compared else None
+        result.summary["changeCounts"] = (
+            change_counts(result.proposals, skipped) if compared else None
+        )
         result.summary["missingColumns"] = report.missing_columns
         result.summary["sampledTables"] = report.sampled_tables
         return result
