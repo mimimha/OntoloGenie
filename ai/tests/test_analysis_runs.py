@@ -3,6 +3,8 @@
 import json
 import logging
 import threading
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import ClassVar
 
@@ -299,7 +301,9 @@ class _Recorder(BaseHTTPRequestHandler):
 def backend_server():
     _Recorder.received, _Recorder.status = [], 200
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Recorder)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True
+    ).start()
     yield server
     server.shutdown()
 
@@ -321,13 +325,19 @@ def test_reporter_posts_to_105_with_token(backend_server):
     ]
 
 
-def test_reporter_turns_http_and_connection_errors_into_backend_error(backend_server):
+def test_reporter_turns_http_and_connection_errors_into_backend_error(
+    backend_server, monkeypatch
+):
     port = backend_server.server_address[1]
     _Recorder.status = 409
     report = results_reporter(Settings(backend_url=f"http://127.0.0.1:{port}"))
     with pytest.raises(BackendError, match="HTTP 409"):
         report(7, {"status": "RUNNING"})
 
+    def refused(*args, **kwargs):
+        raise urllib.error.URLError(ConnectionRefusedError())
+
+    monkeypatch.setattr(urllib.request, "urlopen", refused)
     closed = results_reporter(Settings(backend_url="http://127.0.0.1:1"))
     with pytest.raises(BackendError):
         closed(7, {"status": "RUNNING"})

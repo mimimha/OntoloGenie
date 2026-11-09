@@ -1,0 +1,213 @@
+{
+  "systems": [
+    "erp",
+    "lims",
+    "mes"
+  ],
+  "relations": [
+    {
+      "from": "erp.sales_order.cust_cd",
+      "to": "erp.CustomerMaster.CustCode",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.sales_order_line.order_no",
+      "to": "erp.sales_order.order_no",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.sales_order_line.item",
+      "to": "erp.ProductMaster.ProdCode",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.invoice.bill_to",
+      "to": "erp.CustomerMaster.CustCode",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.invoice.order_ref",
+      "to": "erp.sales_order.order_no",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.ProductMaster.BrandOwner",
+      "to": "erp.CustomerMaster.CustCode",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.MES_BATCH.MAIN_EQP_ID",
+      "to": "mes.MES_EQUIPMENT.EQP_ID",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.mes_batch_step.BATCH_SEQ",
+      "to": "mes.MES_BATCH.BATCH_SEQ",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.mes_batch_step.USED_MACHINE",
+      "to": "mes.MES_EQUIPMENT.EQP_ID",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "lims.lims_test_result.sample_id",
+      "to": "lims.lims_sample.sample_id",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "lims.lims_test_result.spec_id",
+      "to": "lims.lims_spec.spec_id",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.MES_BATCH.PROD_CD",
+      "to": "erp.ProductMaster.ProdCode",
+      "transform": "MES는 품목 코드의 하이픈을 뺌 (P10023 → P-10023). 일부 행은 하이픈이 남아 있음",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "mes.MES_BATCH.SO_NO+mes.MES_BATCH.SO_LINE_NO",
+      "to": "erp.sales_order_line.order_no+erp.sales_order_line.line_seq",
+      "transform": "수주 번호는 하이픈을 빼고 연도를 2자리로 줄임 (SO240012 → SO-2024-0012), 행 번호는 2자리 0 채움 (01 → 1)",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "lims.lims_sample.lot_no",
+      "to": "mes.MES_BATCH.BATCH_NO",
+      "transform": "하이픈 앞뒤 순서가 바뀜 (0123-B24 → B24-0123). BATCH_NO는 PK가 아닌 유일 컬럼",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "lims.lims_spec.product_code",
+      "to": "erp.ProductMaster.ProdCode",
+      "transform": "LIMS는 소문자로 저장 (p-10023 → P-10023). 일부 행은 대문자",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "lims.lims_sample.requester_no",
+      "to": "erp.CustomerMaster.CustCode",
+      "transform": "숫자만 저장, 앞에 C를 붙이고 4자리로 0 채움 (45 → C0045)",
+      "cardinality": "N:1"
+    }
+  ],
+  "traps": [
+    {
+      "column": "mes.mes_batch_step.STEP_NO",
+      "looks_like": "mes.MES_BATCH.BATCH_SEQ",
+      "why": "공정 순번(1~3)이 배치 일련번호 범위에 모두 들어가지만 관계가 아님"
+    },
+    {
+      "column": "mes.MES_EQUIPMENT.LINE_CD",
+      "looks_like": "erp.CustomerMaster.CustCode",
+      "why": "청정실 라인 코드가 C0001~C0006 형식이라 거래처 코드와 값이 같지만 무관함"
+    },
+    {
+      "column": "lims.lims_sample.box_no",
+      "looks_like": "lims.lims_spec.spec_id",
+      "why": "보관함 번호(1001~1450)가 규격 ID 범위와 겹치지만 관계가 아님"
+    },
+    {
+      "column": "erp.ProductMaster.ShelfLifeMonths",
+      "looks_like": "mes.MES_BATCH.BATCH_SEQ",
+      "why": "유통기한 개월 수(12~36)가 배치 일련번호 값에 포함되지만 관계가 아님"
+    }
+  ],
+  "dirty": [
+    {
+      "column": "erp.sales_order.cust_cd",
+      "what": "없는 거래처 코드 약 2.5%"
+    },
+    {
+      "column": "erp.sales_order.order_date",
+      "what": "약 10%가 YYYY/MM/DD 형식"
+    },
+    {
+      "column": "erp.sales_order.due_date",
+      "what": "NULL 약 5%"
+    },
+    {
+      "column": "erp.CustomerMaster.BizRegNo",
+      "what": "약 15%가 하이픈 없음"
+    },
+    {
+      "column": "erp.ProductMaster.BrandOwner",
+      "what": "NULL 약 4% (자체 브랜드)"
+    },
+    {
+      "column": "erp.sales_order_line.item",
+      "what": "없는 품목 코드 약 2%"
+    },
+    {
+      "column": "erp.sales_order_line.order_no",
+      "what": "없는 수주 번호(SO-2023-9xxx) 12행"
+    },
+    {
+      "column": "erp.invoice.inv_id",
+      "what": "재발행으로 중복 2건 (PK 미선언)"
+    },
+    {
+      "column": "erp.invoice.bill_to",
+      "what": "없는 거래처 코드 약 2%"
+    },
+    {
+      "column": "erp.invoice.order_ref",
+      "what": "NULL 약 4%"
+    },
+    {
+      "column": "mes.MES_BATCH.PROD_CD",
+      "what": "없는 코드 약 2%, 하이픈이 남은 형식 약 3%"
+    },
+    {
+      "column": "mes.MES_BATCH.SO_NO+mes.MES_BATCH.SO_LINE_NO",
+      "what": "재고 생산은 NULL(약 20%), 없는 수주 2건(약 0.6%)"
+    },
+    {
+      "column": "mes.MES_BATCH.MAIN_EQP_ID",
+      "what": "NULL 약 3%, 없는 설비 약 2%"
+    },
+    {
+      "column": "mes.mes_batch_step.BATCH_SEQ",
+      "what": "없는 배치 16행"
+    },
+    {
+      "column": "mes.mes_batch_step.USED_MACHINE",
+      "what": "칭량 공정은 NULL, 없는 설비 약 2%"
+    },
+    {
+      "column": "mes.mes_batch_step.END_TS",
+      "what": "진행 중 배치 일부 NULL"
+    },
+    {
+      "column": "lims.lims_spec.product_code",
+      "what": "약 4%가 대문자(소문자 규칙과 다름)"
+    },
+    {
+      "column": "lims.lims_sample.lot_no",
+      "what": "원료 검체는 NULL, 없는 로트 약 2%"
+    },
+    {
+      "column": "lims.lims_sample.requester_no",
+      "what": "원료 검체·자체 브랜드는 NULL"
+    },
+    {
+      "column": "lims.lims_test_result.sample_id",
+      "what": "없는 검체 번호 약 2%"
+    },
+    {
+      "column": "lims.lims_test_result.tested_at",
+      "what": "NULL 약 3%"
+    }
+  ]
+}

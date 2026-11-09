@@ -1,0 +1,136 @@
+{
+  "tables": {
+    "technician": {
+      "description": "보전 작업자",
+      "primary_key": [
+        "techId"
+      ],
+      "columns": {
+        "techId": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "techName": {
+          "type": "VARCHAR(20)",
+          "comment": ""
+        },
+        "empRef": {
+          "type": "VARCHAR(7)",
+          "comment": "인사 번호"
+        },
+        "vendor": {
+          "type": "VARCHAR(20)",
+          "comment": "외주 소속"
+        },
+        "skillGrade": {
+          "type": "INTEGER",
+          "comment": "기술 등급"
+        },
+        "shift": {
+          "type": "CHAR(1)",
+          "comment": ""
+        }
+      }
+    },
+    "asset": {
+      "description": "보전 대상 자산",
+      "primary_key": [
+        "assetId"
+      ],
+      "columns": {
+        "assetId": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "assetName": {
+          "type": "VARCHAR(40)",
+          "comment": ""
+        },
+        "equipRef": {
+          "type": "VARCHAR(8)",
+          "comment": ""
+        },
+        "category": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "criticality": {
+          "type": "INTEGER",
+          "comment": "1=높음"
+        },
+        "installYear": {
+          "type": "INTEGER",
+          "comment": ""
+        }
+      }
+    },
+    "maintenanceRequest": {
+      "description": "고장·보전 요청",
+      "primary_key": [
+        "requestNo"
+      ],
+      "columns": {
+        "requestNo": {
+          "type": "VARCHAR(8)",
+          "comment": ""
+        },
+        "unit": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "reportedAt": {
+          "type": "VARCHAR(16)",
+          "comment": ""
+        },
+        "failureType": {
+          "type": "VARCHAR(20)",
+          "comment": ""
+        },
+        "priority": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "status": {
+          "type": "VARCHAR(4)",
+          "comment": ""
+        },
+        "assignedTo": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "downtimeMin": {
+          "type": "INTEGER",
+          "comment": "정지 시간(분)"
+        }
+      }
+    },
+    "partUsage": {
+      "description": "보전 부품 사용",
+      "primary_key": [
+        "usageId"
+      ],
+      "columns": {
+        "usageId": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "requestNo": {
+          "type": "VARCHAR(8)",
+          "comment": ""
+        },
+        "partCode": {
+          "type": "VARCHAR(8)",
+          "comment": "자재"
+        },
+        "qty": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "usedAt": {
+          "type": "VARCHAR(16)",
+          "comment": ""
+        }
+      }
+    }
+  }
+}

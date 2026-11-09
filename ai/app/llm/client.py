@@ -8,7 +8,24 @@ from typing import Protocol
 
 from app.config import Settings
 
-INPUT_CREDIT, OUTPUT_CREDIT = 0.001, 0.005  # GMS gpt-6-luna 토큰당 크레딧
+# GMS 모델별 토큰당 크레딧 (입력, 출력). luna는 GMS 안내 값이다.
+# sol은 GMS 모델 목록의 등급(luna 1 · 6.1 sol 20)을 같은 비율로 곱한 추정값이라 실제 사용량과 다를 수 있다.
+MODEL_CREDITS: dict[str, tuple[float, float]] = {
+    "gpt-6-luna": (0.001, 0.005),
+    "gpt-6.1-sol": (0.02, 0.1),
+}
+INPUT_CREDIT, OUTPUT_CREDIT = MODEL_CREDITS["gpt-6-luna"]
+
+
+def token_credits(
+    model: str | None, input_tokens: float, output_tokens: float
+) -> float:
+    """토큰 수를 크레딧으로 바꾼다. 표에 없는 모델은 아는 모델 중 가장 비싼 값으로 넉넉히 센다."""
+    rate_in, rate_out = MODEL_CREDITS.get(
+        model or "", max(MODEL_CREDITS.values(), key=lambda rate: rate[1])
+    )
+    return input_tokens * rate_in + output_tokens * rate_out
+
 
 # (url, headers, body, timeout) -> 응답 JSON. 테스트에서는 가짜 함수를 넣어 실제 호출 없이 확인한다.
 Sender = Callable[[str, dict, dict, float], dict]
@@ -26,6 +43,9 @@ class LLMError(RuntimeError):
 
 class MockLLMClient:
     """실제 API를 호출하지 않고 미리 정한 응답을 돌려준다. 비용 없이 파이프라인을 테스트하기 위한 용도."""
+
+    # 사용량 계산을 확인하는 테스트는 luna 단가로 센다(가짜 응답이라 실제 비용은 없음)
+    model = "gpt-6-luna"
 
     def __init__(self, response=None):
         # response: 고정 응답(dict) 또는 프롬프트를 받아 응답을 만드는 함수

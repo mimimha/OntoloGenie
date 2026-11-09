@@ -276,3 +276,23 @@ def test_maintenance_record_links_use_their_own_link_type_code():
 
 def load_dictionary_rows():
     return {"P103": (EntityType.EQUIPMENT, "mes.equipment:P103")}
+
+
+def test_llm_action_with_found_id_in_front_is_kept_without_the_id():
+    # sol이 '작업지시 번호 + 조치'를 한 글자로 뽑아도, 코드가 찾은 번호를 떼고 조치를 살린다
+    text = "JB2608-0103 잔량 1,100개는 주간조에 넘김."
+    doc = Document(doc_id="n", source_kind="note", text=text)
+    dictionary = {"JB2608-0103": (EntityType.WORK_ORDER, "mes.work_order:JB2608-0103")}
+    answer = LLMDoc(
+        doc_id="n",
+        entities=[
+            {"type": "ACTION", "text": "JB2608-0103 잔량 1,100개는 주간조에 넘김"}
+        ],
+    )
+
+    extraction, dropped = extract(doc, dictionary, [], answer)
+
+    assert dropped == []
+    actions = [e for e in extraction.entities if e.type == EntityType.ACTION]
+    assert [a.text for a in actions] == ["잔량 1,100개는 주간조에 넘김"]
+    assert text[actions[0].start : actions[0].end] == actions[0].text

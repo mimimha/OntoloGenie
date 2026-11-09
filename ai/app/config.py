@@ -7,7 +7,7 @@ ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
 # provider: (기본 주소, 기본 모델, 키 필수). 회사 LLM으로 바꿀 때는 .env의 LLM 항목만 바꾼다.
 LLM_DEFAULTS: dict[str, tuple[str | None, str | None, bool]] = {
-    "gms": ("https://gms.ssafy.io/gmsapi/api.openai.com/v1", "gpt-6-luna", True),
+    "gms": ("https://gms.ssafy.io/gmsapi/api.openai.com/v1", "gpt-6.1-sol", True),
     "openai": ("https://api.openai.com/v1", None, True),
     # 사내 LLM 서버는 키 없이 내부망으로만 여는 경우가 있어 키를 강제하지 않는다
     "openai-chat": (None, None, False),
@@ -24,6 +24,8 @@ class Settings:
     base_url: str | None = None  # 비우면 provider 기본 주소
     model: str | None = None  # 비우면 provider 기본 모델
     llm_timeout_sec: float = 60.0
+    # 분석 한 번에 LLM에 쓸 수 있는 예상 크레딧. 넘을 것 같으면 LLM 없이 코드 분석만 한다. 0 이하면 한도 없음
+    llm_credit_limit: float = 10000.0
     # 결과를 보낼 백엔드 주소와 내부 API 공유 비밀(X-Internal-Token)
     backend_url: str = "http://localhost:8080"
     internal_token: str | None = field(default=None, repr=False)
@@ -86,6 +88,7 @@ def get_settings() -> Settings:
         base_url=_env("BASE_URL"),
         model=_env("MODEL"),
         llm_timeout_sec=float(os.getenv("AI_ONTOLOGY_LLM_TIMEOUT_SEC") or 60),
+        llm_credit_limit=float(os.getenv("AI_ONTOLOGY_LLM_CREDIT_LIMIT") or 10000),
         backend_url=os.getenv("AI_ONTOLOGY_BACKEND_URL") or "http://localhost:8080",
         internal_token=os.getenv("AI_ONTOLOGY_INTERNAL_TOKEN") or None,
     )

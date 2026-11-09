@@ -39,6 +39,36 @@ from app.proposers import confidence as score
 from app.sources.csv_reader import CsvSourceReader
 
 TIME_TYPES = ("date", "timestamp", "datetime", "time")
+PAIR_KEY_COLUMNS = 6  # 기본키 없는 표에서 두 컬럼 키를 찾을 때 앞에서부터 볼 컬럼 수
+
+
+def observed_pair_key(df, names: list[str]) -> list[str]:
+    """선언된 기본키도 값이 모두 다른 한 컬럼도 없는 표에서, 빈 값 없이 조합이 모두 다른 두 컬럼.
+    오래된 시스템의 상세 표(수주 번호 + 순번)는 기본키를 선언하지 않은 경우가 많다(B4 독립 데이터)."""
+    names = names[:PAIR_KEY_COLUMNS]
+    for i, a in enumerate(names):
+        for b in names[i + 1 :]:
+            sub = df[[a, b]]
+            if len(sub) >= 3 and sub.notna().all().all() and not sub.duplicated().any():
+                return [a, b]
+    return []
+
+
+def key_like_columns(schema: TableSchema, columns: list[ColumnAnalysis]) -> list[str]:
+    """키로 쓸 만한 컬럼: 문자형·정수형, 개인정보·날짜·소수가 아님."""
+    by_name = {c.ref.rsplit(".", 1)[1]: c for c in columns}
+    out = []
+    for col in schema.columns:
+        stats = by_name[col.name]
+        declared = (stats.declared_type or "").lower()
+        if stats.is_personal or declared.startswith(
+            (*TIME_TYPES, "numeric", "decimal", "float", "double")
+        ):
+            continue
+        out.append(col.name)
+    return out
+
+
 INT_TYPES = ("int", "integer", "bigint", "smallint")
 PERSON_NAME = re.compile(rf"[{SURNAMES}][가-힣]{{1,3}}")
 
@@ -198,6 +228,7 @@ def _table_candidates(
             for k in analysis.table_keys.get(key, [])
             if k.source == "observed"
         ][:1]
+        or observed_pair_key(df, key_like_columns(schema, columns))
     )
     name = schema.description or table
     table_evidence = Evidence(

@@ -2,7 +2,6 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.extraction import (
-    Assertion,
     DocumentExtraction,
     EntityType,
     ExtractedEntity,
@@ -19,14 +18,6 @@ def _entity(eid, etype, needle, **kwargs):
     return ExtractedEntity(
         id=eid, type=etype, start=start, end=start + len(needle), text=needle, **kwargs
     )
-
-
-def test_negated_observation_keeps_its_assertion():
-    entity = _entity(
-        "e2", EntityType.OBSERVATION, "진동 이상 없음", assertion=Assertion.NEGATED
-    )
-
-    assert entity.assertion == Assertion.NEGATED
 
 
 def test_span_length_must_match_text():

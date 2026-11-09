@@ -255,17 +255,17 @@ def test_llm_semantics_with_mock_merges_and_holds(data, result):
                     {"code": "지어낸_관계", "meaningful": True, "reason": "없음"},
                 ],
             }
-        if "표: erp.journal_entry " in prompt:
+        if "표: mes.defect " in prompt:
             return {
-                "object_name": "분개 줄",
-                "meaning": "회계 분개",
-                "category": "detail",
-                "category_reason": "전표 번호와 줄 번호",
+                "object_name": "불량",
+                "meaning": "공정 불량 기록",
+                "category": "transaction",
+                "category_reason": "발생 시각과 수량",
                 "links": [
                     {
-                        "code": "JOURNAL_ENTRY_LINE_NO_TO_FIXED_ASSET",
+                        "code": "DEFECT_OP_SEQ_TO_DEPARTMENT",
                         "meaningful": False,
-                        "reason": "줄 번호는 자산 번호가 아니다",
+                        "reason": "공정 순번은 부서 코드가 아니다",
                     }
                 ],
             }
@@ -287,8 +287,13 @@ def test_llm_semantics_with_mock_merges_and_holds(data, result):
     assert worker.ai_confidence == by_id_rule["OT-mes.worker"].ai_confidence
     agreed = by_id["LR-worker_id_to_employee"]
     assert agreed.ai_confidence == by_id_rule["LR-worker_id_to_employee"].ai_confidence
-    wrong = by_id["LR-journal_entry_line_no_to_fixed_asset"]
-    assert wrong.review_status == "HELD" and wrong.ai_confidence <= 0.49
+    # 규칙이 이미 보류로 둔 관계를 LLM도 맞지 않다고 보면 관계 유형·규칙 모두 내보내지 않는다
+    assert by_id_rule["LR-defect_op_seq_to_department"].review_status == "HELD"
+    assert "LR-defect_op_seq_to_department" not in by_id
+    assert "LT-defect_op_seq_to_department" not in by_id
+    assert report["rejected_links"] == {
+        "DEFECT_OP_SEQ_TO_DEPARTMENT": "공정 순번은 부서 코드가 아니다"
+    }
     assert "지어낸_관계" not in {
         c.payload.code for c in merged if hasattr(c.payload, "code")
     }
@@ -721,3 +726,37 @@ def test_prefix_swap_and_letters_include_hangul():
         )
         is None
     )
+
+
+def test_llm_negative_on_pending_link_only_holds_it(data, result):
+    from app.llm.client import MockLLMClient
+    from app.models.candidate import Candidate
+    from app.proposers.semantics import interpret
+
+    candidates = [Candidate.model_validate(c) for c in result["candidates"]]
+    pending = next(
+        c
+        for c in candidates
+        if c.candidate_id.startswith("LR-") and c.review_status == "PENDING"
+    )
+    table = pending.evidence[0].locator.rsplit(".", 1)[0]
+
+    def answer(prompt):
+        return {
+            "object_name": "x",
+            "meaning": "x",
+            "category": "master",
+            "category_reason": "x",
+            "links": [
+                {"code": pending.payload.code, "meaningful": False, "reason": "우연"}
+            ],
+        }
+
+    merged, report = interpret(
+        data / "data-t3", candidates, MockLLMClient(answer), only={table}
+    )
+    by_id = {c.candidate_id: c for c in merged}
+
+    # 규칙이 대기로 둔 관계는 LLM이 반대해도 빼지 않고 보류로만 바꾼다
+    assert by_id[pending.candidate_id].review_status == "HELD"
+    assert report["rejected_links"] == {}

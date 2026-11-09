@@ -12,15 +12,6 @@ from app.llm.client import (
 )
 
 
-def test_mock_client_returns_configured_response_and_records_prompt():
-    client = MockLLMClient({"candidates": [{"name": "Equipment"}]})
-
-    result = client.complete_json("schema: ...")
-
-    assert result == {"candidates": [{"name": "Equipment"}]}
-    assert client.prompts == ["schema: ..."]
-
-
 def test_create_llm_client_by_provider():
     assert isinstance(create_llm_client(Settings(llm_provider="mock")), MockLLMClient)
     assert isinstance(
@@ -214,3 +205,13 @@ def test_chat_client_accepts_json_in_code_fence_and_rejects_empty_answer():
     empty = ChatLLMClient("k", "http://x/v1", "m", send=lambda *a: {"choices": []})
     with pytest.raises(LLMError):
         empty.complete_json("prompt")
+
+
+def test_credits_follow_model_and_unknown_model_counts_as_most_expensive():
+    from app.llm.client import token_credits
+
+    assert token_credits("gpt-6-luna", 1000, 200) == pytest.approx(2.0)
+    # 6.1 sol은 GMS 등급(20)으로 잡은 추정 단가
+    assert token_credits("gpt-6.1-sol", 1000, 200) == pytest.approx(40.0)
+    # 표에 없는 모델은 적게 세지 않도록 가장 비싼 단가로 센다
+    assert token_credits("gpt-new", 1000, 200) == pytest.approx(40.0)

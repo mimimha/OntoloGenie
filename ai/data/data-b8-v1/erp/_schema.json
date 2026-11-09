@@ -1,0 +1,205 @@
+{
+  "tables": {
+    "거래처": {
+      "description": "고객·공급 거래처",
+      "primary_key": [
+        "거래처코드"
+      ],
+      "columns": {
+        "거래처코드": {
+          "type": "VARCHAR(4)",
+          "comment": ""
+        },
+        "거래처명": {
+          "type": "VARCHAR(40)",
+          "comment": ""
+        },
+        "구분": {
+          "type": "VARCHAR(4)",
+          "comment": "고객/공급"
+        },
+        "사업자번호": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "지역": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "담당자": {
+          "type": "VARCHAR(20)",
+          "comment": ""
+        }
+      }
+    },
+    "품목": {
+      "description": "품목 마스터",
+      "primary_key": [
+        "품목코드"
+      ],
+      "columns": {
+        "품목코드": {
+          "type": "VARCHAR(7)",
+          "comment": ""
+        },
+        "품목명": {
+          "type": "VARCHAR(60)",
+          "comment": ""
+        },
+        "품목구분": {
+          "type": "VARCHAR(6)",
+          "comment": "완제품/부품/소모품"
+        },
+        "단위": {
+          "type": "VARCHAR(4)",
+          "comment": ""
+        },
+        "표준단가": {
+          "type": "INTEGER",
+          "comment": "원"
+        },
+        "릴수량": {
+          "type": "INTEGER",
+          "comment": "릴 1개당 부품 수"
+        },
+        "층수": {
+          "type": "INTEGER",
+          "comment": "PCB 층수"
+        },
+        "주공급사": {
+          "type": "VARCHAR(4)",
+          "comment": ""
+        },
+        "사용여부": {
+          "type": "CHAR(1)",
+          "comment": ""
+        }
+      }
+    },
+    "사원": {
+      "description": "사원 마스터",
+      "primary_key": [
+        "사번"
+      ],
+      "columns": {
+        "사번": {
+          "type": "VARCHAR(7)",
+          "comment": "입사연도+순번"
+        },
+        "성명": {
+          "type": "VARCHAR(20)",
+          "comment": ""
+        },
+        "부서": {
+          "type": "VARCHAR(20)",
+          "comment": ""
+        },
+        "직급": {
+          "type": "VARCHAR(6)",
+          "comment": ""
+        },
+        "입사일": {
+          "type": "DATE",
+          "comment": ""
+        }
+      }
+    },
+    "수주": {
+      "description": "수주 헤더",
+      "primary_key": [
+        "수주번호"
+      ],
+      "columns": {
+        "수주번호": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "거래처": {
+          "type": "VARCHAR(4)",
+          "comment": "고객"
+        },
+        "수주일자": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "납기일": {
+          "type": "DATE",
+          "comment": ""
+        },
+        "상태": {
+          "type": "VARCHAR(6)",
+          "comment": ""
+        }
+      }
+    },
+    "수주품목": {
+      "description": "수주 품목 행",
+      "primary_key": [
+        "수주번호",
+        "행번"
+      ],
+      "columns": {
+        "수주번호": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "행번": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "품목코드": {
+          "type": "VARCHAR(7)",
+          "comment": ""
+        },
+        "수량": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "단가": {
+          "type": "INTEGER",
+          "comment": ""
+        }
+      }
+    },
+    "생산지시": {
+      "description": "생산 작업지시",
+      "primary_key": [
+        "지시번호"
+      ],
+      "columns": {
+        "지시번호": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "수주번호": {
+          "type": "VARCHAR(10)",
+          "comment": "재고 생산은 비움"
+        },
+        "수주행번": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "품목코드": {
+          "type": "VARCHAR(7)",
+          "comment": ""
+        },
+        "지시수량": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "계획시작일": {
+          "type": "DATE",
+          "comment": ""
+        },
+        "담당자": {
+          "type": "VARCHAR(7)",
+          "comment": "생산 계획 담당"
+        },
+        "상태": {
+          "type": "VARCHAR(4)",
+          "comment": ""
+        }
+      }
+    }
+  }
+}

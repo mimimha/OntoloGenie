@@ -14,14 +14,25 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.config import get_settings
-from app.extractors.notes import document_link_types, document_links
+from app.extractors.notes import _equipment as note_equipment
+from app.extractors.notes import (
+    document_link_types,
+    document_links,
+    load_documents,
+)
+from app.extractors.notes import estimate_credits as estimate_notes
 from app.llm.client import LLMClient, create_llm_client
 from app.models.analysis import AnalysisStartRequest
 from app.models.candidate import Candidate
 from app.proposers.api_format import to_api_proposals
 from app.proposers.evidence import verify
+from app.proposers.links import Tables
+from app.proposers.llm_links import estimate_credits as estimate_cross_links
+from app.proposers.llm_links import prepare as prepare_cross_links
+from app.proposers.llm_links import propose as cross_links
 from app.proposers.run import generate
-from app.proposers.semantics import interpret
+from app.proposers.semantics import estimate_credits as estimate_tables
+from app.proposers.semantics import interpret, prepare
 from app.sources.base import UnknownTableError
 from app.sources.csv_reader import CsvSourceReader
 from app.sources.postgres_reader import PostgresSourceReader, SourceError
@@ -61,7 +72,7 @@ def analyze(
     workdir = Path(tempfile.mkdtemp(prefix="ai-run-"))
     try:
         report = _snapshot(request, sources, workdir)
-        result = _analyze(request, workdir, llm)
+        result = _analyze(request, workdir, llm, get_settings().llm_credit_limit)
         result.summary["missingColumns"] = report.missing_columns
         result.summary["sampledTables"] = report.sampled_tables
         return result
@@ -128,17 +139,58 @@ def _with_source_codes(value, codes: dict[str, str]):
     return value
 
 
+def _expected_credits(
+    root: Path, kept: list[Candidate], scope: set[str], model: str | None
+) -> tuple[float, Tables]:
+    """LLM을 부르기 전 이번 분석의 예상 크레딧(표 의미 해석 + 메모 추출)."""
+    expected = estimate_tables(prepare(root, kept, only=scope), model=model)
+    cross_tables, cross_prompts = prepare_cross_links(root, kept)
+    expected += estimate_cross_links(cross_prompts, model=model)
+    if scope & NOTE_TABLES:
+        docs = load_documents(root)
+        if docs:
+            expected += estimate_notes(docs, note_equipment(root), model=model)
+    return expected, cross_tables
+
+
 def _analyze(
-    request: AnalysisStartRequest, root: Path, llm: LLMClient | None
+    request: AnalysisStartRequest,
+    root: Path,
+    llm: LLMClient | None,
+    credit_limit: float = 0,
 ) -> AnalysisResult:
     scope = {t.resource_key for t in request.targets}
     kept, dropped = generate(root)
     kept = [c for c in kept if _tables_of(c) & scope]
-    llm_calls, llm_failed, credits = 0, 0, 0.0
+    llm_calls, llm_failed, credits, llm_rejected, llm_cross = 0, 0, 0.0, 0, 0
+    over_limit = None
+    cross_tables = (
+        None  # 예상 크레딧을 셀 때 만든 원천 분석을 시스템 간 연결에서 다시 쓴다
+    )
+    if llm is not None and credit_limit > 0:
+        expected, cross_tables = _expected_credits(
+            root, kept, scope, getattr(llm, "model", None)
+        )
+        if expected > credit_limit:
+            # 크레딧을 아끼려고 이번 분석은 LLM 없이 코드 분석만 한다
+            over_limit = (
+                f"예상 크레딧 {expected:,.0f}이 한도 {credit_limit:,.0f}를 넘음"
+            )
+            llm = None
     if llm is not None and kept:
         kept, report = interpret(root, kept, llm, only=scope)
         llm_calls, credits = report["tables"], report["credits_used"]
         llm_failed = len(report["failed"])
+        llm_rejected = len(report["rejected_links"])
+        # 규칙이 못 이은 시스템 간 참조 컬럼은 LLM에게 묻고 값으로 확인한다(보류로만 낸다)
+        cross, cross_report = cross_links(root, kept, llm, cross_tables)
+        cross_kept, cross_dropped = verify(root, cross)
+        kept += cross_kept
+        dropped += cross_dropped
+        llm_calls += cross_report["calls"]
+        llm_failed += len(cross_report["failed"])
+        credits += cross_report["credits_used"]
+        llm_cross = len([c for c in cross_kept if c.payload.kind.value == "LINK_RULE"])
     documents, links = 0, []
     if scope & NOTE_TABLES:
         # LLM이 있으면 설비 별명·증상·부정·추정도 뽑는다(10개 문서씩 한 번 호출)
@@ -162,10 +214,14 @@ def _analyze(
         "documents": documents,
         "documentLinks": sum(c.candidate_id.startswith("DL-") for c in notes_kept),
         "llmUsed": llm_calls > llm_failed,
-        "llmSkipReason": _llm_skip_reason(llm, llm_calls, llm_failed),
+        "llmSkipReason": over_limit or _llm_skip_reason(llm, llm_calls, llm_failed),
         "llmCalls": llm_calls,
         "llmFailedCalls": llm_failed,
         "llmCredits": round(credits, 2),
+        # 규칙도 보류로 두고 LLM도 업무상 맞지 않다고 봐서 보내지 않은 관계 수
+        "llmRejectedLinks": llm_rejected,
+        # LLM이 제안하고 값으로 확인한 시스템 간 연결 수(모두 보류 권고)
+        "llmCrossLinks": llm_cross,
     }
     return AnalysisResult(summary=summary, proposals=proposals)
 

@@ -1,0 +1,258 @@
+{
+  "tables": {
+    "T001W": {
+      "description": "플랜트 마스터",
+      "primary_key": [
+        "WERKS"
+      ],
+      "columns": {
+        "WERKS": {
+          "type": "varchar(4)",
+          "comment": "플랜트"
+        },
+        "NAME1": {
+          "type": "varchar(30)",
+          "comment": "플랜트명"
+        },
+        "ORT01": {
+          "type": "varchar(25)",
+          "comment": "도시"
+        },
+        "REGIO": {
+          "type": "varchar(10)",
+          "comment": ""
+        },
+        "LAND1": {
+          "type": "varchar(3)",
+          "comment": "국가키"
+        }
+      }
+    },
+    "MARA": {
+      "description": "자재 마스터 일반 데이터",
+      "primary_key": [
+        "MATNR"
+      ],
+      "columns": {
+        "MATNR": {
+          "type": "varchar(18)",
+          "comment": "자재번호"
+        },
+        "MAKTX": {
+          "type": "varchar(40)",
+          "comment": "자재내역"
+        },
+        "MTART": {
+          "type": "varchar(4)",
+          "comment": "자재유형"
+        },
+        "MATKL": {
+          "type": "varchar(9)",
+          "comment": "자재그룹"
+        },
+        "MEINS": {
+          "type": "varchar(3)",
+          "comment": "기본단위"
+        },
+        "BRGEW": {
+          "type": "numeric(13,3)",
+          "comment": "총중량"
+        },
+        "ERSDA": {
+          "type": "date",
+          "comment": "생성일"
+        }
+      }
+    },
+    "KNA1": {
+      "description": "고객 마스터 일반 데이터",
+      "primary_key": [
+        "KUNNR"
+      ],
+      "columns": {
+        "KUNNR": {
+          "type": "varchar(10)",
+          "comment": "고객번호"
+        },
+        "NAME1": {
+          "type": "varchar(35)",
+          "comment": "고객명"
+        },
+        "ORT01": {
+          "type": "varchar(35)",
+          "comment": ""
+        },
+        "STCD2": {
+          "type": "varchar(16)",
+          "comment": "사업자등록번호 (중복 불가)"
+        },
+        "PSTLZ": {
+          "type": "varchar(10)",
+          "comment": "우편번호"
+        },
+        "LAND1": {
+          "type": "varchar(3)",
+          "comment": "국가키"
+        },
+        "ERDAT": {
+          "type": "date",
+          "comment": ""
+        }
+      }
+    },
+    "VBAK": {
+      "description": "판매 문서 헤더",
+      "primary_key": [
+        "VBELN"
+      ],
+      "columns": {
+        "VBELN": {
+          "type": "varchar(10)",
+          "comment": "판매 문서"
+        },
+        "ERDAT": {
+          "type": "date",
+          "comment": "생성일"
+        },
+        "AUART": {
+          "type": "varchar(4)",
+          "comment": "판매 문서 유형"
+        },
+        "VKORG": {
+          "type": "varchar(4)",
+          "comment": "판매 조직"
+        },
+        "KUNNR": {
+          "type": "varchar(10)",
+          "comment": "판매처"
+        },
+        "NETWR": {
+          "type": "numeric(15,2)",
+          "comment": "정가"
+        },
+        "WAERK": {
+          "type": "varchar(5)",
+          "comment": "통화"
+        },
+        "BSTNK": {
+          "type": "varchar(20)",
+          "comment": "고객 구매오더 번호"
+        }
+      }
+    },
+    "VBAP": {
+      "description": "판매 문서 품목",
+      "primary_key": [
+        "VBELN",
+        "POSNR"
+      ],
+      "columns": {
+        "VBELN": {
+          "type": "varchar(10)",
+          "comment": "판매 문서"
+        },
+        "POSNR": {
+          "type": "varchar(6)",
+          "comment": "품목"
+        },
+        "MATNR": {
+          "type": "varchar(18)",
+          "comment": "자재번호"
+        },
+        "WERKS": {
+          "type": "varchar(4)",
+          "comment": "출하 플랜트"
+        },
+        "KWMENG": {
+          "type": "numeric(15,3)",
+          "comment": "오더 수량"
+        },
+        "VRKME": {
+          "type": "varchar(3)",
+          "comment": "판매단위"
+        },
+        "NETPR": {
+          "type": "numeric(11,2)",
+          "comment": "단가"
+        },
+        "ARKTX": {
+          "type": "varchar(40)",
+          "comment": ""
+        }
+      }
+    },
+    "LIKP": {
+      "description": "출하 헤더",
+      "primary_key": [
+        "VBELN"
+      ],
+      "columns": {
+        "VBELN": {
+          "type": "varchar(10)",
+          "comment": "출하 문서"
+        },
+        "LFART": {
+          "type": "varchar(4)",
+          "comment": "출하 유형"
+        },
+        "KUNAG": {
+          "type": "varchar(10)",
+          "comment": "판매처"
+        },
+        "WADAT_IST": {
+          "type": "date",
+          "comment": "실제 출고일"
+        },
+        "BTGEW": {
+          "type": "numeric(15,3)",
+          "comment": "총중량"
+        },
+        "GEWEI": {
+          "type": "varchar(3)",
+          "comment": ""
+        }
+      }
+    },
+    "LIPS": {
+      "description": "출하 품목",
+      "primary_key": [
+        "VBELN",
+        "POSNR"
+      ],
+      "columns": {
+        "VBELN": {
+          "type": "varchar(10)",
+          "comment": "출하 문서"
+        },
+        "POSNR": {
+          "type": "varchar(6)",
+          "comment": "출하 품목"
+        },
+        "MATNR": {
+          "type": "varchar(18)",
+          "comment": "자재번호"
+        },
+        "WERKS": {
+          "type": "varchar(4)",
+          "comment": "플랜트"
+        },
+        "CHARG": {
+          "type": "varchar(10)",
+          "comment": "배치번호"
+        },
+        "LFIMG": {
+          "type": "numeric(13,3)",
+          "comment": "출하 수량"
+        },
+        "VGBEL": {
+          "type": "varchar(10)",
+          "comment": "참조 문서 번호"
+        },
+        "VGPOS": {
+          "type": "varchar(6)",
+          "comment": "참조 품목"
+        }
+      }
+    }
+  }
+}

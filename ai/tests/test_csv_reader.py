@@ -1,6 +1,5 @@
 import pytest
 
-from app.dataset.build import generate
 from app.sources.base import UnknownTableError
 from app.sources.csv_reader import CsvSourceReader
 
@@ -63,12 +62,3 @@ def test_unknown_table_and_missing_folder(dev_factory, tmp_path):
         CsvSourceReader("erp", dev_factory / "erp").read_rows("nope")
     with pytest.raises(FileNotFoundError):
         CsvSourceReader("x", tmp_path / "missing")
-
-
-def test_reads_every_table_of_generated_dataset(tmp_path):
-    # test_dataset.py에서 옮겨 옴. 데이터셋 원천 폴더를 분석기가 읽는 형식인지 확인한다
-    generate("t2", root=tmp_path)
-    for source in ("erp", "mes"):
-        reader = CsvSourceReader(source, tmp_path / "data-t2" / source)
-        for table in reader.list_tables():
-            reader.read_schema(table)

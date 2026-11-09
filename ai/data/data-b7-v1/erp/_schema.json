@@ -1,0 +1,170 @@
+{
+  "tables": {
+    "거래처": {
+      "description": "매출처(고객)와 매입처(원료 공급사) 거래처 마스터",
+      "primary_key": [
+        "거래처코드"
+      ],
+      "columns": {
+        "거래처코드": {
+          "type": "VARCHAR(5)",
+          "comment": "거래처 고유 코드"
+        },
+        "거래처명": {
+          "type": "VARCHAR(60)",
+          "comment": "상호"
+        },
+        "거래처구분": {
+          "type": "VARCHAR(10)",
+          "comment": "매출처/매입처"
+        },
+        "사업자번호": {
+          "type": "CHAR(12)",
+          "comment": "사업자등록번호"
+        },
+        "지역": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "담당자명": {
+          "type": "VARCHAR(20)",
+          "comment": "거래처 담당자"
+        },
+        "등록일자": {
+          "type": "DATE",
+          "comment": ""
+        }
+      }
+    },
+    "품목": {
+      "description": "완제품 품목 마스터",
+      "primary_key": [
+        "품목코드"
+      ],
+      "columns": {
+        "품목코드": {
+          "type": "VARCHAR(7)",
+          "comment": "분류-일련번호 형식"
+        },
+        "품목명": {
+          "type": "VARCHAR(60)",
+          "comment": ""
+        },
+        "품목분류": {
+          "type": "VARCHAR(20)",
+          "comment": "탄산음료/주스/생수/차음료/스포츠음료"
+        },
+        "용량ml": {
+          "type": "INTEGER",
+          "comment": "용기 용량"
+        },
+        "포장단위": {
+          "type": "VARCHAR(10)",
+          "comment": "박스당 입수"
+        },
+        "바코드": {
+          "type": "CHAR(13)",
+          "comment": "EAN-13 상품 바코드(고유)"
+        },
+        "판매단가": {
+          "type": "INTEGER",
+          "comment": "개당 단가(원)"
+        },
+        "사용여부": {
+          "type": "CHAR(1)",
+          "comment": ""
+        }
+      }
+    },
+    "주문": {
+      "description": "고객 주문 헤더",
+      "primary_key": [
+        "주문번호"
+      ],
+      "columns": {
+        "주문번호": {
+          "type": "VARCHAR(13)",
+          "comment": "판매 주문 번호"
+        },
+        "고객": {
+          "type": "VARCHAR(5)",
+          "comment": "주문한 매출처"
+        },
+        "주문일자": {
+          "type": "DATE",
+          "comment": ""
+        },
+        "공장코드": {
+          "type": "CHAR(4)",
+          "comment": "1100=1공장, 1200=2공장"
+        },
+        "주문상태": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "비고": {
+          "type": "VARCHAR(100)",
+          "comment": ""
+        }
+      }
+    },
+    "주문상세": {
+      "description": "주문 품목 행",
+      "primary_key": [],
+      "columns": {
+        "주문번호": {
+          "type": "VARCHAR(13)",
+          "comment": ""
+        },
+        "행번호": {
+          "type": "INTEGER",
+          "comment": "주문 내 순번"
+        },
+        "품목코드": {
+          "type": "VARCHAR(7)",
+          "comment": "주문 품목"
+        },
+        "주문수량": {
+          "type": "INTEGER",
+          "comment": "박스 수량"
+        },
+        "단가": {
+          "type": "INTEGER",
+          "comment": ""
+        }
+      }
+    },
+    "출하": {
+      "description": "주문 출하 실적",
+      "primary_key": [
+        "출하번호"
+      ],
+      "columns": {
+        "출하번호": {
+          "type": "VARCHAR(13)",
+          "comment": "SH+출하일(YYMMDD)-일련번호"
+        },
+        "주문번호": {
+          "type": "VARCHAR(13)",
+          "comment": "원 주문"
+        },
+        "출하일자": {
+          "type": "DATE",
+          "comment": ""
+        },
+        "차량번호": {
+          "type": "VARCHAR(12)",
+          "comment": "배송 차량"
+        },
+        "출하수량": {
+          "type": "INTEGER",
+          "comment": "박스 수량"
+        },
+        "출하창고": {
+          "type": "CHAR(2)",
+          "comment": ""
+        }
+      }
+    }
+  }
+}

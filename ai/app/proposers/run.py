@@ -20,6 +20,9 @@ from app.models.candidate import Candidate
 from app.proposers.api_format import to_api_proposals
 from app.proposers.evidence import verify
 from app.proposers.links import propose_links
+from app.proposers.llm_links import estimate_credits as estimate_cross_links
+from app.proposers.llm_links import prepare as prepare_cross_links
+from app.proposers.llm_links import propose as cross_links
 from app.proposers.objects import propose_objects
 from app.proposers.semantics import estimate_credits, interpret, prepare
 
@@ -53,6 +56,11 @@ def run(root: Path, llm: LLMClient | None = None, only: set[str] | None = None) 
     llm_report = None
     if llm is not None:
         kept, llm_report = interpret(root, kept, llm, only)
+        # 규칙이 못 이은 시스템 간 참조 컬럼은 LLM에게 묻고 값으로 확인한다(보류로만 낸다)
+        cross, cross_report = cross_links(root, kept, llm)
+        cross_kept, _ = verify(root, cross)
+        kept += cross_kept
+        llm_report["cross_links"] = cross_report | {"kept": len(cross_kept)}
     return {
         "source": str(root),
         "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -101,8 +109,14 @@ def main(argv=None) -> int:
     if args.llm_estimate or args.llm_credit_limit is not None:
         kept, _ = generate(args.root)
         prompts = prepare(args.root, kept, only)
-        estimate = estimate_credits(prompts)
-        print(f"LLM 의미 해석 예상 크레딧: {estimate:.1f} (표 {len(prompts)}개)")
+        estimate = estimate_credits(prompts, model=get_settings().llm_model)
+        _, cross_prompts = prepare_cross_links(args.root, kept)
+        cross = estimate_cross_links(cross_prompts, model=get_settings().llm_model)
+        print(
+            f"LLM 의미 해석 예상 크레딧: {estimate:.1f} (표 {len(prompts)}개)"
+            f" + 시스템 간 연결 {cross:.1f} ({len(cross_prompts)}번)"
+        )
+        estimate += cross
         if args.llm_estimate:
             return 0
         if estimate > args.llm_credit_limit:

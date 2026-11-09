@@ -1,0 +1,212 @@
+{
+  "systems": [
+    "sap",
+    "l2"
+  ],
+  "relations": [
+    {
+      "from": "sap.VBAK.KUNNR",
+      "to": "sap.KNA1.KUNNR",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "sap.VBAP.VBELN",
+      "to": "sap.VBAK.VBELN",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "sap.VBAP.MATNR",
+      "to": "sap.MARA.MATNR",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "sap.VBAP.WERKS",
+      "to": "sap.T001W.WERKS",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "sap.LIKP.KUNAG",
+      "to": "sap.KNA1.KUNNR",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "sap.LIPS.VBELN",
+      "to": "sap.LIKP.VBELN",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "sap.LIPS.VGBEL+sap.LIPS.VGPOS",
+      "to": "sap.VBAP.VBELN+sap.VBAP.POSNR",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "sap.LIPS.MATNR",
+      "to": "sap.MARA.MATNR",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "sap.LIPS.WERKS",
+      "to": "sap.T001W.WERKS",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "l2.heat.furnace_id",
+      "to": "l2.equipment.equip_code",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "l2.coil.heat_no",
+      "to": "l2.heat.heat_no",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "l2.rolling_schedule.coil_id",
+      "to": "l2.coil.coil_id",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "l2.rolling_schedule.mill_id",
+      "to": "l2.equipment.equip_code",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "l2.quality_cert.coil_id",
+      "to": "l2.coil.coil_id",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "l2.coil.material_code",
+      "to": "sap.MARA.MATNR",
+      "transform": "l2는 앞자리 0이 없는 8자리 숫자, SAP는 앞에 0을 채운 18자리. 왼쪽에 0을 채워 18자리로 맞춤 (일부 값은 이미 18자리)",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "l2.equipment.location_code",
+      "to": "sap.T001W.WERKS",
+      "transform": "위치 코드 'KR1100-B3'의 국가 접두 2자리 뒤 4자리(3~6번째 문자)가 플랜트 코드",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "l2.coil.so_no+l2.coil.so_item",
+      "to": "sap.VBAP.VBELN+sap.VBAP.POSNR",
+      "transform": "수주 번호는 앞 0을 채워 10자리, 수주 품번은 앞 0을 채워 6자리로 맞춤 (예: 50001234/20 → 0050001234/000020)",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "l2.quality_cert.customer_brn",
+      "to": "sap.KNA1.STCD2",
+      "transform": "숫자 10자리 사업자번호를 3-2-5 자리로 끊어 하이픈 삽입 (일부 값은 이미 하이픈 포함). 대상은 PK가 아닌 유일 컬럼",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "sap.LIPS.CHARG",
+      "to": "l2.coil.coil_id",
+      "transform": "배치번호 앞 2자리(코일 일련번호)를 뒤로 보내고 '-'로 연결 (03H24A0153 → H24A0153-03), 대문자로 통일",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "l2.quality_cert.dlv_ref",
+      "to": "sap.LIKP.VBELN",
+      "transform": "끝의 '-검사숫자' 1자리를 떼고 앞에 0을 채워 10자리로 맞춤 (80012345-7 → 0080012345)",
+      "cardinality": "N:1"
+    }
+  ],
+  "traps": [
+    {
+      "column": "l2.coil.width_mm",
+      "looks_like": "sap.T001W.WERKS",
+      "why": "코일 폭(1100, 1200 등 mm 값)이 4자리 플랜트 코드와 값이 겹칠 뿐 관계 아님"
+    },
+    {
+      "column": "sap.VBAK.VKORG",
+      "looks_like": "sap.T001W.WERKS",
+      "why": "판매 조직 코드는 플랜트와 같은 4자리 체계지만 별개의 조직 단위"
+    },
+    {
+      "column": "l2.quality_cert.lab_sample_no",
+      "looks_like": "l2.rolling_schedule.schedule_id",
+      "why": "시험실 시편 번호(1~600)가 압연 일정 ID 범위와 겹치지만 서로 무관"
+    },
+    {
+      "column": "l2.equipment.asset_no",
+      "looks_like": "sap.MARA.MATNR",
+      "why": "회계 자산 번호가 자재번호(앞 0 제거)와 같은 8자리 대역이라 0을 채우면 겹치지만 관계 아님"
+    }
+  ],
+  "dirty": [
+    {
+      "column": "sap.VBAK.KUNNR",
+      "what": "약 2.5% 고객 마스터에 없는 번호, 약 1% NULL"
+    },
+    {
+      "column": "sap.VBAP.MATNR",
+      "what": "약 2% 자재 마스터에 없는 번호 (LIPS.MATNR에도 전파)"
+    },
+    {
+      "column": "sap.LIKP.KUNAG",
+      "what": "약 2.5% 고객 마스터에 없는 번호"
+    },
+    {
+      "column": "sap.LIPS.CHARG",
+      "what": "약 2% 소문자로 기록 (03h24a0153)"
+    },
+    {
+      "column": "sap.T001W.NAME1",
+      "what": "일부 값 뒤에 공백"
+    },
+    {
+      "column": "l2.coil.heat_no",
+      "what": "약 2.5% 차지 실적에 없는 번호"
+    },
+    {
+      "column": "l2.coil.material_code",
+      "what": "약 1.5% 자재 마스터에 없는 번호, 약 2% 18자리로 0이 채워진 형식"
+    },
+    {
+      "column": "l2.coil.so_no",
+      "what": "재고 코일 약 6% NULL (so_item도 NULL), 약 1% 없는 품번 90"
+    },
+    {
+      "column": "l2.heat.tap_time",
+      "what": "약 4% 'YYYY/MM/DD HH:MI' 형식 혼재"
+    },
+    {
+      "column": "l2.heat.furnace_id",
+      "what": "약 2% NULL"
+    },
+    {
+      "column": "l2.equipment.location_code",
+      "what": "약 3% NULL"
+    },
+    {
+      "column": "l2.rolling_schedule.coil_id",
+      "what": "약 2.5% 코일 실적에 없는 번호"
+    },
+    {
+      "column": "l2.quality_cert.customer_brn",
+      "what": "약 2% NULL, 약 3% 하이픈 포함 형식"
+    },
+    {
+      "column": "l2.quality_cert.dlv_ref",
+      "what": "약 2% 출하 문서에 없는 번호"
+    },
+    {
+      "column": "l2.quality_cert.cert_no",
+      "what": "PK 미선언, 재발행으로 5건 중복"
+    }
+  ]
+}

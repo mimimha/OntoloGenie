@@ -1,0 +1,213 @@
+{
+  "tables": {
+    "supplier": {
+      "description": "공급업체 마스터",
+      "primary_key": [
+        "supplierId"
+      ],
+      "columns": {
+        "supplierId": {
+          "type": "varchar(10)",
+          "comment": "공급업체 ID"
+        },
+        "supplierName": {
+          "type": "varchar(50)",
+          "comment": "공급업체명"
+        },
+        "bizRegNo": {
+          "type": "varchar(12)",
+          "comment": "사업자등록번호"
+        },
+        "region": {
+          "type": "varchar(20)",
+          "comment": "소재 지역"
+        },
+        "qualityGrade": {
+          "type": "int",
+          "comment": "품질 평가 등급(1~5, 1이 최우수)"
+        },
+        "contactName": {
+          "type": "varchar(20)",
+          "comment": "담당자명"
+        },
+        "registeredAt": {
+          "type": "date",
+          "comment": "거래 등록일"
+        }
+      }
+    },
+    "material": {
+      "description": "자재·상품 품목 마스터(원자재, 포장재, OEM 상품)",
+      "primary_key": [
+        "materialCd"
+      ],
+      "columns": {
+        "materialCd": {
+          "type": "varchar(12)",
+          "comment": "품목 코드"
+        },
+        "materialName": {
+          "type": "varchar(50)",
+          "comment": "품목명"
+        },
+        "materialType": {
+          "type": "varchar(10)",
+          "comment": "품목 유형"
+        },
+        "unit": {
+          "type": "varchar(5)",
+          "comment": "기준 단위"
+        },
+        "defaultSupplierId": {
+          "type": "varchar(10)",
+          "comment": "기본 공급업체"
+        },
+        "shelfLifeDays": {
+          "type": "int",
+          "comment": "유통기한(일)"
+        },
+        "storageCond": {
+          "type": "varchar(20)",
+          "comment": "보관 조건"
+        }
+      }
+    },
+    "purchaseOrder": {
+      "description": "구매 발주 헤더",
+      "primary_key": [
+        "poNo"
+      ],
+      "columns": {
+        "poNo": {
+          "type": "varchar(14)",
+          "comment": "발주 번호"
+        },
+        "supplierId": {
+          "type": "varchar(10)",
+          "comment": "발주 공급업체"
+        },
+        "orderDate": {
+          "type": "date",
+          "comment": "발주일"
+        },
+        "dueDate": {
+          "type": "date",
+          "comment": "납기 요청일"
+        },
+        "poStatus": {
+          "type": "varchar(10)",
+          "comment": "발주 상태"
+        },
+        "totalAmount": {
+          "type": "numeric(14,2)",
+          "comment": "발주 총액(원)"
+        },
+        "buyerName": {
+          "type": "varchar(30)",
+          "comment": "구매 담당자"
+        }
+      }
+    },
+    "purchaseOrderLine": {
+      "description": "구매 발주 품목 라인",
+      "primary_key": [
+        "poNo",
+        "lineSeq"
+      ],
+      "columns": {
+        "poNo": {
+          "type": "varchar(14)",
+          "comment": "발주 번호"
+        },
+        "lineSeq": {
+          "type": "int",
+          "comment": "라인 순번"
+        },
+        "materialCd": {
+          "type": "varchar(12)",
+          "comment": "발주 품목 코드"
+        },
+        "orderQty": {
+          "type": "int",
+          "comment": "발주 수량"
+        },
+        "unitPrice": {
+          "type": "numeric(12,2)",
+          "comment": "단가(원)"
+        },
+        "lineStatus": {
+          "type": "varchar(10)",
+          "comment": "라인 상태"
+        }
+      }
+    },
+    "customer": {
+      "description": "판매 거래처(고객) 마스터",
+      "primary_key": [
+        "customerId"
+      ],
+      "columns": {
+        "customerId": {
+          "type": "int",
+          "comment": "고객 번호"
+        },
+        "customerName": {
+          "type": "varchar(50)",
+          "comment": "고객명"
+        },
+        "salesChannel": {
+          "type": "varchar(20)",
+          "comment": "판매 채널"
+        },
+        "region": {
+          "type": "varchar(20)",
+          "comment": "지역"
+        },
+        "creditGrade": {
+          "type": "varchar(1)",
+          "comment": "여신 등급"
+        },
+        "openedAt": {
+          "type": "date",
+          "comment": "거래 개시일"
+        }
+      }
+    },
+    "shipment": {
+      "description": "고객 출하 지시",
+      "primary_key": [
+        "shipmentNo"
+      ],
+      "columns": {
+        "shipmentNo": {
+          "type": "varchar(12)",
+          "comment": "출하 번호"
+        },
+        "consigneeCode": {
+          "type": "int",
+          "comment": "수하인 코드"
+        },
+        "shipDate": {
+          "type": "date",
+          "comment": "출하일"
+        },
+        "carrier": {
+          "type": "varchar(20)",
+          "comment": "운송사"
+        },
+        "palletCnt": {
+          "type": "int",
+          "comment": "팔레트 수량"
+        },
+        "boxCnt": {
+          "type": "int",
+          "comment": "박스 수량"
+        },
+        "shipStatus": {
+          "type": "varchar(10)",
+          "comment": "출하 상태"
+        }
+      }
+    }
+  }
+}

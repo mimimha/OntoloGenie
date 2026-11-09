@@ -20,6 +20,7 @@
 """
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -43,14 +44,26 @@ from app.models.candidate import (
     SourceFilter,
 )
 from app.proposers import confidence as score
-from app.proposers.objects import TIME_TYPES, to_code
-from app.rules.transforms import TransformStep
+from app.proposers.objects import (
+    TIME_TYPES,
+    key_like_columns,
+    observed_pair_key,
+    to_code,
+)
+from app.rules.transforms import TransformStep, describe_steps
 from app.sources.csv_reader import CsvSourceReader
 
 MIN_ROWS_FOR_SMALL = 20  # 값 종류가 적어도 이만큼 행이 모두 이어지면 보류 후보로 낸다
 ROW_COVERAGE = 0.9
 CATEGORY_MAX = 5  # 조건 컬럼으로 볼 값 종류 상한
 GROUP_COVERAGE = 0.8  # 숫자 묶음 비교로 이을 때 필요한 서로 다른 값 기준 비율
+# 이보다 덜 이어지면 확정 후보(대기)가 아니라 보류로 낸다(분석기 기준 0.6 ~ 이 값 사이. B6: 폭 mm → 공장 코드 70%)
+LOW_COVERAGE = 0.8
+# 숫자만 겹친 보류 연결에서 출발 값 종류가 이보다 적고 도착 값 종류의 FEW_SHARE 미만이면 우연으로 보고 뺀다
+FEW_VALUES = 10
+FEW_SHARE = 0.3
+# 순번 키 여러 개에 겹칠 때 하나를 고르려면 도착 값 종류의 이만큼에 닿아야 한다
+TIGHT_SHARE = 0.8
 # 이름 비교에서 뺄 흔한 꼬리말
 GENERIC_NAMES = {"no", "id", "cd", "code", "seq", "num", "key", "ref", "nbr"}
 # 수량·개수 컬럼 이름. 작은 정수라 1부터 매긴 번호와 우연히 겹친다(B2: 불량 수 → 불량 기록 번호)
@@ -94,12 +107,22 @@ class Relation:
     via: tuple[Column, Column] | None = (
         None  # (찾을 컬럼, 가져올 컬럼): 첫 출발 컬럼에만 적용
     )
+    # 복합키에서 컬럼마다 변환이 다를 때 [(출발 변환, 도착 변환), ...]. 없으면 모든 컬럼에 source_steps·target_steps
+    column_steps: list[tuple[list[dict], list[dict]]] | None = None
+    # 도착이 순번 키(1, 2, 3…)이고 이름 근거도 없어 숫자만 겹친 연결. _drop_number_coincidences가 본다
+    sequence_only: bool = False
+    # 보류 연결 가운데 숫자(일련번호)만 같아 이어진 것(원래 값은 하나도 같지 않거나 수량 컬럼)
+    number_only: bool = False
+    # 대소문자·구분자·끝 차수 글자만 다른 같은 코드로 이은 것(_loose). 숫자 우연 거르기에서 뺀다
+    canon_match: bool = False
 
 
 class Tables:
     def __init__(self, root: Path, analysis: StructuredAnalysis):
         self.columns: dict[str, list[Column]] = {}
         self.pk: dict[str, list[str]] = {}
+        # 기본키도 한 컬럼 키도 없는 표에서 값으로 찾은 두 컬럼 키(도착 복합키로만 쓴다)
+        self.pair_key: dict[str, list[str]] = {}
         self.frames: dict[str, pd.DataFrame] = {}
         for folder in sorted(p for p in Path(root).iterdir() if p.is_dir()):
             reader = CsvSourceReader(folder.name, folder)
@@ -112,6 +135,13 @@ class Tables:
                 self.frames[key] = df
                 self.pk[key] = schema.primary_key
                 by_name = {c.ref.rsplit(".", 1)[1]: c for c in analysis.tables[key]}
+                if not schema.primary_key and not any(
+                    c.is_key_candidate for c in analysis.tables[key]
+                ):
+                    # 기본키도 한 컬럼 키도 없으면 두 컬럼 조합 키를 도착 복합키로 본다(objects와 같은 기준)
+                    self.pair_key[key] = observed_pair_key(
+                        df, key_like_columns(schema, analysis.tables[key])
+                    )
                 self.columns[key] = [
                     Column(
                         key, c.name, by_name[c.name], df[c.name].dropna().astype(str)
@@ -153,12 +183,24 @@ def target_keys(tables: Tables) -> list[tuple[Column, str]]:
                 and col.unique
                 and len(col.values) >= 3
                 and not col.declared.startswith(("int", "bigint", "smallint"))
-                and not col.values.str.fullmatch(r"[\d.\-]+").any()
+                and (
+                    not col.values.str.fullmatch(r"[\d.\-]+").any()
+                    or _hyphen_number_code(col.values)
+                )
             ):
                 out.append((col, "alternate"))
             elif not pk and col.analysis.is_key_candidate:
                 out.append((col, "primary"))
     return out
+
+
+def _hyphen_number_code(values: pd.Series) -> bool:
+    """사업자번호(123-45-67890)처럼 하이픈으로 나뉜 숫자 번호. 날짜(2026-03-05)는 뺀다."""
+    return bool(
+        values.str.fullmatch(r"\d+(-\d+)+").all()
+        and not values.str.fullmatch(r"\d{4}-\d{2}-\d{2}").any()
+        and values.str.len().min() >= 8
+    )
 
 
 def name_evidence(source: Column, target: Column) -> bool:
@@ -174,9 +216,10 @@ def name_evidence(source: Column, target: Column) -> bool:
 def is_sequence_key(col: Column) -> bool:
     """1, 2, 3…이나 1001, 1002…처럼 촘촘히 이어지는 정수 키. 작은 숫자 컬럼이면 무엇이든 들어간다."""
     values = col.values
-    if len(values) < 3 or not values.str.fullmatch(r"\d+").all():
+    # 18자리 넘는 숫자(태그 번호 등)는 int64를 넘어 astype에서 멈추므로 순번 키로 보지 않는다
+    if len(values) < 3 or not values.str.fullmatch(r"\d{1,18}").all():
         return False
-    numbers = values.astype(int)
+    numbers = values.astype("int64")
     return numbers.is_unique and numbers.max() - numbers.min() + 1 <= 1.5 * len(numbers)
 
 
@@ -188,6 +231,116 @@ def _check_sequence_key(rel: Relation, source: Column, target: Column) -> None:
         and not name_evidence(source, target)
     ):
         rel.hold = "도착이 1, 2, 3…처럼 이어지는 순번 키라 숫자가 우연히 겹칠 수 있고, 컬럼 이름에도 근거가 없음"
+        rel.sequence_only = True
+        rel.number_only = True
+    elif (
+        rel.hold is None
+        and is_sequence_key(target)
+        and len(_distinct(source)) < FEW_VALUES
+        and len(_distinct(source)) < FEW_SHARE * len(_distinct(target))
+    ):
+        # 이름이 비슷해도(적재 용량 cap_plt 2·4·6 → 팔레트 번호 plt_no) 값 몇 개가 순번 일부에 닿을 뿐일 수 있다
+        rel.hold = (
+            f"값 종류 {len(_distinct(source))}개가 1, 2, 3…처럼 이어지는 순번 키의 일부에만 닿음. "
+            "번호가 아닌 숫자(용량·등급)일 수 있어 확인 필요"
+        )
+
+
+def _is_name_text(col: Column) -> bool:
+    """값 대부분에 띄어쓰기가 있으면 이름·설명('유화기 1호', 'ABS 레진 12형')이지 번호가 아니다."""
+    return bool(col.values.str.contains(" ", regex=False).mean() > 0.5)
+
+
+def _drop_number_coincidences(
+    relations: list[Relation], tables: Tables
+) -> list[Relation]:
+    """숫자(일련번호)만 같아 보류로 낸 연결 가운데, 구조로 보아 참조일 수 없는 것은 내지 않는다.
+
+    독립 데이터 B~B7에서 이런 보류 대부분이 틀렸다(순번 키 쪽은 74건 중 71건). 모두 검토자가
+    하나씩 거절해야 하는 잡음이라, 값과 표 구조만 보고 다음은 뺀다:
+    - 같은 표 안의 키로 이어짐(이름 근거 없는 자기 참조. 예: 거래처 이름 '거래처 01' → 거래처 코드 C01)
+    - 출발 값 종류가 몇 개뿐이고 도착 값의 일부에만 닿음(등급 1~5, 도크 번호 1~8 → 고객 번호 1~50)
+    - 출발이 수량·금액 컬럼
+    - 출발 값이 이름·설명 글('유화기 1호')
+    - 출발이 자기 표 복합키의 둘째 이후 컬럼(문서 안 줄 번호 1, 2, 3…)
+    - 한 출발 컬럼이 이런 연결로 여러 표에 이어짐(어느 표인지 정할 수 없음)
+    - (순번 키 도착만) 출발이 자기 표의 기본키(번호끼리 우연히 겹침)
+    다른 시스템의 기본키끼리 번호만 다르게 쓰는 경우(MES 작업자 57 ↔ ERP 사원 E00057)는 같은 대상일 수 있어 남긴다.
+    """
+
+    def structural(rel: Relation) -> bool:
+        source, target = rel.source[0], rel.target[0]
+        own_key = tables.pk.get(source.table) or tables.pair_key.get(source.table) or []
+        few = len(_distinct(source)) < FEW_VALUES and (
+            len(_distinct(source)) < FEW_SHARE * len(_distinct(target))
+        )
+        return (
+            source.table == target.table
+            or few
+            or _is_quantity(source)
+            or _is_name_text(source)
+            or source.name in own_key[1:]
+            or (rel.sequence_only and own_key == [source.name])
+        )
+
+    weak = [r for r in relations if r.number_only and len(r.source) == 1]
+    targets_of: dict[str, int] = {}
+    for r in weak:
+        targets_of[r.source[0].ref] = targets_of.get(r.source[0].ref, 0) + 1
+    drop = {id(r) for r in weak if structural(r) or targets_of[r.source[0].ref] >= 2}
+    return [r for r in relations if id(r) not in drop]
+
+
+def _cached(col: Column, name: str, make):
+    """컬럼마다 한 번만 계산해 둔다. 같은 도착 컬럼이 출발 컬럼 수천 개와 비교된다."""
+    cache = col.__dict__.setdefault("_cache", {})
+    if name not in cache:
+        cache[name] = make()
+    return cache[name]
+
+
+def _distinct(col: Column) -> set[str]:
+    return _cached(col, "distinct", lambda: set(col.values))
+
+
+def _patterns(col: Column) -> set[str]:
+    return _cached(col, "patterns", lambda: {value_pattern(v) for v in _distinct(col)})
+
+
+def _canon_index(col: Column) -> dict | None:
+    """_canon 값 → 원래 값. 서로 다른 값이 같은 _canon이 되면 쓸 수 없어 None."""
+
+    def make():
+        index = {}
+        for value in _distinct(col):
+            canon = _canon(value)
+            if not canon or canon in index:
+                return None
+            index[canon] = value
+        return index
+
+    return _cached(col, "canon_index", make)
+
+
+def _all_digits(col: Column) -> bool:
+    return _cached(col, "digits", lambda: bool(col.values.str.fullmatch(r"\d+").all()))
+
+
+def _all_long_digits(col: Column) -> bool:
+    return _cached(
+        col, "digits6", lambda: bool(col.values.str.fullmatch(r"\d{6,}").all())
+    )
+
+
+def _digit_strings(col: Column) -> dict[str, str]:
+    return _cached(
+        col,
+        "digit_strings",
+        lambda: {
+            v: "".join(ch for ch in v if ch.isdigit() or ch == ".")
+            for v in _distinct(col)
+        },
+    )
 
 
 @cache
@@ -219,7 +372,8 @@ def _group_index(target: Column) -> dict | None:
 def _number_groups(source: Column, target: Column, key: str) -> Relation | None:
     """표기가 달라도 숫자 묶음이 같으면 잇는다. 한 묶음이면 허용 변환으로, 여러 묶음이면 대응표로 표현한다."""
     distinct = set(source.values)
-    if len(distinct) < 3 or distinct & set(target.values):
+    # 원래 값이 절반 넘게 같으면 앞의 비교가 본다. 일부만 같은 경우(형식이 섞인 원천)는 여기서 본다
+    if len(distinct) < 3 or len(distinct & set(target.values)) >= len(distinct) / 2:
         return None
     if all(v.isdigit() for v in distinct) or target.values.str.fullmatch(r"\d+").all():
         # 숫자뿐인 값은 위의 비교가 이미 본다. 숫자뿐인 키로 가면 'INJ-07' → 7처럼 아무 번호나 이어진다
@@ -235,7 +389,8 @@ def _number_groups(source: Column, target: Column, key: str) -> Relation | None:
     # 글자가 서로 다른 번호끼리(GR2610-001 ↔ SO2610-001)는 날짜·순번만 우연히 같은 다른 문서다.
     # 글자가 같거나(pl354 ↔ PL-0354) 출발에 글자가 없을 때(26-20 ↔ SO26-0020)만 잇는다
     agree = sum(not _letters(v) or _letters(v) == _letters(t) for v, t in pairs)
-    if agree < 0.9 * len(pairs):
+    letters_differ = agree < 0.9 * len(pairs)
+    if letters_differ and not _other_system_code(source, target, hit, coverage):
         return None
     single = all(len(_groups(v)) == 1 for v in hit)
     if single:
@@ -255,7 +410,12 @@ def _number_groups(source: Column, target: Column, key: str) -> Relation | None:
     )
     example = f"{pairs[0][0]} = {pairs[0][1]}"
     hold = None
-    if not single:
+    if letters_differ:
+        hold = (
+            f"다른 시스템의 번호를 숫자로만 이었다({example}). 글자가 달라 다른 대상일 수 있어 "
+            "업무 의미 확인 필요"
+        )
+    elif not single:
         hold = f"숫자 묶음만 같아({example}) 대응표로 이었다. 새 값은 연결되지 않으니 변환 함수 추가 검토 필요"
     elif not all(_letters(v) for v in hit):
         hold = f"출발 값에 글자가 없고 숫자만 같음({example}). 업무 의미 확인 필요"
@@ -274,12 +434,219 @@ def _number_groups(source: Column, target: Column, key: str) -> Relation | None:
     )
 
 
+def _one_to_one(hit: dict) -> bool:
+    """출발 값(글자·숫자 묶음이 같으면 하나로 셈)과 도착 값이 하나씩 짝지어지는지."""
+    return len(set(hit.values())) == len({(_letters(v), _groups(v)) for v in hit})
+
+
+def _other_system_code(
+    source: Column, target: Column, hit: dict, coverage: float
+) -> bool:
+    """다른 시스템이 같은 대상을 다른 글자로 번호 매긴 경우(SUP-0012 ↔ S12).
+    시스템이 다르고, 값이 많고, 거의 다 짝지어질 때만 본다(도착 번호는 _group_index가 하나씩만 둔다). 같은 시스템 안의
+    글자 다른 번호(거래처 C001 ↔ 설비 EQ-001)는 우연히 일련번호만 같은 경우가 많다.
+    거의 다 짝지어짐은 서로 다른 값 90%나 행 95%로 본다. 가끔 나오는 없는 번호가 많으면 서로 다른 값 기준만
+    떨어진다(B8 정비 부품 MRO9003 ↔ 품목 P009003: 서로 다른 값 28/32, 행 대부분)."""
+    rows = source.values.isin(hit).mean() if len(source.values) else 0.0
+    return (
+        (coverage >= 0.9 or rows >= 0.95)
+        and len(hit) >= 10
+        # 서로 다른 출발 값 여럿이 같은 도착 번호로 모이면(RM_SOY_001·RM_SUG_001 → L0001) 숫자만 겹친 것이다.
+        # 대소문자·구분자·0 채움만 다른 같은 값('cust-1'·'CUST-1' → C0001)은 하나로 세고, 이미 도착 형식으로
+        # 적힌 값('SUP-0003' → 'SUP-0003')은 세지 않는다
+        and _one_to_one({v: t for v, t in hit.items() if v != t})
+        and target.table.split(".")[0] != source.table.split(".")[0]
+    )
+
+
+def _canon(value: str) -> str:
+    """대소문자·구분자(-, _, 공백, 마침표)를 무시한 값. 'rm-soy-031' = 'RM_SOY_031'"""
+    return re.sub(r"[^0-9A-Z가-힣]", "", value.upper())
+
+
+def _canon_without_suffix(value: str) -> str:
+    """끝의 차수 글자('-A', '_B')를 뗀 _canon. 'SO2026-0012-A' = 'SO-2026-0012'"""
+    return _canon(re.sub(r"[-_ ][A-Za-z]$", "", value.strip()))
+
+
+def _loose(source: Column, target: Column, key: str) -> Relation | None:
+    """허용 변환 조합으로 못 이은 값을 넓게 다시 본다(B3·B4 독립 데이터에서 드러난 표기 차이).
+
+    1) 대소문자·구분자만 다름: 숫자뿐이면 숫자만 남겨 비교, 아니면 대응표로 잇고 보류.
+    2) 한쪽은 숫자뿐인 번호, 다른 쪽은 숫자만 남기면 공통 앞자리 + 그 번호: 앞자리를 뺀다
+       (PO20260315-012 → 260315012). 어느 쪽이 긴 번호든 본다.
+    """
+    distinct = _distinct(source)
+    targets = _distinct(target)
+    if len(distinct) < 3 or distinct & targets:
+        return None
+    index = _canon_index(target)
+    if index:
+        hit = {v: index[_canon(v)] for v in distinct if _canon(v) in index}
+        suffix = False
+        if len(hit) / len(distinct) < GROUP_COVERAGE:
+            trimmed = {
+                v: index[_canon_without_suffix(v)]
+                for v in distinct
+                if _canon_without_suffix(v) in index
+            }
+            if len(trimmed) > len(hit):
+                hit, suffix = trimmed, True
+        coverage = len(hit) / len(distinct)
+        if coverage >= GROUP_COVERAGE and len(hit) >= 3:
+            pairs = sorted(hit.items())
+            example = f"{pairs[0][0]} = {pairs[0][1]}"
+            # 숫자만 남기기(EXTRACT_NUMBER)는 소수점을 남기므로 소수점 있는 값은 대응표로 간다
+            if not suffix and all(
+                _canon(v).isdigit() and "." not in v + t for v, t in hit.items()
+            ):
+                steps = [{"op": "EXTRACT_NUMBER", "arg": None}]
+                target_steps = steps
+                hold = f"구분자만 달라 숫자만 남겨 비교했다({example}). 업무 의미 확인 필요"
+            else:
+                steps = [{"op": "MAP_VALUE", "arg": dict(pairs)}]
+                target_steps = []
+                what = (
+                    "끝의 차수 글자를 떼면 같아" if suffix else "대소문자·구분자만 달라"
+                )
+                hold = (
+                    f"{what} 대응표로 이었다({example}). 새 값은 연결되지 않으니 "
+                    "변환 함수(구분자 바꾸기·접미사 떼기) 추가 검토 필요"
+                )
+            return Relation(
+                [source],
+                [target],
+                "transform",
+                steps,
+                target_steps,
+                key,
+                distinct_coverage=round(coverage, 3),
+                row_coverage=_row_coverage(
+                    source.values,
+                    target.values,
+                    [TransformStep.model_validate(x) for x in steps],
+                    target_steps,
+                ),
+                matched=pairs[:3],
+                unmatched=sorted(distinct - set(hit))[:3],
+                hold=hold,
+                # 글자 전체가 같은 코드(대소문자·구분자만 다름)라 숫자만 우연히 겹친 연결이 아니다
+                canon_match=True,
+            )
+    for short, long_, long_is_target in (
+        (target, source, False),
+        (source, target, True),
+    ):
+        rel = _digits_tail(source, target, short, long_, long_is_target, key)
+        if rel is not None:
+            return rel
+    return None
+
+
+def _digits_tail(
+    source: Column,
+    target: Column,
+    short: Column,
+    long_: Column,
+    long_is_target: bool,
+    key: str,
+) -> Relation | None:
+    """한쪽은 숫자뿐인 번호, 다른 쪽은 숫자만 남기면 같은 앞자리 + 그 번호인 경우.
+    'PO20260315-012'에서 숫자만 남기고 앞의 '20'을 빼면 '260315012'. 변환은 긴 쪽에 건다.
+    짧은 쪽이 구분자가 섞인 번호여도(인사 번호 '19-034' ↔ 사번 '2019034', B8) 숫자만 남겨 5자리 이상이고
+    서로 겹치지 않으면 짧은 쪽에도 숫자만 남기기를 걸어 비교한다."""
+    short_digits: dict[str, str] | None = None
+    min_len = 6
+    if not _all_long_digits(short):
+        candidate = _digit_strings(short)
+        numbers = list(candidate.values())
+        if not (
+            numbers
+            and all(len(n) >= 5 and "." not in n for n in numbers)
+            and len(set(numbers)) == len(numbers)
+        ):
+            return None
+        short_digits, min_len = candidate, 5
+    if short_digits and short.table.split(".")[0] == long_.table.split(".")[0]:
+        # 같은 시스템 안에서 글자가 다른 번호(입고 GR-2026-00001 ↔ 수주 SO-26-00001)는 다른 문서다
+        short_letters = {_letters(v) for v in _distinct(short)}
+        if short_letters != {""} and short_letters != {
+            _letters(v) for v in _distinct(long_)
+        }:
+            return None
+    shorts = set(short_digits.values()) if short_digits else _distinct(short)
+    longs = _distinct(long_)
+    if len(longs) < 3 or longs & _distinct(short):
+        return None
+    digits = _digit_strings(long_)
+    heads: dict[str, int] = {}
+    for number in digits.values():
+        for i in range(1, len(number) - min_len + 1):
+            if number[i:] in shorts:
+                heads[number[:i]] = heads.get(number[:i], 0) + 1
+                break
+    if not heads:
+        return None
+    head, _ = max(heads.items(), key=lambda x: x[1])
+    converted = {v: d[len(head) :] for v, d in digits.items() if d.startswith(head)}
+    steps = [
+        {"op": "EXTRACT_NUMBER", "arg": None},
+        {"op": "STRIP_PREFIX", "arg": head},
+    ]
+    short_steps = [{"op": "EXTRACT_NUMBER", "arg": None}] if short_digits else []
+    if long_is_target:
+        if len(set(converted.values())) != len(converted):
+            return None  # 도착 값 둘이 같은 번호가 되면 하나로 정할 수 없다
+        back = {c: v for v, c in converted.items()}
+        number_of = short_digits or {v: v for v in _distinct(source)}
+        hit = {v: back[number_of[v]] for v in _distinct(source) if number_of[v] in back}
+        source_steps, target_steps = short_steps, steps
+    else:
+        original = {n: v for v, n in (short_digits or {}).items()}
+        hit = {v: original.get(c, c) for v, c in converted.items() if c in shorts}
+        source_steps, target_steps = steps, short_steps
+    distinct = set(source.values)
+    coverage = len(hit) / len(distinct)
+    if coverage < GROUP_COVERAGE or len(hit) < 3:
+        return None
+    pairs = sorted(hit.items())
+    return Relation(
+        [source],
+        [target],
+        "transform",
+        source_steps,
+        target_steps,
+        key,
+        distinct_coverage=round(coverage, 3),
+        row_coverage=_row_coverage(
+            source.values,
+            target.values,
+            [TransformStep.model_validate(x) for x in source_steps],
+            target_steps,
+        ),
+        matched=pairs[:3],
+        unmatched=sorted(distinct - set(hit))[:3],
+        hold=(
+            f"숫자만 남기고 앞자리 '{head}'를 빼야 같아짐({pairs[0][0]} = {pairs[0][1]}). "
+            "업무 의미 확인 필요"
+        ),
+    )
+
+
 def _single(source: Column, target: Column, key: str) -> Relation | None:
     rel = _compare(source, target, key)
     if rel is not None:
         _check_sequence_key(rel, source, target)
         if rel.hold is None and set(source.name.lower().split("_")) & QUANTITY_WORDS:
             rel.hold = "수량·개수 컬럼이라 번호와 숫자가 우연히 겹칠 수 있음"
+            rel.number_only = True
+        # 보류인데 원래 값은 하나도 같지 않은 연결: 숫자(일련번호)만 같아서 이어진 것
+        if (
+            rel.hold is not None
+            and not rel.canon_match
+            and not (_distinct(source) & _distinct(target))
+        ):
+            rel.number_only = True
     return rel
 
 
@@ -296,7 +663,7 @@ def _compare(source: Column, target: Column, key: str) -> Relation | None:
     link = _best_link(
         source.analysis, target.analysis, source.values.tolist(), target.values.tolist()
     )
-    targets = set(target.values)
+    targets = _distinct(target)
     if link is not None:
         steps = [TransformStep.model_validate(s) for s in link.source_transforms]
         rows = _row_coverage(
@@ -324,15 +691,25 @@ def _compare(source: Column, target: Column, key: str) -> Relation | None:
         elif (swap := _prefix_swap(link.source_transforms)) and no_raw_overlap:
             # 글자가 다른 번호끼리(거래처 C001 ↔ 설비 EQ-001)는 일련번호만 같은 다른 대상일 때가 많다
             rel.hold = f"접두어 '{swap[0]}'를 '{swap[1]}'로 바꿔야 같아짐. 일련번호만 우연히 같을 수 있어 업무 의미 확인 필요"
+        elif (
+            no_raw_overlap
+            and any(s["op"] == "STRIP_PREFIX" for s in link.source_transforms)
+            and _all_digits(target)
+        ):
+            # 라인 L01 → 불량 코드 01처럼 글자를 떼어 숫자뿐인 코드에 맞춘 것은 번호만 같은 다른 대상일 수 있다
+            rel.hold = "출발 값의 글자를 떼야 숫자뿐인 코드와 같아짐. 번호만 우연히 같을 수 있어 업무 의미 확인 필요"
+        elif link.coverage < LOW_COVERAGE:
+            rel.hold = f"서로 다른 값 기준 {link.coverage:.0%}만 이어짐. 우연히 겹쳤거나 원천 값이 지저분할 수 있어 확인 필요"
         return rel
     # 분석기 기준(서로 다른 값 3개 이상·포함률 0.6)에 못 미치는 경우
-    distinct = set(source.values)
+    distinct = _distinct(source)
     hit = distinct & targets
-    rows = source.values.isin(targets).mean()
-    same_shape = {value_pattern(v) for v in distinct} <= {
-        value_pattern(v) for v in targets
-    }
-    if hit and rows >= 0.8 and len(source.values) >= 10 and same_shape:
+    if (
+        hit
+        and len(source.values) >= 10
+        and (rows := source.values.isin(targets).mean()) >= 0.8
+        and _patterns(source) <= _patterns(target)
+    ):
         why = (
             f"값 종류가 {len(distinct)}개뿐"
             if len(distinct) < 3
@@ -348,7 +725,7 @@ def _compare(source: Column, target: Column, key: str) -> Relation | None:
             unmatched=sorted(distinct - targets)[:3],
             hold=f"{why}이라 우연일 수 있음",
         )
-    return _number_groups(source, target, key)
+    return _number_groups(source, target, key) or _loose(source, target, key)
 
 
 def _row_coverage(values: pd.Series, targets: pd.Series, steps, target_steps) -> float:
@@ -381,10 +758,31 @@ def single_relations(tables: Tables) -> list[Relation]:
             rel = _single(source, target, key)
             if rel is not None:
                 found.append(rel)
-    return _prune(found)
+    return _prune(found, tables)
 
 
-def _prune(relations: list[Relation]) -> list[Relation]:
+def _target_share(rel: Relation) -> float:
+    """도착 값 종류 가운데 출발 값이 닿는 비율. 담당자 번호 1~18 → 기술자 18명이면 1.0, 부품 사용 번호 1~500이면 0.04."""
+    targets = _distinct(rel.target[0])
+    return len(_distinct(rel.source[0]) & targets) / len(targets) if targets else 0.0
+
+
+def _tightest_sequence(pool: list[Relation]) -> list[Relation]:
+    """한 컬럼이 순번 키(1, 2, 3…)에 숫자만 겹칠 때 진짜 참조로 볼 하나. 진짜 참조는 대상 표 번호를 거의 다 쓰므로
+    도착 값에 가장 촘촘히 닿고 다른 순번 키보다 확실히 촘촘한 것만 고른다. 없으면 빈 목록."""
+    ranked = sorted(pool, key=_target_share, reverse=True)
+    best = _target_share(ranked[0])
+    second = _target_share(ranked[1]) if len(ranked) > 1 else 0.0
+    if (
+        best >= TIGHT_SHARE
+        and best >= 2 * second
+        and ranked[0].distinct_coverage >= 0.9
+    ):
+        return [ranked[0]]
+    return []
+
+
+def _prune(relations: list[Relation], tables: Tables) -> list[Relation]:
     by_source: dict[str, list[Relation]] = {}
     for r in relations:
         by_source.setdefault(r.source[0].ref, []).append(r)
@@ -392,6 +790,19 @@ def _prune(relations: list[Relation]) -> list[Relation]:
     for rels in by_source.values():
         confirmed = [r for r in rels if r.hold is None]
         pool = confirmed or rels
+        sequence = [r for r in pool if r.sequence_only]
+        if sequence and len(tight := _tightest_sequence(sequence)) == 1:
+            # 값 그대로 촘촘히 닿는 순번 키가 하나 있으면, 0 채우기·접두어로만 맞춘 다른 후보보다 그것을 남긴다
+            pool = tight
+        elif sequence and any(
+            not r.sequence_only
+            and r.row_coverage >= 0.95
+            and tables.pk.get(r.source[0].table) != [r.source[0].name]
+            for r in pool
+        ):
+            # 촘촘한 순번 키가 없으면 순번 키 쪽은 숫자만 우연히 겹친 것이다. 그것이 값 그대로(100%)라는 이유로
+            # 변환해서 이어지는 진짜 후보를 밀어내지 않게 뺀다(B8 품목 번호 1003 → 검사 번호 대신 품목 코드 P001003)
+            pool = [r for r in pool if not r.sequence_only]
         # 값 그대로 거의 다 이어지는 기본키 연결이 있으면 그것만 남긴다
         direct = [
             r
@@ -411,8 +822,9 @@ def _prune(relations: list[Relation]) -> list[Relation]:
     for r in kept:
         pair = frozenset((r.source[0].ref, r.target[0].ref))
         other = by_pair.get(pair)
-        if other is None or (r.target_key, -r.distinct_coverage) < (
-            other.target_key,
+        # 'alternate' < 'primary'라 문자열 비교로는 반대가 된다. 기본키 쪽을 먼저 고른다
+        if other is None or (r.target_key != "primary", -r.distinct_coverage) < (
+            other.target_key != "primary",
             -other.distinct_coverage,
         ):
             by_pair[pair] = r
@@ -423,7 +835,7 @@ def _pair_keys(tables: Tables) -> list[tuple[str, str, str, str]]:
     """(표, 컬럼 a, 컬럼 b, primary·alternate): 두 컬럼 조합이 유일한 것."""
     targets = []
     for table, cols in tables.columns.items():
-        pk = tables.pk[table]
+        pk = tables.pk[table] or tables.pair_key.get(table, [])
         df = tables.frames[table]
         names = [c.name for c in cols if is_identifier_like(c)]
         pairs = [tuple(pk)] if len(pk) == 2 else []
@@ -465,6 +877,11 @@ def composite_relations(tables: Tables) -> list[Relation]:
                     if rows >= ROW_COVERAGE:
                         tcols = {c.name: c for c in tables.columns[table]}
                         sample = list(zip(s_df[x.name], s_df[y.name]))[:3]
+                        loose = [
+                            c.name
+                            for c, values in ((x, t_a), (y, t_b))
+                            if _contained_by(c.values, values) == "rows"
+                        ]
                         found.append(
                             Relation(
                                 [x, y],
@@ -473,8 +890,146 @@ def composite_relations(tables: Tables) -> list[Relation]:
                                 distinct_coverage=round(rows, 3),
                                 row_coverage=round(rows, 3),
                                 matched=[(f"{p}|{q}", f"{p}|{q}") for p, q in sample],
+                                hold=(
+                                    f"{', '.join(loose)}은(는) 행 기준으로만 도착 값에 들어가(없는 값이 섞임) 확인 필요"
+                                    if loose
+                                    else None
+                                ),
                             )
                         )
+    return _best_composites(found)
+
+
+def _best_composites(found: list[Relation]) -> list[Relation]:
+    """첫 컬럼이 같은 출발 조합이 같은 도착 표로 여럿 이어지면 하나만 남긴다. 도착 기본키 쪽을 먼저,
+    그다음 많이 이어지는 쪽. 예: 출하 참조 번호 + 참조 줄 번호(100%)와 참조 번호 + 출하 줄 번호(94%)(B6),
+    생산지시 수주 번호 + 수주 줄 번호(기본키 98%)와 수주 번호 + 품목 코드(다른 유일 키 100%)(B8)."""
+    best: dict[tuple, Relation] = {}
+
+    def rank(rel: Relation) -> tuple:
+        return (rel.target_key == "primary", rel.distinct_coverage)
+
+    for rel in found:
+        group = (rel.source[0].ref, rel.target[0].table)
+        if group not in best or rank(rel) > rank(best[group]):
+            best[group] = rel
+    return list(best.values())
+
+
+def _value_map(rel: Relation) -> Callable[[str], str | None]:
+    """관계의 변환으로 출발 값 → 도착 원래 값. 안 이어지면 None."""
+    from app.rules.transforms import TransformError, apply_steps
+
+    s_steps = [TransformStep.model_validate(x) for x in rel.source_steps]
+    t_steps = [TransformStep.model_validate(x) for x in rel.target_steps]
+    index = {}
+    for value in set(rel.target[0].values):
+        try:
+            index[apply_steps(t_steps, value)] = value
+        except TransformError:
+            continue
+
+    def convert(value: str) -> str | None:
+        try:
+            return index.get(apply_steps(s_steps, value))
+        except TransformError:
+            return None
+
+    return convert
+
+
+def _as_int(value: str) -> str | None:
+    value = value.strip()
+    return str(int(value)) if re.fullmatch(r"[0-9]+", value) else None
+
+
+def _is_quantity(col: Column) -> bool:
+    """수량·금액 컬럼(plan_qty, orderQty, 수량). 순번과 숫자가 우연히 겹친다."""
+    # snake_case·camelCase·UPPER_SNAKE를 모두 단어로 나눈다
+    words = {w.lower() for w in re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])", col.name)}
+    comment = col.analysis.comment or ""
+    return bool(words & QUANTITY_WORDS) or any(
+        k in comment for k in ("수량", "금액", "개수")
+    )
+
+
+def composite_transformed(tables: Tables) -> list[Relation]:
+    """다른 시스템의 두 컬럼 조합이 변환해야 도착 복합키와 같아지는 관계(B2·B3·B4 독립 데이터).
+
+    첫 컬럼은 단일 컬럼 비교(_compare)로 찾은 변환을, 둘째 컬럼은 그대로 또는 정수로 맞춘다.
+    예: 작업지시 주문 번호 'SO20260001' + 순번 '01' → 수주 상세 'SO-2026-0001' + 줄 번호 1.
+    """
+    found = []
+    for table, a, b, key in _pair_keys(tables):
+        t_df = tables.frames[table].dropna(subset=[a, b])
+        t_pairs = set(zip(t_df[a], t_df[b]))
+        tcols = {c.name: c for c in tables.columns[table]}
+        target_a = Column(
+            table, a, tcols[a].analysis, t_df[a].astype(str).drop_duplicates()
+        )
+        t_b = set(t_df[b])
+        t_b_int = {_as_int(v): v for v in t_b}
+        system = table.split(".")[0]
+        for s_table, s_cols in tables.columns.items():
+            if s_table.split(".")[0] == system:
+                continue
+            ids = [c for c in s_cols if is_identifier_like(c)]
+            for x in ids:
+                if _contained(x.values, set(target_a.values)):
+                    continue  # 그대로 이어지면 composite_relations가 본다
+                rel = _compare(x, target_a, key)
+                if (
+                    rel is None
+                    or rel.rule_type != "transform"
+                    or rel.distinct_coverage < 0.8
+                ):
+                    continue
+                to_a = _value_map(rel)
+                for y in ids:
+                    if y.name == x.name or _is_quantity(y):
+                        continue
+                    if _contained(y.values, t_b):
+                        y_steps = []
+
+                        def to_b(v):
+                            return v
+                    elif None not in t_b_int and all(_as_int(v) for v in set(y.values)):
+                        y_steps = [{"op": "TO_INTEGER", "arg": None}]
+
+                        def to_b(v, index=t_b_int):
+                            return index.get(_as_int(v))
+                    else:
+                        continue
+                    s_df = tables.frames[s_table][[x.name, y.name]].dropna()
+                    if len(s_df) < 3:
+                        continue
+                    pairs = list(zip(s_df[x.name], s_df[y.name]))
+                    mapped = [(to_a(p), to_b(q)) for p, q in pairs]
+                    rows = sum(m in t_pairs for m in mapped) / len(mapped)
+                    if rows < ROW_COVERAGE:
+                        continue
+                    sample = [
+                        (f"{p}|{q}", f"{m[0]}|{m[1]}")
+                        for (p, q), m in zip(pairs, mapped)
+                        if m in t_pairs
+                    ][:3]
+                    found.append(
+                        Relation(
+                            [x, y],
+                            [tcols[a], tcols[b]],
+                            "transform",
+                            target_key=key,
+                            distinct_coverage=round(rows, 3),
+                            row_coverage=round(rows, 3),
+                            matched=sample,
+                            hold=rel.hold
+                            or "다른 시스템의 두 컬럼을 변환해 복합키로 이었다. 업무 의미 확인 필요",
+                            column_steps=[
+                                (rel.source_steps, rel.target_steps),
+                                (y_steps, y_steps),
+                            ],
+                        )
+                    )
     return found
 
 
@@ -567,9 +1122,23 @@ def category_relations(tables: Tables, taken: set[str]) -> list[Relation]:
     return found
 
 
-def _contained(values: pd.Series, target: set) -> bool:
+def _contained_by(values: pd.Series, target: set) -> str | None:
+    """복합키 한 컬럼이 도착 컬럼 값 안에 드는지: 'distinct'(서로 다른 값 기준), 'rows'(행 기준만), None.
+    줄 번호(1~8)처럼 값 종류가 적으면 없는 번호 하나만 섞여도 서로 다른 값 기준이 크게 떨어진다(B8: 7/8).
+    행 기준은 맞는 값이 3종류 이상일 때만 본다. 한 값이 대부분인 컬럼(상태 '10'이 95%)이 우연히 통과하지 않게."""
     distinct = set(values)
-    return len(distinct) >= 1 and len(distinct & target) / len(distinct) >= ROW_COVERAGE
+    if not distinct:
+        return None
+    hit = distinct & target
+    if len(hit) / len(distinct) >= ROW_COVERAGE:
+        return "distinct"
+    if len(hit) >= 3 and values.isin(target).mean() >= ROW_COVERAGE:
+        return "rows"
+    return None
+
+
+def _contained(values: pd.Series, target: set) -> bool:
+    return _contained_by(values, target) is not None
 
 
 def conditional_relations(tables: Tables, singles: list[Relation]) -> list[Relation]:
@@ -646,6 +1215,27 @@ def _cardinality(rel: Relation, tables: Tables) -> str:
     )
 
 
+def _how_text(rel: Relation, steps_by_column: list[tuple[list, list]]) -> str:
+    """제안 이유의 '어떻게 비교하는지' 부분(FN-AIP-05). 검토자가 변환 이름(EXTRACT_NUMBER 등)을
+    몰라도 읽을 수 있게 컬럼마다 사람이 읽는 말로 쓰고, 실제로 이어진 값 한 쌍을 예로 붙인다."""
+    if rel.rule_type == "same_value":
+        return "값을 그대로 비교"
+    parts = []
+    for (s, t), (s_steps, t_steps) in zip(zip(rel.source, rel.target), steps_by_column):
+        sides = [
+            f"{col.name}은(는) {describe_steps([TransformStep.model_validate(x) for x in steps])}"
+            for col, steps in ((s, s_steps), (t, t_steps))
+            if steps
+        ]
+        if sides:
+            parts.append(", ".join(sides))
+    how = "비교 전에 " + " / ".join(parts) if parts else "값을 그대로 비교"
+    example = next((m for m in rel.matched if m[0] != m[1]), None)
+    if example:
+        how += f" (예: '{example[0]}' → '{example[1]}')"
+    return how
+
+
 def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
     out = []
     for rel in relations:
@@ -665,18 +1255,19 @@ def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
             if cardinality == "ONE_TO_ONE"
             else " 개수 관계는 데이터에서 관찰한 값."
         )
+        steps_by_column = rel.column_steps or [
+            (rel.source_steps, rel.target_steps) for _ in rel.source
+        ]
         conditions = [
             LinkRuleCondition(
                 source_property=f"{s_code}.{s.name}",
                 target_property=f"{t_code}.{t.name}",
-                source_transforms=[
-                    TransformStep.model_validate(x) for x in rel.source_steps
-                ],
-                target_transforms=[
-                    TransformStep.model_validate(x) for x in rel.target_steps
-                ],
+                source_transforms=[TransformStep.model_validate(x) for x in s_steps],
+                target_transforms=[TransformStep.model_validate(x) for x in t_steps],
             )
-            for s, t in zip(rel.source, rel.target)
+            for (s, t), (s_steps, t_steps) in zip(
+                zip(rel.source, rel.target), steps_by_column
+            )
         ]
         cond_text = (
             f" ({rel.condition[0].name} = {rel.condition[1]}일 때)"
@@ -690,12 +1281,7 @@ def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
             "alternate": "다른 유일 키",
             "none": "종류 값(키 아님)",
         }[rel.target_key]
-        how = (
-            "값을 그대로 비교"
-            if rel.rule_type == "same_value"
-            else "변환 후 비교: "
-            + ", ".join(s["op"] for s in rel.source_steps + rel.target_steps)
-        )
+        how = _how_text(rel, steps_by_column)
         reason = (
             f"{' + '.join(c.ref for c in rel.source)}의 값이 {t_table}의 {key_text} "
             f"{' + '.join(c.name for c in rel.target)}로 이어진다{cond_text}. {how}. "
@@ -783,7 +1369,7 @@ def propose_links(
 ) -> list[Candidate]:
     analysis = analysis or analyze_sources(root)
     tables = Tables(root, analysis)
-    singles = single_relations(tables)
+    singles = _drop_number_coincidences(single_relations(tables), tables)
     conditional = conditional_relations(tables, singles)
     conditional_sources = {r.source[0].ref for r in conditional}
     singles = [r for r in singles if r.source[0].ref not in conditional_sources]
@@ -791,6 +1377,7 @@ def propose_links(
     relations = (
         singles
         + composite_relations(tables)
+        + composite_transformed(tables)
         + via_relations(tables, singles)
         + category_relations(tables, taken)
         + conditional

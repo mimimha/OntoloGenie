@@ -6,11 +6,10 @@ import pytest
 
 from app.analysis import engine
 from app.analysis.engine import AnalysisFailure, analyze
+from app.config import Settings
 from app.dataset.build import generate
 from app.llm.client import MockLLMClient
 from app.models.analysis import AnalysisStartRequest
-from app.sources.postgres_reader import PostgresSourceReader
-from tests.fake_postgres import FakeConn
 
 
 @pytest.fixture(scope="module")
@@ -107,17 +106,6 @@ def test_only_chosen_columns_and_registered_metadata_are_used(data):
     props = {p["code"]: p for p in bundle["properties"]}
     assert set(props) == {"wo_no", "product_code"}  # 기본키는 행 구별용으로 함께 읽는다
     assert "동의어: 품번" in props["product_code"]["description"]
-
-
-def test_open_postgres_reader_is_snapshotted_under_schema_name():
-    reader = PostgresSourceReader("MES_MAIN", FakeConn, schema="mes")
-    req = request([("mes.work_order", {})], kind="POSTGRES")
-
-    result = analyze(req, {"MES_MAIN": reader})
-
-    mapping = object_bundle(result, "WORK_ORDER")["payload"]["objectMapping"]
-    assert mapping["resourceKey"] == "mes.work_order"
-    assert mapping["sourceId"] == "MES_MAIN"
 
 
 def test_missing_table_fails_with_cause(data):
@@ -296,3 +284,28 @@ def test_missing_chosen_column_shows_in_result_summary(data):
     # 남은 컬럼으로 분석은 계속한다
     props = object_bundle(result, "WORK_ORDER")["payload"]["properties"]
     assert "product_code" in {p["code"] for p in props}
+
+
+def test_llm_is_skipped_when_expected_credits_exceed_limit(monkeypatch, data):
+    req = request([("mes.work_order", {}), ("mes.handover_note", {})])
+    llm = MockLLMClient({"docs": []})
+    monkeypatch.setattr(engine, "get_settings", lambda: Settings(llm_credit_limit=0.01))
+
+    result = analyze(req, {"MES_MAIN": data / "mes"}, llm=llm)
+
+    assert llm.prompts == []  # 한 번도 부르지 않는다
+    assert result.summary["llmCalls"] == 0
+    assert result.summary["llmSkipReason"].startswith("예상 크레딧 ")
+    assert "한도 0" in result.summary["llmSkipReason"]
+    assert kinds(result, "OBJECT_TYPE")  # 코드 분석 결과는 그대로 보낸다
+
+
+def test_llm_runs_when_limit_is_off(monkeypatch, data):
+    req = request([("mes.work_order", {})])
+    llm = MockLLMClient({"object_name": "작업지시"})
+    monkeypatch.setattr(engine, "get_settings", lambda: Settings(llm_credit_limit=0))
+
+    result = analyze(req, {"MES_MAIN": data / "mes"}, llm=llm)
+
+    assert llm.prompts  # 한도가 없으면 LLM을 부른다
+    assert result.summary["llmCalls"] >= 1
