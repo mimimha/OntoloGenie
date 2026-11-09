@@ -166,6 +166,30 @@ class DataAccessPolicyTests {
         assertThat(masked.restrictedPropertyCodes()).containsExactly("purchase_price");
     }
 
+    /** V13 초기값: 그룹 이름만 맞게 지정하면 행을 따로 넣지 않아도 역할별로 보인다. */
+    @Test
+    void seededScopeFollowsDecidedGroups() {
+        long production = objectType("PRODUCTION");
+        long salesSupply = objectType("SALES_SUPPLY");
+        long finance = objectType("FINANCE");
+
+        DataAccess planner = policy.of(account("PLANNER"));
+        assertThat(planner.canViewRestricted(production)).isTrue();
+        assertThat(planner.canView(salesSupply)).isTrue();
+        assertThat(planner.canViewRestricted(salesSupply)).isFalse();
+        assertThat(planner.canView(finance)).isFalse();
+
+        DataAccess viewer = policy.of(account("VIEWER"));
+        assertThat(viewer.canViewRestricted(production)).isFalse();
+        assertThat(viewer.canViewRestricted(salesSupply)).isTrue();
+        assertThat(viewer.canView(finance)).isFalse();
+
+        DataAccess maintenance = policy.of(account("MAINTENANCE"));
+        assertThat(maintenance.canView(production)).isTrue();
+        assertThat(maintenance.canViewRestricted(production)).isFalse();
+        assertThat(maintenance.canViewRestricted(salesSupply)).isFalse();
+    }
+
     @Test
     void hidesRestrictedValueByTypeCode() {
         DataAccess viewer = policy.of(account("VIEWER"));
