@@ -765,3 +765,16 @@ def test_llm_negative_on_pending_link_only_holds_it(data, result):
     # 규칙이 대기로 둔 관계는 LLM이 반대해도 빼지 않고 보류로만 바꾼다
     assert by_id[pending.candidate_id].review_status == "HELD"
     assert report["rejected_links"] == {}
+
+
+def test_map_value_table_keeps_source_values_as_is():
+    # 대응표 키는 원천 값이다. camelCase로 바꾸면 반영 뒤 변환에서 '대응표에 없는 값'이 된다
+    from app.proposers.api_format import camel_keys, has_snake_keys
+
+    step = {
+        "op": "MAP_VALUE",
+        "arg": {"in_progress": "진행중", "IN_PROGRESS": "진행중", "done": "완료"},
+    }
+    out = camel_keys({"transform_steps": [step]})
+    assert out == {"transformSteps": [step]}
+    assert not has_snake_keys(out)
