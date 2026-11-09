@@ -629,3 +629,42 @@ test('주소에 객체 번호가 있으면 그 객체 상세를 연다', async (
   ).toBeInTheDocument()
   expect(screen.getByText('설비 / #301')).toBeInTheDocument()
 })
+
+function CurrentSearch() {
+  const location = useLocation()
+  return <p>{`주소: ${location.search}`}</p>
+}
+
+test('다른 객체를 고르거나 전체 구조로 돌아가면 주소의 객체 번호도 바뀐다', async () => {
+  const user = userEvent.setup()
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <MemoryRouter initialEntries={['/explorer?object=301']}>
+        <ExplorerPage />
+        <CurrentSearch />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+
+  expect(
+    await screen.findByRole('heading', { name: '프레스 3호기' }),
+  ).toBeInTheDocument()
+
+  const list = screen.getByRole('region', { name: '객체 목록' })
+  await user.click(
+    await within(list).findByRole('button', { name: /프레스 1호기/ }),
+  )
+
+  expect(
+    await screen.findByRole('heading', { name: '프레스 1호기' }),
+  ).toBeInTheDocument()
+  expect(screen.getByText('주소: ?object=302')).toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: '← 전체 구조로' }))
+
+  expect(screen.getByText('주소:')).toBeInTheDocument()
+})

@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { lazy, Suspense, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import Pagination from '../../components/Pagination'
 import {
   fetchModelGraph,
@@ -13,20 +14,38 @@ import ObjectGraph from './ObjectGraph'
 import ObjectSearchBar from './ObjectSearchBar'
 import TypeRelations from './TypeRelations'
 import { formatObjectCode } from './format'
-import { useSearchParams } from 'react-router'
 
 // 유형 관계도는 그래프 라이브러리(React Flow)가 커서, 처음 화면에 그릴 때 따로 받아 온다.
 const ModelGraph = lazy(() => import('./ModelGraph'))
 
+// 주소의 ?object= 값이 1 이상의 정수일 때만 객체 번호로 본다.
+function parseObjectId(value: string | null) {
+  const id = Number(value)
+  return Number.isInteger(id) && id > 0 ? id : null
+}
+
 function ExplorerPage() {
-  const [searchParams] = useSearchParams()
-  // Agent 답변의 [객체 열기]처럼 주소에 객체 번호가 있으면 그 객체를 고른 상태로 연다(151).
-  const [selectedId, setSelectedId] = useState<number | null>(() => {
-    const id = Number(searchParams.get('object'))
-    return Number.isInteger(id) && id > 0 ? id : null
-  })
+  // 고른 객체는 주소의 ?object=에 둔다. Agent 답변의 [객체 열기], 새로고침, 뒤로 가기가 같은 객체를 연다(151).
+  const [searchParams, setSearchParams] = useSearchParams()
+  const selectedId = parseObjectId(searchParams.get('object'))
   const [filters, setFilters] = useState<ObjectFilters>({})
   const [page, setPage] = useState(0)
+
+  // 객체를 고르면 주소에 번호를 쓰고, 선택을 풀면 지운다. 기록을 쌓지 않아 뒤로 가기는 이전 화면으로 간다.
+  function selectObject(id: number | null) {
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        if (id === null) {
+          next.delete('object')
+        } else {
+          next.set('object', String(id))
+        }
+        return next
+      },
+      { replace: true },
+    )
+  }
 
   const {
     data: objectPage,
@@ -93,7 +112,7 @@ function ExplorerPage() {
         name={item.displayName}
         typeLabel={item.objectTypeName}
         selected={item.id === selectedId}
-        onSelect={() => setSelectedId(item.id)}
+        onSelect={() => selectObject(item.id)}
       />
     ))
   }
@@ -151,12 +170,12 @@ function ExplorerPage() {
             <>
               <button
                 type="button"
-                onClick={() => setSelectedId(null)}
+                onClick={() => selectObject(null)}
                 className="mb-3 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700"
               >
                 ← 전체 구조로
               </button>
-              <ObjectGraph objectId={selectedId} onSelect={setSelectedId} />
+              <ObjectGraph objectId={selectedId} onSelect={selectObject} />
             </>
           ) : isModelGraphPending ? (
             <p className="text-slate-500">유형 관계도를 불러오는 중…</p>
@@ -173,7 +192,7 @@ function ExplorerPage() {
               />
             </Suspense>
           ) : (
-            <ObjectGraph objectId={null} onSelect={setSelectedId} />
+            <ObjectGraph objectId={null} onSelect={selectObject} />
           )}
         </section>
 

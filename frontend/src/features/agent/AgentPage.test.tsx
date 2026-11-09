@@ -1,12 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, expect, test } from 'vitest'
 import { resetAgentMocks } from '../../mocks/agentHandlers'
 import { server } from '../../mocks/node'
 import AgentPage from './AgentPage'
-import { http, HttpResponse } from 'msw'
 
 afterEach(() => {
   resetAgentMocks()
@@ -216,4 +216,15 @@ test('답변의 정보별 결과에서 출처 객체와 실행 이력으로 이�
   expect(
     screen.getByText('응답 시점의 값 · 이후 수정은 다시 질문해 확인'),
   ).toBeInTheDocument()
+})
+
+test('실행 이력 도구가 아닌 결과에는 실행 이력 링크를 달지 않는다', async () => {
+  renderAgentPage('/agent?conversation=1')
+
+  expect(
+    await screen.findByRole('link', { name: '#4101 열기 ↗' }),
+  ).toHaveAttribute('href', '/explorer?object=4101')
+  expect(
+    screen.queryByRole('link', { name: '실행 이력 ↗' }),
+  ).not.toBeInTheDocument()
 })
