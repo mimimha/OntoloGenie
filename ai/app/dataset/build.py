@@ -1801,6 +1801,7 @@ def generate(
 ) -> dict:
     from app.dataset import docs
     from app.dataset import gold as gold_module
+    from app.dataset.cdc import write_cdc_changes
     from app.dataset.notes import build_notes, maintenance_docs
 
     folders = folders_for(root, version)
@@ -1851,6 +1852,7 @@ def generate(
         version,
     )
     gold_module.write_s5_fix(builder, folders["scenario"])
+    write_cdc_changes(builder.rows, folders["scenario"])
 
     def read(name):
         return json.loads((folders["gold"] / name).read_text(encoding="utf-8"))
