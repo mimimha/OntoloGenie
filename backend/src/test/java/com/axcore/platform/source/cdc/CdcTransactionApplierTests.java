@@ -295,6 +295,43 @@ class CdcTransactionApplierTests {
         assertThat(loadedLsn(equipmentResource)).isEqualTo(1L);
     }
 
+    /** V12가 허용하는 복구 이유는 모두 읽을 수 있어야 한다. 하나라도 enum에 없으면 소비자가 끝없이 재시도한다. */
+    @Test
+    void everyRecoveryReasonInSchemaStopsApplying() {
+        List<String> allowed =
+                jdbc.sql(
+                                """
+                                select pg_get_constraintdef(oid) from pg_constraint
+                                where conname = 'ck_cdc_offset_recovery_reason'
+                                """)
+                        .query(String.class)
+                        .list();
+        assertThat(allowed).hasSize(1);
+        for (RecoveryReason reason : RecoveryReason.values()) {
+            assertThat(allowed.getFirst()).contains("'" + reason.name() + "'");
+        }
+        assertThat(allowed.getFirst().split("'").length / 2)
+                .isEqualTo(RecoveryReason.values().length);
+
+        // 원천 접속 정보 변경(API 012)이 남긴 표시: 반영하지 않고, 다시 읽기 표시도 하지 않는다
+        apply(transactions().getFirst());
+        jdbc.sql(
+                        """
+                        update cdc_offset
+                        set recovery_reason = 'SOURCE_CHANGED', recovery_at = now(), healthy_since = null
+                        where topic = :t
+                        """)
+                .param("t", source.topic())
+                .update();
+
+        Result next = apply(transactions().get(1));
+
+        assertThat(next.status()).isEqualTo(Status.RECOVERY_PENDING);
+        assertThat(next.recoveryReason()).isEqualTo(RecoveryReason.SOURCE_CHANGED);
+        assertThat(property(workOrderMapping, "7", "wo_no")).isEqualTo("WO-7");
+        assertThat(loadedLsn(workOrderResource)).isEqualTo(1L);
+    }
+
     @Test
     void uncertainEpochMarksRecoveryAndStops() {
         long far = (1L << 32) + 756 + (1L << 30) + 10;
