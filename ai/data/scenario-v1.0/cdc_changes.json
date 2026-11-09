@@ -1,0 +1,328 @@
+{
+  "description": "CDC 변경 재현 시나리오. 최초 적재(data-v1.0)와 CDC 커넥터 등록 뒤 원천 MES DB에 단계별로 적용한다(분석 입력 아님). 원천 DB 관리자 계정으로 실행한다. 플랫폼 계정(platform_ro·platform_ai·platform_cdc)은 쓰기 권한이 없다. 적용한 동안에는 수주 참조 연결률(134/136 → 135/137)과 OD-2610-020의 작업지시 수가 바뀌므로 S1~S5 시연 전에는 cdc_99_restore.sql로 되돌린다.",
+  "steps": [
+    {
+      "step": 1,
+      "file": "cdc_01_insert.sql",
+      "title": "작업지시 추가",
+      "changes": [
+        {
+          "table": "mes.work_order",
+          "insert": {
+            "wo_no": "JB2610-0901",
+            "product_code": "PNL-410",
+            "die_drawing_code": "DWG-PNL-410",
+            "status": "대기",
+            "priority": "보통",
+            "line": "2라인",
+            "planned_qty": "3000",
+            "produced_qty": "0",
+            "defect_qty": "0",
+            "planned_start": "2026-11-02",
+            "planned_end": "2026-11-03",
+            "actual_start": "",
+            "actual_end": "",
+            "so_ref": "2610020"
+          }
+        },
+        {
+          "table": "mes.work_order_operation",
+          "insert": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "10",
+            "equipment_code": "B101",
+            "status": "대기",
+            "remaining_qty": "3000"
+          }
+        },
+        {
+          "table": "mes.work_order_operation",
+          "insert": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "20",
+            "equipment_code": "P201",
+            "status": "대기",
+            "remaining_qty": "3000"
+          }
+        },
+        {
+          "table": "mes.work_order_operation",
+          "insert": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "30",
+            "equipment_code": "P201",
+            "status": "대기",
+            "remaining_qty": "3000"
+          }
+        },
+        {
+          "table": "mes.work_order_operation",
+          "insert": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "40",
+            "equipment_code": "W201",
+            "status": "대기",
+            "remaining_qty": "3000"
+          }
+        },
+        {
+          "table": "mes.work_order_operation",
+          "insert": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "50",
+            "equipment_code": "I101",
+            "status": "대기",
+            "remaining_qty": "3000"
+          }
+        }
+      ],
+      "cdc_events": [
+        {
+          "topic": "MES_MAIN.mes.work_order",
+          "op": "c",
+          "key": {
+            "wo_no": "JB2610-0901"
+          }
+        },
+        {
+          "topic": "MES_MAIN.mes.work_order_operation",
+          "op": "c",
+          "key": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "10"
+          }
+        },
+        {
+          "topic": "MES_MAIN.mes.work_order_operation",
+          "op": "c",
+          "key": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "20"
+          }
+        },
+        {
+          "topic": "MES_MAIN.mes.work_order_operation",
+          "op": "c",
+          "key": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "30"
+          }
+        },
+        {
+          "topic": "MES_MAIN.mes.work_order_operation",
+          "op": "c",
+          "key": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "40"
+          }
+        },
+        {
+          "topic": "MES_MAIN.mes.work_order_operation",
+          "op": "c",
+          "key": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "50"
+          }
+        }
+      ],
+      "reanalyze_tables": [
+        "mes.work_order",
+        "mes.work_order_operation"
+      ],
+      "expected_proposals": "모두 유지(값만 늘고 표·컬럼 구조는 그대로)"
+    },
+    {
+      "step": 2,
+      "file": "cdc_02_update.sql",
+      "title": "작업 시작(상태 수정)",
+      "changes": [
+        {
+          "table": "mes.work_order",
+          "key": {
+            "wo_no": "JB2610-0901"
+          },
+          "set": {
+            "status": "진행",
+            "actual_start": "2026-10-30 13:00:00"
+          }
+        },
+        {
+          "table": "mes.work_order_operation",
+          "key": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "10"
+          },
+          "set": {
+            "status": "진행"
+          }
+        }
+      ],
+      "cdc_events": [
+        {
+          "topic": "MES_MAIN.mes.work_order",
+          "op": "u",
+          "key": {
+            "wo_no": "JB2610-0901"
+          }
+        },
+        {
+          "topic": "MES_MAIN.mes.work_order_operation",
+          "op": "u",
+          "key": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "10"
+          }
+        }
+      ],
+      "reanalyze_tables": [
+        "mes.work_order",
+        "mes.work_order_operation"
+      ],
+      "expected_proposals": "모두 유지"
+    },
+    {
+      "step": 3,
+      "file": "cdc_03_delete.sql",
+      "title": "마지막 공정 취소(행 삭제)",
+      "changes": [
+        {
+          "table": "mes.work_order_operation",
+          "delete": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "50"
+          }
+        }
+      ],
+      "cdc_events": [
+        {
+          "topic": "MES_MAIN.mes.work_order_operation",
+          "op": "d",
+          "key": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "50"
+          }
+        }
+      ],
+      "reanalyze_tables": [
+        "mes.work_order_operation"
+      ],
+      "expected_proposals": "모두 유지",
+      "note": "삭제 이벤트의 before에는 기본키 컬럼만 있다(REPLICA IDENTITY 기본값)."
+    },
+    {
+      "step": 4,
+      "file": "cdc_04_add_column.sql",
+      "title": "납기일 컬럼 추가",
+      "changes": [
+        {
+          "table": "mes.work_order",
+          "add_column": {
+            "table": "mes.work_order",
+            "column": "due_date",
+            "type": "date",
+            "comment": "납기일"
+          }
+        },
+        {
+          "table": "mes.work_order",
+          "key": {
+            "wo_no": "JB2610-0901"
+          },
+          "set": {
+            "due_date": "2026-11-03"
+          }
+        }
+      ],
+      "cdc_events": [
+        {
+          "topic": "MES_MAIN.mes.work_order",
+          "op": "u",
+          "key": {
+            "wo_no": "JB2610-0901"
+          }
+        }
+      ],
+      "reanalyze_tables": [
+        "mes.work_order"
+      ],
+      "expected_proposals": "작업지시(WORK_ORDER) 객체 후보만 변경(속성 due_date 추가), 나머지 유지",
+      "expected_changed": [
+        {
+          "itemKind": "OBJECT_TYPE",
+          "code": "WORK_ORDER"
+        }
+      ],
+      "note": "컬럼 추가 자체는 이벤트가 없고, 다음 변경 이벤트의 schema에 새 컬럼이 실린다. 플랫폼 컬럼 목록(015)에는 원천 연결 검사 뒤 나타난다."
+    },
+    {
+      "step": 99,
+      "file": "cdc_99_restore.sql",
+      "title": "처음 상태로 되돌리기",
+      "changes": [
+        {
+          "table": "mes.work_order",
+          "drop_column": "due_date"
+        },
+        {
+          "table": "mes.work_order_operation",
+          "delete": {
+            "wo_no": "JB2610-0901"
+          }
+        },
+        {
+          "table": "mes.work_order",
+          "delete": {
+            "wo_no": "JB2610-0901"
+          }
+        }
+      ],
+      "cdc_events": [
+        {
+          "topic": "MES_MAIN.mes.work_order_operation",
+          "op": "d",
+          "key": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "10"
+          }
+        },
+        {
+          "topic": "MES_MAIN.mes.work_order_operation",
+          "op": "d",
+          "key": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "20"
+          }
+        },
+        {
+          "topic": "MES_MAIN.mes.work_order_operation",
+          "op": "d",
+          "key": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "30"
+          }
+        },
+        {
+          "topic": "MES_MAIN.mes.work_order_operation",
+          "op": "d",
+          "key": {
+            "wo_no": "JB2610-0901",
+            "op_seq": "40"
+          }
+        },
+        {
+          "topic": "MES_MAIN.mes.work_order",
+          "op": "d",
+          "key": {
+            "wo_no": "JB2610-0901"
+          }
+        }
+      ],
+      "reanalyze_tables": [
+        "mes.work_order",
+        "mes.work_order_operation"
+      ],
+      "expected_proposals": "최초 적재와 같음",
+      "note": "1~4단계를 모두 적용했을 때의 이벤트다. 남아 있는 행만 삭제 이벤트가 나오고, 한 단계 안의 이벤트 순서는 목록과 다를 수 있다."
+    }
+  ]
+}
