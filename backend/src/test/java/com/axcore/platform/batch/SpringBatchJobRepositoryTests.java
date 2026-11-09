@@ -3,6 +3,7 @@ package com.axcore.platform.batch;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.axcore.platform.TestcontainersConfiguration;
+import com.axcore.platform.source.service.CdcReloadJob;
 import org.junit.jupiter.api.Test;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.job.Job;
@@ -20,6 +21,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 
 /** 대량 적재용 Spring Batch Job이 실행 기록을 플랫폼 DB(V6 테이블)에 남기는지 확인한다. */
@@ -27,6 +29,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 @ActiveProfiles("batch")
 @Import({TestcontainersConfiguration.class, SpringBatchJobRepositoryTests.JobConfig.class})
 class SpringBatchJobRepositoryTests {
+    // 감시 작업이 시험 데이터에 다시 읽기를 넣지 않게 막는다.
+    @MockitoBean CdcReloadJob cdcReloadJob;
 
     @Autowired JobOperator jobOperator;
 

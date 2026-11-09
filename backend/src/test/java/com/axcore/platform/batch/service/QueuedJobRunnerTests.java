@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.axcore.platform.TestcontainersConfiguration;
 import com.axcore.platform.batch.domain.QueuedJobType;
+import com.axcore.platform.source.service.CdcReloadJob;
 import java.sql.Connection;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -29,6 +30,8 @@ class QueuedJobRunnerTests {
 
     // 주기 실행이 테스트가 넣은 행을 먼저 가져가지 않게 막는다.
     @MockitoBean QueuedJobPoller queuedJobPoller;
+    // 감시 작업이 시험 데이터에 다시 읽기를 넣지 않게 막는다.
+    @MockitoBean CdcReloadJob cdcReloadJob;
 
     @Autowired QueuedJobRunner queuedJobRunner;
 

@@ -59,6 +59,11 @@ import org.springframework.stereotype.Component;
 @Profile("batch")
 public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
 
+    /**
+     * 읽는 동안 매핑이 바뀌어 저장하지 않은 실패. 자동 다시 읽기(CdcReloadService)는 이 문구의 실패를 실패 횟수에 넣지 않는다. %s는 테이블 이름.
+     */
+    static final String MAPPING_CHANGED = "수집하는 동안 원천 테이블 %s의 매핑이 바뀌었습니다. 다시 수집해 주세요.";
+
     private final SyncRunRepository syncRunRepository;
     private final FullLoadPlanner planner;
     private final SourceTableReader tableReader;
@@ -208,8 +213,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
         for (ResourceLoad resource : outcome.resources()) {
             if (!planner.plan(resource.plan().resourceId()).equals(resource.plan())) {
                 throw new QueuedJobFailure(
-                        "수집하는 동안 원천 테이블 %s의 매핑이 바뀌었습니다. 다시 수집해 주세요."
-                                .formatted(resource.plan().resourceKey()));
+                        MAPPING_CHANGED.formatted(resource.plan().resourceKey()));
             }
         }
         Instant now = Instant.now(clock);
