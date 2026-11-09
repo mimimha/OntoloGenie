@@ -21,6 +21,7 @@ public class DataScopeRepository {
     /** 객체 유형 하나에 대한 역할의 범위. restrictedPropertyCodes는 그 유형의 RESTRICTED 속성 코드 전체다. */
     public record ObjectTypeScope(
             long objectTypeId,
+            String objectTypeCode,
             boolean visible,
             boolean canViewRestricted,
             Set<String> restrictedPropertyCodes) {}
@@ -32,7 +33,7 @@ public class DataScopeRepository {
     public List<ObjectTypeScope> findAll(String roleCode, boolean admin) {
         return jdbc.sql(
                         """
-                        select t.id as object_type_id,
+                        select t.id as object_type_id, t.code as object_type_code,
                                (:admin or s.access_group is not null) as visible,
                                (:admin or coalesce(s.can_view_restricted, false)) as can_view_restricted,
                                coalesce(array_agg(p.code order by p.code)
@@ -52,6 +53,7 @@ public class DataScopeRepository {
                         (rs, row) ->
                                 new ObjectTypeScope(
                                         rs.getLong("object_type_id"),
+                                        rs.getString("object_type_code"),
                                         rs.getBoolean("visible"),
                                         rs.getBoolean("can_view_restricted"),
                                         codes(rs.getArray("restricted_codes"))))

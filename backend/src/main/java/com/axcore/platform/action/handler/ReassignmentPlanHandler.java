@@ -5,6 +5,7 @@ import com.axcore.platform.action.repository.ReassignmentObjectRepository.Object
 import com.axcore.platform.action.repository.ReassignmentPlanRepository;
 import com.axcore.platform.agent.repository.AgentMessageRepository;
 import com.axcore.platform.audit.domain.ChangeEntry;
+import com.axcore.platform.audit.service.RecordedPropertyPaths;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -26,11 +27,19 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 @RequiredArgsConstructor
 @EnableConfigurationProperties(ReassignmentProperties.class)
-public class ReassignmentPlanHandler implements ActionHandler {
+public class ReassignmentPlanHandler implements ActionHandler, RecordedPropertyPaths {
 
     static final String KEY = "CREATE_REASSIGNMENT_PLAN";
     private static final String PLAN_TABLE = "reassignment_plan";
     private static final String ITEM_TABLE = "reassignment_plan_item";
+    private static final String OPERATION_CODE = "operation_code";
+    private static final String SNAPSHOT = "source_snapshot";
+    private static final String WORK_ORDER_NO = "workOrderNo";
+    private static final String WORK_ORDER_STATUS = "workOrderStatus";
+    private static final String OPERATIONS = "operations";
+    private static final String SEQUENCE = "sequence";
+    private static final String EQUIPMENT_CODE = "equipmentCode";
+    private static final String STATUS = "status";
 
     private final ReassignmentPlanValidator validator;
     private final ReassignmentPlanRepository plans;
@@ -101,10 +110,10 @@ public class ReassignmentPlanHandler implements ActionHandler {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("plan_id", planId);
             row.put("work_order_id", item.item().workOrderId());
-            row.put("operation_code", item.item().operationCode());
+            row.put(OPERATION_CODE, item.item().operationCode());
             row.put("from_equipment_id", fromId);
             row.put("to_equipment_id", item.item().toEquipmentId());
-            row.put("source_snapshot", snapshot);
+            row.put(SNAPSHOT, snapshot);
             itemRows.add(row);
             changes.add(ChangeEntry.insert(ITEM_TABLE, Map.of("id", itemIds.get(i)), row));
         }
@@ -144,15 +153,58 @@ public class ReassignmentPlanHandler implements ActionHandler {
         for (ObjectRow op : item.operations()) {
             Map<String, Object> value = new LinkedHashMap<>();
             value.put("objectId", op.id());
-            value.put("sequence", op.text(operation.sequence()));
-            value.put("equipmentCode", op.text(operation.equipment()));
-            value.put("status", op.text(operation.status()));
+            value.put(SEQUENCE, op.text(operation.sequence()));
+            value.put(EQUIPMENT_CODE, op.text(operation.equipment()));
+            value.put(STATUS, op.text(operation.status()));
             operations.add(value);
         }
         Map<String, Object> snapshot = new LinkedHashMap<>();
-        snapshot.put("workOrderNo", item.workOrder().text(workOrder.number()));
-        snapshot.put("workOrderStatus", item.workOrder().text(workOrder.status()));
-        snapshot.put("operations", operations);
+        snapshot.put(WORK_ORDER_NO, item.workOrder().text(workOrder.number()));
+        snapshot.put(WORK_ORDER_STATUS, item.workOrder().text(workOrder.status()));
+        snapshot.put(OPERATIONS, operations);
         return snapshot;
+    }
+
+    /** 입력과 항목 행의 공정 코드, 항목 스냅샷에 든 작업지시·공정 속성 값의 자리. */
+    @Override
+    public List<Path> recordedPropertyPaths() {
+        ReassignmentProperties.WorkOrder workOrder = properties.workOrder();
+        ReassignmentProperties.Operation operation = properties.operation();
+        return List.of(
+                Path.input(
+                        KEY,
+                        List.of("items", "*", "operationCode"),
+                        operation.type(),
+                        operation.sequence()),
+                Path.change(
+                        ITEM_TABLE,
+                        List.of(OPERATION_CODE),
+                        operation.type(),
+                        operation.sequence()),
+                Path.change(
+                        ITEM_TABLE,
+                        List.of(SNAPSHOT, WORK_ORDER_NO),
+                        workOrder.type(),
+                        workOrder.number()),
+                Path.change(
+                        ITEM_TABLE,
+                        List.of(SNAPSHOT, WORK_ORDER_STATUS),
+                        workOrder.type(),
+                        workOrder.status()),
+                Path.change(
+                        ITEM_TABLE,
+                        List.of(SNAPSHOT, OPERATIONS, "*", SEQUENCE),
+                        operation.type(),
+                        operation.sequence()),
+                Path.change(
+                        ITEM_TABLE,
+                        List.of(SNAPSHOT, OPERATIONS, "*", EQUIPMENT_CODE),
+                        operation.type(),
+                        operation.equipment()),
+                Path.change(
+                        ITEM_TABLE,
+                        List.of(SNAPSHOT, OPERATIONS, "*", STATUS),
+                        operation.type(),
+                        operation.status()));
     }
 }

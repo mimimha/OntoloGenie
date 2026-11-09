@@ -10,6 +10,8 @@ import com.axcore.platform.audit.repository.ActionExecutionRepository;
 import com.axcore.platform.audit.repository.AuditExecutionQueryRepository;
 import com.axcore.platform.audit.repository.AuditExecutionQueryRepository.Filter;
 import com.axcore.platform.audit.repository.EntityChangeRepository;
+import com.axcore.platform.auth.service.DataAccess;
+import com.axcore.platform.auth.service.DataAccessPolicy;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
@@ -17,13 +19,14 @@ import java.util.Map;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 실행·감사 이력 조회 (API 096·097·098·080, FN-LOG-01~04·FN-EXP-03). Agent 조회 기록(AGENT_QUERY)은 어디에도 보여 주지
- * 않는다. 제한 속성 값 가림과 080의 객체 조회 범위 검사는 역할별 조회 범위가 정해진 뒤 S15P31C106-205에서 넣는다(2026-11-05 결정).
+ * 않는다. 080은 역할의 객체 조회 범위(S15P31C106-205)를 따른다. 080·096은 ADMIN이 아니면 사용자가 볼 수 없는 민감 속성 값을 가린다.
  */
 @Service
 @RequiredArgsConstructor
@@ -38,6 +41,8 @@ public class AuditExecutionQueryService {
     private final AuditExecutionQueryRepository history;
     private final ActionExecutionRepository executions;
     private final EntityChangeRepository changes;
+    private final DataAccessPolicy dataAccessPolicy;
+    private final AuditValueMasker masker;
 
     /** 096. ADMIN은 전체, 그 밖의 역할은 본인 실행(본인이 요청한 작업의 결과 줄 포함)만 본다. */
     public Page<AuditExecutionResponse> search(
@@ -64,7 +69,9 @@ public class AuditExecutionQueryService {
                         request.targetId(),
                         request.from(),
                         request.to());
-        return history.search(filter, admin ? null : viewer.id(), pageable);
+        Page<AuditExecutionResponse> page =
+                history.search(filter, admin ? null : viewer.id(), pageable);
+        return admin ? page : masked(page, dataAccessPolicy.of(viewer));
     }
 
     public static String scopeOf(LoginAccount viewer) {
@@ -89,16 +96,23 @@ public class AuditExecutionQueryService {
                 execution, changes.findByActionExecutionIdOrderByIdAsc(id));
     }
 
-    /** 080. 객체를 대상으로 한 실행. ADMIN은 전체, 그 밖의 역할은 실행자가 본인인 기록(본인을 대신한 Agent 포함)만 본다. */
+    /**
+     * 080. 객체를 대상으로 한 실행. ADMIN은 전체, 그 밖의 역할은 실행자가 본인인 기록(본인을 대신한 Agent 포함)만 본다. 조회 범위 밖 유형의 객체는 없는
+     * 객체와 같은 404로 막아 있다는 사실도 알리지 않는다(077과 같은 규칙).
+     */
     public Page<AuditExecutionResponse> objectExecutions(
             LoginAccount viewer,
             long objectId,
             ObjectExecutionSearchRequest request,
             Pageable pageable) {
-        if (!history.objectExists(objectId)) {
-            throw new BusinessException(
-                    CommonErrorCode.RESOURCE_NOT_FOUND, Map.of("resource", OBJECT_INSTANCE));
-        }
+        DataAccess access = dataAccessPolicy.of(viewer);
+        history.findObjectTypeId(objectId)
+                .filter(access::canView)
+                .orElseThrow(
+                        () ->
+                                new BusinessException(
+                                        CommonErrorCode.RESOURCE_NOT_FOUND,
+                                        Map.of("resource", OBJECT_INSTANCE)));
         Filter filter =
                 new Filter(
                         isAdmin(viewer) ? null : viewer.id(),
@@ -111,7 +125,16 @@ public class AuditExecutionQueryService {
                         objectId,
                         request.from(),
                         request.to());
-        return history.search(filter, null, pageable);
+        Page<AuditExecutionResponse> page = history.search(filter, null, pageable);
+        return isAdmin(viewer) ? page : masked(page, access);
+    }
+
+    private Page<AuditExecutionResponse> masked(
+            Page<AuditExecutionResponse> page, DataAccess access) {
+        return new PageImpl<>(
+                masker.mask(page.getContent(), access),
+                page.getPageable(),
+                page.getTotalElements());
     }
 
     private static boolean isAdmin(LoginAccount viewer) {

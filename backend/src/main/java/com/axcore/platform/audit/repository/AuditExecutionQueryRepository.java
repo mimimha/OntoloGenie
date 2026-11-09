@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -148,12 +149,12 @@ public class AuditExecutionQueryRepository {
         return new PageImpl<>(withChanges(rows), pageable, total);
     }
 
-    /** 080 경로의 객체가 있는가. 원천에서 지워진 객체(DELETED_AT_SOURCE)도 이력은 볼 수 있다. */
-    public boolean objectExists(long objectId) {
-        return jdbc.sql("select exists (select 1 from object_instance where id = :id)")
+    /** 080 경로 객체의 유형. 없는 객체면 비어 있다. 원천에서 지워진 객체(DELETED_AT_SOURCE)도 이력은 볼 수 있다. */
+    public Optional<Long> findObjectTypeId(long objectId) {
+        return jdbc.sql("select object_type_id from object_instance where id = :id")
                 .param("id", objectId)
-                .query(Boolean.class)
-                .single();
+                .query(Long.class)
+                .optional();
     }
 
     private List<AuditExecutionResponse> withChanges(List<AuditExecutionResponse> rows) {
