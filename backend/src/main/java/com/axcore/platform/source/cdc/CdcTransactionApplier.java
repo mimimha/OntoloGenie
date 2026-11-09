@@ -2,6 +2,8 @@ package com.axcore.platform.source.cdc;
 
 import com.axcore.platform.batch.service.QueuedJobFailure;
 import com.axcore.platform.ontology.domain.SourceChange;
+import com.axcore.platform.ontology.dto.LinkRecomputeResult;
+import com.axcore.platform.ontology.service.LinkRecomputeService;
 import com.axcore.platform.ontology.service.ObjectSyncService;
 import com.axcore.platform.ontology.service.ObjectSyncService.DeleteResult;
 import com.axcore.platform.source.cdc.CdcMessage.ChangeEvent;
@@ -56,10 +58,13 @@ import tools.jackson.databind.JsonNode;
  *   <li>변경이 있으면 {@code sync_run}(CDC, SUCCEEDED) 하나와 테이블별 {@code sync_run_resource}(INCREMENTAL)를
  *       남긴다.
  *   <li>다음 위치(END + 1), 복원한 번호, 원천 커밋 시각, 처리 지연을 저장한다.
+ *   <li>마지막에 쓰거나 삭제 표시한 객체의 연결을 다시 계산한다(181 {@link LinkRecomputeService#recomputeObjects}, 198-7,
+ *       결정 문서 9.4). 재계산 서비스는 관계 유형 잠금을 트랜잭션 끝까지 쌓으므로 트랜잭션당 한 번, 객체를 다 쓴 뒤에만 부른다. issue는 만들지
+ *       않는다(SYNC 검사).
  * </ol>
  *
- * <p>처리 장애(DB 예외 등)는 잡지 않는다. 트랜잭션 전체가 롤백되고 위치가 그대로라 부르는 쪽이 같은 트랜잭션을 다시 반영한다(9.3). 연결 재계산은 198-7에서
- * 붙인다. 지금은 바뀐 객체 ID만 돌려준다.
+ * <p>처리 장애(DB 예외 등)는 잡지 않는다. 트랜잭션 전체가 롤백되고 위치가 그대로라 부르는 쪽이 같은 트랜잭션을 다시 반영한다(9.3). 연결 재계산도 같은 트랜잭션이라
+ * 객체와 연결이 갈라지지 않는다.
  *
  * <p>TRUNCATE, 유지할 기존 값이 없는 TOAST 값, 복구는 그 테이블을 다시 읽기 대상({@code loaded_lsn = NULL})으로 표시만 한다. 다시 읽기
  * 실행은 배치 감시 작업이 넣는다(11장 1·2).
@@ -77,6 +82,7 @@ public class CdcTransactionApplier {
     private final DebeziumRowDecoder decoder;
     private final SourceRowConverter converter;
     private final ObjectSyncService objectSyncService;
+    private final LinkRecomputeService linkRecomputeService;
     private final TransactionIdRestorer restorer = new TransactionIdRestorer();
 
     /**
@@ -156,13 +162,12 @@ public class CdcTransactionApplier {
                 tx.commitTimeMs() < 0 ? null : Instant.ofEpochMilli(tx.commitTimeMs()),
                 receivedAt,
                 processingLag(tx));
-        return new Result(
-                Status.APPLIED,
-                runId,
-                List.copyOf(new LinkedHashSet<>(changed)),
-                applied,
-                skipped,
-                null);
+        List<Long> changedObjects = List.copyOf(new LinkedHashSet<>(changed));
+        LinkRecomputeResult links =
+                changedObjects.isEmpty()
+                        ? LinkRecomputeResult.empty()
+                        : linkRecomputeService.recomputeObjects(changedObjects);
+        return new Result(Status.APPLIED, runId, changedObjects, links, applied, skipped, null);
     }
 
     /**
@@ -394,7 +399,8 @@ public class CdcTransactionApplier {
 
     /**
      * @param syncRunId 남긴 CDC 수집 실행. 반영한 변경이 없으면 null
-     * @param changedObjectIds 쓰거나 삭제 표시한 객체(연결 재계산 대상, 198-7)
+     * @param changedObjectIds 쓰거나 삭제 표시한 객체(연결 재계산 대상)
+     * @param links 그 객체들로 다시 계산한 연결(보류 건 처리 238에 넘길 수 있다). 반영하지 않았으면 빈 결과
      * @param appliedEvents 반영한 변경 수
      * @param skippedEvents 매핑이 없거나 반영할 수 없는 표라 건너뛴 변경 수
      * @param recoveryReason RECOVERY_NEEDED·RECOVERY_PENDING이면 그 이유
@@ -403,12 +409,13 @@ public class CdcTransactionApplier {
             Status status,
             Long syncRunId,
             List<Long> changedObjectIds,
+            LinkRecomputeResult links,
             int appliedEvents,
             int skippedEvents,
             RecoveryReason recoveryReason) {
 
         static Result notApplied(Status status, RecoveryReason reason) {
-            return new Result(status, null, List.of(), 0, 0, reason);
+            return new Result(status, null, List.of(), LinkRecomputeResult.empty(), 0, 0, reason);
         }
     }
 

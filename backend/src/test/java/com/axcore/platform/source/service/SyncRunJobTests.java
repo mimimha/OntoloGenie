@@ -539,6 +539,83 @@ class SyncRunJobTests {
         assertThat(queuedJobRunner.runNext(connectionCheckJob)).isTrue();
     }
 
+    /**
+     * 전체 읽기 저장이 끝나면 읽은 매핑의 객체 유형으로 연결을 다시 계산한다(198-7). 열린 주문(뷰).wo_no = 작업지시.wo_no 규칙에서, 작업지시만 읽었을
+     * 때는 연결이 없고 열린 주문을 읽은 실행이 연결을 완성한다(늦게 들어온 쪽이 양쪽으로 다시 계산).
+     */
+    @Test
+    void fullLoadRecomputesLinksOfLoadedTypes() {
+        long viewId = resourceId("erp_src.open_order");
+        long viewType = newType("열린 주문");
+        long viewMapping = newMapping(viewId, viewType, "wo_no");
+        long viewWoNo = newProperty(viewType, "wo_no", "STRING");
+        mapProperty(viewMapping, viewId, viewWoNo, "wo_no", "[]");
+        long woNo =
+                jdbc.sql(
+                                "select id from property_definition where object_type_id = :t and code = 'wo_no'")
+                        .param("t", typeId)
+                        .query(Long.class)
+                        .single();
+        long linkType =
+                jdbc.sql(
+                                """
+                                insert into link_type (code, name, source_type_id, target_type_id, cardinality, description)
+                                values ('LT-' || gen_random_uuid(), '열린 주문 작업지시', :s, :t, 'MANY_TO_ONE', '198-7 시험')
+                                returning id
+                                """)
+                        .param("s", viewType)
+                        .param("t", typeId)
+                        .query(Long.class)
+                        .single();
+        // 비교 조건은 규칙을 만든 트랜잭션 안에서만 넣을 수 있다(DB 트리거)
+        tx.executeWithoutResult(
+                status -> {
+                    long rule =
+                            jdbc.sql(
+                                            """
+                                            insert into link_mapping (link_type_id, code, revision)
+                                            values (:t, 'R-' || gen_random_uuid(), 1) returning id
+                                            """)
+                                    .param("t", linkType)
+                                    .query(Long.class)
+                                    .single();
+                    jdbc.sql(
+                                    """
+                                    insert into link_mapping_condition
+                                        (link_mapping_id, source_property_id, target_property_id, sequence_no)
+                                    values (:r, :s, :t, 1)
+                                    """)
+                            .param("r", rule)
+                            .param("s", viewWoNo)
+                            .param("t", woNo)
+                            .update();
+                });
+
+        queueRun(workOrderId);
+        assertThat(queuedJobRunner.runNext(job)).isTrue();
+        assertThat(activeLinks(linkType)).isEmpty();
+
+        long viewRun = queueRun(viewId);
+        assertThat(queuedJobRunner.runNext(job)).isTrue();
+        assertThat(runStatus(viewRun)).isEqualTo("SUCCEEDED");
+        // 열린 주문 WO-0001 → 작업지시 1, WO-X → 작업지시 3 (WO-0002는 끝나서 뷰에 없다)
+        assertThat(activeLinks(linkType)).containsExactlyInAnyOrder("WO-0001->1", "WO-X->3");
+    }
+
+    private List<String> activeLinks(long linkType) {
+        return jdbc.sql(
+                        """
+                        select (s.source_key ->> 'wo_no') || '->' || (t.source_key ->> 'id')
+                        from object_link l
+                        join object_instance s on s.id = l.source_object_id
+                        join object_instance t on t.id = l.target_object_id
+                        where l.link_type_id = :t and l.status = 'ACTIVE'
+                        """)
+                .param("t", linkType)
+                .query(String.class)
+                .list();
+    }
+
     private long resourceId(String key) {
         return jdbc.sql(
                         "select id from source_resource where data_source_id = :id and resource_key = :key")

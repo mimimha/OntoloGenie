@@ -5,6 +5,7 @@ import com.axcore.platform.batch.service.QueuedJobFailure;
 import com.axcore.platform.batch.service.QueuedJobHandler;
 import com.axcore.platform.ontology.domain.FullLoad;
 import com.axcore.platform.ontology.domain.SyncedObject;
+import com.axcore.platform.ontology.service.LinkRecomputeService;
 import com.axcore.platform.ontology.service.ObjectSyncService;
 import com.axcore.platform.ontology.service.ObjectSyncService.FinishResult;
 import com.axcore.platform.source.domain.CredentialPurpose;
@@ -27,8 +28,10 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
@@ -42,7 +45,9 @@ import org.springframework.stereotype.Component;
  * <ol>
  *   <li>run(트랜잭션 밖): 켜진 매핑으로 계획을 만들고, SYNC 계정으로 원천의 모든 테이블을 스냅샷 하나로 읽어 객체 값으로 바꾼다.
  *   <li>complete(한 트랜잭션): 원천 테이블 행을 잠그고 계획이 그대로인지 다시 본 뒤 객체를 쓴다({@link ObjectSyncService}). 이번에 안
- *       나온 객체는 삭제 표시하고, CDC 테이블은 끝난 세대와 읽기 시점 LSN을 올린다.
+ *       나온 객체는 삭제 표시하고, CDC 테이블은 끝난 세대와 읽기 시점 LSN을 올린다. 마지막에 읽은 매핑의 객체 유형으로 연결을 다시 계산한다(181 {@link
+ *       LinkRecomputeService#recomputeObjectTypes}, 198-7, 결정 문서 9.4). 트랜잭션당 한 번, 객체를 다 쓴 뒤에만
+ *       부른다(관계 유형 잠금 순서).
  * </ol>
  *
  * <p>세대는 sync_run.id다. 쓰기 조건(스냅샷 가시성·세대·삭제 흔적)은 decisions/2026-11-05-cdc-initial-load.md와 V11을 따른다.
@@ -60,6 +65,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
     private final SourceRowConverter converter;
     private final SourceCredentialService credentialService;
     private final ObjectSyncService objectSyncService;
+    private final LinkRecomputeService linkRecomputeService;
     private final Clock clock;
     private final int maxRows;
 
@@ -70,6 +76,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
             SourceRowConverter converter,
             SourceCredentialService credentialService,
             ObjectSyncService objectSyncService,
+            LinkRecomputeService linkRecomputeService,
             Clock clock,
             @Value("${axcore.source-load.max-rows}") int maxRows) {
         this.syncRunRepository = syncRunRepository;
@@ -78,6 +85,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
         this.converter = converter;
         this.credentialService = credentialService;
         this.objectSyncService = objectSyncService;
+        this.linkRecomputeService = linkRecomputeService;
         this.clock = clock;
         this.maxRows = maxRows;
     }
@@ -217,6 +225,12 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
                 }
             }
             syncRunRepository.finishResource(jobId, plan.resourceId(), counts, toLsn, now);
+        }
+        Set<Long> loadedTypes = new LinkedHashSet<>();
+        outcome.resources()
+                .forEach(r -> r.plan().mappings().forEach(m -> loadedTypes.add(m.objectTypeId())));
+        if (!loadedTypes.isEmpty()) {
+            linkRecomputeService.recomputeObjectTypes(loadedTypes);
         }
         syncRunRepository.finish(jobId, now);
     }

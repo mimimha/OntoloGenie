@@ -24,6 +24,7 @@
    - 객체를 쓴다(`applyLoaded`). 세대는 `sync_run.id`다. 매핑마다 `finishLoad`로 이번에 안 나온 객체를 삭제 표시한다.
    - CDC 테이블은 `full_load_done_gen`을 이번 세대로, `loaded_lsn`을 읽기 시점 LSN으로 올린다(더 새 세대가 이미 끝났으면 그대로). FULL_COMPARE 테이블은 두 칸을 쓰지 않는다.
    - `sync_run_resource`를 SUCCEEDED(읽은 행, 쓴 행, 삭제 표시 수, CDC 테이블은 `to_lsn`), `sync_run`을 SUCCEEDED로 바꾼다.
+   - 마지막에 읽은 매핑의 객체 유형으로 연결을 다시 계산한다(`LinkRecomputeService.recomputeObjectTypes`, 198-7). 트랜잭션당 한 번, 객체를 다 쓴 뒤에 부른다. issue는 만들지 않는다(결정 문서 8장).
 3. 실패하면 `sync_run`과 끝나지 않은 `sync_run_resource`를 함께 FAILED로 바꾼다. 테이블 행을 남겨 두면 같은 테이블을 다시 넣을 수 없다.
 
 ## 값 변환
@@ -51,4 +52,3 @@
 - 실행을 만드는 쪽: API 073(수동 수집), 매핑 변경 뒤 자동 다시 읽기 요청, 217 합류. 지금 매핑 변경은 `loaded_lsn`만 비운다.
 - 큰 테이블을 나눠 읽기(청크마다 스냅샷). 지금은 행을 모두 메모리에 올리고 `max-rows`로 막는다.
 - 실행 중 `heartbeat_at` 갱신과 오래 멈춘 RUNNING 정리(U3).
-- 적재 뒤 연결 재계산(U6). 결정 문서 8장대로 연결만 계산하고 issue는 만들지 않는다.
