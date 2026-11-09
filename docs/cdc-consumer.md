@@ -4,8 +4,8 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 
 | 단위 | 내용 | 상태 |
 |---|---|---|
-| 198-1 | Debezium 값 해석, 197과 같은 정규형 행(`SourceRow`) | 이 문서 |
-| 198-2 | 메시지 해석·원천 트랜잭션 조립(BEGIN~END) | 예정 |
+| 198-1 | Debezium 값 해석, 197과 같은 정규형 행(`SourceRow`) | 완료, 이 문서 아래 |
+| 198-2 | 메시지 해석·원천 트랜잭션 조립(BEGIN~END) | [cdc-message-contract.md](cdc-message-contract.md) |
 | 198-3 | txId epoch 복원 | 예정 |
 | 198-4 | V12(epoch 기준, 수집 실패 기록 표) | 예정 |
 | 198-5 | 원천 트랜잭션 하나 → 플랫폼 트랜잭션 하나 | 예정 |
