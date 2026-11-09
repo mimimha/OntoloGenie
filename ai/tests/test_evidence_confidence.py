@@ -62,24 +62,49 @@ def test_candidates_without_verified_evidence_are_dropped(data):
     assert [c.evidence[0].snippet for c in dropped] == ["지어낸 근거"]
 
 
-def test_link_score_adds_value_key_and_name_up_to_0_8():
-    full = confidence.build(confidence.link(1.0, 1.0, "primary", name=True))
-    assert full.total == 0.8
-    # 값 포함은 고유값·행 기준 중 낮은 쪽만 본다
-    half = confidence.build(confidence.link(0.5, 1.0, "none"))
-    assert half.total == 0.25
-    assert [item.label for item in half.items] == [
-        "값 포함 50%"
-    ]  # 0점 신호는 빼고 보여 준다
-
-
-def test_hold_caps_score_at_low_band():
-    held = confidence.build(
-        confidence.link(1.0, 1.0, "primary", name=True), hold="번호만 같은 순번 키"
+def test_link_score_is_the_measured_hit_rate_of_its_basis():
+    # 점수 = 같은 근거로 나온 제안이 평가 데이터에서 맞은 비율. 근거와 수치를 화면 문장으로 남긴다
+    best = confidence.build(confidence.link(1.0, 1.0, "primary", name=True))
+    assert best.total == 0.95
+    assert "83개 중 82개가 맞음" in best.items[0].label
+    no_name = confidence.build(confidence.link(0.98, 1.0, "primary"))
+    assert no_name.total == 0.85 and "값 포함 98%" in no_name.items[0].label
+    assert (
+        confidence.build(confidence.link(1.0, 1.0, "alternate", name=True)).total
+        == 0.75
     )
-    assert held.total == confidence.CAP
-    assert held.cap_reason == "번호만 같은 순번 키"
-    assert confidence.band(held.total) == "낮음"
+    # 다른 시스템인데 값이 글자 그대로 같으면(라인 C0001 ↔ 고객 C0001) 낮춘다
+    cross = confidence.build(
+        confidence.link(1.0, 1.0, "primary", name=True, cross_same_value=True)
+    )
+    assert cross.total == 0.7 and "다른 시스템" in cross.items[0].label
+
+
+@pytest.mark.parametrize(
+    "reason, cap",
+    [
+        ("접두어 'C'를 'EQ-'로 바꿔야 같아짐. 일련번호만 우연히 같을 수 있어", 0.2),
+        ("숫자뿐인 값에 0 채우기·접두어를 붙여야 같아짐.", 0.3),
+        ("도착이 1, 2, 3…처럼 이어지는 순번 키라 숫자가 우연히 겹칠 수 있고", 0.45),
+        ("값 종류가 1개뿐이라 우연일 수 있음", 0.5),
+        ("대소문자·구분자만 달라 대응표로 이었다(SON = SO-N-N).", 0.6),
+        ("WO_SEQ은(는) 행 기준으로만 도착 값에 들어가 확인 필요", 0.5),
+        ("LLM이 업무상 맞지 않다고 봄", confidence.CAP),
+        ("처음 보는 보류 사유", confidence.HOLD_DEFAULT),
+    ],
+)
+def test_hold_caps_follow_measured_hit_rate_of_each_reason(reason, cap):
+    held = confidence.build(
+        confidence.link(1.0, 1.0, "primary", name=True), hold=reason
+    )
+    assert held.total == cap
+    assert held.cap_reason.startswith(reason)
+    assert held.total <= 0.6  # 보류는 '높음'으로 보이지 않는다
+
+
+def test_document_link_with_exact_source_key_scores_high():
+    assert confidence.build(confidence.document_link(True)).total == 0.95
+    assert confidence.build(confidence.document_link(False)).total == 0.8
 
 
 @pytest.mark.parametrize(
@@ -104,3 +129,12 @@ def test_document_link_evidence_checks_document_still_exists(data):
 
     assert lookup.check(doc(note_id))
     assert not lookup.check(doc("HN-없는-문서"))
+
+
+def test_unlisted_hold_reasons_have_own_cap_and_no_borrowed_statistic():
+    cap, text = confidence.hold_cap("식별 키 없음")
+    assert cap == 0.6 and "평가 데이터" not in text
+    cap, _ = confidence.hold_cap("수량·개수 컬럼이라 번호와 숫자가 우연히 겹칠 수 있음")
+    assert cap == 0.4
+    cap, text = confidence.hold_cap("처음 보는 보류 사유")
+    assert cap == confidence.HOLD_DEFAULT and text == "처음 보는 보류 사유"

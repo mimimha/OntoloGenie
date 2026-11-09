@@ -52,6 +52,7 @@ from app.models.extraction import (
     ResolutionStatus,
 )
 from app.proposers.confidence import build as confidence
+from app.proposers.confidence import document_link
 from app.sources.csv_reader import CsvSourceReader
 
 LINK_OF = {
@@ -512,16 +513,10 @@ def to_candidates(doc: Document, extraction: DocumentExtraction) -> list[Candida
                 if ambiguous
                 else [],
                 confidence=confidence(
-                    [
-                        (
-                            "값 비교",
-                            "원천 키와 똑같음"
-                            if e.text.upper() == refs[0].split(":")[1].upper()
-                            else "설비 이름과 맞음",
-                            0.5 if not ambiguous else 0.2,
-                        )
-                    ],
-                    hold="후보가 여럿" if ambiguous else None,
+                    [("근거", "후보 설비가 여럿", 0.3)]
+                    if ambiguous
+                    else document_link(e.text.upper() == refs[0].split(":")[1].upper()),
+                    hold="후보 설비가 여럿" if ambiguous else None,
                 ),
                 review_status="HELD" if ambiguous else "PENDING",
                 hold_reason="후보 설비가 여럿" if ambiguous else None,
@@ -564,7 +559,13 @@ def document_link_types(links: list[Candidate]) -> list[Candidate]:
                 reason=f"글 {len(docs)}건에서 {target} 언급 {len(group)}개를 찾았다.",
                 evidence=[c.evidence[0] for c in group[:3]],
                 confidence=confidence(
-                    [("값 비교", f"글 {len(docs)}건의 언급을 원천 값과 맞춤", 0.5)],
+                    [
+                        (
+                            "근거",
+                            f"글 {len(docs)}건의 언급을 원천 키·설비 이름과 맞춤",
+                            0.9,
+                        )
+                    ],
                     hold="대상을 정한 언급이 없음" if undecided else None,
                 ),
                 review_status="HELD" if undecided else "PENDING",

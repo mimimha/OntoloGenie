@@ -1322,6 +1322,8 @@ def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
                 rel.row_coverage,
                 rel.target_key,
                 single and name_evidence(rel.source[0], rel.target[0]),
+                cross_same_value=rel.rule_type == "same_value"
+                and s_table.split(".")[0] != t_table.split(".")[0],
             ),
             hold=rel.hold,
         )

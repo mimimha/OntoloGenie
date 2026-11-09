@@ -111,10 +111,11 @@ def test_proposals_cover_tables_and_columns_with_rule_method(data, result):
         kinds["OBJECT_TYPE"] == kinds["OBJECT_MAPPING"] == 31
     )  # 변경 이력 표 2개는 객체가 아님
     assert all(c["method"] == "rule" for c in result["candidates"])
-    # 값·키·이름 근거를 다 더해도 0.8을 넘지 않고, 보류 후보는 상한 0.49
-    assert all(0 < c["ai_confidence"] <= 0.8 for c in result["candidates"])
+    # 점수는 근거별 실제 정답 비율(최대 0.95)
+    assert all(0 < c["ai_confidence"] <= 1.0 for c in result["candidates"])
+    # 보류 권고는 '높음'으로 보이지 않는다(보류 사유별 상한 0.6 이하)
     assert all(
-        c["ai_confidence"] <= 0.49
+        c["ai_confidence"] <= 0.6
         for c in result["candidates"]
         if c["review_status"] == "HELD"
     )
@@ -376,7 +377,11 @@ def test_bundles_link_type_and_its_rule_into_one_relation_proposal(result):
     for a in bundled:
         link_type = a["payload"]["linkType"]
         assert link_type["code"] == a["payload"]["linkTypeCode"]
-        assert link_type == to_api(types[link_type["code"]])["payload"]
+        # 이름·설명은 화면용 한국어로 바뀐다(readable). 나머지는 관계 유형 후보 그대로
+        original = to_api(types[link_type["code"]])["payload"]
+        assert {
+            k: v for k, v in link_type.items() if k not in ("name", "description")
+        } == {k: v for k, v in original.items() if k not in ("name", "description")}
     # 규칙이 없는 관계 유형만 따로 남는다
     alone = {a["payload"]["code"] for a in api if a["itemKind"] == "LINK_TYPE"}
     assert alone == set(types) - {r.payload.link_type_code for r in rules}

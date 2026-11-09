@@ -67,9 +67,9 @@ class ScoreItem(BaseModel):
 
 
 class Confidence(BaseModel):
-    """AI 신뢰도(0~1). 근거 신호 점수를 묶음별 최댓값으로 더하고, 치명적 문제가 있으면 상한(cap)을 둔다.
+    """AI 신뢰도(0~1). 근거별 평가 데이터 실제 정답 비율(confidence.py)이고, 보류면 상한(cap)을 둔다.
 
-    LLM이 스스로 말한 숫자는 쓰지 않는다. 점수는 근거의 강도이지 정답 확률이 아니다.
+    LLM이 스스로 말한 숫자는 쓰지 않는다.
     """
 
     items: list[ScoreItem] = Field(default_factory=list)

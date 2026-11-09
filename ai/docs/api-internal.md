@@ -55,17 +55,19 @@
 | 종류 | `payload` | `evidence`에 더해지는 것 |
 | --- | --- | --- |
 | OBJECT_TYPE | 객체 유형 칸(`code`, `name`, `description`, `synonyms`, `note`, `category`) + `objectMapping` {`sourceId`, `resourceKey`, `keyColumns`} + `properties[]` {`code`, `name`, `dataType`, `description`, `isIdentifier`, `isRequired`, `unit`, `sensitivity`, `sourceColumn`, `transformSteps`} | `objectMapping` {title, reason, items, …}, `properties[]` {code, title, reason, items, confidenceItems, mapping} |
-| LINK_RULE | 연결 규칙 칸(`code`, `linkTypeCode`, `pattern`, `conditions`, `sourceFilter`, `description`) + `linkType` {`code`, `name`, `sourceTypeCode`, `targetTypeCode`, `cardinality`, `description`} | 없음(규칙과 관계 유형의 근거가 같음) |
+| LINK_RULE | 연결 규칙 칸(`code`, `name`, `linkTypeCode`, `pattern`, `conditions`, `sourceFilter`, `description`) + `linkType` {`code`, `name`, `sourceTypeCode`, `targetTypeCode`, `cardinality`, `description`} | 없음(규칙과 관계 유형의 근거가 같음) |
 
 - `aiConfidence`는 객체 후보면 객체 유형의, 관계 후보면 연결 규칙의 점수입니다.
 - 묶음 안 구성 후보 하나라도 보류 권고면 묶음도 `holdRecommended=true`이고, `holdReason`은 이유를 ` / `로 잇습니다. 어느 속성 때문인지는 `evidence.properties[].holdRecommended`·`holdReason`에 남습니다.
 - 같은 관계 유형을 쓰는 연결 규칙이 여럿이면 규칙마다 `linkType`을 담습니다.
 - 객체 유형 코드가 겹치거나 한 객체에 객체 매핑이 둘 이상이면, 묶을 곳이 모호한 후보는 원래 종류로 따로 보냅니다(빠지지 않음).
-- `fingerprint`는 묶은 payload의 지문입니다.
+- `fingerprint`는 묶은 payload의 지문입니다. 화면용 이름(`name`, 관계 설명)을 붙이기 전에 계산해 이름만 바뀐 재분석 결과를 변경으로 보지 않습니다.
 - 연결 규칙이 없는 관계 유형(문서 연결용, 다른 표를 거치는 관계)은 지금처럼 LINK_TYPE 한 건으로 보냅니다.
 - 개수 예(개발용 데이터 A 전체): 구성 후보 653건 → 보내는 후보 93건(객체 31, 관계 59, 규칙 없는 관계 유형 3).
 
-DOCUMENT_LINK `payload`는 `linkTypeCode`, `documentId`, `spanStart`·`spanEnd`(원문 글자 위치, 끝 미포함), `mentionText`, `targetObjectRef`, `expressionKind`입니다. `expressionKind`는 OBSERVED(확인) · ESTIMATED(추정)입니다. 관찰이 모두 부정인 언급은 연결하지 않습니다. 설비 후보가 여럿이면 `options[]`에 후보마다 하나씩 두고 보류 권고(`holdRecommended`)로 보냅니다. 문서 연결이 쓰는 관계 유형(`MENTIONS_EQUIPMENT` 등, 메모 → 설비·작업지시·정비·출하, MANY_TO_MANY)도 LINK_TYPE 후보로 함께 냅니다. 관계 유형은 출발 객체 유형이 하나라서 정비 기록 연결은 `MAINTENANCE_ORDER_MENTIONS_EQUIPMENT`처럼 앞에 표 이름을 붙입니다.
+LINK_RULE·LINK_TYPE·DOCUMENT_LINK의 `name`(관계 유형은 `linkType.name`·`description`도)은 검토 화면 목록 제목용 한국어입니다(#327). 같은 분석의 객체 유형 이름과 속성 이름으로 만듭니다. 예: `작업지시 → 수주 (수주 참조 번호로 연결)`, `교대 인수인계 메모 HN-260820-N → 작업지시 JB2608-0129`. 분석 범위 밖이라 이름을 모르는 객체는 코드를 그대로 씁니다. 코드(`code`·`linkTypeCode`)는 바꾸지 않습니다.
+
+DOCUMENT_LINK `payload`는 `name`, `linkTypeCode`, `documentId`, `spanStart`·`spanEnd`(원문 글자 위치, 끝 미포함), `mentionText`, `targetObjectRef`, `expressionKind`입니다. `expressionKind`는 OBSERVED(확인) · ESTIMATED(추정)입니다. 관찰이 모두 부정인 언급은 연결하지 않습니다. 설비 후보가 여럿이면 `options[]`에 후보마다 하나씩 두고 보류 권고(`holdRecommended`)로 보냅니다. 문서 연결이 쓰는 관계 유형(`MENTIONS_EQUIPMENT` 등, 메모 → 설비·작업지시·정비·출하, MANY_TO_MANY)도 LINK_TYPE 후보로 함께 냅니다. 관계 유형은 출발 객체 유형이 하나라서 정비 기록 연결은 `MAINTENANCE_ORDER_MENTIONS_EQUIPMENT`처럼 앞에 표 이름을 붙입니다.
 
 속성의 `sensitivity`(객체 후보 `payload.properties[].sensitivity`)는 ERD `property_definition.sensitivity`와 같은 값(NORMAL · RESTRICTED)입니다. 개인정보로 본 컬럼은 RESTRICTED입니다.
 
