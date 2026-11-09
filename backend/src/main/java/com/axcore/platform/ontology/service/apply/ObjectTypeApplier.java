@@ -50,6 +50,14 @@ class ObjectTypeApplier implements ProposalApplier {
         if (objectTypes.existsByCode(code)) {
             throw ApplySupport.exists(FIELD + ".code", code);
         }
+        // 속성에 원천 컬럼이 있으면 그 부모가 될 객체 매핑(키 컬럼)이 같이 와야 한다. 새 유형이라 기존 매핑도 없다.
+        // AI는 식별 키를 찾지 못한 표에는 객체 매핑을 만들지 않으므로, 먼저 승인할 후보가 없다는 것을 분명히 알린다.
+        if (payload.get("objectMapping") == null
+                && support.optionalObjects(payload, "properties", FIELD).stream()
+                        .anyMatch(property -> property.get("sourceColumn") != null)) {
+            throw ApplySupport.invalid(
+                    FIELD + ".objectMapping", "속성에 원천 컬럼이 있으면 객체 매핑(키 컬럼)이 함께 있어야 합니다.");
+        }
         ObjectTypeCreateRequest request =
                 support.valid(
                         new ObjectTypeCreateRequest(
@@ -101,7 +109,7 @@ class ObjectTypeApplier implements ProposalApplier {
                             type,
                             support.property(type, propertyCode, field + ".code"),
                             sourceColumn,
-                            support.optionalObjects(bundled.get(i), "transformSteps", field),
+                            support.transformSteps(bundled.get(i), field),
                             field);
             reload.add(written.sourceResourceId());
             changes.add(written.change());

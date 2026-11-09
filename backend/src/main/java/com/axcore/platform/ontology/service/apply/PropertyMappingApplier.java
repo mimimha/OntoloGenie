@@ -32,20 +32,21 @@ class PropertyMappingApplier implements ProposalApplier {
     @Override
     public ApplyResult apply(ApplyCommand command) {
         Map<String, Object> payload = command.payload();
-        ObjectType type =
-                support.objectType(
-                        support.text(payload, "objectTypeCode", FIELD), FIELD + ".objectTypeCode");
+        // payload 형식을 먼저 보고, 그다음 가리키는 정의를 찾는다.
+        String typeCode = support.text(payload, "objectTypeCode", FIELD);
         String propertyCode = support.text(payload, "propertyCode", FIELD);
         Map<String, Object> sourceColumn = support.optionalObject(payload, "sourceColumn", FIELD);
         if (sourceColumn == null) {
             throw ApplySupport.invalid(FIELD + ".sourceColumn", "원천 컬럼을 지정해야 합니다.");
         }
+        List<Map<String, Object>> steps = support.transformSteps(payload, FIELD);
+        ObjectType type = support.objectType(typeCode, FIELD + ".objectTypeCode");
         ApplyWriter.WrittenMapping written =
                 writer.propertyMapping(
                         type,
                         support.property(type, propertyCode, FIELD + ".propertyCode"),
                         sourceColumn,
-                        support.optionalObjects(payload, "transformSteps", FIELD),
+                        steps,
                         FIELD);
         return new ApplyResult(
                 "property_source_mapping",

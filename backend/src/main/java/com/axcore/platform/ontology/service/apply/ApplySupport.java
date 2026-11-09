@@ -11,7 +11,6 @@ import com.axcore.platform.ontology.repository.ObjectTypeRepository;
 import com.axcore.platform.ontology.repository.PropertyDefinitionRepository;
 import com.axcore.platform.source.domain.DataSource;
 import com.axcore.platform.source.domain.SourceColumn;
-import com.axcore.platform.source.domain.SourceResource;
 import com.axcore.platform.source.repository.DataSourceRepository;
 import com.axcore.platform.source.repository.SourceColumnRepository;
 import com.axcore.platform.source.repository.SourceResourceRepository;
@@ -25,6 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
 /**
@@ -135,6 +135,17 @@ class ApplySupport {
         return objects;
     }
 
+    /** 변환 단계 목록. 단계마다 {@code op}가 문자열이어야 한다(인자 검사는 매핑 등록 서비스가 한다). */
+    List<Map<String, Object>> transformSteps(Map<String, Object> payload, String field) {
+        List<Map<String, Object>> steps = optionalObjects(payload, "transformSteps", field);
+        for (int i = 0; i < steps.size(); i++) {
+            if (!(steps.get(i).get("op") instanceof String op) || op.isBlank()) {
+                throw invalid(field + ".transformSteps[" + i + "].op", "변환 종류는 문자열이어야 합니다.");
+            }
+        }
+        return steps;
+    }
+
     // ---- 검증·오류 ---------------------------------------------------------------------------
 
     /** 컨트롤러가 하던 Bean Validation을 반영 경로에서도 한다. 첫 오류(필드 이름순)를 {@code field.필드}로 돌려준다. */
@@ -158,6 +169,11 @@ class ApplySupport {
     <T> T call(String field, Supplier<T> work) {
         try {
             return work.get();
+        } catch (DataIntegrityViolationException e) {
+            // 중복 확인과 저장 사이에 같은 code·매핑이 먼저 커밋되면 DB 고유 제약이 막는다(동시 승인).
+            throw new BusinessException(
+                    ApplyErrorCode.APPLY_TARGET_EXISTS,
+                    Map.of("field", field, "reason", "같은 정의·매핑이 먼저 저장됐습니다."));
         } catch (BusinessException e) {
             if (e.getErrorCode() instanceof ApplyErrorCode) {
                 throw e;
@@ -206,13 +222,14 @@ class ApplySupport {
     }
 
     /** 원천 자원. 원천과 자원은 후보가 만들지 않으므로 없으면 원천 카탈로그(013·014)를 먼저 채워야 한다. */
-    SourceResource resource(String sourceCode, String resourceKey, String field) {
+    ResourceRef resource(String sourceCode, String resourceKey, String field) {
         DataSource source =
                 dataSources
                         .findByCode(sourceCode)
                         .orElseThrow(() -> missing(field + ".sourceId", sourceCode, "DATA_SOURCE"));
         return resources
-                .findByDataSourceIdAndResourceKey(source.getId(), resourceKey)
+                .findIdByDataSourceIdAndResourceKey(source.getId(), resourceKey)
+                .map(id -> new ResourceRef(id, resourceKey))
                 .orElseThrow(
                         () ->
                                 missing(
@@ -221,29 +238,29 @@ class ApplySupport {
                                         "SOURCE_RESOURCE"));
     }
 
-    SourceColumn column(SourceResource resource, String columnName, String field) {
-        return columns.findBySourceResourceIdAndColumnName(resource.getId(), columnName)
+    SourceColumn column(ResourceRef resource, String columnName, String field) {
+        return columns.findBySourceResourceIdAndColumnName(resource.id(), columnName)
                 .orElseThrow(
                         () ->
                                 missing(
                                         field,
-                                        resource.getResourceKey() + "." + columnName,
+                                        resource.resourceKey() + "." + columnName,
                                         "SOURCE_COLUMN"));
     }
 
     /** 원천 자원에서 그 객체 유형을 만드는 켜진 매핑. 속성 매핑의 부모다. */
-    ObjectSourceMapping activeObjectMapping(
-            SourceResource resource, ObjectType type, String field) {
-        return objectMappings
-                .findBySourceResourceIdAndActiveTrueOrderById(resource.getId())
-                .stream()
+    ObjectSourceMapping activeObjectMapping(ResourceRef resource, ObjectType type, String field) {
+        return objectMappings.findBySourceResourceIdAndActiveTrueOrderById(resource.id()).stream()
                 .filter(mapping -> mapping.getObjectTypeId().equals(type.getId()))
                 .findFirst()
                 .orElseThrow(
                         () ->
                                 missing(
                                         field,
-                                        type.getCode() + "@" + resource.getResourceKey(),
+                                        type.getCode() + "@" + resource.resourceKey(),
                                         "OBJECT_MAPPING"));
     }
+
+    /** 원천 자원의 ID와 키. 엔티티는 매핑 등록 서비스가 잠근 뒤에 처음 읽는다. */
+    record ResourceRef(long id, String resourceKey) {}
 }

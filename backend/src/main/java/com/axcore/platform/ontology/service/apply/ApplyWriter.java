@@ -16,7 +16,6 @@ import com.axcore.platform.ontology.dto.PropertyCreateRequest;
 import com.axcore.platform.ontology.dto.PropertyResponse;
 import com.axcore.platform.ontology.service.PropertyService;
 import com.axcore.platform.source.domain.SourceColumn;
-import com.axcore.platform.source.domain.SourceResource;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -68,7 +67,7 @@ class ApplyWriter {
     /** 객체 매핑 하나. 켜진 매핑으로 만들어 그 표의 전체 다시 읽기를 요청한다(감시 작업이 첫 적재를 넣는다). */
     WrittenMapping objectMapping(
             ObjectType type, Map<String, Object> payload, String field, DefinitionSource source) {
-        SourceResource resource =
+        ApplySupport.ResourceRef resource =
                 support.resource(
                         support.text(payload, "sourceId", field),
                         support.text(payload, "resourceKey", field),
@@ -76,7 +75,7 @@ class ApplyWriter {
         ObjectMappingCreateRequest request =
                 support.valid(
                         new ObjectMappingCreateRequest(
-                                resource.getId(),
+                                resource.id(),
                                 type.getId(),
                                 support.texts(payload, "keyColumns", field),
                                 null,
@@ -85,12 +84,12 @@ class ApplyWriter {
         ObjectMappingResponse created =
                 support.call(field, () -> objectMappingService.create(request, source));
         Map<String, Object> after = new LinkedHashMap<>();
-        after.put("sourceResourceId", resource.getId());
+        after.put("sourceResourceId", resource.id());
         after.put("objectTypeId", type.getId());
         after.put("keyColumns", request.keyColumns());
         return new WrittenMapping(
                 created.id(),
-                resource.getId(),
+                resource.id(),
                 ChangeEntry.insert("object_source_mapping", Map.of("id", created.id()), after));
     }
 
@@ -105,7 +104,7 @@ class ApplyWriter {
             List<Map<String, Object>> transformSteps,
             String field) {
         String columnField = field + ".sourceColumn";
-        SourceResource resource =
+        ApplySupport.ResourceRef resource =
                 support.resource(
                         support.text(sourceColumn, "sourceId", columnField),
                         support.text(sourceColumn, "resourceKey", columnField),
@@ -120,7 +119,7 @@ class ApplyWriter {
                 support.valid(
                         new PropertyMappingCreateRequest(
                                 parent.getId(),
-                                resource.getId(),
+                                resource.id(),
                                 property.getId(),
                                 column.getId(),
                                 null,
@@ -134,7 +133,7 @@ class ApplyWriter {
         after.put("sourceColumnId", column.getId());
         return new WrittenMapping(
                 created.id(),
-                resource.getId(),
+                resource.id(),
                 ChangeEntry.insert("property_source_mapping", Map.of("id", created.id()), after));
     }
 

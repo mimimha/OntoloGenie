@@ -385,6 +385,80 @@ class DefinitionAppliersTests {
     }
 
     @Test
+    void bundleWithColumnsButNoObjectMappingIsRejectedBeforeAnyWrite() {
+        String code = "KEYLESS_" + suffix().substring(0, 8).toUpperCase();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("code", code);
+        payload.put("name", "키 없는 표");
+        payload.put(
+                "properties",
+                List.of(
+                        Map.of(
+                                "code", "name",
+                                "name", "이름",
+                                "dataType", "STRING",
+                                "sourceColumn",
+                                        Map.of(
+                                                "sourceId", sourceCode,
+                                                "resourceKey", resourceKey,
+                                                "column", "eq_name"))));
+
+        assertApplyError(
+                () -> apply(proposal("OBJECT_TYPE"), ProposalItemKind.OBJECT_TYPE, payload),
+                ApplyErrorCode.APPLY_PAYLOAD_INVALID,
+                "payload.objectMapping");
+        assertThat(count("object_type", "code = '" + code + "'")).isZero();
+    }
+
+    @Test
+    void transformStepOpMustBeText() {
+        String type = objectType();
+        assertApplyError(
+                () ->
+                        apply(
+                                proposal("PROPERTY_MAPPING"),
+                                ProposalItemKind.PROPERTY_MAPPING,
+                                Map.of(
+                                        "objectTypeCode",
+                                        type,
+                                        "propertyCode",
+                                        "code",
+                                        "sourceColumn",
+                                        Map.of(
+                                                "sourceId", sourceCode,
+                                                "resourceKey", resourceKey,
+                                                "column", "eq_id"),
+                                        "transformSteps",
+                                        List.of(Map.of("op", 1)))),
+                ApplyErrorCode.APPLY_PAYLOAD_INVALID,
+                "payload.transformSteps[0].op");
+    }
+
+    @Test
+    void aiProposalIsStoredWithAiOrigin() {
+        long proposal = aiProposal("OBJECT_TYPE");
+        String code = "AI_" + suffix().substring(0, 8).toUpperCase();
+
+        ApplyResult result =
+                tx.execute(
+                        status ->
+                                service.apply(
+                                        new ApplyCommand(
+                                                proposal,
+                                                ProposalItemKind.OBJECT_TYPE,
+                                                ProposalOrigin.AI,
+                                                Map.of("code", code, "name", "AI 유형"),
+                                                account)));
+
+        assertThat(
+                        row(
+                                "select origin, proposal_item_id from object_type where id = :id",
+                                result.targetId()))
+                .containsEntry("origin", "AI_PROPOSAL")
+                .containsEntry("proposal_item_id", proposal);
+    }
+
+    @Test
     void aiProposalRecordsAiOrigin() {
         assertThat(DefinitionSource.fromProposal(ProposalOrigin.AI, 7L))
                 .isEqualTo(new DefinitionSource(DefinitionOrigin.AI_PROPOSAL, 7L));
@@ -435,6 +509,38 @@ class DefinitionAppliersTests {
                                     """)
                             .param("id", id)
                             .param("actor", account)
+                            .update();
+                    return id;
+                });
+    }
+
+    // AI 후보는 분석 실행이 있어야 한다(ck_proposal_item_ai). 개정본과 같은 트랜잭션에서 넣는다.
+    private long aiProposal(String kind) {
+        return tx.execute(
+                status -> {
+                    long run =
+                            jdbc.sql(
+                                            """
+                                            insert into analysis_run (run_kind, work_key, status, requested_by, started_at, finished_at)
+                                            values ('INITIAL', :key, 'SUCCEEDED', :actor, now(), now()) returning id
+                                            """)
+                                    .param("key", "apply-" + UUID.randomUUID())
+                                    .param("actor", account)
+                                    .query(Long.class)
+                                    .single();
+                    long id =
+                            jdbc.sql(
+                                            """
+                                            insert into proposal_item (analysis_run_id, origin, item_kind, payload)
+                                            values (:run, 'AI', :kind, '{}'::jsonb) returning id
+                                            """)
+                                    .param("run", run)
+                                    .param("kind", kind)
+                                    .query(Long.class)
+                                    .single();
+                    jdbc.sql(
+                                    "insert into proposal_revision (proposal_item_id, revision, payload) values (:id, 1, '{}'::jsonb)")
+                            .param("id", id)
                             .update();
                     return id;
                 });
