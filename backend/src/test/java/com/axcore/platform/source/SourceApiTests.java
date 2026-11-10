@@ -18,6 +18,8 @@ import com.axcore.platform.source.domain.CredentialPurpose;
 import com.axcore.platform.source.domain.SourceAccount;
 import com.axcore.platform.source.service.SourceCredentialService;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -355,6 +357,94 @@ class SourceApiTests extends SourceApiTestSupport {
                 .andExpect(status().isNotFound());
     }
 
+    /**
+     * 199: 접속 설정(host·port·database)이 실제로 바뀌면 소비 중인 원천의 CDC 반영을 멈춘다(SOURCE_CHANGED). 다시 읽기 표시는 하지
+     * 않는다(커넥터가 아직 옛 DB를 본다). 이름만 바꾸거나 소비 전 원천이면 그대로다.
+     */
+    @Test
+    void configChangeStopsCdcOfConsumedSourceWithoutReload() throws Exception {
+        LoginSession admin = loginAs("ADMIN");
+        long id = createPostgresSource(admin, uniqueCode());
+        long unconsumed = createPostgresSource(admin, uniqueCode());
+        long table = cdcTable(id, 7L);
+        String topic = cdcOffset(id);
+
+        send(admin, patch(BASE_PATH + "/" + id), "{\"name\": \"본사 ERP\", \"rowVersion\": 0}")
+                .andExpect(status().isOk());
+        assertThat(recovery(topic)).containsEntry("recovery_reason", null);
+
+        send(
+                        admin,
+                        patch(BASE_PATH + "/" + id),
+                        """
+                        {"connectionConfig": {"host": "10.0.0.9", "port": 15432, "database": "erp"},
+                         "rowVersion": 1}
+                        """)
+                .andExpect(status().isOk());
+        send(
+                        admin,
+                        patch(BASE_PATH + "/" + unconsumed),
+                        """
+                        {"connectionConfig": {"host": "10.0.0.9", "port": 15432, "database": "erp"},
+                         "rowVersion": 0}
+                        """)
+                .andExpect(status().isOk());
+
+        Map<String, Object> state = recovery(topic);
+        assertThat(state.get("recovery_reason")).isEqualTo("SOURCE_CHANGED");
+        assertThat(state.get("recovery_at")).isNotNull();
+        assertThat(state.get("healthy_since")).isNull();
+        assertThat(loadedLsn(table)).isEqualTo(7L);
+        assertThat(
+                        jdbcClient
+                                .sql("select count(*) from cdc_offset where data_source_id = :id")
+                                .param("id", unconsumed)
+                                .query(Long.class)
+                                .single())
+                .isZero();
+    }
+
+    /** 199: 원천 교체 뒤 커넥터를 맞췄다고 알리면 슬롯 재생성 복구로 바꾸고 CDC 테이블을 모두 다시 읽기 대상으로 표시한다. 교체 중이 아니면 거절한다. */
+    @Test
+    void reconnectAfterSourceChangeRequestsReload() throws Exception {
+        LoginSession admin = loginAs("ADMIN");
+        long id = createPostgresSource(admin, uniqueCode());
+        long table = cdcTable(id, 7L);
+        String topic = cdcOffset(id);
+
+        send(admin, post(BASE_PATH + "/" + id + "/cdc/reconnected"), null)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.details.expected").value("SOURCE_CHANGED"));
+        assertThat(loadedLsn(table)).isEqualTo(7L);
+
+        jdbcClient
+                .sql(
+                        """
+                        update cdc_offset set recovery_reason = 'SOURCE_CHANGED',
+                                              recovery_at = now() - interval '1 hour', healthy_since = null
+                        where topic = :t
+                        """)
+                .param("t", topic)
+                .update();
+        send(admin, post(BASE_PATH + "/" + id + "/cdc/reconnected"), null)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.dataSourceId").value(id))
+                .andExpect(jsonPath("$.data.recoveryReason").value("SLOT_LOST"))
+                .andExpect(jsonPath("$.data.reloadTables").value(1));
+
+        Map<String, Object> state = recovery(topic);
+        assertThat(state.get("recovery_reason")).isEqualTo("SLOT_LOST");
+        assertThat(((java.sql.Timestamp) state.get("recovery_at")).toInstant())
+                .isAfter(java.time.Instant.now().minusSeconds(60));
+        assertThat(loadedLsn(table)).isNull();
+
+        LoginSession viewer = loginAs("VIEWER");
+        send(viewer, post(BASE_PATH + "/" + id + "/cdc/reconnected"), null)
+                .andExpect(status().isForbidden());
+        send(admin, post(BASE_PATH + "/999999999/cdc/reconnected"), null)
+                .andExpect(status().isNotFound());
+    }
+
     @Test
     void allowsOnlyAdmin() throws Exception {
         LoginSession viewer = loginAs("VIEWER");
@@ -372,6 +462,53 @@ class SourceApiTests extends SourceApiTestSupport {
                 .param("code", code)
                 .query(Long.class)
                 .single();
+    }
+
+    private long cdcTable(long sourceId, long loadedLsn) {
+        return jdbcClient
+                .sql(
+                        """
+                        insert into source_resource (data_source_id, resource_key, resource_kind, sync_strategy,
+                                                     is_readable, loaded_lsn)
+                        values (:s, 'erp.work_order', 'TABLE', 'CDC', true, :lsn) returning id
+                        """)
+                .param("s", sourceId)
+                .param("lsn", loadedLsn)
+                .query(Long.class)
+                .single();
+    }
+
+    /** 소비 중인 원천(정상). */
+    private String cdcOffset(long sourceId) {
+        String topic = "T_" + UUID.randomUUID() + ".all";
+        jdbcClient
+                .sql(
+                        """
+                        insert into cdc_offset (topic, partition_no, data_source_id, next_offset, healthy_since)
+                        values (:t, 0, :s, 3, now())
+                        """)
+                .param("t", topic)
+                .param("s", sourceId)
+                .update();
+        return topic;
+    }
+
+    private Map<String, Object> recovery(String topic) {
+        return jdbcClient
+                .sql(
+                        "select recovery_reason, recovery_at, healthy_since from cdc_offset where topic = :t")
+                .param("t", topic)
+                .query()
+                .singleRow();
+    }
+
+    private Long loadedLsn(long resourceId) {
+        return jdbcClient
+                .sql("select loaded_lsn from source_resource where id = :id")
+                .param("id", resourceId)
+                .query((rs, row) -> (Long) rs.getObject("loaded_lsn"))
+                .list()
+                .getFirst();
     }
 
     private void markConnected(long id) {

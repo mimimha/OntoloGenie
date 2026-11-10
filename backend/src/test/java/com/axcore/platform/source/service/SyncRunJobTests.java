@@ -577,6 +577,127 @@ class SyncRunJobTests {
         assertThat(state.get("loaded_lsn")).isNull();
     }
 
+    /**
+     * 199: 복구 중인 원천을 다시 읽으면 그 저장 트랜잭션에서 복구를 푼다. epoch 기준값을 비우고, 이어 받을 기준 시각을 다시 읽은 실행의 시작 시각으로 남긴다.
+     * 매핑이 없는 CDC 테이블은 기다리지 않는다.
+     */
+    @Test
+    void reloadAfterRecoveryReleasesItWithResumeTime() {
+        String topic = cdcOffset("OFFSET_EXPIRED");
+        jdbc.sql(
+                        """
+                        insert into source_resource (data_source_id, resource_key, resource_kind, sync_strategy,
+                                                     is_readable)
+                        values (:s, 'erp_src.unmapped', 'TABLE', 'CDC', true)
+                        """)
+                .param("s", sourceId)
+                .update();
+        long runId = queueRun(workOrderId);
+
+        assertThat(queuedJobRunner.runNext(job)).isTrue();
+
+        assertThat(runStatus(runId)).isEqualTo("SUCCEEDED");
+        Map<String, Object> offset = offsetRow(topic);
+        assertThat(offset)
+                .containsEntry("recovery_reason", null)
+                .containsEntry("recovery_at", null)
+                .containsEntry("last_txid", null)
+                .containsEntry("next_offset", 5L);
+        assertThat(offset.get("resume_after"))
+                .isEqualTo(
+                        jdbc.sql("select started_at from sync_run where id = :id")
+                                .param("id", runId)
+                                .query(java.sql.Timestamp.class)
+                                .single());
+        assertThat(loadState(workOrderId).get("loaded_lsn")).isNotNull();
+    }
+
+    /** 199: 복구 표시보다 먼저 시작한 읽기는 복구 원인보다 옛 스냅샷이다. 세대만 올리고 다시 읽은 것으로 치지 않는다. 다음 읽기가 복구를 푼다. */
+    @Test
+    void loadStartedBeforeRecoveryDoesNotReleaseIt() {
+        String topic = cdcOffset(null);
+        long early = queueRun(workOrderId);
+        startRun(early);
+        SyncRunJob.Outcome outcome = job.run(early);
+        jdbc.sql(
+                        """
+                        update cdc_offset set recovery_reason = 'TRANSACTION_TOO_LARGE',
+                                              recovery_at = clock_timestamp() + interval '1 second'
+                        where topic = :t
+                        """)
+                .param("t", topic)
+                .update();
+        jdbc.sql("update source_resource set loaded_lsn = null where data_source_id = :s")
+                .param("s", sourceId)
+                .update();
+
+        tx.executeWithoutResult(status -> job.complete(early, outcome));
+
+        assertThat(loadState(workOrderId))
+                .containsEntry("full_load_done_gen", early)
+                .containsEntry("loaded_lsn", null);
+        assertThat(offsetRow(topic)).containsEntry("recovery_reason", "TRANSACTION_TOO_LARGE");
+
+        jdbc.sql("update cdc_offset set recovery_at = clock_timestamp() where topic = :t")
+                .param("t", topic)
+                .update();
+        long late = queueRun(workOrderId);
+        assertThat(queuedJobRunner.runNext(job)).isTrue();
+
+        assertThat(runStatus(late)).isEqualTo("SUCCEEDED");
+        assertThat(offsetRow(topic)).containsEntry("recovery_reason", null);
+        assertThat(loadState(workOrderId).get("loaded_lsn")).isNotNull();
+    }
+
+    /** 199: 원천 교체는 관리자가 커넥터를 맞췄다고 알리기 전이라 다시 읽어도 풀지 않는다. */
+    @Test
+    void sourceChangeIsNotReleasedByReload() {
+        String topic = cdcOffset("SOURCE_CHANGED");
+        long runId = queueRun(workOrderId);
+
+        assertThat(queuedJobRunner.runNext(job)).isTrue();
+
+        assertThat(runStatus(runId)).isEqualTo("SUCCEEDED");
+        assertThat(offsetRow(topic))
+                .containsEntry("recovery_reason", "SOURCE_CHANGED")
+                .containsEntry("resume_after", null);
+    }
+
+    /** 이 원천의 소비 상태 행. 이유가 있으면 1분 전에 복구가 필요해졌고 그 원천의 CDC 테이블은 다시 읽기 대상이다(소비자가 표시한 상태). */
+    private String cdcOffset(String recoveryReason) {
+        String topic = "T_" + UUID.randomUUID() + ".all";
+        jdbc.sql(
+                        """
+                        insert into cdc_offset (topic, partition_no, data_source_id, next_offset, last_txid,
+                                                recovery_reason, recovery_at)
+                        values (:t, 0, :s, 5, '900'::xid8, cast(:reason as varchar),
+                                case when cast(:reason as varchar) is null then null
+                                     else now() - interval '1 minute' end)
+                        """)
+                .param("t", topic)
+                .param("s", sourceId)
+                .param("reason", recoveryReason)
+                .update();
+        if (recoveryReason != null && !recoveryReason.equals("SOURCE_CHANGED")) {
+            jdbc.sql("update source_resource set loaded_lsn = null where data_source_id = :s")
+                    .param("s", sourceId)
+                    .update();
+        }
+        return topic;
+    }
+
+    private Map<String, Object> offsetRow(String topic) {
+        return jdbc.sql(
+                        """
+                        select next_offset, last_txid::text as last_txid, recovery_reason, recovery_at,
+                               resume_after
+                        from cdc_offset where topic = :t
+                        """)
+                .param("t", topic)
+                .query()
+                .singleRow();
+    }
+
     private void refreshCatalog() {
         jdbc.sql(
                         """

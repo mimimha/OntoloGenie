@@ -1,6 +1,8 @@
 package com.axcore.platform.source.repository;
 
 import com.axcore.platform.source.domain.RecoveryReason;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Optional;
@@ -52,22 +54,13 @@ public class CdcConsumerRepository {
                 jdbc.sql(
                                 """
                                 select data_source_id, next_offset, last_txid::text as last_txid,
-                                       recovery_reason
+                                       recovery_reason, resume_after
                                 from cdc_offset where topic = :topic and partition_no = :partition
                                 for update
                                 """)
                         .param("topic", topic)
                         .param("partition", PARTITION)
-                        .query(
-                                (rs, row) -> {
-                                    String txid = rs.getString("last_txid");
-                                    String reason = rs.getString("recovery_reason");
-                                    return new OffsetState(
-                                            rs.getLong("data_source_id"),
-                                            rs.getLong("next_offset"),
-                                            txid == null ? null : Long.parseLong(txid),
-                                            reason == null ? null : RecoveryReason.valueOf(reason));
-                                })
+                        .query(CdcConsumerRepository::offsetState)
                         .single();
         if (state.dataSourceId() != dataSourceId) {
             throw new IllegalStateException(
@@ -113,8 +106,8 @@ public class CdcConsumerRepository {
     }
 
     /**
-     * 복구가 필요하다고 표시한다. 이미 표시되어 있으면 처음 이유와 시각을 둔다. 위치는 옮기지 않는다. JdbcClient: Entity가 없는 {@code
-     * cdc_offset}(기존 방식).
+     * 복구가 필요하다고 표시한다. 이미 표시되어 있으면 처음 이유와 시각을 둔다. 위치는 옮기지 않는다. 아직 쓰지 않은 이어 받을 기준 시각은 버린다(다음 해제 때 새로
+     * 정한다). JdbcClient: Entity가 없는 {@code cdc_offset}(기존 방식).
      */
     public void markRecovery(String topic, RecoveryReason reason) {
         jdbc.sql(
@@ -123,6 +116,7 @@ public class CdcConsumerRepository {
                         set recovery_reason = coalesce(recovery_reason, :reason),
                             recovery_at = coalesce(recovery_at, now()),
                             healthy_since = null,
+                            resume_after = null,
                             updated_at = now()
                         where topic = :topic and partition_no = :partition
                         """)
@@ -139,22 +133,126 @@ public class CdcConsumerRepository {
     public Optional<OffsetState> findState(String topic) {
         return jdbc.sql(
                         """
-                        select data_source_id, next_offset, last_txid::text as last_txid, recovery_reason
+                        select data_source_id, next_offset, last_txid::text as last_txid, recovery_reason,
+                               resume_after
                         from cdc_offset where topic = :topic and partition_no = :partition
                         """)
                 .param("topic", topic)
                 .param("partition", PARTITION)
-                .query(
-                        (rs, row) -> {
-                            String txid = rs.getString("last_txid");
-                            String reason = rs.getString("recovery_reason");
-                            return new OffsetState(
-                                    rs.getLong("data_source_id"),
-                                    rs.getLong("next_offset"),
-                                    txid == null ? null : Long.parseLong(txid),
-                                    reason == null ? null : RecoveryReason.valueOf(reason));
-                        })
+                .query(CdcConsumerRepository::offsetState)
                 .optional();
+    }
+
+    /**
+     * 복구를 푼 뒤 이어 받을 첫 원천 트랜잭션(BEGIN)을 찾았다(199). 그 위치를 다음 위치로 저장하고 기준 시각을 비운다. 그 사이 다시 복구가 필요해졌거나 이미
+     * 위치를 잡았으면 아무것도 하지 않는다. JdbcClient: Entity가 없는 {@code cdc_offset}(기존 방식).
+     *
+     * @return 위치를 저장했으면 true
+     */
+    public boolean resumeAt(String topic, long offset) {
+        return jdbc.sql(
+                                """
+                                update cdc_offset
+                                set next_offset = :offset, resume_after = null, updated_at = now()
+                                where topic = :topic and partition_no = :partition
+                                  and recovery_reason is null and resume_after is not null
+                                """)
+                        .param("offset", offset)
+                        .param("topic", topic)
+                        .param("partition", PARTITION)
+                        .update()
+                > 0;
+    }
+
+    /**
+     * 전체 읽기를 저장한 트랜잭션 끝에서 그 원천의 복구를 푼다(199, 결정 문서 2026-11-10 3.1). 켜진 매핑이 있는 CDC 테이블이 모두 복구 표시 뒤에
+     * 시작한 전체 읽기로 적재되었을 때만 푼다. 매핑이 없는 테이블은 소비자도 반영하지 않으므로 기다리지 않는다. 원천 교체({@code SOURCE_CHANGED})는
+     * 관리자가 커넥터를 맞췄다고 알리기 전이라 풀지 않는다.
+     *
+     * <p>풀 때 epoch 기준값({@code last_txid})을 비워 다음 반영 때 원천 {@code xmax}를 새로 읽게 하고, 이어 받을 기준 시각을 그
+     * 테이블들의 전체 읽기 중 가장 이른 시작 시각으로 남긴다. 그 시각 뒤에 커밋된 원천 트랜잭션은 그 뒤에 토픽에 쓰이므로 놓치지 않는다. JdbcClient: 여러
+     * 표(source_resource·object_source_mapping·sync_run)를 한 조건으로 보고 Entity가 없는 {@code cdc_offset}을
+     * 바꾼다.
+     *
+     * @return 풀었으면 이어 받을 기준 시각
+     */
+    public Optional<Instant> releaseRecoveryIfReloaded(long dataSourceId) {
+        return jdbc.sql(
+                        """
+                        with loaded as (
+                            select r.loaded_lsn, s.started_at
+                            from source_resource r
+                            left join sync_run s on s.id = r.full_load_done_gen
+                            where r.data_source_id = :source and r.sync_strategy = 'CDC'
+                              and exists (select 1 from object_source_mapping m
+                                          where m.source_resource_id = r.id and m.is_active)
+                        )
+                        update cdc_offset o
+                        set recovery_reason = null, recovery_at = null, last_txid = null,
+                            resume_after = (select min(l.started_at) from loaded l),
+                            updated_at = now()
+                        where o.data_source_id = :source
+                          and o.recovery_reason is not null and o.recovery_reason <> 'SOURCE_CHANGED'
+                          and exists (select 1 from loaded)
+                          and not exists (select 1 from loaded l
+                                          where l.loaded_lsn is null or l.started_at is null
+                                             or l.started_at < o.recovery_at)
+                        returning o.resume_after
+                        """)
+                .param("source", dataSourceId)
+                .query((rs, row) -> rs.getTimestamp("resume_after").toInstant())
+                .optional();
+    }
+
+    /**
+     * 원천 접속 정보(host·port·database)가 바뀌었다(API 012, 결정 문서 11.1-3). 커넥터를 새 DB에 맞출 때까지 그 원천의 CDC 반영을
+     * 멈춘다. {@code loaded_lsn}은 비우지 않는다(지금 읽으면 커넥터와 다른 DB를 읽는다). 소비 상태 행이 없으면(아직 소비 전) 아무것도 하지 않는다.
+     * JdbcClient: Entity가 없는 {@code cdc_offset}(기존 방식).
+     *
+     * @return 표시했으면 true
+     */
+    public boolean markSourceChanged(long dataSourceId) {
+        return jdbc.sql(
+                                """
+                                update cdc_offset
+                                set recovery_reason = 'SOURCE_CHANGED', recovery_at = now(),
+                                    healthy_since = null, resume_after = null, updated_at = now()
+                                where data_source_id = :source
+                                """)
+                        .param("source", dataSourceId)
+                        .update()
+                > 0;
+    }
+
+    /**
+     * 관리자가 커넥터를 새 DB에 맞췄다고 알렸다(199). 원천 교체 표시를 슬롯 재생성({@code SLOT_LOST})으로 바꾸고 시각을 지금으로 다시 찍는다. 이제
+     * 다시 읽어도 되므로 배치 감시 작업이 다시 읽기를 넣는다. 테이블의 {@code loaded_lsn}은 호출하는 쪽이 같은 트랜잭션에서 비운다. 행을 잠가 소비자의
+     * 반영과 겹치지 않게 한다. JdbcClient: Entity가 없는 {@code cdc_offset}(기존 방식).
+     *
+     * @return 원천 교체 중이라 바꿨으면 true
+     */
+    public boolean markReconnected(long dataSourceId) {
+        return jdbc.sql(
+                                """
+                                update cdc_offset
+                                set recovery_reason = 'SLOT_LOST', recovery_at = now(), updated_at = now()
+                                where data_source_id = :source and recovery_reason = 'SOURCE_CHANGED'
+                                """)
+                        .param("source", dataSourceId)
+                        .update()
+                > 0;
+    }
+
+    private static OffsetState offsetState(ResultSet rs, int row) throws SQLException {
+        String txid = rs.getString("last_txid");
+        String reason = rs.getString("recovery_reason");
+        Timestamp resumeAfter = rs.getTimestamp("resume_after");
+        return new OffsetState(
+                rs.getLong("data_source_id"),
+                rs.getLong("next_offset"),
+                txid == null ? null : Long.parseLong(txid),
+                reason == null ? null : RecoveryReason.valueOf(reason),
+                resumeAfter == null ? null : resumeAfter.toInstant());
     }
 
     /**
@@ -254,9 +352,14 @@ public class CdcConsumerRepository {
     /**
      * @param lastTxid 마지막으로 반영한 원천 트랜잭션(xid8). 처음이면 null
      * @param recoveryReason 복구가 필요하면 그 이유
+     * @param resumeAfter 복구를 푼 뒤 아직 위치를 다시 잡지 않았으면 이어 받을 기준 시각(V14)
      */
     public record OffsetState(
-            long dataSourceId, long nextOffset, Long lastTxid, RecoveryReason recoveryReason) {}
+            long dataSourceId,
+            long nextOffset,
+            Long lastTxid,
+            RecoveryReason recoveryReason,
+            Instant resumeAfter) {}
 
     /**
      * @param events 이 테이블의 변경 수(rows_read)

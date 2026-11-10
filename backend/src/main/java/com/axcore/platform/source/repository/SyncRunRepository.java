@@ -82,14 +82,23 @@ public class SyncRunRepository {
     /**
      * CDC 테이블의 끝난 세대와 읽기 시점 LSN을 올린다. 이보다 새 세대가 이미 끝났으면 그대로 둔다. FULL_COMPARE 테이블은 이 칸을 쓰지 않는다(V11
      * ck_source_resource_load_gen).
+     *
+     * <p>원천이 복구 중인데 이 실행이 복구 표시({@code cdc_offset.recovery_at})보다 먼저 시작했으면 세대만 올리고 {@code
+     * loaded_lsn}은 그대로 둔다(199). 복구 원인보다 옛 스냅샷이라 다시 읽은 것으로 치지 않고, 감시 작업이 다시 읽게 한다. 객체는 그대로 써도 된다(스냅샷
+     * 가시성).
      */
     public void markLoaded(long resourceId, long generation, long lsn) {
         jdbc.sql(
                         """
-                        update source_resource
-                        set full_load_done_gen = :gen, loaded_lsn = :lsn
-                        where id = :id and sync_strategy = 'CDC'
-                          and (full_load_done_gen is null or full_load_done_gen < :gen)
+                        update source_resource r
+                        set full_load_done_gen = :gen,
+                            loaded_lsn = case when exists (
+                                                  select 1 from cdc_offset o, sync_run s
+                                                  where s.id = :gen and o.data_source_id = r.data_source_id
+                                                    and o.recovery_at > s.started_at)
+                                              then r.loaded_lsn else :lsn end
+                        where r.id = :id and r.sync_strategy = 'CDC'
+                          and (r.full_load_done_gen is null or r.full_load_done_gen < :gen)
                         """)
                 .param("id", resourceId)
                 .param("gen", generation)

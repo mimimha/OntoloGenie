@@ -85,12 +85,16 @@ public class DataSource extends BaseAuditEntity {
     }
 
     /** 접속 설정이 바뀌면 이전 검사 결과를 믿을 수 없으므로 연결 상태를 UNVERIFIED로 되돌린다(API 012). 같은 값이면 그대로 둔다. */
-    public void changeConnectionConfig(Map<String, Object> connectionConfig) {
+    /**
+     * @return 접속 설정이 실제로 바뀌었으면 true
+     */
+    public boolean changeConnectionConfig(Map<String, Object> connectionConfig) {
         if (this.connectionConfig.equals(connectionConfig)) {
-            return;
+            return false;
         }
         this.connectionConfig = new LinkedHashMap<>(connectionConfig);
         resetConnectionStatus();
+        return true;
     }
 
     /** 접속 계정을 바꿨을 때처럼 다시 검사해야 하는 경우. 마지막 검사 시각은 남겨 둔다. */

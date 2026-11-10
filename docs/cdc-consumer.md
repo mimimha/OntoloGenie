@@ -1,4 +1,4 @@
-# CDC 소비자 (Jira 198)
+# CDC 소비자 (Jira 198·199)
 
 Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변경을 읽어 객체에 반영한다. 작은 단위로 나눠 만든다. 규칙의 근거는 결정 문서 `decisions/2026-11-05-cdc-initial-load.md` 8·9·10장(작업 폴더)이다.
 
@@ -11,6 +11,7 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 | 198-5 | 원천 트랜잭션 하나 → 플랫폼 트랜잭션 하나 | 이 문서 아래 |
 | 198-6 | Kafka 소비 루프 | 이 문서 아래 |
 | 198-7 | 연결 재계산 호출(181 `LinkRecomputeService`) | 이 문서 아래 |
+| 199 | 복구 해제와 이어 받기, 원천 교체(012)·커넥터 재연결 알림 | 이 문서 아래 |
 
 ## 198-1 값 해석
 
@@ -84,7 +85,7 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 
 처리 장애(DB 예외 등)는 잡지 않는다. 전체가 롤백되어 위치가 그대로이고 198-6이 같은 트랜잭션을 다시 반영한다. 결과의 `changedObjectIds`(쓰거나 삭제 표시한 객체)로 같은 트랜잭션 마지막에 연결을 다시 계산한다(198-7, 아래).
 
-`markRecovery(source, reason)`는 198-6(트랜잭션 크기 초과·메시지 순서 오류·보관 초과)도 부른다. 다시 읽기 실행은 배치 감시 작업이 `RECOVERY`로 넣고, 표시를 푸는 일은 199다.
+`markRecovery(source, reason)`는 198-6(트랜잭션 크기 초과·메시지 순서 오류·보관 초과)도 부른다. 다시 읽기 실행은 배치 감시 작업이 `RECOVERY`로 넣고, 표시는 다시 읽기를 저장하는 트랜잭션이 푼다(199, 아래).
 
 알려진 한계: 대표 속성(표시 이름)이 TOAST 미제공 값이면 표시 이름이 원천 키 값으로 바뀐다(2KB 넘는 표시 이름에서만 생긴다).
 
@@ -135,11 +136,11 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 | 수집 정상 여부 | 메시지 시각(heartbeat 시각·변경 처리 시각)보다 `max-lag`(2분) 넘게 늦거나, `stale-after`(3분) 동안 메시지가 없으면 `healthy_since = NULL`. 다시 기준 안이면 그때 시각으로 |
 | 처리 장애 | 위치를 옮기지 않고 `retry-delay`(5초) 뒤 저장된 위치부터 다시 읽는다 |
 | 트랜잭션 크기 초과·메시지 오류 | 복구(`TRANSACTION_TOO_LARGE`·`PROTOCOL_ERROR`)로 돌리고 멈춘다 |
-| 복구 중 | 읽지 않는다. `refresh-interval`(30초)마다 표시가 풀렸는지 보고, 풀리면 저장된 위치부터 다시 읽는다(푸는 일은 199) |
+| 복구 중 | 읽지 않는다. `refresh-interval`(30초)마다 표시가 풀렸는지 보고, 풀리면 `resume_after` 기준으로 이어 받는다(199, 아래) |
 
 설정은 `application-batch.yml`의 `axcore.cdc.consumer`다. 기본값은 꺼져 있다(`AXCORE_CDC_CONSUMER_ENABLED=false`). 서버에서 켜려면 배치 컨테이너 환경 변수에 `AXCORE_CDC_CONSUMER_ENABLED=true`를 넣는다(Kafka 주소 기본값 `kafka:9092`, 같은 axcore-net). 켜는 순서는 315(소비자 기동 → 매핑 승인 → 감시 작업이 첫 적재)를 따른다.
 
-아직 하지 않은 것(199·모니터링): 커넥터 상태(RUNNING)와 복제 슬롯 유실(`SLOT_LOST`)은 이 루프가 보지 않는다. 원천 접속 정보 변경(`SOURCE_CHANGED`)을 남기는 일과 복구 표시를 푸는 일도 199다.
+아직 하지 않은 것(모니터링): 커넥터 상태(RUNNING)와 복제 슬롯 유실(`SLOT_LOST`)은 이 루프가 보지 않는다. 자동 감지는 모니터링 쪽(Jira 68)에서 하고, 지금은 관리자 알림(아래 199)으로만 `SLOT_LOST` 복구를 시작한다.
 
 ### 시험
 
@@ -151,3 +152,44 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 
 `SyncRunJobTests.startReferenceReadsSourceXmaxWithSyncAccount`: 실제 SYNC 계정으로 원천 xmax를 읽는다.
 
+## 199 복구 해제와 이어 받기
+
+결정: 작업 폴더 `decisions/2026-11-10-199-cdc-recovery-design.md`(Q1~Q4). 스키마는 V14(`cdc_offset.resume_after`, 주석).
+
+### 흐름
+
+1. 소비자가 이어 받을 수 없다고 표시한다(198-5·198-6): `recovery_reason`, `recovery_at`, `healthy_since = NULL`, 그 원천 CDC 테이블 `loaded_lsn = NULL`.
+2. 배치 감시 작업이 켜진 매핑이 있는 `loaded_lsn = NULL` 테이블을 `RECOVERY`로 다시 읽는다.
+3. **다시 읽기 저장 트랜잭션 끝에서 푼다**(`SyncRunJob.complete` → `CdcConsumerRepository.releaseRecoveryIfReloaded`).
+   - 조건: 그 원천의 CDC 테이블 중 켜진 매핑이 있는 테이블이 모두 `recovery_at` **뒤에 시작한** 전체 읽기로 적재됨. 매핑이 없는 테이블은 기다리지 않는다.
+   - 원천 교체(`SOURCE_CHANGED`)는 풀지 않는다(아래 알림 전).
+   - 풀 때: `recovery_reason`·`recovery_at`·`last_txid`를 비우고, `resume_after` = 그 테이블들의 마지막 전체 읽기 중 가장 이른 시작 시각.
+4. 소비자가 표시가 풀린 걸 보면(30초 주기) `resume_after` 뒤에 토픽에 쓰인 첫 메시지(`offsetsForTimes`, 없으면 토픽 끝)로 간다.
+   - 처음 만나는 BEGIN 전의 메시지(기준 시각 앞에 시작한 트랜잭션의 나머지)는 버린다. heartbeat는 마지막 메시지 시각·정상 여부만 남기고 위치는 옮기지 않는다(트랜잭션 중간일 수 있다).
+   - 첫 BEGIN에서 `next_offset` = 그 BEGIN, `resume_after = NULL`로 저장하고 평소대로 반영한다.
+   - `last_txid`가 비었으므로 epoch 기준값은 원천 `xmax`를 새로 읽는다.
+
+**왜 맞나:** `resume_after` 뒤에 커밋된 원천 트랜잭션은 커밋 뒤에야 Connect가 토픽에 쓰므로 Kafka 시각이 그 뒤다(건너뛰지 않음). 그 앞에 쓰인 메시지의 트랜잭션은 그 전에 커밋되어 다시 읽은 스냅샷에 들어 있다. 겹치는 부분은 지금처럼 스냅샷 가시성이 거른다. 그래서 복구를 일으킨 메시지(큰 트랜잭션·깨진 메시지)나 원천 교체 전 옛 DB 이벤트를 다시 만나지 않는다.
+
+- 조건: Kafka 메시지 시각이 Connect가 토픽에 쓴 시각(CreateTime)이어야 한다. Debezium은 레코드 시각을 따로 넣지 않는다. 운영에서 커넥터를 다시 연결할 때(315) 실제 메시지로 확인한다.
+- `resume_after`(플랫폼 DB 시계)와 Kafka 시각(Connect)은 둘 다 메인 서버 시계다.
+
+**복구 전에 시작한 읽기:** `SyncRunRepository.markLoaded`는 그 원천의 `recovery_at`보다 먼저 시작한 실행이면 세대만 올리고 `loaded_lsn`은 그대로 둔다. 복구 원인보다 옛 스냅샷이라 감시 작업이 다시 읽는다. 객체는 그대로 써도 된다(스냅샷 가시성).
+
+### 원천 교체(SOURCE_CHANGED)와 커넥터 재연결 알림
+
+| 언제 | 하는 일 |
+|---|---|
+| API 012에서 host·port·database가 실제로 바뀜 | 소비 중인 원천(`cdc_offset` 행 있음)이면 `recovery_reason = SOURCE_CHANGED`, `recovery_at = now()`, `healthy_since = NULL`. `loaded_lsn`은 그대로(커넥터가 아직 옛 DB를 본다). 감시 작업도 이 원천은 건너뛴다. 이름·계정만 바뀌면 안 한다 |
+| 관리자가 커넥터를 새 DB에 맞춘 뒤 `POST /api/v1/sources/{id}/cdc/reconnected` | `SOURCE_CHANGED`일 때만 받는다(아니면 409). `SLOT_LOST`로 바꾸고 `recovery_at = now()`, 그 원천 CDC 테이블을 모두 `loaded_lsn = NULL`. 이후는 위 흐름 2~4와 같다 |
+
+### 시험
+
+- `SyncRunJobTests`
+  - `reloadAfterRecoveryReleasesItWithResumeTime`: 보관 초과 복구 → 다시 읽기로 풀림, `last_txid` 비움, `resume_after` = 실행 시작 시각, 위치 그대로, 매핑 없는 CDC 테이블은 기다리지 않음
+  - `loadStartedBeforeRecoveryDoesNotReleaseIt`: 복구 전에 시작한 읽기는 세대만 올리고 `loaded_lsn` 그대로·복구 유지, 다음 읽기가 풀음
+  - `sourceChangeIsNotReleasedByReload`: 원천 교체는 다시 읽어도 안 풀림
+- `CdcConsumerLoopTests.resumesFromFirstBeginAfterResumeTimeWhenRecoveryIsReleased`: 깨진 메시지로 복구 → 풀리면 기준 시각 뒤로 가서 앞 트랜잭션의 END·heartbeat를 건너뛰고 첫 BEGIN(758)부터 반영, 위치 20, `resume_after` 비움, `last_txid` 758
+- `SourceApiTests`
+  - `configChangeStopsCdcOfConsumedSourceWithoutReload`: 012에서 접속 설정이 바뀌면 `SOURCE_CHANGED`, `loaded_lsn` 그대로, 이름만 바꾸거나 소비 전 원천은 그대로
+  - `reconnectAfterSourceChangeRequestsReload`: 교체 중이 아니면 409, 맞으면 202·`SLOT_LOST`·`loaded_lsn` 비움, ADMIN만
