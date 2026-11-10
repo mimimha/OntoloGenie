@@ -13,14 +13,14 @@ from app.analysis.engine import analyze
 from app.config import Settings
 from app.dataset.build import generate
 from app.models.analysis import AnalysisStartRequest
-from app.proposers.existing import filter_existing
+from app.proposers.existing import change_counts, filter_existing
 
 
-def request(targets, code="MES_MAIN"):
+def request(targets, code="MES_MAIN", kind="INITIAL"):
     return AnalysisStartRequest.model_validate(
         {
             "runId": 1,
-            "runKind": "INITIAL",
+            "runKind": kind,
             "targets": [
                 {"sourceResourceId": i, "dataSourceCode": code, "resourceKey": key}
                 for i, key in enumerate(targets, 1)
@@ -117,7 +117,7 @@ def test_new_property_or_new_rule_is_kept_with_a_note():
         "linkTypes": 0,
     }
     assert "새로 제안하는 속성: due_date" in kept[0]["evidence"]["reason"]
-    assert "비교하는 속성이 다릅니다" in kept[1]["evidence"]["reason"]
+    assert "비교하는 속성이나 변환이 다릅니다" in kept[1]["evidence"]["reason"]
     assert "이미 등록된 관계 유형" in kept[2]["evidence"]["reason"]
     assert kept[3]["evidence"]["reason"] == "원천 표의 한 행을 객체 하나로 본다."
     # 원래 후보는 바꾸지 않는다
@@ -230,3 +230,108 @@ def test_second_analysis_skips_what_was_already_approved(tmp_path, monkeypatch):
         for p in second.proposals
         if p["itemKind"] == "OBJECT_TYPE" and p["payload"]["code"] == "WORK_ORDER"
     ]
+
+
+def test_same_properties_with_different_transforms_are_kept():
+    # 같은 속성끼리라도 변환이 다르면(작업자 번호 4자리 → 5자리) 다른 규칙이다
+    summary = {
+        "objectTypes": [{"id": 1, "code": "WORKER"}, {"id": 2, "code": "EMPLOYEE"}],
+        "properties": [
+            {"id": 11, "objectTypeId": 1, "code": "id"},
+            {"id": 21, "objectTypeId": 2, "code": "emp_no"},
+        ],
+        "activeRules": [
+            {
+                "code": "WORKER_ID_TO_EMPLOYEE",
+                "conditions": [
+                    {
+                        "sourcePropertyId": 11,
+                        "targetPropertyId": 21,
+                        "operator": "EQ",
+                        "sourceTransforms": [
+                            {"op": "PAD_ZEROS", "arg": 4},
+                            {"op": "ADD_PREFIX", "arg": "GP"},
+                        ],
+                        "targetTransforms": [],
+                    }
+                ],
+            }
+        ],
+    }
+
+    def rule(width):
+        proposal = link_rule("WORKER_ID_TO_EMPLOYEE", "WORKER.id", "EMPLOYEE.emp_no")
+        proposal["payload"]["conditions"][0].update(
+            {
+                "operator": "EQ",
+                "sourceTransforms": [
+                    {"op": "PAD_ZEROS", "arg": width},
+                    {"op": "ADD_PREFIX", "arg": "GP"},
+                ],
+                "targetTransforms": [],
+            }
+        )
+        return proposal
+
+    kept, skipped = filter_existing([rule(4)], summary)
+    assert kept == [] and skipped["linkRules"] == 1
+    kept, skipped = filter_existing([rule(5)], summary)
+    assert len(kept) == 1 and skipped["linkRules"] == 0
+    assert "속성이나 변환이 다릅니다" in kept[0]["evidence"]["reason"]
+
+
+def test_reanalysis_marks_added_and_changed_against_the_model():
+    # S15P31C106-170: 이전 후보 API가 없어 확정된 모델(043)과 비교한다
+    proposals = [
+        object_type(
+            "WORK_ORDER", "wo_no", "so_ref"
+        ),  # 모델과 같음 → 보내지 않음(UNCHANGED)
+        object_type("SALES_ORDER", "so_no", "due_date"),  # 새 속성 → CHANGED
+        object_type("ITEM", "item_code"),  # 모델에 없음 → ADDED
+        link_rule(
+            "WORK_ORDER_SO_REF_TO_SALES_ORDER", "WORK_ORDER.wo_no", "SALES_ORDER.so_no"
+        ),  # 같은 코드, 다른 속성 → CHANGED
+        {
+            "itemKind": "DOCUMENT_LINK",
+            "payload": {"documentId": "HN-1"},
+            "evidence": {},
+        },
+    ]
+    kept, skipped = filter_existing(proposals, SUMMARY, mark_changes=True)
+    changes = [p["evidence"].get("changeType") for p in kept]
+    assert changes == ["CHANGED", "ADDED", "CHANGED", None]  # 문서 연결은 비교하지 않음
+    assert change_counts(kept, skipped) == {"ADDED": 1, "CHANGED": 2, "UNCHANGED": 1}
+    # 첫 분석(INITIAL)에는 표시하지 않는다
+    kept, _ = filter_existing(proposals, SUMMARY)
+    assert not [p for p in kept if "changeType" in p["evidence"]]
+
+
+def test_reanalysis_summary_reports_change_counts(tmp_path, monkeypatch):
+    monkeypatch.setattr(engine, "get_llm", lambda: None)
+    generate("t6", root=tmp_path)
+    mes = tmp_path / "data-t6" / "mes"
+    targets = ["mes.work_order", "mes.production_result"]
+    summary = {
+        "objectTypes": [{"id": 1, "code": "WORK_ORDER"}],
+        "properties": [{"id": 10, "objectTypeId": 1, "code": "wo_no"}],
+        "linkTypes": [],
+        "activeRules": [],
+    }
+    again = analyze(
+        request(targets, kind="REANALYSIS"), {"MES_MAIN": mes}, model_summary=summary
+    )
+    assert again.summary["changeBasis"] == "MODEL_SUMMARY"
+    counts = again.summary["changeCounts"]
+    assert (
+        counts["CHANGED"] == 1 and counts["ADDED"] >= 1
+    )  # 작업지시는 새 속성이 있어 변경
+    work_order = next(
+        p for p in again.proposals if p["payload"].get("code") == "WORK_ORDER"
+    )
+    assert work_order["evidence"]["changeType"] == "CHANGED"
+    # 모델 요약이 없으면 비교하지 않는다
+    monkeypatch.setattr(engine, "get_model_summary", lambda: (None, "내부 토큰 없음"))
+    plain = analyze(request(targets, kind="REANALYSIS"), {"MES_MAIN": mes})
+    assert (
+        plain.summary["changeBasis"] is None and plain.summary["changeCounts"] is None
+    )

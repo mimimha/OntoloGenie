@@ -850,6 +850,13 @@ AI가 생성한 객체 유형이나 연결 규칙은 곧바로 활성 데이터�
   - 원천 트랜잭션(BEGIN~END) 하나를 플랫폼 트랜잭션 하나로 반영한다. 변경이 있으면 그 트랜잭션을 `sync_run`(`trigger_kind=CDC`, `SUCCEEDED`) 하나로 남긴다. 변경이 0건이면 남기지 않는다.
   - CDC 실행은 `FAILED`·`RUNNING`으로 남지 않는다. 처리 장애는 롤백되어 같은 위치부터 다시 시도하고, 장애는 `cdc_offset`의 수집 상태(`healthy_since`, `recovery_reason`)로 보인다. 멈춘 작업 정리 대상이 아니다.
   - 복구가 필요하면 소비자는 표시만 한다(`recovery_reason`, 그 원천 CDC 표의 `loaded_lsn = NULL`). 다시 읽기 실행은 배치 감시 작업이 `trigger_kind=RECOVERY`로 넣는다.
+- CDC 테이블의 다시 읽기는 배치 감시 작업(`source.service.CdcReloadJob`, S15P31C106-330)이 넣는다(결정 문서 11.1).
+  - 다시 읽기 표시(`loaded_lsn = NULL`)는 매핑 서비스(매핑 승인·변경)와 CDC 소비자(복구)가 붙이고, 전체 읽기가 성공해야 풀린다. 표시를 붙이는 쪽은 실행을 직접 넣지 않는다. 요청은 실패·재시작으로 사라질 수 있지만 표시는 남기 때문이다.
+  - 감시 작업은 `axcore.source-load.reload-watch.delay`(기본 10초)마다 표시가 붙은 테이블을 찾는다. 대상은 켜진 매핑이 있고, 대기·실행 중인 전체 읽기가 없고, 그 원천의 `recovery_reason`이 `SOURCE_CHANGED`가 아닌 테이블이다. `SOURCE_CHANGED`는 커넥터를 새 DB에 맞춘 뒤 199가 표시를 붙인다.
+  - 첫 적재·매핑 변경·복구를 모두 `trigger_kind=RECOVERY`로, 실행 하나에 테이블 하나씩 넣는다. 넣은 이유는 감사 기록 접수 줄(SYSTEM + BATCH)에만 남긴다. 둘 이상 해당하면 `RECOVERY`(원천에 `recovery_reason` 있음) > `FIRST_LOAD`(`full_load_done_gen IS NULL`) > `RELOAD_REQUESTED` 순서로 하나만 쓴다.
+  - 실패한 테이블은 `retry-delay`(기본 5분) 동안 넣지 않는다. 마지막 성공 이후 `max-failures`(기본 3번) 연속 실패하면 자동으로는 멈추고, 관리자가 수동 수집(073)으로 넣어 성공하면 다시 센다. 읽는 동안 매핑이 바뀌어 저장하지 않은 실패(`SyncRunJob.MAPPING_CHANGED`)는 세지 않는다.
+  - 수동 수집(073)은 관리자가 원하는 때 다시 읽는 입구다. 첫 적재는 감시 작업이 넣으므로 배포 순서는 "소비자 기동 → 매핑 승인 → 감시 작업이 첫 적재"다(S15P31C106-315).
+  - batch 프로필 테스트에는 `@MockitoBean CdcReloadJob`을 둔다. 같은 DB를 쓰는 다른 시험의 테이블에 감시 작업이 실행을 넣지 않게 하려는 것이다.
 - 같은 테이블의 전체 다시 읽기를 중복 실행하지 않는다.
 - 이미 실행 중이면 기존 실행 ID를 반환한다.
 - 실행 시작·완료·실패 시각을 기록한다.

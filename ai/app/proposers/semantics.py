@@ -23,7 +23,8 @@ from app.analyzers.structured import value_pattern
 from app.llm.client import LLMClient, LLMError, token_credits
 from app.llm.privacy import MASK, mask_text
 from app.models.candidate import Candidate, DataType, ItemKind, Sensitivity
-from app.proposers.confidence import CAP
+from app.proposers.confidence import CAP, LLM_AGREE_HELD
+from app.proposers.objects import CATEGORY_TEXT
 from app.sources.csv_reader import CsvSourceReader
 
 MAX_SAMPLE_ROWS = 20  # LLM에 보내는 표본 행 수 상한
@@ -274,12 +275,21 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
                 }
             )
             same = rule_category == view.category
+            new_text = CATEGORY_TEXT.get(view.category, view.category)
+            old_text = CATEGORY_TEXT.get(rule_category, rule_category)
+            update = {"payload": payload}
+            if not same:
+                # 제안 이유의 표 종류도 최종 판단(LLM)으로 맞춘다. 규칙 판단은 괄호에 남긴다
+                update["reason"] = c.reason.replace(
+                    f"표 종류는 {old_text}입니다(",
+                    f"표 종류는 {new_text}입니다(AI 판단. 규칙 판단은 {old_text}: ",
+                )
             c = _note(
                 c,
-                f"표 종류 {view.category}"
-                + ("(규칙과 같음)" if same else f"(규칙은 {rule_category})")
+                f"표 종류 {new_text}"
+                + ("(규칙과 같음)" if same else f"(규칙은 {old_text})")
                 + f": {view.category_reason}",
-                payload=payload,
+                **update,
             )
         elif c.candidate_id.startswith("P-") and view:
             col = next((x for x in view.columns if x.name == c.payload.code), None)
@@ -303,7 +313,23 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
         elif c.payload.kind in (ItemKind.LINK_RULE, ItemKind.LINK_TYPE):
             judged = link_view.get(c.payload.code)
             if judged and judged.meaningful:
-                c = _note(c, f"업무상 맞는 관계: {judged.reason}")
+                update = {}
+                cap, ok, total = LLM_AGREE_HELD
+                held_cap = c.confidence.cap if c.confidence else None
+                if (
+                    c.review_status == "HELD"
+                    and held_cap is not None
+                    and held_cap < cap
+                ):
+                    # 보류 사유만으로는 낮게 나오지만, LLM이 맞다고 본 보류는 평가에서 대부분 맞았다
+                    update["confidence"] = c.confidence.model_copy(
+                        update={
+                            "cap": cap,
+                            "cap_reason": f"{c.confidence.cap_reason} / LLM이 업무상 맞다고 봄"
+                            f" — 이런 보류는 평가 데이터에서 {total}개 중 {ok}개가 맞음",
+                        }
+                    )
+                c = _note(c, f"업무상 맞는 관계: {judged.reason}", **update)
             elif judged:
                 # 부정 판단만 반영한다: 보류로 바꾸고 상한을 둔다
                 # 이미 더 낮은 보류 상한이 있으면 그대로 둔다(LLM 부정으로 점수가 오르지 않게)

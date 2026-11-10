@@ -1,6 +1,7 @@
 """분석 시작 알림(API 018 하단, POST /internal/v1/analysis-runs)의 요청 모양.
 
-JSON은 camelCase, 코드는 snake_case로 쓴다. 명세의 선택 필드(allowedTransforms 등)는 아직 쓰지 않아 받아도 버린다.
+JSON은 camelCase, 코드는 snake_case로 쓴다. 선택 필드 중 pastDecisions·previousProposals는 받아서 쓰고,
+allowedTransforms·options는 아직 쓰지 않아 받아도 버린다. 백엔드가 아직 보내지 않아도(빈 목록) 그대로 분석한다.
 sources[].connection에는 원천 AI 계정 비밀번호가 있어 repr에서 뺀다. 저장하지 않고 분석이 끝나면 버린다.
 """
 
@@ -36,11 +37,32 @@ class AnalysisSource(_Wire):
     path: str | None = None  # CSV 폴더
 
 
+class PastDecision(_Wire):
+    """승인·거절·보류된 이전 후보 (S15P31C106-281). 지문이 없으면 payload로 계산한다."""
+
+    candidate_id: str | None = None
+    item_kind: str | None = None
+    revision: int | None = None
+    fingerprint: str | None = None
+    payload: dict | None = None
+    decision: str  # APPROVE · REJECT · HOLD (APPROVED 등 과거형도 받음)
+    reason: str | None = None
+
+
+class PreviousProposal(_Wire):
+    """재분석 비교용 이전 후보 (S15P31C106-170). 이전 후보 evidence의 candidateId·fingerprint."""
+
+    candidate_id: str
+    fingerprint: str | None = None
+
+
 class AnalysisStartRequest(_Wire):
     run_id: int
     run_kind: Literal["INITIAL", "REANALYSIS"]
     targets: list[AnalysisTarget] = Field(min_length=1)
     sources: list[AnalysisSource] = Field(min_length=1)
+    past_decisions: list[PastDecision] = Field(default_factory=list)
+    previous_proposals: list[PreviousProposal] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _targets_have_sources(self) -> "AnalysisStartRequest":

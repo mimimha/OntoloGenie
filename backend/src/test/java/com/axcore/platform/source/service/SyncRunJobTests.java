@@ -10,6 +10,7 @@ import com.axcore.platform.batch.service.QueuedJobRunner;
 import com.axcore.platform.ontology.domain.SourceChange;
 import com.axcore.platform.ontology.domain.SyncedObject;
 import com.axcore.platform.ontology.service.ObjectSyncService;
+import com.axcore.platform.source.cdc.CdcStartReference;
 import com.axcore.platform.source.domain.CredentialPurpose;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -51,12 +52,16 @@ class SyncRunJobTests {
 
     // 주기 실행이 테스트가 넣은 작업을 먼저 가져가지 않게 막는다.
     @MockitoBean QueuedJobPoller queuedJobPoller;
+    // 감시 작업이 시험 데이터에 다시 읽기를 넣지 않게 막는다.
+    @MockitoBean CdcReloadJob cdcReloadJob;
 
     @Autowired QueuedJobRunner queuedJobRunner;
     @Autowired SyncRunJob job;
+    @Autowired CdcReloadService reloadService;
     @Autowired SourceConnectionCheckJob connectionCheckJob;
     @Autowired SourceCredentialService credentialService;
     @Autowired ObjectSyncService objectSyncService;
+    @Autowired CdcStartReference startReference;
     @Autowired JdbcClient jdbc;
     @Autowired JsonMapper json;
     @Autowired PlatformTransactionManager transactionManager;
@@ -252,6 +257,51 @@ class SyncRunJobTests {
                 .containsEntry("objects", 3)
                 .containsEntry("failedValues", 1);
         assertThat((String) audit.get("result")).doesNotContain("WO-");
+    }
+
+    @Test
+    void reloadWatcherQueuesFirstLoadThatJobLoads() {
+        reloadService.queueDueReloads();
+        long runId =
+                jdbc.sql(
+                                """
+                                select sync_run_id from sync_run_resource
+                                where source_resource_id = :r and status = 'QUEUED'
+                                """)
+                        .param("r", workOrderId)
+                        .query(Long.class)
+                        .single();
+        // 같은 DB에 앞 시험이 남긴 원천 테이블이 함께 들어갈 수 있다. 이 시험의 실행만 남긴다.
+        jdbc.sql("delete from sync_run where status = 'QUEUED' and id <> :id")
+                .param("id", runId)
+                .update();
+
+        assertThat(queuedJobRunner.runNext(job)).isTrue();
+
+        assertThat(runStatus(runId)).isEqualTo("SUCCEEDED");
+        assertThat(
+                        jdbc.sql("select trigger_kind from sync_run where id = :id")
+                                .param("id", runId)
+                                .query(String.class)
+                                .single())
+                .isEqualTo("RECOVERY");
+        assertThat(loadState(workOrderId))
+                .containsEntry("full_load_done_gen", runId)
+                .doesNotContainEntry("loaded_lsn", null);
+        assertThat(objects()).isNotEmpty();
+
+        // 다시 읽기 표시가 풀렸으므로 더 넣지 않는다.
+        reloadService.queueDueReloads();
+        assertThat(
+                        jdbc.sql(
+                                        """
+                                        select count(*) from sync_run_resource
+                                        where source_resource_id = :r and status = 'QUEUED'
+                                        """)
+                                .param("r", workOrderId)
+                                .query(Long.class)
+                                .single())
+                .isZero();
     }
 
     @Test
@@ -614,6 +664,21 @@ class SyncRunJobTests {
                 .param("t", linkType)
                 .query(String.class)
                 .list();
+    }
+
+    /** CDC를 처음 소비할 때의 epoch 기준값은 원천의 xmax를 SYNC 계정으로 읽는다(198-6). 원천에 쓰지 않는다. */
+    @Test
+    void startReferenceReadsSourceXmaxWithSyncAccount() {
+        long before =
+                Long.parseLong(
+                        jdbc.sql("select pg_snapshot_xmax(pg_current_snapshot())::text")
+                                .query(String.class)
+                                .single());
+
+        long xmax = startReference.read(sourceId);
+
+        // 시험 원천은 같은 컨테이너다. 읽는 사이 다른 트랜잭션이 번호를 받을 수 있어 범위로 본다
+        assertThat(xmax).isBetween(before, before + 1_000);
     }
 
     private long resourceId(String key) {

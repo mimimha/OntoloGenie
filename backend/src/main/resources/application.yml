@@ -72,6 +72,12 @@ axcore:
   source-load:
     max-rows: ${AXCORE_SOURCE_LOAD_MAX_ROWS:200000}
     zone-id: ${AXCORE_SOURCE_LOAD_ZONE_ID:Asia/Seoul}
+    # 다시 읽기 표시(loaded_lsn = NULL)가 붙은 CDC 테이블을 찾아 전체 읽기를 넣는 감시 작업(batch, S15P31C106-330).
+    # 실패한 테이블은 retry-delay 동안 넣지 않고, 마지막 성공 이후 max-failures번 연속 실패하면 자동으로는 멈춘다(관리자가 073으로 넣는다).
+    reload-watch:
+      delay: 10s
+      retry-delay: 5m
+      max-failures: 3
   # 끝나지 않고 남은 분석 실행을 FAILED로 정리하는 기준(batch, S15P31C106-273). QUEUED는 요청 시각, RUNNING은 시작 시각부터 잰다.
   # AI 분석 소요 시간 측정(S15P31C106-55) 전 임시값이며, RUNNING 기준은 최대 소요 시간보다 길게 둔다.
   analysis:

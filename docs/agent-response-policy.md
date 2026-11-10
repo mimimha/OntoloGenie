@@ -42,7 +42,7 @@ Agent가 답변을 화면에 보내는 방식, 답변에 붙는 기준 시점의
    2. 질문 시 동기화 `SYNCING` (5장)
    3. 조회 도구 호출 `QUERYING`. 호출마다 `action_execution`(AGENT_QUERY)에 기록하고 `agent_message_id`에 이 답변의 질문(USER) 메시지를 넣는다. Agent의 Action 실행(091)과 같은 기준이다(2026-11-05 결정).
    4. 답변 작성 `ANSWERING`
-4. 끝나면 AGENT 메시지의 `status`, `content`, `answerMeta`(`syncStatus`, `results`)를 최종 값으로 저장한다. `stage`는 지운다.
+4. 끝나면 AGENT 메시지의 `status`, `content`, `answerMeta`(`syncStatus`, `results`, `actions`)를 최종 값으로 저장한다. `stage`는 지운다.
 
 질문 하나에 답변이 하나이므로, 조회 도구 기록은 질문 메시지로 해당 답변을 찾을 수 있다.
 
@@ -53,10 +53,17 @@ Agent가 답변을 화면에 보내는 방식, 답변에 붙는 기준 시점의
 | `status` | `content` | `answerMeta` | 뜻 |
 |---|---|---|---|
 | `RUNNING` | `""` | `{"stage": "INTERPRETING" \| "SYNCING" \| "QUERYING" \| "ANSWERING"}` | 처리 중 |
-| `SUCCEEDED` | 최종 답변 | `syncStatus`, `results`, `conditions`, `clarification`(되묻기만) | 답변을 끝냄 (데이터 없음·미연결·권한 제한 설명 포함) |
-| `FAILED` | 실패 안내 | `syncStatus`, `results` (얻은 만큼) | 답변을 끝내지 못함. `errorMessage` 필수 |
+| `SUCCEEDED` | 최종 답변 | `syncStatus`, `results`, `conditions`, `actions`, `clarification`(되묻기만) | 답변을 끝냄 (데이터 없음·미연결·권한 제한 설명 포함) |
+| `FAILED` | 실패 안내 | `syncStatus`, `results`·`actions` (얻은 만큼) | 답변을 끝내지 못함. `errorMessage` 필수 |
 
 - `conditions`는 이번 답변에서 확정한 조건이다(`purpose`, `targets`, `period`{`from`,`to`} 또는 null, `referenceObjectIds`). 다음 질문 때 마지막 답변의 값을 읽어 이어 간다.
+- `actions`는 이 답변에서 Agent가 부른 Action 결과다(160). 한 건은 `code`, `name`, `status`, `executionId`, `result`, `blockedReason`이다.
+  - `status`: 실행했으면 실행 기록 상태 `SUCCEEDED`·`BLOCKED`·`FAILED`, 실행하지 않았으면 `CONFIRMATION_REQUIRED`(확인 필요)·`NOT_RUN`(입력 오류·실행 중 오류)
+  - `executionId`: 실행 기록(`action_execution`) ID. 실행하지 않았으면 null
+  - `result`: 재배정 계획이면 `planId`·`itemCount`(계획은 094로 조회), `FAILED`면 `errorMessage`, 그 밖에는 빈 객체
+  - 처리 중(`RUNNING`)이 아닌 모든 답변에 있다. Action을 부르지 않았으면 빈 배열이다(되묻기·AI 설정 없음·질문 해석 실패 포함).
+  - Action을 실행한 뒤 답변 작성이 실패해도 `FAILED` 답변에 `actions`를 남긴다. 이미 만든 계획을 화면이 보여 줘, 사용자가 같은 요청을 다시 해 계획이 겹치지 않게 한다.
+  - 실제로 실행된(`SUCCEEDED`) Action이 있는 실패 답변은 다시 질문하라고 하지 않는다. `content`는 "요청한 작업은 실행했지만 답변을 끝내지 못했습니다. 아래 실행 결과를 확인해 주세요."다.
 - `clarification`은 되묻는 답변에만 있다(`missing`: `TARGET`·`PURPOSE`·`PERIOD` 중 부족한 것, `vaguePeriod`: "최근"처럼 범위가 정해지지 않은 기간 표현 또는 null). 되묻는 답변도 `SUCCEEDED`이며 `syncStatus=NONE`, `results=[]`다. 다음 질문은 그 답으로 보고, 새로 알려 준 값만 이전 `conditions`를 덮는다(143).
 
 ### 3.3 화면 처리
@@ -79,8 +86,11 @@ Agent가 답변을 화면에 보내는 방식, 답변에 붙는 기준 시점의
 - 데이터 없음·미연결·권한 제한을 설명해 답변을 끝냈으면 `SUCCEEDED`다.
 - LLM 오류·서버 오류·시간 초과로 답변을 끝내지 못하면 `FAILED`와 `errorMessage`를 저장한다.
 - 처리 도중 서버가 재시작되면 `RUNNING`이 남는다. 5분이 지나도 `RUNNING`이면 그 대화의 084 조회나 085 접수 때 `FAILED`("답변을 끝내지 못했습니다", `errorMessage` "처리 시간 초과")로 바꾼다. 따로 주기 작업은 두지 않는다(2026-11-04 결정).
+- 이렇게 먼저 `FAILED`로 바뀐 뒤에 처리가 끝나면, 결과로 답변을 덮지 않는다. 다만 그 사이 Agent가 부른 Action이 있으면 막힘·실행하지 않음을 포함해 `actions`만 덧붙이고, 그중 실제로 실행된(`SUCCEEDED`) Action이 있으면 `content`를 3.2의 실행 후 실패 안내로 바꾼다(160). 만든 계획이 답변에서 사라지지 않게 한다.
+- 정리와 결과 저장이 같은 답변을 동시에 고치지 않도록 둘 다 답변 행을 잠그고 읽는다(`SELECT … FOR UPDATE`). 늦게 온 쪽은 앞쪽이 커밋할 때까지 기다린 뒤 바뀐 상태를 보고 판단한다. 정리는 이미 끝난 답변을 고르지 않고, 결과 저장은 이미 정리된 답변이면 `actions`만 덧붙인다(160).
 - AI 설정(`AXCORE_AGENT_LLM`)이 없으면 `FAILED`(`errorMessage` "AI 설정 없음"), AI 호출이 실패하면 `FAILED`(`errorMessage` "AI 응답 실패")로 끝낸다.
-- 조건이 충분하면 AI에게 조회 도구를 주고 답하게 한다(144). 어떤 도구를 부를지는 AI가 고르지만, 도구를 부를 때마다 서버가 `action_execution`(AGENT_QUERY)에 기록하고 `results[]`도 그 기록으로 만든다. 답변 문장의 값은 도구 결과에서만 쓴다. 조회 기록을 하나라도 남기지 못하면 답변을 `FAILED`("AI 응답 실패")로 끝낸다.
+- 조건이 충분하면 AI에게 조회 도구를 주고 답하게 한다(144). 어떤 도구를 부를지는 AI가 고르지만, 도구를 부를 때마다 서버가 `action_execution`(AGENT_QUERY)에 기록하고 `results[]`도 그 기록으로 만든다. 답변 문장의 값은 도구 결과에서만 쓴다. 조회 기록을 하나라도 남기지 못하면 답변을 `FAILED`("AI 응답 실패")로 끝낸다. 이때 기록 없는 조회 결과는 `results`에 남기지 않고 빈 배열로 둔다. 실행한 Action은 실행기가 따로 기록했으므로 `actions`에 남긴다(160).
+- AI에게 돌려주는 조회 결과에는 그 결과의 `dataAsOf`(4.2)도 함께 넣는다. Action 입력의 기준 시점(재배정 계획의 `dataAsOf`)은 계획에 쓴 조회 결과의 기준 시점 중 가장 이른 값으로 정하게 하고, 조회한 기준 시점이 없을 때만 현재 시각을 쓰게 한다(160). AI는 현재 시각을 모르므로 질문과 함께 한국 시각으로 알려 준다.
 - 질문한 사용자가 실행할 수 있는 업무 Action(S15P31C106-303 목록)도 AI 도구로 준다. 실행은 `ActionExecutionService`를 서버 안에서 불러 `entryPoint=AGENT`, `agentMessageId`=질문 메시지로 남긴다. 실행 전 확인이 필요한 Action은 실행하지 않고 AI가 사용자에게 묻는다. 확인 뒤 실행하는 흐름은 재배정 단계(159~161)에서 만든다(144).
 
 ### 3.5 DB 변경 (2026-11-03 결정)
@@ -185,6 +195,7 @@ Agent가 답변을 화면에 보내는 방식, 답변에 붙는 기준 시점의
 - AGENT 메시지 `status`에 `RUNNING`을 추가하고, `RUNNING`이면 `content`가 `""`이고 `answerMeta`에 `stage`만 있다고 적는다(3.2).
 - 화면은 `RUNNING`인 메시지가 있는 동안 이 API를 반복 조회한다고 적는다(3.3).
 - "기준 시점이 null이면 화면은 확인 불가로 표시하고 다른 시각으로 대신하지 않는다"를 추가한다.
+- `answerMeta.actions[]`(`code`, `name`, `status`, `executionId`, `result`, `blockedReason`) 설명을 3.2대로 추가한다(160).
 
 **ERD**
 

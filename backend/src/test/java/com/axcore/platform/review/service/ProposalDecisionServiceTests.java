@@ -45,7 +45,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -60,8 +59,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -80,7 +77,7 @@ class ProposalDecisionServiceTests {
     @Autowired JdbcClient jdbc;
     @Autowired JsonMapper json;
     @Autowired PlatformTransactionManager transactions;
-    @Autowired ApplyProbe applier;
+    @Autowired RecordingApplier applier;
     @MockitoSpyBean AuditRecorder audits;
     private DecisionHistoryFixtures data;
     private long account;
@@ -90,15 +87,26 @@ class ProposalDecisionServiceTests {
     @TestConfiguration
     static class ApplyConfiguration {
         @Bean
-        ApplyProbe applyProbe(JdbcClient jdbc) {
-            return new ApplyProbe(jdbc);
+        RecordingApplier recordingApplier(JdbcClient jdbc) {
+            return new RecordingApplier(jdbc);
         }
 
         @Bean
         @Primary
-        ProposalApplyService testApplyService(
-                ObjectProvider<ProposalApplier> appliers, ApplyProbe probe) {
-            return new TestApplyService(appliers, probe);
+        ProposalApplyService probeApplyService(RecordingApplier probe) {
+            return new ProposalApplyService(
+                    List.of(
+                            new ProposalApplier() {
+                                @Override
+                                public ProposalItemKind kind() {
+                                    return probe.kind();
+                                }
+
+                                @Override
+                                public ApplyResult apply(ApplyCommand command) {
+                                    return probe.apply(command);
+                                }
+                            }));
         }
 
         @Bean
@@ -108,23 +116,12 @@ class ProposalDecisionServiceTests {
         }
     }
 
-    static class TestApplyService extends ProposalApplyService {
-        private final ApplyProbe probe;
-
-        TestApplyService(ObjectProvider<ProposalApplier> appliers, ApplyProbe probe) {
-            super(appliers);
-            this.probe = probe;
-        }
-
-        @Override
-        @Transactional(propagation = Propagation.MANDATORY)
-        public ApplyResult apply(ApplyCommand command) {
-            return probe.apply(command);
-        }
-    }
-
-    /** 반영기 목록에 등록하지 않고 131의 트랜잭션과 오류 처리를 확인한다. */
-    static class ApplyProbe {
+    /**
+     * Only a transaction probe; this is not the production OBJECT_TYPE implementation. It is not
+     * registered as a ProposalApplier bean (it would clash with the real applier of the same kind);
+     * the @Primary ProposalApplyService below uses only this probe.
+     */
+    static class RecordingApplier {
         private final JdbcClient jdbc;
         final AtomicInteger calls = new AtomicInteger();
         volatile ApplyCommand command;
@@ -136,8 +133,12 @@ class ProposalDecisionServiceTests {
         volatile CountDownLatch release;
         volatile Runnable duringApply;
 
-        ApplyProbe(JdbcClient jdbc) {
+        RecordingApplier(JdbcClient jdbc) {
             this.jdbc = jdbc;
+        }
+
+        ProposalItemKind kind() {
+            return ProposalItemKind.OBJECT_TYPE;
         }
 
         ApplyResult apply(ApplyCommand input) {
@@ -200,11 +201,10 @@ class ProposalDecisionServiceTests {
     void prepare() {
         data = new DecisionHistoryFixtures(jdbc);
         account = data.account();
-        proposal =
-                data.proposal(
-                        account,
-                        ProposalItemKind.OBJECT_TYPE,
-                        "{\"code\":\"IMMUTABLE\",\"optional\":null}");
+        proposal = data.proposal(account, "{\"code\":\"IMMUTABLE\",\"optional\":null}");
+        jdbc.sql("update proposal_item set item_kind='OBJECT_TYPE' where id=:id")
+                .param("id", proposal)
+                .update();
         basisCheckRunId = data.successfulCheck(proposal, 1, account);
         applier.calls.set(0);
         applier.command = null;

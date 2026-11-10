@@ -21,7 +21,7 @@ FN-REV-06·07의 결과는 기존 후보 상세(049), 결정 이력(055), 실행
 - **실행 이력(`/audit`)**은 096의 `SUCCEEDED`·`FAILED`·`BLOCKED`를 성공·실패·차단으로 표시한다. 대상은 `proposal_item #후보ID`, 동작은 기존 Action 표시를 사용한다. **내용 보기**의 입력값과 처리 결과에서 revision·요청 결정·사유·반영 대상·보류 건 ID를 확인한다.
 - 현재 실행 이력 화면이 보내는 기간·상태 필터와 후보 필터 없는 기본 목록을 그대로 쓴다. 후보별 바로가기나 새 결과 화면은 추가하지 않는다. 기본 목록은 API 기본 페이지 범위이고, 전체 이력 탐색 UI를 새로 만드는 작업은 포함하지 않는다.
 - 제안 상세의 `applyError` 조건부 표시도 유지한다. 131 실패는 이 필드를 갱신하지 않으므로 해당 표시 대신 실행 이력에서 확인한다. `applyStatus=FAILED` 후보 목록 필터로 131의 실패 시도를 찾을 수는 없다.
-- 054 결정 버튼 연동과 실제 종류별 반영기 제공은 별도 작업이다. 이번 검증은 현재 사이트에서 승인 버튼까지 동작한다는 의미가 아니다.
+- 배포 화면의 054 결정 버튼 연동은 별도 작업이다. 이 문서는 승인 및 결과 조회 API를 검증한다.
 
 ## 결과 연결
 
@@ -73,7 +73,7 @@ GET /api/v1/audit/actions/456
 
 현재 프론트와 같은 후보 필터 없는 기본 목록 및 기간·상태 목록도 위 시나리오 안에서 확인한다. 권한·페이지·중복·revision 등의 기존 검증은 `ProposalDecisionApiTests`, `ProposalDecisionServiceTests`, `ProposalDecisionHistoryApiTests`, `AuditExecutionApiTests`를 재사용한다. 새로 중복 작성하지 않는다.
 
-테스트용 `ProposalApplyService`는 `QueryApplyProbe`에 위임해 규칙과 보류 행을 실제 DB에 생성한다. `QueryApplyProbe`는 종류별 반영기로 등록하지 않으므로 실제 `LINK_RULE` 반영기와 충돌하지 않는다. 커밋 또는 롤백된 후 기존 API의 조회 결과를 검증한다. 실제 `LINK_RULE` 반영기가 추가되면 관계 재조정·보류 생성은 별도 연동 검증이 필요하다.
+133 테스트에서는 별도의 `ProposalApplyService`에 `QueryProbeApplier`로 위임하는 반영기 하나만 전달한다. 테스트 반영기를 애플리케이션의 반영기 목록에 등록하지 않아 운영 `LinkRuleApplier`와 함께 로드할 수 있다. 테스트 대역이 실제 DB에 만든 규칙과 보류 행을 바탕으로 커밋 또는 롤백 이후 조회 API의 응답을 확인한다. 운영 `LinkRuleApplier`의 동작은 `LinkRuleApplierTests`에서 검증한다.
 
 검증 명령과 실제 결과는 이 문서의 후속 검증 기록에 남긴다. 팀원 리뷰·MR 병합·병합 후 배포 동작 확인은 별도 완료 조건이다.
 
@@ -96,7 +96,10 @@ GET /api/v1/audit/actions/456
 - 최신 develop과 비교한 133 변경은 테스트·문서 5개다. 운영 조회 메서드·프론트·Migration은 추가 수정하지 않았다. Push·MR 생성은 수행하지 않았다.
 - 현재 JPA 우선 규칙을 확인했다. 신규 운영 Repository·SQL은 없고, 테스트 데이터 생성·롤백 유도·DB 상태 검증에만 JdbcClient를 쓴다. 규칙에는 테스트 fixture 적용 범위가 별도로 명시돼 있지 않다.
 
-## 후속 검증 — LINK_RULE 테스트 대역 분리 (2026-11-09)
+## 후속 검증 — 실제 OBJECT_TYPE 승인·롤백
 
-- 임시 `LINK_RULE` 반영기 빈을 등록하고 `test --tests '*ProposalApplyResultQueryApiTests'`를 실행했다. 분리 전에는 중복 등록으로 3건이 실패했고, 분리 후에는 같은 빈을 등록한 상태에서 3건 모두 통과했다.
-- 임시 빈 제거 후 `spotlessApply spotlessCheck`와 관련 승인·반영 테스트 7개 클래스를 실행했다. 51건 통과, 실패·오류·Skip 0.
+`ProposalObjectTypeApprovalApiTests`는 성공한 사전 검사가 있는 후보를 131 승인 API에 보내고, 운영 `OBJECT_TYPE` 반영기의 처리 결과를 133 조회 API와 139 감사 이력에서 확인한다.
+
+- 성공 시 객체 유형과 속성, 객체·속성 매핑이 저장되고 원천의 `loaded_lsn`이 비워진다. 조회 응답과 감사 이력에 승인 결정, 사전 검사 ID, 반영 대상 및 재적재할 원천이 연결된다.
+- 속성 매핑의 원천 컬럼이 없으면 객체 유형과 속성, 매핑이 롤백된다. 원천의 `loaded_lsn`과 후보의 `PENDING`/`NOT_APPLIED` 상태가 유지되고, 결정 이력은 비어 있으며 실패 감사가 남는다.
+- `develop`의 `626a5dd`를 병합한 뒤 `spotlessCheck`와 승인·조회·감사·반영기 및 이번에 병합한 Agent 변경 관련 테스트를 실행했다. 15개 클래스 113건이 통과했고 실패·오류·Skip은 0건이다.

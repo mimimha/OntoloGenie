@@ -9,7 +9,7 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 | 198-3 | txId epoch 복원 | 완료(`TransactionIdRestorer`) |
 | 198-4 | V12(원천별 소비 상태, 수집 실패 기록, 확인 대기) | 이 문서 아래 |
 | 198-5 | 원천 트랜잭션 하나 → 플랫폼 트랜잭션 하나 | 이 문서 아래 |
-| 198-6 | Kafka 소비 루프 | 예정 |
+| 198-6 | Kafka 소비 루프 | 이 문서 아래 |
 | 198-7 | 연결 재계산 호출(181 `LinkRecomputeService`) | 이 문서 아래 |
 
 ## 198-1 값 해석
@@ -120,4 +120,34 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 
 - `CdcTransactionApplierTests.recomputesLinksOfChangedObjectsInSameTransaction`: 실제 메시지로 756에서 7→3·8→3 생성, 758에서 8 삭제로 꺼지고 9→3 생성, 761(설비 PK 변경)에서 모두 INACTIVE, issue 없음
 - `SyncRunJobTests.fullLoadRecomputesLinksOfLoadedTypes`: 작업지시만 읽으면 연결 없음, 열린 주문(뷰)을 읽은 실행이 연결을 완성
+
+## 198-6 Kafka 소비 루프
+
+`source/cdc/CdcConsumerSupervisor`(배치 프로필, `axcore.cdc.consumer.enabled=true`일 때만)가 CDC 표가 있는 원천마다 `CdcSourceConsumer` 하나를 전용 스레드로 띄운다. `@Scheduled` 스레드 풀과 따로 돈다(결정 문서 11장 7). 의존성은 `kafka-clients`만 쓴다(spring-kafka 아님).
+
+| 단계 | 처리 |
+|---|---|
+| 시작 위치 | `cdc_offset.next_offset`으로 assign + seek. Kafka에 위치를 커밋하지 않는다(그룹 없음). 처음 소비하는 원천은 토픽 첫 위치부터 |
+| 보관 기간 초과 | 저장된 위치가 토픽 첫 위치보다 앞이면 복구(`OFFSET_EXPIRED`) |
+| 처음 epoch 기준값 | `last_txid`가 없으면 `CdcStartReference`가 SYNC 계정으로 원천 `pg_current_snapshot()` xmax를 읽는다(쓰지 않음) |
+| 변경·경계 | 198-2 조립 → END가 오면 198-5 반영(198-7 연결 재계산 포함) |
+| heartbeat | `last_message_at` 갱신. 트랜잭션 밖이면 위치를 그 다음으로 옮긴다(앞으로만). 트랜잭션 중간이면 옮기지 않는다 |
+| 수집 정상 여부 | 메시지 시각(heartbeat 시각·변경 처리 시각)보다 `max-lag`(2분) 넘게 늦거나, `stale-after`(3분) 동안 메시지가 없으면 `healthy_since = NULL`. 다시 기준 안이면 그때 시각으로 |
+| 처리 장애 | 위치를 옮기지 않고 `retry-delay`(5초) 뒤 저장된 위치부터 다시 읽는다 |
+| 트랜잭션 크기 초과·메시지 오류 | 복구(`TRANSACTION_TOO_LARGE`·`PROTOCOL_ERROR`)로 돌리고 멈춘다 |
+| 복구 중 | 읽지 않는다. `refresh-interval`(30초)마다 표시가 풀렸는지 보고, 풀리면 저장된 위치부터 다시 읽는다(푸는 일은 199) |
+
+설정은 `application-batch.yml`의 `axcore.cdc.consumer`다. 기본값은 꺼져 있다(`AXCORE_CDC_CONSUMER_ENABLED=false`). 서버에서 켜려면 배치 컨테이너 환경 변수에 `AXCORE_CDC_CONSUMER_ENABLED=true`를 넣는다(Kafka 주소 기본값 `kafka:9092`, 같은 axcore-net). 켜는 순서는 315(소비자 기동 → 매핑 승인 → 감시 작업이 첫 적재)를 따른다.
+
+아직 하지 않은 것(199·모니터링): 커넥터 상태(RUNNING)와 복제 슬롯 유실(`SLOT_LOST`)은 이 루프가 보지 않는다. 원천 접속 정보 변경(`SOURCE_CHANGED`)을 남기는 일과 복구 표시를 푸는 일도 199다.
+
+### 시험
+
+`CdcConsumerLoopTests`(실제 Kafka apache/kafka 4.2.2 + PostgreSQL, 198-2의 실제 메시지 37건을 같은 순서로 토픽에 넣음):
+
+- 순서대로 반영하고 마지막 END 뒤 heartbeat까지 지나 위치 37, `last_txid` 765, CDC 실행 7건
+- 소비자를 멈췄다 다시 켜고 위치를 0으로 되돌려도(재전송) 값이 되돌아가지 않음
+- 모양이 깨진 메시지 → `PROTOCOL_ERROR`로 멈추고 뒤 트랜잭션도 반영 안 함, 표시가 풀리면 저장된 위치부터 이어서 반영
+
+`SyncRunJobTests.startReferenceReadsSourceXmaxWithSyncAccount`: 실제 SYNC 계정으로 원천 xmax를 읽는다.
 

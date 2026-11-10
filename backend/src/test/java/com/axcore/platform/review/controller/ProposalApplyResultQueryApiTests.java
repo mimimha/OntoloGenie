@@ -14,6 +14,7 @@ import com.axcore.platform.audit.domain.ChangeEntry;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.ontology.domain.ApplyErrorCode;
+import com.axcore.platform.ontology.domain.ProposalItemKind;
 import com.axcore.platform.ontology.dto.ApplyCommand;
 import com.axcore.platform.ontology.dto.ApplyResult;
 import com.axcore.platform.ontology.service.ProposalApplier;
@@ -29,7 +30,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -43,8 +43,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -63,32 +61,43 @@ class ProposalApplyResultQueryApiTests {
     private final MockMvc mvc;
     private final JdbcClient jdbc;
     private final JsonMapper json;
-    private final QueryApplyProbe probe;
+    private final QueryProbeApplier applier;
     private DecisionHistoryFixtures fixtures;
     private long actor;
     private long proposal;
 
     @Autowired
     ProposalApplyResultQueryApiTests(
-            MockMvc mvc, JdbcClient jdbc, JsonMapper json, QueryApplyProbe probe) {
+            MockMvc mvc, JdbcClient jdbc, JsonMapper json, QueryProbeApplier applier) {
         this.mvc = mvc;
         this.jdbc = jdbc;
         this.json = json;
-        this.probe = probe;
+        this.applier = applier;
     }
 
     @TestConfiguration
     static class ApplyConfiguration {
         @Bean
-        QueryApplyProbe queryApplyProbe(JdbcClient jdbc) {
-            return new QueryApplyProbe(jdbc);
+        QueryProbeApplier queryProbeApplier(JdbcClient jdbc) {
+            return new QueryProbeApplier(jdbc);
         }
 
         @Bean
         @Primary
-        ProposalApplyService testApplyService(
-                ObjectProvider<ProposalApplier> appliers, QueryApplyProbe probe) {
-            return new TestApplyService(appliers, probe);
+        ProposalApplyService probeApplyService(QueryProbeApplier probe) {
+            return new ProposalApplyService(
+                    List.of(
+                            new ProposalApplier() {
+                                @Override
+                                public ProposalItemKind kind() {
+                                    return probe.kind();
+                                }
+
+                                @Override
+                                public ApplyResult apply(ApplyCommand command) {
+                                    return probe.apply(command);
+                                }
+                            }));
         }
 
         @Bean
@@ -98,31 +107,23 @@ class ProposalApplyResultQueryApiTests {
         }
     }
 
-    static class TestApplyService extends ProposalApplyService {
-        private final QueryApplyProbe probe;
-
-        TestApplyService(ObjectProvider<ProposalApplier> appliers, QueryApplyProbe probe) {
-            super(appliers);
-            this.probe = probe;
-        }
-
-        @Override
-        @Transactional(propagation = Propagation.MANDATORY)
-        public ApplyResult apply(ApplyCommand command) {
-            return probe.apply(command);
-        }
-    }
-
-    /** 테스트용 규칙·보류 행을 만들어 조회 연결과 롤백을 확인한다. */
-    static class QueryApplyProbe {
+    /**
+     * 실제 반영기가 아닌 DB 트랜잭션 probe. 생성한 규칙·보류 행으로 조회 연결만 확인한다. 반영기 빈(ProposalApplier)으로 등록하지 않는다. 같은
+     * 종류의 실제 반영기(189 LINK_RULE)와 겹치면 컨텍스트가 뜨지 않으므로, 이 probe만 쓰는 ProposalApplyService를 @Primary로 둔다.
+     */
+    static class QueryProbeApplier {
         private final JdbcClient jdbc;
         long linkType;
         long sourceObject;
         boolean businessFailure;
         boolean commitFailure;
 
-        QueryApplyProbe(JdbcClient jdbc) {
+        QueryProbeApplier(JdbcClient jdbc) {
             this.jdbc = jdbc;
+        }
+
+        ProposalItemKind kind() {
+            return ProposalItemKind.LINK_RULE;
         }
 
         ApplyResult apply(ApplyCommand command) {
@@ -199,7 +200,7 @@ class ProposalApplyResultQueryApiTests {
                         .param("code", UUID.randomUUID().toString())
                         .query(Long.class)
                         .single();
-        probe.linkType =
+        applier.linkType =
                 jdbc.sql(
                                 """
                 insert into link_type(code,name,source_type_id,target_type_id,cardinality,description)
@@ -209,7 +210,7 @@ class ProposalApplyResultQueryApiTests {
                         .param("type", type)
                         .query(Long.class)
                         .single();
-        probe.sourceObject =
+        applier.sourceObject =
                 jdbc.sql(
                                 """
                 insert into object_instance(object_type_id,display_name)
@@ -218,8 +219,8 @@ class ProposalApplyResultQueryApiTests {
                         .param("type", type)
                         .query(Long.class)
                         .single();
-        probe.businessFailure = false;
-        probe.commitFailure = false;
+        applier.businessFailure = false;
+        applier.commitFailure = false;
     }
 
     @Test
@@ -267,7 +268,7 @@ class ProposalApplyResultQueryApiTests {
                 .andExpect(jsonPath("$.data.linkMappingId").value(mapping))
                 .andExpect(jsonPath("$.data.status").value("HELD"))
                 .andExpect(jsonPath("$.data.holdReason").value("대상 객체 없음"));
-        read("/api/v1/held-items?linkTypeId=" + probe.linkType)
+        read("/api/v1/held-items?linkTypeId=" + applier.linkType)
                 .andExpect(jsonPath("$.meta.totalElements").value(1))
                 .andExpect(jsonPath("$.data[0].id").value(held));
         assertThat(
@@ -282,8 +283,8 @@ class ProposalApplyResultQueryApiTests {
     @ValueSource(strings = {"BUSINESS", "COMMIT"})
     void readsFailureAuditAfterRollbackAndPreservesThePreviousHold(String stage) throws Exception {
         JsonNode held = data(decide(proposal, 1, "HOLD").andExpect(status().isOk()));
-        probe.businessFailure = stage.equals("BUSINESS");
-        probe.commitFailure = stage.equals("COMMIT");
+        applier.businessFailure = stage.equals("BUSINESS");
+        applier.commitFailure = stage.equals("COMMIT");
         JsonNode failure =
                 body(
                         decide(proposal, 1, "APPROVE")
