@@ -93,6 +93,7 @@ class ProposalResponseTests {
                             "NOT_APPLIED",
                             null,
                             null,
+                            true,
                             null);
 
             return ApiResponse.of(response);
@@ -114,6 +115,7 @@ class ProposalResponseTests {
                             "APPLIED",
                             null,
                             Instant.parse("2026-10-28T03:00:00Z"),
+                            true,
                             null);
 
             return ApiResponse.of(response);
@@ -139,6 +141,7 @@ class ProposalResponseTests {
                             "NOT_APPLIED",
                             null,
                             null,
+                            true,
                             latestCheck);
 
             return ApiResponse.of(response);
@@ -160,6 +163,7 @@ class ProposalResponseTests {
                             "NOT_APPLIED",
                             null,
                             null,
+                            true,
                             null);
 
             return ApiResponse.of(response);

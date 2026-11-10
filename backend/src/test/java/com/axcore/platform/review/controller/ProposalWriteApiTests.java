@@ -188,7 +188,8 @@ class ProposalWriteApiTests {
                 "PROPERTY_MAPPING",
                 "DOCUMENT_LINK"
             })
-    void permitsOtherExistingCandidateKindsOnRevision(String kind) throws Exception {
+    void permitsOtherExistingCandidateKindsOnRevisionWithoutQueuingACheck(String kind)
+            throws Exception {
         long id = id(create().andExpect(status().isCreated()).andReturn());
         jdbc.sql("update proposal_item set item_kind=:kind where id=:id")
                 .param("kind", kind)
@@ -202,7 +203,18 @@ class ProposalWriteApiTests {
                                 .content(
                                         "{\"baseRevision\":1,\"payload\":{\"code\":\"AI_CANDIDATE\"}}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.itemKind").value(kind));
+                .andExpect(jsonPath("$.data.itemKind").value(kind))
+                .andExpect(jsonPath("$.data.revision").value(2))
+                .andExpect(jsonPath("$.data.checkRunId").value(nullValue()));
+        // 검사 대상이 아닌 종류는 개정 2의 후보 검사를 접수하지 않는다(개정 1은 LINK_RULE로 만들 때 접수됨).
+        assertThat(
+                        jdbc.sql(
+                                        "select count(*) from check_run where trigger_kind='CANDIDATE' and scope->'proposalItems' @> cast(:item as jsonb)")
+                                .param("item", "[{\"proposalItemId\":" + id + ",\"revision\":2}]")
+                                .query(Long.class)
+                                .single())
+                .isZero();
+        assertThat(count("proposal_revision", id)).isEqualTo(2);
     }
 
     @Test
@@ -541,11 +553,11 @@ class ProposalWriteApiTests {
                                             "column",
                                             "id"))));
         }
-        var result = reviseWith(id, revised).andExpect(status().isCreated()).andReturn();
-        long check =
-                json.readTree(result.getResponse().getContentAsString())
-                        .at("/data/checkRunId")
-                        .asLong();
+        reviseWith(id, revised)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.checkRunId").value(nullValue()));
+        // 객체 후보는 저장 때 후보 검사를 접수하지 않는다(CandidateCheckTarget). 검사 기준을 만드는 저장소 동작은 직접 부른다.
+        long check = candidateChecks.enqueue(id, 2, analysis, java.util.Set.of(), accountId);
         assertThat(
                         jdbc.sql(
                                         "select (r->>'sourceResourceId')::bigint from check_run, jsonb_array_elements(data_basis->'resources') r where id=:id order by 1")
@@ -672,28 +684,23 @@ class ProposalWriteApiTests {
                 .param("resource", first)
                 .update();
         long id = aiCandidate(analysis, kind, mappingPayload(kind, sourceCode, "first"));
-        var result =
-                mvc.perform(
-                                post("/api/v1/proposals/{id}/revisions", id)
-                                        .with(admin())
-                                        .with(csrf())
-                                        .contentType(MediaType.APPLICATION_JSON)
-                                        .content(
-                                                json.writeValueAsString(
-                                                        Map.of(
-                                                                "baseRevision",
-                                                                1,
-                                                                "payload",
-                                                                mappingPayload(
-                                                                        kind,
-                                                                        sourceCode,
-                                                                        "second")))))
-                        .andExpect(status().isCreated())
-                        .andReturn();
-        long check =
-                json.readTree(result.getResponse().getContentAsString())
-                        .at("/data/checkRunId")
-                        .asLong();
+        mvc.perform(
+                        post("/api/v1/proposals/{id}/revisions", id)
+                                .with(admin())
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        json.writeValueAsString(
+                                                Map.of(
+                                                        "baseRevision",
+                                                        1,
+                                                        "payload",
+                                                        mappingPayload(
+                                                                kind, sourceCode, "second")))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.checkRunId").value(nullValue()));
+        // 매핑 후보는 저장 때 후보 검사를 접수하지 않는다(CandidateCheckTarget). 검사 기준을 만드는 저장소 동작은 직접 부른다.
+        long check = candidateChecks.enqueue(id, 2, analysis, java.util.Set.of(), accountId);
         assertThat(
                         jdbc.sql(
                                         "select (r->>'sourceResourceId')::bigint from check_run, jsonb_array_elements(data_basis->'resources') r where id=:id order by 1")

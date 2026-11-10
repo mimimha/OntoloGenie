@@ -28,7 +28,7 @@ FN-REV-06·07의 결과는 기존 후보 상세(049), 결정 이력(055), 실행
 성공한 054 응답의 `actionExecutionId`는 097의 ID다. 감사 `result.decisionId`는 055의 결정 ID다. 성공 감사의 `result`에는 다음 정보가 저장된다.
 
 - `decision`, `revision`, `reviewStatus`, `applyStatus`
-- `basisCheckRunId`: 139 적용 이후 서버가 승인 조건 확인에 사용한 검사 실행 ID. 거절·보류 또는 근거 선택 전 차단은 `null`이며, 기존 감사에는 필드가 없을 수 있다. 이후 새 검사로 다시 계산하지 않는다.
+- `basisCheckRunId`: 139 적용 이후 서버가 승인 조건 확인에 사용한 검사 실행 ID. 거절·보류, 후보 검사 대상이 아닌 종류(LINK_RULE 외)의 승인, 근거 선택 전 차단은 `null`이며, 기존 감사에는 필드가 없을 수 있다. 이후 새 검사로 다시 계산하지 않는다.
 - `appliedEntityIds`, `heldItemIds`
 - 실제 반영 결과가 있을 때 `targetTable`, `targetId`, `reloadResourceIds`, `summary`
 

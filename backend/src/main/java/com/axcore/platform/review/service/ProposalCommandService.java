@@ -7,6 +7,7 @@ import com.axcore.platform.audit.domain.EntryPoint;
 import com.axcore.platform.audit.domain.EventKind;
 import com.axcore.platform.audit.domain.ExecutionStatus;
 import com.axcore.platform.audit.service.AuditRecorder;
+import com.axcore.platform.check.domain.CandidateCheckTarget;
 import com.axcore.platform.check.service.CandidateCheckService;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
@@ -117,6 +118,10 @@ public class ProposalCommandService {
             newOptions.add(ProposalOption.manual(item, i + 1, option.payload(), option.evidence()));
         }
         proposalOptions.saveAllAndFlush(newOptions);
+        // 검사 대상이 아닌 종류는 후보 검사를 접수하지 않는다. 개정 기록은 proposal_revision(created_by)에 남는다.
+        if (!CandidateCheckTarget.requiresCheck(item.getItemKind())) {
+            return ProposalWriteResponse.from(item, null);
+        }
         long checkId =
                 checks.enqueue(
                         item.getId(),

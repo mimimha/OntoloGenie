@@ -46,6 +46,16 @@ const checkLabels: Record<string, string> = {
   FAILED: '실패',
 }
 
+export const CHECK_NOT_REQUIRED_MESSAGE =
+  '검사 대상 아님: 이 종류는 원천 행으로 시험하지 않으며, 승인에 검사 결과가 필요하지 않습니다.'
+
+// 서버가 checkRequired를 주지 않은 예전 응답은 검사 대상으로 본다.
+export function requiresCandidateCheck(
+  proposal: Pick<Proposal, 'checkRequired'>,
+) {
+  return proposal.checkRequired !== false
+}
+
 export function candidateCheckLabel(
   check: NonNullable<Proposal['latestCheck']>,
 ) {

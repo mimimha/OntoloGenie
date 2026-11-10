@@ -48,7 +48,6 @@ class ProposalObjectTypeApprovalApiTests {
     private final DecisionHistoryFixtures fixtures;
     private long actor;
     private long proposal;
-    private long basisCheckRunId;
     private long resource;
     private String sourceCode;
     private String resourceKey;
@@ -99,7 +98,7 @@ class ProposalObjectTypeApprovalApiTests {
     }
 
     @Test
-    void approvalCommitsTheObjectTypeAndLinksTheResultToItsCheckDecisionAndAudit()
+    void approvalWithoutACandidateCheckCommitsTheObjectTypeAndLinksTheResultToItsDecisionAndAudit()
             throws Exception {
         prepareCandidate(KEY_COLUMN);
 
@@ -149,7 +148,7 @@ class ProposalObjectTypeApprovalApiTests {
                 .andExpect(jsonPath("$.data.status").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.data.input.proposalItemId").value(proposal))
                 .andExpect(jsonPath("$.data.input.revision").value(1))
-                .andExpect(jsonPath("$.data.result.basisCheckRunId").value(basisCheckRunId))
+                .andExpect(jsonPath("$.data.result.basisCheckRunId").value(nullValue()))
                 .andExpect(jsonPath("$.data.result.decisionId").value(decision))
                 .andExpect(jsonPath("$.data.result.targetTable").value("object_type"))
                 .andExpect(jsonPath("$.data.result.targetId").value(type))
@@ -207,7 +206,7 @@ class ProposalObjectTypeApprovalApiTests {
                 .andExpect(jsonPath("$.data.input.proposalItemId").value(proposal))
                 .andExpect(jsonPath("$.data.input.revision").value(1))
                 .andExpect(jsonPath("$.data.input.decision").value("APPROVE"))
-                .andExpect(jsonPath("$.data.result.basisCheckRunId").value(basisCheckRunId))
+                .andExpect(jsonPath("$.data.result.basisCheckRunId").value(nullValue()))
                 .andExpect(jsonPath("$.data.result.errorCode").value("APPLY_REFERENCE_MISSING"))
                 .andExpect(jsonPath("$.data.result.decisionId").doesNotExist())
                 .andExpect(jsonPath("$.data.result.targetId").doesNotExist())
@@ -246,7 +245,7 @@ class ProposalObjectTypeApprovalApiTests {
         proposal =
                 fixtures.proposal(
                         actor, ProposalItemKind.OBJECT_TYPE, json.writeValueAsString(payload));
-        basisCheckRunId = fixtures.successfulCheck(proposal, 1, actor);
+        // 객체 유형은 후보 검사 대상이 아니라(CandidateCheckTarget) 검사 없이 승인한다.
     }
 
     private ResultActions approve() throws Exception {

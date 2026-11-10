@@ -13,7 +13,13 @@ import {
   type Decision,
   type DecisionInput,
 } from './decisionApi'
-import { applyLabels, candidateCheckLabel, reviewLabels } from './labels'
+import {
+  applyLabels,
+  candidateCheckLabel,
+  CHECK_NOT_REQUIRED_MESSAGE,
+  requiresCandidateCheck,
+  reviewLabels,
+} from './labels'
 import type { Proposal, ProposalOption } from './types'
 
 const actions = [
@@ -185,13 +191,19 @@ export default function ProposalDecision({
           </p>
         </>
       )}
-      <p className="text-sm text-slate-600">
-        {proposal.latestCheck
-          ? `최근 검사 #${proposal.latestCheck.checkRunId}: ${candidateCheckLabel(proposal.latestCheck)}.`
-          : '아직 검사 이력이 없습니다.'}{' '}
-        실제 승인 가능 여부는 같은 개정의 검사 결과를 기준으로 서버에서 최종
-        확인합니다. AI 신뢰도만으로 승인하지 않습니다.
-      </p>
+      {!requiresCandidateCheck(proposal) ? (
+        <p className="text-sm text-slate-600">
+          {CHECK_NOT_REQUIRED_MESSAGE} AI 신뢰도만으로 승인하지 않습니다.
+        </p>
+      ) : (
+        <p className="text-sm text-slate-600">
+          {proposal.latestCheck
+            ? `최근 검사 #${proposal.latestCheck.checkRunId}: ${candidateCheckLabel(proposal.latestCheck)}.`
+            : '아직 검사 이력이 없습니다.'}{' '}
+          실제 승인 가능 여부는 같은 개정의 검사 결과를 기준으로 서버에서 최종
+          확인합니다. AI 신뢰도만으로 승인하지 않습니다.
+        </p>
+      )}
       {saving && <p role="status">검토 결정을 저장하는 중…</p>}
       {mutation.error && (
         <>
