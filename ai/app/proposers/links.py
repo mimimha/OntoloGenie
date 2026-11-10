@@ -34,6 +34,7 @@ from app.analyzers.structured import (
     analyze_sources,
     value_pattern,
 )
+from app.llm.privacy import mask_value
 from app.models.candidate import (
     Candidate,
     Evidence,
@@ -1310,12 +1311,15 @@ def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
             "none": "종류 값(키 아님)",
         }[rel.target_key]
         how = _how_text(rel, steps_by_column)
+        # 안 이어지는 값은 코드가 아닌 글(담당 칸의 사람 이름 등)일 수 있어 이름 모양은 가린다
+        source_cols = " ".join(c.name for c in rel.source)
+        unmatched = [mask_value(str(v), source_cols) for v in rel.unmatched]
         target_cols = " + ".join(c.name for c in rel.target)
         reason = (
             f"{' + '.join(c.ref for c in rel.source)}의 값이 {t_table}의 {key_text} "
             f"{josa(target_cols, '으로/로')} 이어집니다{cond_text}. {how}. "
             f"서로 다른 값 기준 {rel.distinct_coverage:.0%}, 행 기준 {rel.row_coverage:.0%}가 이어집니다."
-            + (f" 안 이어지는 값 예: {rel.unmatched}." if rel.unmatched else "")
+            + (f" 안 이어지는 값 예: {unmatched}." if unmatched else "")
         )
         single = len(rel.source) == 1
         evidence = [
