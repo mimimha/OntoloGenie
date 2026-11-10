@@ -5,6 +5,8 @@ import com.axcore.platform.ontology.domain.LinkMappingStatus;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface LinkMappingRepository extends JpaRepository<LinkMapping, Long> {
@@ -17,6 +19,12 @@ public interface LinkMappingRepository extends JpaRepository<LinkMapping, Long> 
     Optional<LinkMapping> findByCodeAndStatus(String code, LinkMappingStatus status);
 
     Optional<LinkMapping> findTopByCodeOrderByRevisionDesc(String code);
+
+    /** 규칙 코드의 개정본을 개정 번호 순으로(API 046). */
+    Page<LinkMapping> findByCodeOrderByRevisionAsc(String code, Pageable pageable);
+
+    /** 규칙 코드의 특정 개정본(API 047). */
+    Optional<LinkMapping> findByCodeAndRevision(String code, int revision);
 
     List<LinkMapping> findByStatusAndLinkTypeIdInOrderById(
             LinkMappingStatus status, Collection<Long> linkTypeIds);
