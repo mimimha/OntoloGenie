@@ -239,3 +239,32 @@ def test_transformed_link_is_not_pushed_out_by_raw_sequence_overlap(tmp_path):
     )
     targets = [k[1] for k in rules(tmp_path) if k[0] == "mes.lot.ITM_NO"]
     assert targets == ["erp.item.itemCode"]
+
+
+def test_codes_with_other_letters_matched_only_by_number_are_held(tmp_path):
+    # 불량 코드 S001·P001·C001 중 C001~만 거래처 C001과 글자까지 같고 나머지는 숫자만 같다(B8)
+    defects = [f"{k}{i:03d}" for k in "SCP" for i in range(1, 9)]
+    write_table(
+        tmp_path,
+        "mes",
+        "defect_cd",
+        ["dft_cd"],
+        {
+            "dft_cd": ("varchar(4)", defects),
+            "dft_nm": ("varchar(10)", [f"불량{i}" for i in range(len(defects))]),
+        },
+    )
+    write_table(
+        tmp_path,
+        "erp",
+        "vendor",
+        ["vendor_cd"],
+        {
+            "vendor_cd": ("varchar(4)", [f"C{i:03d}" for i in range(1, 41)]),
+            "vendor_nm": ("varchar(10)", [f"거래처{i}" for i in range(1, 41)]),
+        },
+    )
+    found = rules(tmp_path)
+    rule = found[("mes.defect_cd.dft_cd", "erp.vendor.vendor_cd")]
+    assert rule.review_status == "HELD"
+    assert rule.hold_reason.startswith("글자가 다른 값까지 숫자만 남겨")

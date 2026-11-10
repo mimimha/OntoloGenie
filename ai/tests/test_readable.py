@@ -23,6 +23,13 @@ from app.proposers.readable import josa, readable
         ("라인7", "이/가", "라인7이"),
         ("코드3", "으로/로", "코드3으로"),
         ("R", "을/를", "R을"),
+        # 영어 컬럼 이름은 소리로 어림한다(네임·라인·레벨·그룹·넘버)
+        ("dept_name", "으로/로", "dept_name으로"),
+        ("line", "으로/로", "line으로"),
+        ("level", "으로/로", "level로"),
+        ("group", "이/가", "group이"),
+        ("order_number", "이/가", "order_number가"),
+        ("emp_no", "으로/로", "emp_no로"),
     ],
 )
 def test_josa_follows_final_consonant(word, pair, expected):
@@ -107,7 +114,7 @@ def test_link_rule_link_type_and_document_link_get_korean_titles():
     out = readable(proposals())
     rule, link_type, document = out[3], out[4], out[5]
 
-    assert rule["payload"]["name"] == "작업지시 → 수주 (수주 참조 번호로 연결)"
+    assert rule["payload"]["name"] == "작업지시 → 수주 (수주 참조 번호)"
     assert rule["evidence"]["title"] == rule["payload"]["name"]
     assert rule["evidence"]["reason"].startswith(
         "작업지시의 수주 참조 번호로 수주를 찾습니다."
@@ -127,18 +134,16 @@ def test_link_rule_link_type_and_document_link_get_korean_titles():
 
     assert (
         document["payload"]["name"]
-        == "교대 인수인계 메모 HN-260820-N → 작업지시 JB2608-0129"
+        == "교대 인수인계 메모 HN-260820-N의 작업지시 JB2608-0129"
     )
-    assert document["evidence"]["reason"] == (
-        "글에 나온 'JB2608-0129'를 작업지시 JB2608-0129에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다."
-    )
+    assert document["evidence"]["reason"] == ("글에 'JB2608-0129'가 적혀 있습니다.")
 
 
 def test_unknown_object_keeps_its_code():
     # 분석 범위 밖이라 이름을 모르는 객체는 코드를 그대로 쓴다
     rule = proposals()[3]
     out = readable([rule])
-    assert out[0]["payload"]["name"] == "WORK_ORDER → SALES_ORDER (so_ref로 연결)"
+    assert out[0]["payload"]["name"] == "WORK_ORDER → SALES_ORDER (so_ref)"
 
 
 def test_object_type_from_source_table_is_not_shown_as_25_percent():
@@ -168,7 +173,83 @@ def test_held_document_link_keeps_reason_and_does_not_pick_first_option():
     )
     doc["options"] = [{"optionNo": 1}, {"optionNo": 2}]
     out = readable(items)[5]
-    assert out["payload"]["name"].endswith("후보 2개")
+    assert out["payload"]["name"].endswith("(후보 2개)")
     assert "EQ-01" not in out["payload"]["name"]
-    assert out["evidence"]["reason"].startswith("글에 나온 '2호기'에 맞는")
+    assert out["evidence"]["reason"].startswith("'2호기'에 맞는")
     assert "작성자의 배치 라인이 단서" in out["evidence"]["reason"]
+
+
+def test_document_link_shows_alias_and_memo_excerpt():
+    items = proposals()
+    doc = items[5]
+    text = "새벽 2시쯤 1라인 3호 프레스 진동이 평소보다 커서 점검 요청함."
+    mention = "1라인 3호 프레스"
+    start = text.index(mention)
+    doc["payload"].update(
+        {
+            "targetObjectRef": "mes.equipment:P103",
+            "mentionText": mention,
+            "spanStart": start,
+            "spanEnd": start + len(mention),
+        }
+    )
+    doc["evidence"]["originalText"] = text
+    doc["evidence"]["confidenceItems"] = [
+        {"label": "글의 설비 이름·별명을 설비 목록과 맞춤", "weight": 0.8}
+    ]
+    out = readable(items)[5]
+    assert out["payload"]["name"] == "교대 인수인계 메모 HN-260820-N의 equipment P103"
+    reason = out["evidence"]["reason"]
+    # 별명은 이름·별명과 맞춘 것이라고 쓰고, 앞뒤 원문을 붙인다
+    assert reason.startswith(
+        "글의 '1라인 3호 프레스'를 equipment P103의 이름·별명으로 봤습니다"
+    )
+    assert ": “새벽 2시쯤 1라인 3호 프레스 진동이" in reason
+
+
+def test_lot_number_found_through_another_column_says_so():
+    items = proposals()
+    doc = items[5]
+    doc["payload"].update(
+        {"targetObjectRef": "erp.shipment:DL2610-0036", "mentionText": "LT261017-1"}
+    )
+    out = readable(items)[5]
+    assert out["evidence"]["reason"] == (
+        "글에 적힌 'LT261017-1'로 shipment DL2610-0036을 찾았습니다."
+    )
+
+
+def test_long_table_comments_are_shortened_in_titles():
+    # 표 주석의 괄호 설명은 제목에서 뺀다(객체 유형 이름 자체는 그대로)
+    items = [
+        object_type("PICK", "출고 피킹 실적", "wms.pick", ("item_cd", "품목 코드")),
+        object_type(
+            "ITEM",
+            "자재·상품 품목 마스터(원자재, 포장재, OEM 상품)",
+            "erp.item",
+            ("item_cd", "품목 코드"),
+        ),
+        {
+            "itemKind": "LINK_RULE",
+            "payload": {
+                "code": "PICK_ITEM_CD_TO_ITEM",
+                "linkType": {
+                    "code": "X",
+                    "sourceTypeCode": "PICK",
+                    "targetTypeCode": "ITEM",
+                },
+                "conditions": [
+                    {"sourceProperty": "PICK.item_cd", "targetProperty": "ITEM.item_cd"}
+                ],
+            },
+            "evidence": {"reason": "값이 이어진다."},
+        },
+    ]
+    out = readable(items)
+    assert (
+        out[2]["payload"]["name"]
+        == "출고 피킹 실적 → 자재·상품 품목 마스터 (품목 코드)"
+    )
+    assert (
+        out[1]["payload"]["name"] == "자재·상품 품목 마스터(원자재, 포장재, OEM 상품)"
+    )

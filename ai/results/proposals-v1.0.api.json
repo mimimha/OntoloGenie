@@ -48,6 +48,18 @@
     "llmCredits": 0.0,
     "llmRejectedLinks": 0,
     "llmCrossLinks": 0,
+    "pastDecisionSkipped": {
+      "APPROVE": 0,
+      "REJECT": 0
+    },
+    "existingSkipped": {
+      "objectTypes": 0,
+      "linkRules": 0,
+      "linkTypes": 0
+    },
+    "modelSummarySkipReason": "내부 토큰 없음",
+    "changeBasis": null,
+    "changeCounts": null,
     "missingColumns": {},
     "sampledTables": {}
   },
@@ -195,7 +207,7 @@
         "candidateId": "OT-erp.attendance",
         "fingerprint": "a5f334a94826e50c",
         "title": "객체 유형 ATTENDANCE (근태)",
-        "reason": "원천 표 erp.attendance의 한 행을 객체 하나로 본다. 표 종류: 기본키에 날짜·시각(work_date)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.attendance의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(기본키에 날짜·시각(work_date)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -783,7 +795,7 @@
         "candidateId": "OT-erp.department",
         "fingerprint": "5c9cd175bdc52b8d",
         "title": "객체 유형 DEPARTMENT (부서)",
-        "reason": "원천 표 erp.department의 한 행을 객체 하나로 본다. 표 종류: 다른 표 1개가 가리킴. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.department의 한 행을 객체 하나로 봅니다. 표 종류는 기준 정보입니다(다른 표 1개가 가리킴). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -1230,7 +1242,7 @@
         "candidateId": "OT-erp.employee",
         "fingerprint": "440e94abea64ca85",
         "title": "객체 유형 EMPLOYEE (직원)",
-        "reason": "원천 표 erp.employee의 한 행을 객체 하나로 본다. 표 종류: 다른 표 3개가 가리킴. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.employee의 한 행을 객체 하나로 봅니다. 표 종류는 기준 정보입니다(다른 표 3개가 가리킴). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -1874,7 +1886,7 @@
         "candidateId": "OT-erp.fixed_asset",
         "fingerprint": "d5f3706f936dcbd4",
         "title": "객체 유형 FIXED_ASSET (고정자산)",
-        "reason": "원천 표 erp.fixed_asset의 한 행을 객체 하나로 본다. 표 종류: 다른 표가 가리키지 않고 날짜·시각 컬럼(acquired_on)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.fixed_asset의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(다른 표가 가리키지 않고 날짜·시각 컬럼(acquired_on)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -2539,7 +2551,7 @@
         "candidateId": "OT-erp.gl_account",
         "fingerprint": "94bfb5435f1e1645",
         "title": "객체 유형 GL_ACCOUNT (회계 계정)",
-        "reason": "원천 표 erp.gl_account의 한 행을 객체 하나로 본다. 표 종류: 다른 표 1개가 가리킴. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.gl_account의 한 행을 객체 하나로 봅니다. 표 종류는 기준 정보입니다(다른 표 1개가 가리킴). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -3071,7 +3083,7 @@
         "candidateId": "OT-erp.goods_receipt",
         "fingerprint": "9d005282dbc974ed",
         "title": "객체 유형 GOODS_RECEIPT (입고)",
-        "reason": "원천 표 erp.goods_receipt의 한 행을 객체 하나로 본다. 표 종류: 다른 표가 가리키지 않고 날짜·시각 컬럼(gr_date)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.goods_receipt의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(다른 표가 가리키지 않고 날짜·시각 컬럼(gr_date)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -3870,7 +3882,7 @@
         "candidateId": "OT-erp.item",
         "fingerprint": "a416ad484b9ceecf",
         "title": "객체 유형 ITEM (품목)",
-        "reason": "원천 표 erp.item의 한 행을 객체 하나로 본다. 표 종류: 다른 표 9개가 가리킴. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.item의 한 행을 객체 하나로 봅니다. 표 종류는 기준 정보입니다(다른 표 9개가 가리킴). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -4649,7 +4661,7 @@
         "candidateId": "OT-erp.journal_entry",
         "fingerprint": "aa7c8b52904529f1",
         "title": "객체 유형 JOURNAL_ENTRY (분개)",
-        "reason": "원천 표 erp.journal_entry의 한 행을 객체 하나로 본다. 표 종류: 여러 컬럼 기본키 ['entry_no', 'line_no']의 조합별 기록. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.journal_entry의 한 행을 객체 하나로 봅니다. 표 종류는 현재 상태입니다(여러 컬럼 기본키 ['entry_no', 'line_no']의 조합별 기록). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -5373,7 +5385,7 @@
         "candidateId": "OT-erp.purchase_invoice",
         "fingerprint": "1b8792980c4b6ade",
         "title": "객체 유형 PURCHASE_INVOICE (매입 전표)",
-        "reason": "원천 표 erp.purchase_invoice의 한 행을 객체 하나로 본다. 표 종류: 다른 표가 가리키지 않고 날짜·시각 컬럼(invoice_date, paid_date)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.purchase_invoice의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(다른 표가 가리키지 않고 날짜·시각 컬럼(invoice_date, paid_date)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -6093,7 +6105,7 @@
         "candidateId": "OT-erp.purchase_order",
         "fingerprint": "98e974fb5f4b7ebd",
         "title": "객체 유형 PURCHASE_ORDER (구매 발주)",
-        "reason": "원천 표 erp.purchase_order의 한 행을 객체 하나로 본다. 표 종류: 상태 컬럼(status)과 날짜·시각 컬럼 2개. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.purchase_order의 한 행을 객체 하나로 봅니다. 표 종류는 거래 문서입니다(상태 컬럼(status)과 날짜·시각 컬럼 2개). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -6789,7 +6801,7 @@
         "candidateId": "OT-erp.purchase_order_line",
         "fingerprint": "f4fcc4ecf8f2df88",
         "title": "객체 유형 PURCHASE_ORDER_LINE (구매 발주 상세)",
-        "reason": "원천 표 erp.purchase_order_line의 한 행을 객체 하나로 본다. 표 종류: 기본키 ['po_no', 'line_no'] 중 ['po_no']가 다른 표를 가리키고 ['line_no']가 정수 순번. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.purchase_order_line의 한 행을 객체 하나로 봅니다. 표 종류는 문서 상세 줄입니다(기본키 ['po_no', 'line_no'] 중 ['po_no']가 다른 표를 가리키고 ['line_no']가 정수 순번). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -7445,7 +7457,7 @@
         "candidateId": "OT-erp.sales_invoice",
         "fingerprint": "5313cfe7240dff8c",
         "title": "객체 유형 SALES_INVOICE (매출 전표)",
-        "reason": "원천 표 erp.sales_invoice의 한 행을 객체 하나로 본다. 표 종류: 다른 표가 가리키지 않고 날짜·시각 컬럼(invoice_date, collected_date)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.sales_invoice의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(다른 표가 가리키지 않고 날짜·시각 컬럼(invoice_date, collected_date)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -8148,7 +8160,7 @@
         "candidateId": "OT-erp.sales_order",
         "fingerprint": "1c1ac35001a33c03",
         "title": "객체 유형 SALES_ORDER (수주)",
-        "reason": "원천 표 erp.sales_order의 한 행을 객체 하나로 본다. 표 종류: 상태 컬럼(status)과 날짜·시각 컬럼 2개. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.sales_order의 한 행을 객체 하나로 봅니다. 표 종류는 거래 문서입니다(상태 컬럼(status)과 날짜·시각 컬럼 2개). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -8771,7 +8783,7 @@
         "candidateId": "OT-erp.sales_order_line",
         "fingerprint": "973b44baa94aef2f",
         "title": "객체 유형 SALES_ORDER_LINE (수주 상세)",
-        "reason": "원천 표 erp.sales_order_line의 한 행을 객체 하나로 본다. 표 종류: 기본키 ['so_no', 'line_no'] 중 ['so_no']가 다른 표를 가리키고 ['line_no']가 정수 순번. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.sales_order_line의 한 행을 객체 하나로 봅니다. 표 종류는 문서 상세 줄입니다(기본키 ['so_no', 'line_no'] 중 ['so_no']가 다른 표를 가리키고 ['line_no']가 정수 순번). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -9348,7 +9360,7 @@
         "candidateId": "OT-erp.shipment",
         "fingerprint": "147d707b778524f0",
         "title": "객체 유형 SHIPMENT (출하)",
-        "reason": "원천 표 erp.shipment의 한 행을 객체 하나로 본다. 표 종류: 다른 표가 가리키지 않고 날짜·시각 컬럼(ship_date)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.shipment의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(다른 표가 가리키지 않고 날짜·시각 컬럼(ship_date)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -9990,7 +10002,7 @@
         "candidateId": "OT-erp.stock",
         "fingerprint": "5c2e291f7fba2601",
         "title": "객체 유형 STOCK (창고별 재고)",
-        "reason": "원천 표 erp.stock의 한 행을 객체 하나로 본다. 표 종류: 여러 컬럼 기본키 ['warehouse', 'item_code']의 조합별 기록. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.stock의 한 행을 객체 하나로 봅니다. 표 종류는 현재 상태입니다(여러 컬럼 기본키 ['warehouse', 'item_code']의 조합별 기록). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -10633,7 +10645,7 @@
         "candidateId": "OT-erp.vendor",
         "fingerprint": "04ae68791b9eea55",
         "title": "객체 유형 VENDOR (거래처)",
-        "reason": "원천 표 erp.vendor의 한 행을 객체 하나로 본다. 표 종류: 다른 표 5개가 가리킴. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 erp.vendor의 한 행을 객체 하나로 봅니다. 표 종류는 기준 정보입니다(다른 표 5개가 가리킴). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -11296,7 +11308,7 @@
         "candidateId": "OT-mes.defect",
         "fingerprint": "5614d577dfd3ac21",
         "title": "객체 유형 DEFECT (불량 기록)",
-        "reason": "원천 표 mes.defect의 한 행을 객체 하나로 본다. 표 종류: 다른 표가 가리키지 않고 날짜·시각 컬럼(detected_at)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.defect의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(다른 표가 가리키지 않고 날짜·시각 컬럼(detected_at)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -12082,7 +12094,7 @@
         "candidateId": "OT-mes.die",
         "fingerprint": "594d1966f90f84ca",
         "title": "객체 유형 DIE (금형)",
-        "reason": "원천 표 mes.die의 한 행을 객체 하나로 본다. 표 종류: 다른 표가 가리키지 않고 날짜·시각 컬럼(last_pm_at)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.die의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(다른 표가 가리키지 않고 날짜·시각 컬럼(last_pm_at)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -12800,7 +12812,7 @@
         "candidateId": "OT-mes.downtime",
         "fingerprint": "3a07c3251fd10f73",
         "title": "객체 유형 DOWNTIME (설비 비가동)",
-        "reason": "원천 표 mes.downtime의 한 행을 객체 하나로 본다. 표 종류: 다른 표가 가리키지 않고 날짜·시각 컬럼(started_at, ended_at)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.downtime의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(다른 표가 가리키지 않고 날짜·시각 컬럼(started_at, ended_at)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -13524,7 +13536,7 @@
         "candidateId": "OT-mes.equipment",
         "fingerprint": "282fd32ef999fc5e",
         "title": "객체 유형 EQUIPMENT (설비)",
-        "reason": "원천 표 mes.equipment의 한 행을 객체 하나로 본다. 표 종류: 다른 표 7개가 가리킴. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.equipment의 한 행을 객체 하나로 봅니다. 표 종류는 기준 정보입니다(다른 표 7개가 가리킴). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -14210,7 +14222,7 @@
         "candidateId": "OT-mes.handover_note",
         "fingerprint": "b9f475e5c8dfbe2c",
         "title": "객체 유형 HANDOVER_NOTE (교대 인수인계 메모)",
-        "reason": "원천 표 mes.handover_note의 한 행을 객체 하나로 본다. 표 종류: 다른 표가 가리키지 않고 날짜·시각 컬럼(shift_date, written_at)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.handover_note의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(다른 표가 가리키지 않고 날짜·시각 컬럼(shift_date, written_at)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -14838,7 +14850,7 @@
         "candidateId": "OT-mes.inspection",
         "fingerprint": "f0e4a9e55eea87a0",
         "title": "객체 유형 INSPECTION (품질 검사)",
-        "reason": "원천 표 mes.inspection의 한 행을 객체 하나로 본다. 표 종류: 다른 표가 가리키지 않고 날짜·시각 컬럼(inspected_at)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.inspection의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(다른 표가 가리키지 않고 날짜·시각 컬럼(inspected_at)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -15706,7 +15718,7 @@
         "candidateId": "OT-mes.maintenance_order",
         "fingerprint": "9c4c7788fae3e439",
         "title": "객체 유형 MAINTENANCE_ORDER (정비 지시)",
-        "reason": "원천 표 mes.maintenance_order의 한 행을 객체 하나로 본다. 표 종류: 다른 표가 가리키지 않고 날짜·시각 컬럼(planned_date, completed_at)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.maintenance_order의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(다른 표가 가리키지 않고 날짜·시각 컬럼(planned_date, completed_at)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -16533,7 +16545,7 @@
         "candidateId": "OT-mes.material_issue",
         "fingerprint": "7e1d39f96023c3f3",
         "title": "객체 유형 MATERIAL_ISSUE (자재 투입)",
-        "reason": "원천 표 mes.material_issue의 한 행을 객체 하나로 본다. 표 종류: 다른 표가 가리키지 않고 날짜·시각 컬럼(issued_at)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.material_issue의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(다른 표가 가리키지 않고 날짜·시각 컬럼(issued_at)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -17225,7 +17237,7 @@
         "candidateId": "OT-mes.production_result",
         "fingerprint": "13ca6addbbb3fd6d",
         "title": "객체 유형 PRODUCTION_RESULT (공정 실적)",
-        "reason": "원천 표 mes.production_result의 한 행을 객체 하나로 본다. 표 종류: 다른 표가 가리키지 않고 날짜·시각 컬럼(started_at, ended_at)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.production_result의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(다른 표가 가리키지 않고 날짜·시각 컬럼(started_at, ended_at)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -18059,7 +18071,7 @@
         "candidateId": "OT-mes.routing",
         "fingerprint": "4b9852c25a7cf7b8",
         "title": "객체 유형 ROUTING (제품별 공정)",
-        "reason": "원천 표 mes.routing의 한 행을 객체 하나로 본다. 표 종류: 기본키 ['product_code', 'op_seq'] 중 ['product_code']가 다른 표를 가리키고 ['op_seq']가 정수 순번. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.routing의 한 행을 객체 하나로 봅니다. 표 종류는 문서 상세 줄입니다(기본키 ['product_code', 'op_seq'] 중 ['product_code']가 다른 표를 가리키고 ['op_seq']가 정수 순번). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -18670,7 +18682,7 @@
         "candidateId": "OT-mes.sensor_reading",
         "fingerprint": "d7d814cbff339cac",
         "title": "객체 유형 SENSOR_READING (설비 센서 측정)",
-        "reason": "원천 표 mes.sensor_reading의 한 행을 객체 하나로 본다. 표 종류: 기본키에 날짜·시각(measured_at)이 있음. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.sensor_reading의 한 행을 객체 하나로 봅니다. 표 종류는 발생 기록입니다(기본키에 날짜·시각(measured_at)이 있음). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -19300,7 +19312,7 @@
         "candidateId": "OT-mes.work_order",
         "fingerprint": "812a32b30ede7d35",
         "title": "객체 유형 WORK_ORDER (작업지시)",
-        "reason": "원천 표 mes.work_order의 한 행을 객체 하나로 본다. 표 종류: 상태 컬럼(status)과 날짜·시각 컬럼 4개. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.work_order의 한 행을 객체 하나로 봅니다. 표 종류는 거래 문서입니다(상태 컬럼(status)과 날짜·시각 컬럼 4개). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -20356,7 +20368,7 @@
         "candidateId": "OT-mes.work_order_operation",
         "fingerprint": "dd65de565a1c4973",
         "title": "객체 유형 WORK_ORDER_OPERATION (작업지시 공정별 배정)",
-        "reason": "원천 표 mes.work_order_operation의 한 행을 객체 하나로 본다. 표 종류: 기본키 ['wo_no', 'op_seq'] 중 ['wo_no']가 다른 표를 가리키고 ['op_seq']가 정수 순번. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.work_order_operation의 한 행을 객체 하나로 봅니다. 표 종류는 문서 상세 줄입니다(기본키 ['wo_no', 'op_seq'] 중 ['wo_no']가 다른 표를 가리키고 ['op_seq']가 정수 순번). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -20854,7 +20866,7 @@
         "candidateId": "OT-mes.worker",
         "fingerprint": "dea34791f4019140",
         "title": "객체 유형 WORKER (현장 작업자)",
-        "reason": "원천 표 mes.worker의 한 행을 객체 하나로 본다. 표 종류: 다른 표 3개가 가리킴. 이름은 표 주석에서 가져왔다.",
+        "reason": "원천 표 mes.worker의 한 행을 객체 하나로 봅니다. 표 종류는 기준 정보입니다(다른 표 3개가 가리킴). 이름은 표 주석에서 가져왔습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -21291,7 +21303,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "ATTENDANCE_EMP_NO_TO_EMPLOYEE",
           "name": "근태 → 직원",
@@ -21300,13 +21312,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "근태가 직원을 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "근태 → 직원 (사번으로 연결)"
+        "name": "근태 → 직원 (사번)"
       },
       "evidence": {
         "candidateId": "LR-attendance_emp_no_to_employee",
-        "fingerprint": "1b4deb59a031b58f",
-        "title": "근태 → 직원 (사번으로 연결)",
-        "reason": "근태의 사번으로 직원을 찾습니다. erp.attendance.emp_no의 값이 erp.employee의 기본키 emp_no로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "f62e974e37b4300a",
+        "title": "근태 → 직원 (사번)",
+        "reason": "근태의 사번으로 직원을 찾습니다. erp.attendance.emp_no의 값이 erp.employee의 기본키 emp_no로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21363,7 +21375,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "DEPARTMENT_MANAGER_EMP_NO_TO_EMPLOYEE",
           "name": "부서 → 직원",
@@ -21372,13 +21384,13 @@
           "cardinality": "ONE_TO_ONE",
           "description": "부서가 직원을 가리킵니다. 개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
         },
-        "name": "부서 → 직원 (부서장 사번으로 연결)"
+        "name": "부서 → 직원 (부서장 사번)"
       },
       "evidence": {
         "candidateId": "LR-department_manager_emp_no_to_employee",
-        "fingerprint": "3c4478dd4126bb35",
-        "title": "부서 → 직원 (부서장 사번으로 연결)",
-        "reason": "부서의 부서장 사번으로 직원을 찾습니다. erp.department.manager_emp_no의 값이 erp.employee의 기본키 emp_no로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "a16c2f518ec1aa19",
+        "title": "부서 → 직원 (부서장 사번)",
+        "reason": "부서의 부서장 사번으로 직원을 찾습니다. erp.department.manager_emp_no의 값이 erp.employee의 기본키 emp_no로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21435,7 +21447,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "EMPLOYEE_DEPT_CODE_TO_DEPARTMENT",
           "name": "직원 → 부서",
@@ -21444,13 +21456,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "직원이 부서를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "직원 → 부서 (소속 부서 코드로 연결)"
+        "name": "직원 → 부서 (소속 부서 코드)"
       },
       "evidence": {
         "candidateId": "LR-employee_dept_code_to_department",
-        "fingerprint": "1d3df51f56a87ea5",
-        "title": "직원 → 부서 (소속 부서 코드로 연결)",
-        "reason": "직원의 소속 부서 코드로 부서를 찾습니다. erp.employee.dept_code의 값이 erp.department의 기본키 dept_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "1d97b12c2736d1ae",
+        "title": "직원 → 부서 (소속 부서 코드)",
+        "reason": "직원의 소속 부서 코드로 부서를 찾습니다. erp.employee.dept_code의 값이 erp.department의 기본키 dept_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21507,7 +21519,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "FIXED_ASSET_EQUIPMENT_CODE_TO_EQUIPMENT",
           "name": "고정자산 → 설비",
@@ -21516,13 +21528,13 @@
           "cardinality": "ONE_TO_ONE",
           "description": "고정자산이 설비를 가리킵니다. 개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
         },
-        "name": "고정자산 → 설비 (생산 설비이면 현장 시스템의 설비 코드로 연결)"
+        "name": "고정자산 → 설비 (생산 설비이면 현장 시스템의 설비 코드)"
       },
       "evidence": {
         "candidateId": "LR-fixed_asset_equipment_code_to_equipment",
-        "fingerprint": "0065e3c22126774f",
-        "title": "고정자산 → 설비 (생산 설비이면 현장 시스템의 설비 코드로 연결)",
-        "reason": "고정자산의 생산 설비이면 현장 시스템의 설비 코드로 설비를 찾습니다. erp.fixed_asset.equipment_code의 값이 mes.equipment의 기본키 code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 83%, 행 기준 83% 이어짐. 안 이어지는 값 예: ['P2O1'].",
+        "fingerprint": "aaaf8b8bd13a3bf1",
+        "title": "고정자산 → 설비 (생산 설비이면 현장 시스템의 설비 코드)",
+        "reason": "고정자산의 생산 설비이면 현장 시스템의 설비 코드로 설비를 찾습니다. erp.fixed_asset.equipment_code의 값이 mes.equipment의 기본키 code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 83%, 행 기준 83%가 이어집니다. 안 이어지는 값 예: ['P2O1'].",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21579,7 +21591,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "GOODS_RECEIPT_PO_NO_TO_PURCHASE_ORDER",
           "name": "입고 → 구매 발주",
@@ -21588,13 +21600,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "입고가 구매 발주를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "입고 → 구매 발주 (근거 발주 번호로 연결)"
+        "name": "입고 → 구매 발주 (근거 발주 번호)"
       },
       "evidence": {
         "candidateId": "LR-goods_receipt_po_no_to_purchase_order",
-        "fingerprint": "d2b8752e9dc60835",
-        "title": "입고 → 구매 발주 (근거 발주 번호로 연결)",
-        "reason": "입고의 근거 발주 번호로 구매 발주를 찾습니다. erp.goods_receipt.po_no의 값이 erp.purchase_order의 기본키 po_no로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "23d9faa3e23a1fcf",
+        "title": "입고 → 구매 발주 (근거 발주 번호)",
+        "reason": "입고의 근거 발주 번호로 구매 발주를 찾습니다. erp.goods_receipt.po_no의 값이 erp.purchase_order의 기본키 po_no로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21651,7 +21663,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "GOODS_RECEIPT_ITEM_CODE_TO_ITEM",
           "name": "입고 → 품목",
@@ -21660,13 +21672,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "입고가 품목을 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "입고 → 품목 (입고 품번으로 연결)"
+        "name": "입고 → 품목 (입고 품번)"
       },
       "evidence": {
         "candidateId": "LR-goods_receipt_item_code_to_item",
-        "fingerprint": "1a8d69b441622239",
-        "title": "입고 → 품목 (입고 품번으로 연결)",
-        "reason": "입고의 입고 품번으로 품목을 찾습니다. erp.goods_receipt.item_code의 값이 erp.item의 기본키 item_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "022cbf918d8f39cf",
+        "title": "입고 → 품목 (입고 품번)",
+        "reason": "입고의 입고 품번으로 품목을 찾습니다. erp.goods_receipt.item_code의 값이 erp.item의 기본키 item_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21723,7 +21735,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "GOODS_RECEIPT_INSPECTOR_TO_DEPARTMENT",
           "name": "입고 → 부서",
@@ -21732,13 +21744,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "입고가 부서를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "입고 → 부서 (검수 담당으로 연결)"
+        "name": "입고 → 부서 (검수 담당)"
       },
       "evidence": {
         "candidateId": "LR-goods_receipt_inspector_to_department",
-        "fingerprint": "417b86e42395e1de",
-        "title": "입고 → 부서 (검수 담당으로 연결)",
-        "reason": "입고의 검수 담당으로 부서를 찾습니다. erp.goods_receipt.inspector의 값이 erp.department의 다른 유일 키 dept_name로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "f1f3df92a9efc2ce",
+        "title": "입고 → 부서 (검수 담당)",
+        "reason": "입고의 검수 담당으로 부서를 찾습니다. erp.goods_receipt.inspector의 값이 erp.department의 다른 유일 키 dept_name으로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21794,7 +21806,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "JOURNAL_ENTRY_ACCOUNT_CODE_TO_GL_ACCOUNT",
           "name": "분개 → 회계 계정",
@@ -21803,13 +21815,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "분개가 회계 계정을 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "분개 → 회계 계정 (계정 코드로 연결)"
+        "name": "분개 → 회계 계정 (계정 코드)"
       },
       "evidence": {
         "candidateId": "LR-journal_entry_account_code_to_gl_account",
-        "fingerprint": "2250aa5770e77ec0",
-        "title": "분개 → 회계 계정 (계정 코드로 연결)",
-        "reason": "분개의 계정 코드로 회계 계정을 찾습니다. erp.journal_entry.account_code의 값이 erp.gl_account의 기본키 account_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "375001c23582eefc",
+        "title": "분개 → 회계 계정 (계정 코드)",
+        "reason": "분개의 계정 코드로 회계 계정을 찾습니다. erp.journal_entry.account_code의 값이 erp.gl_account의 기본키 account_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21866,7 +21878,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "JOURNAL_ENTRY_VENDOR_CODE_TO_VENDOR",
           "name": "분개 → 거래처",
@@ -21875,13 +21887,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "분개가 거래처를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "분개 → 거래처 (관련 거래처 코드로 연결)"
+        "name": "분개 → 거래처 (관련 거래처 코드)"
       },
       "evidence": {
         "candidateId": "LR-journal_entry_vendor_code_to_vendor",
-        "fingerprint": "5714674ddec3648e",
-        "title": "분개 → 거래처 (관련 거래처 코드로 연결)",
-        "reason": "분개의 관련 거래처 코드로 거래처를 찾습니다. erp.journal_entry.vendor_code의 값이 erp.vendor의 기본키 vendor_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "693f842f33103cee",
+        "title": "분개 → 거래처 (관련 거래처 코드)",
+        "reason": "분개의 관련 거래처 코드로 거래처를 찾습니다. erp.journal_entry.vendor_code의 값이 erp.vendor의 기본키 vendor_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21938,7 +21950,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "PURCHASE_INVOICE_VENDOR_CODE_TO_VENDOR",
           "name": "매입 전표 → 거래처",
@@ -21947,13 +21959,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "매입 전표가 거래처를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "매입 전표 → 거래처 (공급 거래처 코드로 연결)"
+        "name": "매입 전표 → 거래처 (공급 거래처 코드)"
       },
       "evidence": {
         "candidateId": "LR-purchase_invoice_vendor_code_to_vendor",
-        "fingerprint": "b715ff368b687648",
-        "title": "매입 전표 → 거래처 (공급 거래처 코드로 연결)",
-        "reason": "매입 전표의 공급 거래처 코드로 거래처를 찾습니다. erp.purchase_invoice.vendor_code의 값이 erp.vendor의 기본키 vendor_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "29d19a09d5a8e384",
+        "title": "매입 전표 → 거래처 (공급 거래처 코드)",
+        "reason": "매입 전표의 공급 거래처 코드로 거래처를 찾습니다. erp.purchase_invoice.vendor_code의 값이 erp.vendor의 기본키 vendor_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22010,7 +22022,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "PURCHASE_ORDER_VENDOR_CODE_TO_VENDOR",
           "name": "구매 발주 → 거래처",
@@ -22019,13 +22031,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "구매 발주가 거래처를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "구매 발주 → 거래처 (공급 거래처 코드로 연결)"
+        "name": "구매 발주 → 거래처 (공급 거래처 코드)"
       },
       "evidence": {
         "candidateId": "LR-purchase_order_vendor_code_to_vendor",
-        "fingerprint": "ecb82fbd25e8d6e1",
-        "title": "구매 발주 → 거래처 (공급 거래처 코드로 연결)",
-        "reason": "구매 발주의 공급 거래처 코드로 거래처를 찾습니다. erp.purchase_order.vendor_code의 값이 erp.vendor의 기본키 vendor_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "24141f5c8a76ff5f",
+        "title": "구매 발주 → 거래처 (공급 거래처 코드)",
+        "reason": "구매 발주의 공급 거래처 코드로 거래처를 찾습니다. erp.purchase_order.vendor_code의 값이 erp.vendor의 기본키 vendor_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22082,7 +22094,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "PURCHASE_ORDER_BUYER_TO_DEPARTMENT",
           "name": "구매 발주 → 부서",
@@ -22091,13 +22103,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "구매 발주가 부서를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "구매 발주 → 부서 (구매 담당으로 연결)"
+        "name": "구매 발주 → 부서 (구매 담당)"
       },
       "evidence": {
         "candidateId": "LR-purchase_order_buyer_to_department",
-        "fingerprint": "faac79c1e70bd40e",
-        "title": "구매 발주 → 부서 (구매 담당으로 연결)",
-        "reason": "구매 발주의 구매 담당으로 부서를 찾습니다. erp.purchase_order.buyer의 값이 erp.department의 다른 유일 키 dept_name로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "51d20c61a6e1725a",
+        "title": "구매 발주 → 부서 (구매 담당)",
+        "reason": "구매 발주의 구매 담당으로 부서를 찾습니다. erp.purchase_order.buyer의 값이 erp.department의 다른 유일 키 dept_name으로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22153,7 +22165,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "PURCHASE_ORDER_LINE_PO_NO_TO_PURCHASE_ORDER",
           "name": "구매 발주 상세 → 구매 발주",
@@ -22162,13 +22174,13 @@
           "cardinality": "ONE_TO_ONE",
           "description": "구매 발주 상세가 구매 발주를 가리킵니다. 개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
         },
-        "name": "구매 발주 상세 → 구매 발주 (발주 번호로 연결)"
+        "name": "구매 발주 상세 → 구매 발주 (발주 번호)"
       },
       "evidence": {
         "candidateId": "LR-purchase_order_line_po_no_to_purchase_order",
-        "fingerprint": "587d97c3eb4f0cd8",
-        "title": "구매 발주 상세 → 구매 발주 (발주 번호로 연결)",
-        "reason": "구매 발주 상세의 발주 번호로 구매 발주를 찾습니다. erp.purchase_order_line.po_no의 값이 erp.purchase_order의 기본키 po_no로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "cd4afca45b2ceb9c",
+        "title": "구매 발주 상세 → 구매 발주 (발주 번호)",
+        "reason": "구매 발주 상세의 발주 번호로 구매 발주를 찾습니다. erp.purchase_order_line.po_no의 값이 erp.purchase_order의 기본키 po_no로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22225,7 +22237,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "PURCHASE_ORDER_LINE_ITEM_CODE_TO_ITEM",
           "name": "구매 발주 상세 → 품목",
@@ -22234,13 +22246,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "구매 발주 상세가 품목을 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "구매 발주 상세 → 품목 (발주 품번으로 연결)"
+        "name": "구매 발주 상세 → 품목 (발주 품번)"
       },
       "evidence": {
         "candidateId": "LR-purchase_order_line_item_code_to_item",
-        "fingerprint": "d46875d3a78f7858",
-        "title": "구매 발주 상세 → 품목 (발주 품번으로 연결)",
-        "reason": "구매 발주 상세의 발주 품번으로 품목을 찾습니다. erp.purchase_order_line.item_code의 값이 erp.item의 기본키 item_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "7db900c4d9042328",
+        "title": "구매 발주 상세 → 품목 (발주 품번)",
+        "reason": "구매 발주 상세의 발주 품번으로 품목을 찾습니다. erp.purchase_order_line.item_code의 값이 erp.item의 기본키 item_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22297,7 +22309,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "SALES_INVOICE_CUSTOMER_CODE_TO_VENDOR",
           "name": "매출 전표 → 거래처",
@@ -22306,13 +22318,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "매출 전표가 거래처를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "매출 전표 → 거래처 (청구 고객 코드로 연결)"
+        "name": "매출 전표 → 거래처 (청구 고객 코드)"
       },
       "evidence": {
         "candidateId": "LR-sales_invoice_customer_code_to_vendor",
-        "fingerprint": "7a74526e366ed072",
-        "title": "매출 전표 → 거래처 (청구 고객 코드로 연결)",
-        "reason": "매출 전표의 청구 고객 코드로 거래처를 찾습니다. erp.sales_invoice.customer_code의 값이 erp.vendor의 기본키 vendor_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "714159900a38fea4",
+        "title": "매출 전표 → 거래처 (청구 고객 코드)",
+        "reason": "매출 전표의 청구 고객 코드로 거래처를 찾습니다. erp.sales_invoice.customer_code의 값이 erp.vendor의 기본키 vendor_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22369,7 +22381,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "SALES_ORDER_CUSTOMER_CODE_TO_VENDOR",
           "name": "수주 → 거래처",
@@ -22378,13 +22390,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "수주가 거래처를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "수주 → 거래처 (주문 고객 코드로 연결)"
+        "name": "수주 → 거래처 (주문 고객 코드)"
       },
       "evidence": {
         "candidateId": "LR-sales_order_customer_code_to_vendor",
-        "fingerprint": "14a1c68f67088716",
-        "title": "수주 → 거래처 (주문 고객 코드로 연결)",
-        "reason": "수주의 주문 고객 코드로 거래처를 찾습니다. erp.sales_order.customer_code의 값이 erp.vendor의 기본키 vendor_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "3ce97aec61ea6f13",
+        "title": "수주 → 거래처 (주문 고객 코드)",
+        "reason": "수주의 주문 고객 코드로 거래처를 찾습니다. erp.sales_order.customer_code의 값이 erp.vendor의 기본키 vendor_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22441,7 +22453,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "SALES_ORDER_SALES_REP_TO_DEPARTMENT",
           "name": "수주 → 부서",
@@ -22450,13 +22462,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "수주가 부서를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "수주 → 부서 (영업 담당으로 연결)"
+        "name": "수주 → 부서 (영업 담당)"
       },
       "evidence": {
         "candidateId": "LR-sales_order_sales_rep_to_department",
-        "fingerprint": "e3e9bfd48269335a",
-        "title": "수주 → 부서 (영업 담당으로 연결)",
-        "reason": "수주의 영업 담당으로 부서를 찾습니다. erp.sales_order.sales_rep의 값이 erp.department의 다른 유일 키 dept_name로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "8780775d304d5a84",
+        "title": "수주 → 부서 (영업 담당)",
+        "reason": "수주의 영업 담당으로 부서를 찾습니다. erp.sales_order.sales_rep의 값이 erp.department의 다른 유일 키 dept_name으로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22512,7 +22524,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "SALES_ORDER_LINE_SO_NO_TO_SALES_ORDER",
           "name": "수주 상세 → 수주",
@@ -22521,13 +22533,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "수주 상세가 수주를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "수주 상세 → 수주 (수주 번호로 연결)"
+        "name": "수주 상세 → 수주 (수주 번호)"
       },
       "evidence": {
         "candidateId": "LR-sales_order_line_so_no_to_sales_order",
-        "fingerprint": "f341f293001868cc",
-        "title": "수주 상세 → 수주 (수주 번호로 연결)",
-        "reason": "수주 상세의 수주 번호로 수주를 찾습니다. erp.sales_order_line.so_no의 값이 erp.sales_order의 기본키 so_no로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "e5496580ec8031be",
+        "title": "수주 상세 → 수주 (수주 번호)",
+        "reason": "수주 상세의 수주 번호로 수주를 찾습니다. erp.sales_order_line.so_no의 값이 erp.sales_order의 기본키 so_no로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22584,7 +22596,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "SALES_ORDER_LINE_ITEM_CODE_TO_ITEM",
           "name": "수주 상세 → 품목",
@@ -22593,13 +22605,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "수주 상세가 품목을 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "수주 상세 → 품목 (주문 품번으로 연결)"
+        "name": "수주 상세 → 품목 (주문 품번)"
       },
       "evidence": {
         "candidateId": "LR-sales_order_line_item_code_to_item",
-        "fingerprint": "eb9254c3622b7516",
-        "title": "수주 상세 → 품목 (주문 품번으로 연결)",
-        "reason": "수주 상세의 주문 품번으로 품목을 찾습니다. erp.sales_order_line.item_code의 값이 erp.item의 기본키 item_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "1551aabc41331b25",
+        "title": "수주 상세 → 품목 (주문 품번)",
+        "reason": "수주 상세의 주문 품번으로 품목을 찾습니다. erp.sales_order_line.item_code의 값이 erp.item의 기본키 item_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22656,7 +22668,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "SHIPMENT_SO_NO_TO_SALES_ORDER",
           "name": "출하 → 수주",
@@ -22665,13 +22677,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "출하가 수주를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "출하 → 수주 (근거 수주 번호로 연결)"
+        "name": "출하 → 수주 (근거 수주 번호)"
       },
       "evidence": {
         "candidateId": "LR-shipment_so_no_to_sales_order",
-        "fingerprint": "86eca6722116dc13",
-        "title": "출하 → 수주 (근거 수주 번호로 연결)",
-        "reason": "출하의 근거 수주 번호로 수주를 찾습니다. erp.shipment.so_no의 값이 erp.sales_order의 기본키 so_no로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "1d4eadbdfe8932d3",
+        "title": "출하 → 수주 (근거 수주 번호)",
+        "reason": "출하의 근거 수주 번호로 수주를 찾습니다. erp.shipment.so_no의 값이 erp.sales_order의 기본키 so_no로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22728,7 +22740,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "SHIPMENT_ITEM_CODE_TO_ITEM",
           "name": "출하 → 품목",
@@ -22737,13 +22749,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "출하가 품목을 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "출하 → 품목 (출하 품번으로 연결)"
+        "name": "출하 → 품목 (출하 품번)"
       },
       "evidence": {
         "candidateId": "LR-shipment_item_code_to_item",
-        "fingerprint": "4eec0c20df98a102",
-        "title": "출하 → 품목 (출하 품번으로 연결)",
-        "reason": "출하의 출하 품번으로 품목을 찾습니다. erp.shipment.item_code의 값이 erp.item의 기본키 item_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "c0d6d207ddbd5d29",
+        "title": "출하 → 품목 (출하 품번)",
+        "reason": "출하의 출하 품번으로 품목을 찾습니다. erp.shipment.item_code의 값이 erp.item의 기본키 item_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22800,7 +22812,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "INSPECTION_LOT_NO_TO_SHIPMENT",
           "name": "품질 검사 → 출하",
@@ -22809,13 +22821,13 @@
           "cardinality": "ONE_TO_ONE",
           "description": "품질 검사가 출하를 가리킵니다. 개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
         },
-        "name": "품질 검사 → 출하 (검사 제품 로트로 연결)"
+        "name": "품질 검사 → 출하 (검사 제품 로트)"
       },
       "evidence": {
         "candidateId": "LR-inspection_lot_no_to_shipment",
-        "fingerprint": "55fb6fd8c2b24a10",
-        "title": "품질 검사 → 출하 (검사 제품 로트로 연결)",
-        "reason": "품질 검사의 검사 제품 로트로 출하를 찾습니다. mes.inspection.lot_no의 값이 erp.shipment의 다른 유일 키 lot_no로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "2f84f94caf40246b",
+        "title": "품질 검사 → 출하 (검사 제품 로트)",
+        "reason": "품질 검사의 검사 제품 로트로 출하를 찾습니다. mes.inspection.lot_no의 값이 erp.shipment의 다른 유일 키 lot_no로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -22872,7 +22884,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "STOCK_ITEM_CODE_TO_ITEM",
           "name": "창고별 재고 → 품목",
@@ -22881,13 +22893,13 @@
           "cardinality": "ONE_TO_ONE",
           "description": "창고별 재고가 품목을 가리킵니다. 개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
         },
-        "name": "창고별 재고 → 품목 (품번으로 연결)"
+        "name": "창고별 재고 → 품목 (품번)"
       },
       "evidence": {
         "candidateId": "LR-stock_item_code_to_item",
-        "fingerprint": "cb2d4b52629de131",
-        "title": "창고별 재고 → 품목 (품번으로 연결)",
-        "reason": "창고별 재고의 품번으로 품목을 찾습니다. erp.stock.item_code의 값이 erp.item의 기본키 item_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "d1c231bfc08d291c",
+        "title": "창고별 재고 → 품목 (품번)",
+        "reason": "창고별 재고의 품번으로 품목을 찾습니다. erp.stock.item_code의 값이 erp.item의 기본키 item_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22944,7 +22956,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "DEFECT_WO_NO_TO_WORK_ORDER",
           "name": "불량 기록 → 작업지시",
@@ -22953,13 +22965,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "불량 기록이 작업지시를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "불량 기록 → 작업지시 (작업지시 번호로 연결)"
+        "name": "불량 기록 → 작업지시 (작업지시 번호)"
       },
       "evidence": {
         "candidateId": "LR-defect_wo_no_to_work_order",
-        "fingerprint": "3dd15b4ee90d337c",
-        "title": "불량 기록 → 작업지시 (작업지시 번호로 연결)",
-        "reason": "불량 기록의 작업지시 번호로 작업지시를 찾습니다. mes.defect.wo_no의 값이 mes.work_order의 기본키 wo_no로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "e2fe1e123efbd759",
+        "title": "불량 기록 → 작업지시 (작업지시 번호)",
+        "reason": "불량 기록의 작업지시 번호로 작업지시를 찾습니다. mes.defect.wo_no의 값이 mes.work_order의 기본키 wo_no로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23026,7 +23038,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "비교 전에 op_seq은(는) 숫자만 남기기, dept_code은(는) 숫자만 남기기 (예: '10' → 'DP10')",
+        "description": "비교 방법: op_seq는 숫자만 남기기, dept_code는 숫자만 남기기 (예: '10' → 'DP10')",
         "linkType": {
           "code": "DEFECT_OP_SEQ_TO_DEPARTMENT",
           "name": "불량 기록 → 부서",
@@ -23035,13 +23047,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "불량 기록이 부서를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "불량 기록 → 부서 (발생 공정으로 연결)"
+        "name": "불량 기록 → 부서 (발생 공정)"
       },
       "evidence": {
         "candidateId": "LR-defect_op_seq_to_department",
-        "fingerprint": "3c3455859257f733",
-        "title": "불량 기록 → 부서 (발생 공정으로 연결)",
-        "reason": "불량 기록의 발생 공정으로 부서를 찾습니다. mes.defect.op_seq의 값이 erp.department의 기본키 dept_code로 이어진다. 비교 전에 op_seq은(는) 숫자만 남기기, dept_code은(는) 숫자만 남기기 (예: '10' → 'DP10'). 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "4f9de3749ba98d3b",
+        "title": "불량 기록 → 부서 (발생 공정)",
+        "reason": "불량 기록의 발생 공정으로 부서를 찾습니다. mes.defect.op_seq의 값이 erp.department의 기본키 dept_code로 이어집니다. 비교 방법: op_seq는 숫자만 남기기, dept_code는 숫자만 남기기 (예: '10' → 'DP10'). 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23101,7 +23113,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "DEFECT_EQUIPMENT_CODE_TO_EQUIPMENT",
           "name": "불량 기록 → 설비",
@@ -23110,13 +23122,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "불량 기록이 설비를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "불량 기록 → 설비 (발생 설비 코드로 연결)"
+        "name": "불량 기록 → 설비 (발생 설비 코드)"
       },
       "evidence": {
         "candidateId": "LR-defect_equipment_code_to_equipment",
-        "fingerprint": "28f0cb652ce6a269",
-        "title": "불량 기록 → 설비 (발생 설비 코드로 연결)",
-        "reason": "불량 기록의 발생 설비 코드로 설비를 찾습니다. mes.defect.equipment_code의 값이 mes.equipment의 기본키 code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "577a61e74bf2810d",
+        "title": "불량 기록 → 설비 (발생 설비 코드)",
+        "reason": "불량 기록의 발생 설비 코드로 설비를 찾습니다. mes.defect.equipment_code의 값이 mes.equipment의 기본키 code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23173,7 +23185,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "DEFECT_DETECTED_BY_TO_WORKER",
           "name": "불량 기록 → 현장 작업자",
@@ -23182,13 +23194,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "불량 기록이 현장 작업자를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "불량 기록 → 현장 작업자 (발견 작업자 번호로 연결)"
+        "name": "불량 기록 → 현장 작업자 (발견 작업자 번호)"
       },
       "evidence": {
         "candidateId": "LR-defect_detected_by_to_worker",
-        "fingerprint": "5a9030e635f0882e",
-        "title": "불량 기록 → 현장 작업자 (발견 작업자 번호로 연결)",
-        "reason": "불량 기록의 발견 작업자 번호로 현장 작업자를 찾습니다. mes.defect.detected_by의 값이 mes.worker의 기본키 id로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "4a7d0b3a06714752",
+        "title": "불량 기록 → 현장 작업자 (발견 작업자 번호)",
+        "reason": "불량 기록의 발견 작업자 번호로 현장 작업자를 찾습니다. mes.defect.detected_by의 값이 mes.worker의 기본키 id로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23245,7 +23257,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "DIE_PRODUCT_CODE_TO_ITEM",
           "name": "금형 → 품목",
@@ -23254,13 +23266,13 @@
           "cardinality": "ONE_TO_ONE",
           "description": "금형이 품목을 가리킵니다. 개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
         },
-        "name": "금형 → 품목 (생산 제품 코드로 연결)"
+        "name": "금형 → 품목 (생산 제품 코드)"
       },
       "evidence": {
         "candidateId": "LR-die_product_code_to_item",
-        "fingerprint": "5f3652791147bc4c",
-        "title": "금형 → 품목 (생산 제품 코드로 연결)",
-        "reason": "금형의 생산 제품 코드로 품목을 찾습니다. mes.die.product_code의 값이 erp.item의 기본키 item_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 83%, 행 기준 83% 이어짐. 안 이어지는 값 예: ['BRK-990T'].",
+        "fingerprint": "407040a42ce4d364",
+        "title": "금형 → 품목 (생산 제품 코드)",
+        "reason": "금형의 생산 제품 코드로 품목을 찾습니다. mes.die.product_code의 값이 erp.item의 기본키 item_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 83%, 행 기준 83%가 이어집니다. 안 이어지는 값 예: ['BRK-990T'].",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23317,7 +23329,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "DOWNTIME_EQUIPMENT_CODE_TO_EQUIPMENT",
           "name": "설비 비가동 → 설비",
@@ -23326,13 +23338,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "설비 비가동이 설비를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "설비 비가동 → 설비 (멈춘 설비 코드로 연결)"
+        "name": "설비 비가동 → 설비 (멈춘 설비 코드)"
       },
       "evidence": {
         "candidateId": "LR-downtime_equipment_code_to_equipment",
-        "fingerprint": "a1ee1f91377d6bb6",
-        "title": "설비 비가동 → 설비 (멈춘 설비 코드로 연결)",
-        "reason": "설비 비가동의 멈춘 설비 코드로 설비를 찾습니다. mes.downtime.equipment_code의 값이 mes.equipment의 기본키 code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "b2784a5f007324ec",
+        "title": "설비 비가동 → 설비 (멈춘 설비 코드)",
+        "reason": "설비 비가동의 멈춘 설비 코드로 설비를 찾습니다. mes.downtime.equipment_code의 값이 mes.equipment의 기본키 code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23389,7 +23401,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "DOWNTIME_WO_NO_TO_WORK_ORDER",
           "name": "설비 비가동 → 작업지시",
@@ -23398,13 +23410,13 @@
           "cardinality": "ONE_TO_ONE",
           "description": "설비 비가동이 작업지시를 가리킵니다. 개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
         },
-        "name": "설비 비가동 → 작업지시 (당시 작업지시로 연결)"
+        "name": "설비 비가동 → 작업지시 (당시 작업지시)"
       },
       "evidence": {
         "candidateId": "LR-downtime_wo_no_to_work_order",
-        "fingerprint": "19837dea91decfc4",
-        "title": "설비 비가동 → 작업지시 (당시 작업지시로 연결)",
-        "reason": "설비 비가동의 당시 작업지시로 작업지시를 찾습니다. mes.downtime.wo_no의 값이 mes.work_order의 기본키 wo_no로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "4bce632aabf81f2e",
+        "title": "설비 비가동 → 작업지시 (당시 작업지시)",
+        "reason": "설비 비가동의 당시 작업지시로 작업지시를 찾습니다. mes.downtime.wo_no의 값이 mes.work_order의 기본키 wo_no로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23461,7 +23473,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "HANDOVER_NOTE_AUTHOR_ID_TO_WORKER",
           "name": "교대 인수인계 메모 → 현장 작업자",
@@ -23470,13 +23482,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "교대 인수인계 메모가 현장 작업자를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "교대 인수인계 메모 → 현장 작업자 (작성 작업자 번호로 연결)"
+        "name": "교대 인수인계 메모 → 현장 작업자 (작성 작업자 번호)"
       },
       "evidence": {
         "candidateId": "LR-handover_note_author_id_to_worker",
-        "fingerprint": "1bd2cb428ab2ba3e",
-        "title": "교대 인수인계 메모 → 현장 작업자 (작성 작업자 번호로 연결)",
-        "reason": "교대 인수인계 메모의 작성 작업자 번호로 현장 작업자를 찾습니다. mes.handover_note.author_id의 값이 mes.worker의 기본키 id로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "b4955e5752af69c7",
+        "title": "교대 인수인계 메모 → 현장 작업자 (작성 작업자 번호)",
+        "reason": "교대 인수인계 메모의 작성 작업자 번호로 현장 작업자를 찾습니다. mes.handover_note.author_id의 값이 mes.worker의 기본키 id로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23533,7 +23545,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "INSPECTION_WO_NO_TO_WORK_ORDER",
           "name": "품질 검사 → 작업지시",
@@ -23542,13 +23554,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "품질 검사가 작업지시를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "품질 검사 → 작업지시 (작업지시 번호로 연결)"
+        "name": "품질 검사 → 작업지시 (작업지시 번호)"
       },
       "evidence": {
         "candidateId": "LR-inspection_wo_no_to_work_order",
-        "fingerprint": "f6d2215f54dfea8b",
-        "title": "품질 검사 → 작업지시 (작업지시 번호로 연결)",
-        "reason": "품질 검사의 작업지시 번호로 작업지시를 찾습니다. mes.inspection.wo_no의 값이 mes.work_order의 기본키 wo_no로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "c99d2cac8e9dc264",
+        "title": "품질 검사 → 작업지시 (작업지시 번호)",
+        "reason": "품질 검사의 작업지시 번호로 작업지시를 찾습니다. mes.inspection.wo_no의 값이 mes.work_order의 기본키 wo_no로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23605,7 +23617,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "MAINTENANCE_ORDER_TECHNICIAN_TO_DEPARTMENT",
           "name": "정비 지시 → 부서",
@@ -23614,13 +23626,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "정비 지시가 부서를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "정비 지시 → 부서 (담당 부서로 연결)"
+        "name": "정비 지시 → 부서 (담당 부서)"
       },
       "evidence": {
         "candidateId": "LR-maintenance_order_technician_to_department",
-        "fingerprint": "b8fc6cf2abb7edf6",
-        "title": "정비 지시 → 부서 (담당 부서로 연결)",
-        "reason": "정비 지시의 담당 부서로 부서를 찾습니다. mes.maintenance_order.technician의 값이 erp.department의 다른 유일 키 dept_name로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 50%, 행 기준 87% 이어짐. 안 이어지는 값 예: ['홍보람'].",
+        "fingerprint": "170370cc52690f8b",
+        "title": "정비 지시 → 부서 (담당 부서)",
+        "reason": "정비 지시의 담당 부서로 부서를 찾습니다. mes.maintenance_order.technician의 값이 erp.department의 다른 유일 키 dept_name으로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 50%, 행 기준 87%가 이어집니다. 안 이어지는 값 예: ['홍보람'].",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23676,7 +23688,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "MATERIAL_ISSUE_WO_NO_TO_WORK_ORDER",
           "name": "자재 투입 → 작업지시",
@@ -23685,13 +23697,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "자재 투입이 작업지시를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "자재 투입 → 작업지시 (작업지시 번호로 연결)"
+        "name": "자재 투입 → 작업지시 (작업지시 번호)"
       },
       "evidence": {
         "candidateId": "LR-material_issue_wo_no_to_work_order",
-        "fingerprint": "8c08c6f006ab4cb1",
-        "title": "자재 투입 → 작업지시 (작업지시 번호로 연결)",
-        "reason": "자재 투입의 작업지시 번호로 작업지시를 찾습니다. mes.material_issue.wo_no의 값이 mes.work_order의 기본키 wo_no로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "f81cb8b9705dc779",
+        "title": "자재 투입 → 작업지시 (작업지시 번호)",
+        "reason": "자재 투입의 작업지시 번호로 작업지시를 찾습니다. mes.material_issue.wo_no의 값이 mes.work_order의 기본키 wo_no로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23748,7 +23760,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "MATERIAL_ISSUE_ITEM_CODE_TO_ITEM",
           "name": "자재 투입 → 품목",
@@ -23757,13 +23769,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "자재 투입이 품목을 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "자재 투입 → 품목 (투입 자재 품번으로 연결)"
+        "name": "자재 투입 → 품목 (투입 자재 품번)"
       },
       "evidence": {
         "candidateId": "LR-material_issue_item_code_to_item",
-        "fingerprint": "1e33890fae6a5d83",
-        "title": "자재 투입 → 품목 (투입 자재 품번으로 연결)",
-        "reason": "자재 투입의 투입 자재 품번으로 품목을 찾습니다. mes.material_issue.item_code의 값이 erp.item의 기본키 item_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "052dcbafa3396acf",
+        "title": "자재 투입 → 품목 (투입 자재 품번)",
+        "reason": "자재 투입의 투입 자재 품번으로 품목을 찾습니다. mes.material_issue.item_code의 값이 erp.item의 기본키 item_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23820,7 +23832,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "PRODUCTION_RESULT_WO_NO_TO_WORK_ORDER",
           "name": "공정 실적 → 작업지시",
@@ -23829,13 +23841,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "공정 실적이 작업지시를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "공정 실적 → 작업지시 (작업지시 번호로 연결)"
+        "name": "공정 실적 → 작업지시 (작업지시 번호)"
       },
       "evidence": {
         "candidateId": "LR-production_result_wo_no_to_work_order",
-        "fingerprint": "5e6710236f77e222",
-        "title": "공정 실적 → 작업지시 (작업지시 번호로 연결)",
-        "reason": "공정 실적의 작업지시 번호로 작업지시를 찾습니다. mes.production_result.wo_no의 값이 mes.work_order의 기본키 wo_no로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "4b25d74a79e8041d",
+        "title": "공정 실적 → 작업지시 (작업지시 번호)",
+        "reason": "공정 실적의 작업지시 번호로 작업지시를 찾습니다. mes.production_result.wo_no의 값이 mes.work_order의 기본키 wo_no로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23902,7 +23914,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "비교 전에 op_seq은(는) 숫자만 남기기, dept_code은(는) 숫자만 남기기 (예: '10' → 'DP10')",
+        "description": "비교 방법: op_seq는 숫자만 남기기, dept_code는 숫자만 남기기 (예: '10' → 'DP10')",
         "linkType": {
           "code": "PRODUCTION_RESULT_OP_SEQ_TO_DEPARTMENT",
           "name": "공정 실적 → 부서",
@@ -23911,13 +23923,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "공정 실적이 부서를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "공정 실적 → 부서 (공정 순서로 연결)"
+        "name": "공정 실적 → 부서 (공정 순서)"
       },
       "evidence": {
         "candidateId": "LR-production_result_op_seq_to_department",
-        "fingerprint": "5f776e8ecc39a5cb",
-        "title": "공정 실적 → 부서 (공정 순서로 연결)",
-        "reason": "공정 실적의 공정 순서로 부서를 찾습니다. mes.production_result.op_seq의 값이 erp.department의 기본키 dept_code로 이어진다. 비교 전에 op_seq은(는) 숫자만 남기기, dept_code은(는) 숫자만 남기기 (예: '10' → 'DP10'). 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "858ce7b4cefec781",
+        "title": "공정 실적 → 부서 (공정 순서)",
+        "reason": "공정 실적의 공정 순서로 부서를 찾습니다. mes.production_result.op_seq의 값이 erp.department의 기본키 dept_code로 이어집니다. 비교 방법: op_seq는 숫자만 남기기, dept_code는 숫자만 남기기 (예: '10' → 'DP10'). 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23977,7 +23989,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "PRODUCTION_RESULT_EQUIPMENT_CODE_TO_EQUIPMENT",
           "name": "공정 실적 → 설비",
@@ -23986,13 +23998,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "공정 실적이 설비를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "공정 실적 → 설비 (작업 설비 코드로 연결)"
+        "name": "공정 실적 → 설비 (작업 설비 코드)"
       },
       "evidence": {
         "candidateId": "LR-production_result_equipment_code_to_equipment",
-        "fingerprint": "32977ec427d594f9",
-        "title": "공정 실적 → 설비 (작업 설비 코드로 연결)",
-        "reason": "공정 실적의 작업 설비 코드로 설비를 찾습니다. mes.production_result.equipment_code의 값이 mes.equipment의 기본키 code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "8b80164ddc3dd453",
+        "title": "공정 실적 → 설비 (작업 설비 코드)",
+        "reason": "공정 실적의 작업 설비 코드로 설비를 찾습니다. mes.production_result.equipment_code의 값이 mes.equipment의 기본키 code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24049,7 +24061,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "PRODUCTION_RESULT_WORKER_ID_TO_WORKER",
           "name": "공정 실적 → 현장 작업자",
@@ -24058,13 +24070,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "공정 실적이 현장 작업자를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "공정 실적 → 현장 작업자 (작업자 번호로 연결)"
+        "name": "공정 실적 → 현장 작업자 (작업자 번호)"
       },
       "evidence": {
         "candidateId": "LR-production_result_worker_id_to_worker",
-        "fingerprint": "e09b7526614b638b",
-        "title": "공정 실적 → 현장 작업자 (작업자 번호로 연결)",
-        "reason": "공정 실적의 작업자 번호로 현장 작업자를 찾습니다. mes.production_result.worker_id의 값이 mes.worker의 기본키 id로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "b3351723d428c778",
+        "title": "공정 실적 → 현장 작업자 (작업자 번호)",
+        "reason": "공정 실적의 작업자 번호로 현장 작업자를 찾습니다. mes.production_result.worker_id의 값이 mes.worker의 기본키 id로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24121,7 +24133,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "ROUTING_PRODUCT_CODE_TO_ITEM",
           "name": "제품별 공정 → 품목",
@@ -24130,13 +24142,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "제품별 공정이 품목을 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "제품별 공정 → 품목 (제품 코드로 연결)"
+        "name": "제품별 공정 → 품목 (제품 코드)"
       },
       "evidence": {
         "candidateId": "LR-routing_product_code_to_item",
-        "fingerprint": "757221c62bea4a9c",
-        "title": "제품별 공정 → 품목 (제품 코드로 연결)",
-        "reason": "제품별 공정의 제품 코드로 품목을 찾습니다. mes.routing.product_code의 값이 erp.item의 기본키 item_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "b7e2704892eb6a33",
+        "title": "제품별 공정 → 품목 (제품 코드)",
+        "reason": "제품별 공정의 제품 코드로 품목을 찾습니다. mes.routing.product_code의 값이 erp.item의 기본키 item_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24193,7 +24205,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "SENSOR_READING_EQUIPMENT_CODE_TO_EQUIPMENT",
           "name": "설비 센서 측정 → 설비",
@@ -24202,13 +24214,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "설비 센서 측정이 설비를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "설비 센서 측정 → 설비 (설비 코드로 연결)"
+        "name": "설비 센서 측정 → 설비 (설비 코드)"
       },
       "evidence": {
         "candidateId": "LR-sensor_reading_equipment_code_to_equipment",
-        "fingerprint": "2050e351adaa4393",
-        "title": "설비 센서 측정 → 설비 (설비 코드로 연결)",
-        "reason": "설비 센서 측정의 설비 코드로 설비를 찾습니다. mes.sensor_reading.equipment_code의 값이 mes.equipment의 기본키 code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "771e99a15b5b37c8",
+        "title": "설비 센서 측정 → 설비 (설비 코드)",
+        "reason": "설비 센서 측정의 설비 코드로 설비를 찾습니다. mes.sensor_reading.equipment_code의 값이 mes.equipment의 기본키 code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24265,7 +24277,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "WORK_ORDER_PRODUCT_CODE_TO_ITEM",
           "name": "작업지시 → 품목",
@@ -24274,13 +24286,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "작업지시가 품목을 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "작업지시 → 품목 (생산 제품 코드로 연결)"
+        "name": "작업지시 → 품목 (생산 제품 코드)"
       },
       "evidence": {
         "candidateId": "LR-work_order_product_code_to_item",
-        "fingerprint": "1c4c513dc6fecf62",
-        "title": "작업지시 → 품목 (생산 제품 코드로 연결)",
-        "reason": "작업지시의 생산 제품 코드로 품목을 찾습니다. mes.work_order.product_code의 값이 erp.item의 기본키 item_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "d5ba4617ffc4e5c8",
+        "title": "작업지시 → 품목 (생산 제품 코드)",
+        "reason": "작업지시의 생산 제품 코드로 품목을 찾습니다. mes.work_order.product_code의 값이 erp.item의 기본키 item_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24337,7 +24349,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "WORK_ORDER_DIE_DRAWING_CODE_TO_DIE",
           "name": "작업지시 → 금형",
@@ -24346,13 +24358,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "작업지시가 금형을 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "작업지시 → 금형 (사용 금형 도면 번호로 연결)"
+        "name": "작업지시 → 금형 (사용 금형 도면 번호)"
       },
       "evidence": {
         "candidateId": "LR-work_order_die_drawing_code_to_die",
-        "fingerprint": "47530e377f410d4e",
-        "title": "작업지시 → 금형 (사용 금형 도면 번호로 연결)",
-        "reason": "작업지시의 사용 금형 도면 번호로 금형을 찾습니다. mes.work_order.die_drawing_code의 값이 mes.die의 다른 유일 키 drawing_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "594a40c6123e947c",
+        "title": "작업지시 → 금형 (사용 금형 도면 번호)",
+        "reason": "작업지시의 사용 금형 도면 번호로 금형을 찾습니다. mes.work_order.die_drawing_code의 값이 mes.die의 다른 유일 키 drawing_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24419,7 +24431,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "비교 전에 so_ref은(는) 숫자만 남기기, so_no은(는) 숫자만 남기기 (예: '2607001' → 'OD-2607-001')",
+        "description": "비교 방법: so_ref는 숫자만 남기기, so_no는 숫자만 남기기 (예: '2607001' → 'OD-2607-001')",
         "linkType": {
           "code": "WORK_ORDER_SO_REF_TO_SALES_ORDER",
           "name": "작업지시 → 수주",
@@ -24428,13 +24440,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "작업지시가 수주를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "작업지시 → 수주 (주문 참조 번호로 연결)"
+        "name": "작업지시 → 수주 (주문 참조 번호)"
       },
       "evidence": {
         "candidateId": "LR-work_order_so_ref_to_sales_order",
-        "fingerprint": "9e6cb33537315dc6",
-        "title": "작업지시 → 수주 (주문 참조 번호로 연결)",
-        "reason": "작업지시의 주문 참조 번호로 수주를 찾습니다. mes.work_order.so_ref의 값이 erp.sales_order의 기본키 so_no로 이어진다. 비교 전에 so_ref은(는) 숫자만 남기기, so_no은(는) 숫자만 남기기 (예: '2607001' → 'OD-2607-001'). 서로 다른 값 기준 98%, 행 기준 98% 이어짐. 안 이어지는 값 예: ['2609970', '2609971'].",
+        "fingerprint": "34ef72dbe55c9b6d",
+        "title": "작업지시 → 수주 (주문 참조 번호)",
+        "reason": "작업지시의 주문 참조 번호로 수주를 찾습니다. mes.work_order.so_ref의 값이 erp.sales_order의 기본키 so_no로 이어집니다. 비교 방법: so_ref는 숫자만 남기기, so_no는 숫자만 남기기 (예: '2607001' → 'OD-2607-001'). 서로 다른 값 기준 98%, 행 기준 98%가 이어집니다. 안 이어지는 값 예: ['2609970', '2609971'].",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24491,7 +24503,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "WORK_ORDER_OPERATION_WO_NO_TO_WORK_ORDER",
           "name": "작업지시 공정별 배정 → 작업지시",
@@ -24500,13 +24512,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "작업지시 공정별 배정이 작업지시를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "작업지시 공정별 배정 → 작업지시 (작업지시 번호로 연결)"
+        "name": "작업지시 공정별 배정 → 작업지시 (작업지시 번호)"
       },
       "evidence": {
         "candidateId": "LR-work_order_operation_wo_no_to_work_order",
-        "fingerprint": "47ab73149a3013a7",
-        "title": "작업지시 공정별 배정 → 작업지시 (작업지시 번호로 연결)",
-        "reason": "작업지시 공정별 배정의 작업지시 번호로 작업지시를 찾습니다. mes.work_order_operation.wo_no의 값이 mes.work_order의 기본키 wo_no로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "f1d238e600fc7995",
+        "title": "작업지시 공정별 배정 → 작업지시 (작업지시 번호)",
+        "reason": "작업지시 공정별 배정의 작업지시 번호로 작업지시를 찾습니다. mes.work_order_operation.wo_no의 값이 mes.work_order의 기본키 wo_no로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24563,7 +24575,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "WORK_ORDER_OPERATION_EQUIPMENT_CODE_TO_EQUIPMENT",
           "name": "작업지시 공정별 배정 → 설비",
@@ -24572,13 +24584,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "작업지시 공정별 배정이 설비를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "작업지시 공정별 배정 → 설비 (배정 설비 코드로 연결)"
+        "name": "작업지시 공정별 배정 → 설비 (배정 설비 코드)"
       },
       "evidence": {
         "candidateId": "LR-work_order_operation_equipment_code_to_equipment",
-        "fingerprint": "39de2d119d73774d",
-        "title": "작업지시 공정별 배정 → 설비 (배정 설비 코드로 연결)",
-        "reason": "작업지시 공정별 배정의 배정 설비 코드로 설비를 찾습니다. mes.work_order_operation.equipment_code의 값이 mes.equipment의 기본키 code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "f56424a422d75a21",
+        "title": "작업지시 공정별 배정 → 설비 (배정 설비 코드)",
+        "reason": "작업지시 공정별 배정의 배정 설비 코드로 설비를 찾습니다. mes.work_order_operation.equipment_code의 값이 mes.equipment의 기본키 code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24644,7 +24656,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "비교 전에 id은(는) 4자리로 0 채우기 → 앞에 'GP' 붙이기 (예: '24' → 'GP0024')",
+        "description": "비교 방법: id는 4자리로 0 채우기 → 앞에 'GP' 붙이기 (예: '24' → 'GP0024')",
         "linkType": {
           "code": "WORKER_ID_TO_EMPLOYEE",
           "name": "현장 작업자 → 직원",
@@ -24653,13 +24665,13 @@
           "cardinality": "ONE_TO_ONE",
           "description": "현장 작업자가 직원을 가리킵니다. 개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
         },
-        "name": "현장 작업자 → 직원 (작업자 번호로 연결)"
+        "name": "현장 작업자 → 직원 (작업자 번호)"
       },
       "evidence": {
         "candidateId": "LR-worker_id_to_employee",
-        "fingerprint": "5f135ec155662330",
-        "title": "현장 작업자 → 직원 (작업자 번호로 연결)",
-        "reason": "현장 작업자의 작업자 번호로 직원을 찾습니다. mes.worker.id의 값이 erp.employee의 기본키 emp_no로 이어진다. 비교 전에 id은(는) 4자리로 0 채우기 → 앞에 'GP' 붙이기 (예: '24' → 'GP0024'). 서로 다른 값 기준 94%, 행 기준 94% 이어짐. 안 이어지는 값 예: ['57'].",
+        "fingerprint": "da47788416c261c9",
+        "title": "현장 작업자 → 직원 (작업자 번호)",
+        "reason": "현장 작업자의 작업자 번호로 직원을 찾습니다. mes.worker.id의 값이 erp.employee의 기본키 emp_no로 이어집니다. 비교 방법: id는 4자리로 0 채우기 → 앞에 'GP' 붙이기 (예: '24' → 'GP0024'). 서로 다른 값 기준 94%, 행 기준 94%가 이어집니다. 안 이어지는 값 예: ['57'].",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24728,7 +24740,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "비교 전에 skill_level은(는) 4자리로 0 채우기 → 앞에 'FA-' 붙이기 (예: '1' → 'FA-0001')",
+        "description": "비교 방법: skill_level은 4자리로 0 채우기 → 앞에 'FA-' 붙이기 (예: '1' → 'FA-0001')",
         "linkType": {
           "code": "WORKER_SKILL_LEVEL_TO_FIXED_ASSET",
           "name": "현장 작업자 → 고정자산",
@@ -24737,13 +24749,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "현장 작업자가 고정자산을 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "현장 작업자 → 고정자산 (숙련도로 연결)"
+        "name": "현장 작업자 → 고정자산 (숙련도)"
       },
       "evidence": {
         "candidateId": "LR-worker_skill_level_to_fixed_asset",
-        "fingerprint": "276d24689721163e",
-        "title": "현장 작업자 → 고정자산 (숙련도로 연결)",
-        "reason": "현장 작업자의 숙련도로 고정자산을 찾습니다. mes.worker.skill_level의 값이 erp.fixed_asset의 기본키 asset_no로 이어진다. 비교 전에 skill_level은(는) 4자리로 0 채우기 → 앞에 'FA-' 붙이기 (예: '1' → 'FA-0001'). 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "255ad366c7100008",
+        "title": "현장 작업자 → 고정자산 (숙련도)",
+        "reason": "현장 작업자의 숙련도로 고정자산을 찾습니다. mes.worker.skill_level의 값이 erp.fixed_asset의 기본키 asset_no로 이어집니다. 비교 방법: skill_level은 4자리로 0 채우기 → 앞에 'FA-' 붙이기 (예: '1' → 'FA-0001'). 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24810,7 +24822,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "GOODS_RECEIPT_PO_NO_ITEM_CODE_TO_PURCHASE_ORDER_LINE",
           "name": "입고 → 구매 발주 상세",
@@ -24819,13 +24831,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "입고가 구매 발주 상세를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "입고 → 구매 발주 상세 (근거 발주 번호·입고 품번으로 연결)"
+        "name": "입고 → 구매 발주 상세 (근거 발주 번호·입고 품번)"
       },
       "evidence": {
         "candidateId": "LR-goods_receipt_po_no_item_code_to_purchase_order_line",
-        "fingerprint": "68323d67288efe5c",
-        "title": "입고 → 구매 발주 상세 (근거 발주 번호·입고 품번으로 연결)",
-        "reason": "입고의 근거 발주 번호·입고 품번으로 구매 발주 상세를 찾습니다. erp.goods_receipt.po_no + erp.goods_receipt.item_code의 값이 erp.purchase_order_line의 다른 유일 키 po_no + item_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "1527d0560b8befb4",
+        "title": "입고 → 구매 발주 상세 (근거 발주 번호·입고 품번)",
+        "reason": "입고의 근거 발주 번호·입고 품번으로 구매 발주 상세를 찾습니다. erp.goods_receipt.po_no + erp.goods_receipt.item_code의 값이 erp.purchase_order_line의 다른 유일 키 po_no + item_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -24881,7 +24893,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "SHIPMENT_SO_NO_ITEM_CODE_TO_SALES_ORDER_LINE",
           "name": "출하 → 수주 상세",
@@ -24890,13 +24902,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "출하가 수주 상세를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "출하 → 수주 상세 (근거 수주 번호·출하 품번으로 연결)"
+        "name": "출하 → 수주 상세 (근거 수주 번호·출하 품번)"
       },
       "evidence": {
         "candidateId": "LR-shipment_so_no_item_code_to_sales_order_line",
-        "fingerprint": "1fa877c56f9ef913",
-        "title": "출하 → 수주 상세 (근거 수주 번호·출하 품번으로 연결)",
-        "reason": "출하의 근거 수주 번호·출하 품번으로 수주 상세를 찾습니다. erp.shipment.so_no + erp.shipment.item_code의 값이 erp.sales_order_line의 다른 유일 키 so_no + item_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "6784e49f7f7c74ca",
+        "title": "출하 → 수주 상세 (근거 수주 번호·출하 품번)",
+        "reason": "출하의 근거 수주 번호·출하 품번으로 수주 상세를 찾습니다. erp.shipment.so_no + erp.shipment.item_code의 값이 erp.sales_order_line의 다른 유일 키 so_no + item_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -24952,7 +24964,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "GOODS_RECEIPT_WAREHOUSE_ITEM_CODE_TO_STOCK",
           "name": "입고 → 창고별 재고",
@@ -24961,13 +24973,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "입고가 창고별 재고를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "입고 → 창고별 재고 (입고 창고·입고 품번으로 연결)"
+        "name": "입고 → 창고별 재고 (입고 창고·입고 품번)"
       },
       "evidence": {
         "candidateId": "LR-goods_receipt_warehouse_item_code_to_stock",
-        "fingerprint": "89b05b4e159d04e3",
-        "title": "입고 → 창고별 재고 (입고 창고·입고 품번으로 연결)",
-        "reason": "입고의 입고 창고·입고 품번으로 창고별 재고를 찾습니다. erp.goods_receipt.warehouse + erp.goods_receipt.item_code의 값이 erp.stock의 기본키 warehouse + item_code로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "9f2c9fbd130a111e",
+        "title": "입고 → 창고별 재고 (입고 창고·입고 품번)",
+        "reason": "입고의 입고 창고·입고 품번으로 창고별 재고를 찾습니다. erp.goods_receipt.warehouse + erp.goods_receipt.item_code의 값이 erp.stock의 기본키 warehouse + item_code로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -25023,7 +25035,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "DEFECT_WO_NO_OP_SEQ_TO_WORK_ORDER_OPERATION",
           "name": "불량 기록 → 작업지시 공정별 배정",
@@ -25032,13 +25044,13 @@
           "cardinality": "ONE_TO_ONE",
           "description": "불량 기록이 작업지시 공정별 배정을 가리킵니다. 개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
         },
-        "name": "불량 기록 → 작업지시 공정별 배정 (작업지시 번호·발생 공정으로 연결)"
+        "name": "불량 기록 → 작업지시 공정별 배정 (작업지시 번호·발생 공정)"
       },
       "evidence": {
         "candidateId": "LR-defect_wo_no_op_seq_to_work_order_operation",
-        "fingerprint": "af02a0cce0508133",
-        "title": "불량 기록 → 작업지시 공정별 배정 (작업지시 번호·발생 공정으로 연결)",
-        "reason": "불량 기록의 작업지시 번호·발생 공정으로 작업지시 공정별 배정을 찾습니다. mes.defect.wo_no + mes.defect.op_seq의 값이 mes.work_order_operation의 기본키 wo_no + op_seq로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "23b3655535c108e0",
+        "title": "불량 기록 → 작업지시 공정별 배정 (작업지시 번호·발생 공정)",
+        "reason": "불량 기록의 작업지시 번호·발생 공정으로 작업지시 공정별 배정을 찾습니다. mes.defect.wo_no + mes.defect.op_seq의 값이 mes.work_order_operation의 기본키 wo_no + op_seq로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25094,7 +25106,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "PRODUCTION_RESULT_WO_NO_OP_SEQ_TO_WORK_ORDER_OPERATION",
           "name": "공정 실적 → 작업지시 공정별 배정",
@@ -25103,13 +25115,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "공정 실적이 작업지시 공정별 배정을 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "공정 실적 → 작업지시 공정별 배정 (작업지시 번호·공정 순서로 연결)"
+        "name": "공정 실적 → 작업지시 공정별 배정 (작업지시 번호·공정 순서)"
       },
       "evidence": {
         "candidateId": "LR-production_result_wo_no_op_seq_to_work_order_operation",
-        "fingerprint": "6e96d71e8043224c",
-        "title": "공정 실적 → 작업지시 공정별 배정 (작업지시 번호·공정 순서로 연결)",
-        "reason": "공정 실적의 작업지시 번호·공정 순서로 작업지시 공정별 배정을 찾습니다. mes.production_result.wo_no + mes.production_result.op_seq의 값이 mes.work_order_operation의 기본키 wo_no + op_seq로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "c4544688cea9db86",
+        "title": "공정 실적 → 작업지시 공정별 배정 (작업지시 번호·공정 순서)",
+        "reason": "공정 실적의 작업지시 번호·공정 순서로 작업지시 공정별 배정을 찾습니다. mes.production_result.wo_no + mes.production_result.op_seq의 값이 mes.work_order_operation의 기본키 wo_no + op_seq로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25175,7 +25187,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "비교 전에 so_ref은(는) 숫자만 남기기, so_no은(는) 숫자만 남기기 (예: '2607001|RNF-320L' → 'OD-2607-001|RNF-320L')",
+        "description": "비교 방법: so_ref는 숫자만 남기기, so_no는 숫자만 남기기 (예: '2607001|RNF-320L' → 'OD-2607-001|RNF-320L')",
         "linkType": {
           "code": "WORK_ORDER_SO_REF_PRODUCT_CODE_TO_SALES_ORDER_LINE",
           "name": "작업지시 → 수주 상세",
@@ -25184,13 +25196,13 @@
           "cardinality": "ONE_TO_ONE",
           "description": "작업지시가 수주 상세를 가리킵니다. 개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
         },
-        "name": "작업지시 → 수주 상세 (주문 참조 번호·생산 제품 코드로 연결)"
+        "name": "작업지시 → 수주 상세 (주문 참조 번호·생산 제품 코드)"
       },
       "evidence": {
         "candidateId": "LR-work_order_so_ref_product_code_to_sales_order_line",
-        "fingerprint": "e34234c357790a96",
-        "title": "작업지시 → 수주 상세 (주문 참조 번호·생산 제품 코드로 연결)",
-        "reason": "작업지시의 주문 참조 번호·생산 제품 코드로 수주 상세를 찾습니다. mes.work_order.so_ref + mes.work_order.product_code의 값이 erp.sales_order_line의 다른 유일 키 so_no + item_code로 이어진다. 비교 전에 so_ref은(는) 숫자만 남기기, so_no은(는) 숫자만 남기기 (예: '2607001|RNF-320L' → 'OD-2607-001|RNF-320L'). 서로 다른 값 기준 98%, 행 기준 98% 이어짐.",
+        "fingerprint": "b5ce7127be1b3840",
+        "title": "작업지시 → 수주 상세 (주문 참조 번호·생산 제품 코드)",
+        "reason": "작업지시의 주문 참조 번호·생산 제품 코드로 수주 상세를 찾습니다. mes.work_order.so_ref + mes.work_order.product_code의 값이 erp.sales_order_line의 다른 유일 키 so_no + item_code로 이어집니다. 비교 방법: so_ref는 숫자만 남기기, so_no는 숫자만 남기기 (예: '2607001|RNF-320L' → 'OD-2607-001|RNF-320L'). 서로 다른 값 기준 98%, 행 기준 98%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25242,7 +25254,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "ROUTING_EQUIPMENT_KIND_TO_EQUIPMENT",
           "name": "제품별 공정 → 설비",
@@ -25251,13 +25263,13 @@
           "cardinality": "MANY_TO_MANY",
           "description": "제품별 공정이 설비를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "제품별 공정 → 설비 (필요한 설비 종류로 연결)"
+        "name": "제품별 공정 → 설비 (필요한 설비 종류)"
       },
       "evidence": {
         "candidateId": "LR-routing_equipment_kind_to_equipment",
-        "fingerprint": "50073638ec0be526",
-        "title": "제품별 공정 → 설비 (필요한 설비 종류로 연결)",
-        "reason": "제품별 공정의 필요한 설비 종류로 설비를 찾습니다. mes.routing.equipment_kind의 값이 mes.equipment의 종류 값(키 아님) kind로 이어진다. 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "d47d84368c6ff9f8",
+        "title": "제품별 공정 → 설비 (필요한 설비 종류)",
+        "reason": "제품별 공정의 필요한 설비 종류로 설비를 찾습니다. mes.routing.equipment_kind의 값이 mes.equipment의 종류 값(키 아님) kind로 이어집니다. 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25317,7 +25329,7 @@
           "property": "MAINTENANCE_ORDER.target_type",
           "equals": "금형"
         },
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "MAINTENANCE_ORDER_TARGET_CODE_TO_DIE_WHEN_TARGET_TYPE",
           "name": "정비 지시 → 금형",
@@ -25326,13 +25338,13 @@
           "cardinality": "ONE_TO_ONE",
           "description": "정비 지시가 금형을 가리킵니다 (target_type = 금형일 때). 개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
         },
-        "name": "정비 지시 → 금형 (정비 대상 코드로 연결)"
+        "name": "정비 지시 → 금형 (정비 대상 코드)"
       },
       "evidence": {
         "candidateId": "LR-maintenance_order_target_code_to_die_when_target_type",
-        "fingerprint": "89085827d13bf145",
-        "title": "정비 지시 → 금형 (정비 대상 코드로 연결)",
-        "reason": "정비 지시의 정비 대상 코드로 금형을 찾습니다. mes.maintenance_order.target_code의 값이 mes.die의 기본키 die_code로 이어진다 (target_type = 금형일 때). 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "520771580e33f856",
+        "title": "정비 지시 → 금형 (정비 대상 코드)",
+        "reason": "정비 지시의 정비 대상 코드로 금형을 찾습니다. mes.maintenance_order.target_code의 값이 mes.die의 기본키 die_code로 이어집니다 (target_type = 금형일 때). 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25390,7 +25402,7 @@
           "property": "MAINTENANCE_ORDER.target_type",
           "equals": "설비"
         },
-        "description": "값을 그대로 비교",
+        "description": "비교 방법: 값을 그대로 비교",
         "linkType": {
           "code": "MAINTENANCE_ORDER_TARGET_CODE_TO_EQUIPMENT_WHEN_TARGET_TYPE",
           "name": "정비 지시 → 설비",
@@ -25399,13 +25411,13 @@
           "cardinality": "MANY_TO_ONE",
           "description": "정비 지시가 설비를 가리킵니다 (target_type = 설비일 때). 개수 관계는 데이터에서 관찰한 값."
         },
-        "name": "정비 지시 → 설비 (정비 대상 코드로 연결)"
+        "name": "정비 지시 → 설비 (정비 대상 코드)"
       },
       "evidence": {
         "candidateId": "LR-maintenance_order_target_code_to_equipment_when_target_type",
-        "fingerprint": "1c43d6dada8d560c",
-        "title": "정비 지시 → 설비 (정비 대상 코드로 연결)",
-        "reason": "정비 지시의 정비 대상 코드로 설비를 찾습니다. mes.maintenance_order.target_code의 값이 mes.equipment의 기본키 code로 이어진다 (target_type = 설비일 때). 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "fingerprint": "d1d0532d57ba4bb0",
+        "title": "정비 지시 → 설비 (정비 대상 코드)",
+        "reason": "정비 지시의 정비 대상 코드로 설비를 찾습니다. mes.maintenance_order.target_code의 값이 mes.equipment의 기본키 code로 이어집니다 (target_type = 설비일 때). 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25460,7 +25472,7 @@
         "candidateId": "LT-defect_wo_no_op_seq_to_routing_via_work_order",
         "fingerprint": "158a0d721e52527c",
         "title": "불량 기록 → 제품별 공정",
-        "reason": "mes.defect.wo_no + mes.defect.op_seq의 값이 mes.routing의 기본키 product_code + op_seq로 이어진다 (wo_no로 mes.work_order를 찾아 그 product_code로 비교). 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "reason": "mes.defect.wo_no + mes.defect.op_seq의 값이 mes.routing의 기본키 product_code + op_seq로 이어집니다 (wo_no로 mes.work_order를 찾아 그 product_code로 비교). 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25510,7 +25522,7 @@
         "candidateId": "LT-production_result_wo_no_op_seq_to_routing_via_work_order",
         "fingerprint": "4ed78585a2f1d48f",
         "title": "공정 실적 → 제품별 공정",
-        "reason": "mes.production_result.wo_no + mes.production_result.op_seq의 값이 mes.routing의 기본키 product_code + op_seq로 이어진다 (wo_no로 mes.work_order를 찾아 그 product_code로 비교). 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "reason": "mes.production_result.wo_no + mes.production_result.op_seq의 값이 mes.routing의 기본키 product_code + op_seq로 이어집니다 (wo_no로 mes.work_order를 찾아 그 product_code로 비교). 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25560,7 +25572,7 @@
         "candidateId": "LT-work_order_operation_wo_no_op_seq_to_routing_via_work_order",
         "fingerprint": "fda0b98d903f5c93",
         "title": "작업지시 공정별 배정 → 제품별 공정",
-        "reason": "mes.work_order_operation.wo_no + mes.work_order_operation.op_seq의 값이 mes.routing의 기본키 product_code + op_seq로 이어진다 (wo_no로 mes.work_order를 찾아 그 product_code로 비교). 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100% 이어짐.",
+        "reason": "mes.work_order_operation.wo_no + mes.work_order_operation.op_seq의 값이 mes.routing의 기본키 product_code + op_seq로 이어집니다 (wo_no로 mes.work_order를 찾아 그 product_code로 비교). 비교 방법: 값을 그대로 비교. 서로 다른 값 기준 100%, 행 기준 100%가 이어집니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25815,13 +25827,13 @@
         "mentionText": "P201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260804-D → 설비 P201"
+        "name": "교대 인수인계 메모 HN-260804-D의 설비 P201"
       },
       "evidence": {
         "candidateId": "DL-HN-260804-D-e1",
         "fingerprint": "f31e966cf4208a37",
-        "title": "교대 인수인계 메모 HN-260804-D → 설비 P201",
-        "reason": "글에 나온 'P201'을 설비 P201에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260804-D의 설비 P201",
+        "reason": "글에 'P201'이 적혀 있습니다: “오후 3시쯤 P201 진동이 평소보다 커서 점검 요청함.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25869,13 +25881,13 @@
         "mentionText": "JB2608-0103",
         "targetObjectRef": "mes.work_order:JB2608-0103",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260805-N → 작업지시 JB2608-0103"
+        "name": "교대 인수인계 메모 HN-260805-N의 작업지시 JB2608-0103"
       },
       "evidence": {
         "candidateId": "DL-HN-260805-N-e1",
         "fingerprint": "fea200c90cd241a2",
-        "title": "교대 인수인계 메모 HN-260805-N → 작업지시 JB2608-0103",
-        "reason": "글에 나온 'JB2608-0103'을 작업지시 JB2608-0103에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260805-N의 작업지시 JB2608-0103",
+        "reason": "글에 'JB2608-0103'이 적혀 있습니다: “JB2608-0103 잔량 1,100개는 주간조에 넘김.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25923,13 +25935,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260808-N → 설비 P103"
+        "name": "교대 인수인계 메모 HN-260808-N의 설비 P103"
       },
       "evidence": {
         "candidateId": "DL-HN-260808-N-e1",
         "fingerprint": "814c61b63e65ff48",
-        "title": "교대 인수인계 메모 HN-260808-N → 설비 P103",
-        "reason": "글에 나온 'P103'을 설비 P103에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260808-N의 설비 P103",
+        "reason": "글에 'P103'이 적혀 있습니다: “P103 진동 이상 없음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25977,13 +25989,13 @@
         "mentionText": "JB2608-0129",
         "targetObjectRef": "mes.work_order:JB2608-0129",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260820-N → 작업지시 JB2608-0129"
+        "name": "교대 인수인계 메모 HN-260820-N의 작업지시 JB2608-0129"
       },
       "evidence": {
         "candidateId": "DL-HN-260820-N-e1",
         "fingerprint": "93357d510b3c0365",
-        "title": "교대 인수인계 메모 HN-260820-N → 작업지시 JB2608-0129",
-        "reason": "글에 나온 'JB2608-0129'를 작업지시 JB2608-0129에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260820-N의 작업지시 JB2608-0129",
+        "reason": "글에 'JB2608-0129'가 적혀 있습니다: “JB2608-0129 잔량 1,900개는 주간조에 넘김.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26031,13 +26043,13 @@
         "mentionText": "JB2608-0130",
         "targetObjectRef": "mes.work_order:JB2608-0130",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260820-N → 작업지시 JB2608-0130"
+        "name": "교대 인수인계 메모 HN-260820-N의 작업지시 JB2608-0130"
       },
       "evidence": {
         "candidateId": "DL-HN-260820-N-e2",
         "fingerprint": "eb9f320db795b50c",
-        "title": "교대 인수인계 메모 HN-260820-N → 작업지시 JB2608-0130",
-        "reason": "글에 나온 'JB2608-0130'을 작업지시 JB2608-0130에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260820-N의 작업지시 JB2608-0130",
+        "reason": "글에 'JB2608-0130'이 적혀 있습니다: “JB2608-0130 잔량 900개는 주간조에 넘김.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26085,13 +26097,13 @@
         "mentionText": "P101",
         "targetObjectRef": "mes.equipment:P101",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260821-N → 설비 P101"
+        "name": "교대 인수인계 메모 HN-260821-N의 설비 P101"
       },
       "evidence": {
         "candidateId": "DL-HN-260821-N-e1",
         "fingerprint": "43155f87e351a506",
-        "title": "교대 인수인계 메모 HN-260821-N → 설비 P101",
-        "reason": "글에 나온 'P101'을 설비 P101에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260821-N의 설비 P101",
+        "reason": "글에 'P101'이 적혀 있습니다: “P101 이음 발생.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26139,13 +26151,13 @@
         "mentionText": "JB2608-0147",
         "targetObjectRef": "mes.work_order:JB2608-0147",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260829-D → 작업지시 JB2608-0147"
+        "name": "교대 인수인계 메모 HN-260829-D의 작업지시 JB2608-0147"
       },
       "evidence": {
         "candidateId": "DL-HN-260829-D-e1",
         "fingerprint": "f79193036753ca30",
-        "title": "교대 인수인계 메모 HN-260829-D → 작업지시 JB2608-0147",
-        "reason": "글에 나온 'JB2608-0147'을 작업지시 JB2608-0147에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260829-D의 작업지시 JB2608-0147",
+        "reason": "글에 'JB2608-0147'이 적혀 있습니다: “JB2608-0147 잔량 700개는 야간조에 넘김.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26193,13 +26205,13 @@
         "mentionText": "P101",
         "targetObjectRef": "mes.equipment:P101",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260831-N → 설비 P101"
+        "name": "교대 인수인계 메모 HN-260831-N의 설비 P101"
       },
       "evidence": {
         "candidateId": "DL-HN-260831-N-e1",
         "fingerprint": "5d61bf4968b056f5",
-        "title": "교대 인수인계 메모 HN-260831-N → 설비 P101",
-        "reason": "글에 나온 'P101'을 설비 P101에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260831-N의 설비 P101",
+        "reason": "글에 'P101'이 적혀 있습니다: “P101 누유 없음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26247,13 +26259,13 @@
         "mentionText": "RP-26-005",
         "targetObjectRef": "mes.maintenance_order:RP-26-005",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260906-N → 정비 지시 RP-26-005"
+        "name": "교대 인수인계 메모 HN-260906-N의 정비 지시 RP-26-005"
       },
       "evidence": {
         "candidateId": "DL-HN-260906-N-e1",
         "fingerprint": "b679c7fed66ebacc",
-        "title": "교대 인수인계 메모 HN-260906-N → 정비 지시 RP-26-005",
-        "reason": "글에 나온 'RP-26-005'를 정비 지시 RP-26-005에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260906-N의 정비 지시 RP-26-005",
+        "reason": "글에 'RP-26-005'가 적혀 있습니다: “RP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26301,13 +26313,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260906-N → 설비 P103"
+        "name": "교대 인수인계 메모 HN-260906-N의 설비 P103"
       },
       "evidence": {
         "candidateId": "DL-HN-260906-N-e2",
         "fingerprint": "a432b245216ee57d",
-        "title": "교대 인수인계 메모 HN-260906-N → 설비 P103",
-        "reason": "글에 나온 'P103'을 설비 P103에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260906-N의 설비 P103",
+        "reason": "글에 'P103'이 적혀 있습니다: “RP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26355,13 +26367,13 @@
         "mentionText": "P201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260906-N → 설비 P201"
+        "name": "교대 인수인계 메모 HN-260906-N의 설비 P201"
       },
       "evidence": {
         "candidateId": "DL-HN-260906-N-e3",
         "fingerprint": "2fc1bc88a99d014f",
-        "title": "교대 인수인계 메모 HN-260906-N → 설비 P201",
-        "reason": "글에 나온 'P201'을 설비 P201에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260906-N의 설비 P201",
+        "reason": "글에 'P201'이 적혀 있습니다: “P201 이음 발생.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26409,13 +26421,13 @@
         "mentionText": "p201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260909-D → 설비 P201"
+        "name": "교대 인수인계 메모 HN-260909-D의 설비 P201"
       },
       "evidence": {
         "candidateId": "DL-HN-260909-D-e1",
         "fingerprint": "2e3a0396ad392f1e",
-        "title": "교대 인수인계 메모 HN-260909-D → 설비 P201",
-        "reason": "글에 나온 'p201'을 설비 P201에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260909-D의 설비 P201",
+        "reason": "글에 'p201'이 적혀 있습니다: “p201 온도 경고 2회.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26463,13 +26475,13 @@
         "mentionText": "p201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260909-N → 설비 P201"
+        "name": "교대 인수인계 메모 HN-260909-N의 설비 P201"
       },
       "evidence": {
         "candidateId": "DL-HN-260909-N-e1",
         "fingerprint": "9ad171a73de9bd86",
-        "title": "교대 인수인계 메모 HN-260909-N → 설비 P201",
-        "reason": "글에 나온 'p201'을 설비 P201에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260909-N의 설비 P201",
+        "reason": "글에 'p201'이 적혀 있습니다: “p201 온도 경고 2회.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26517,13 +26529,13 @@
         "mentionText": "JB2609-0115",
         "targetObjectRef": "mes.work_order:JB2609-0115",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260910-N → 작업지시 JB2609-0115"
+        "name": "교대 인수인계 메모 HN-260910-N의 작업지시 JB2609-0115"
       },
       "evidence": {
         "candidateId": "DL-HN-260910-N-e1",
         "fingerprint": "335219b076636965",
-        "title": "교대 인수인계 메모 HN-260910-N → 작업지시 JB2609-0115",
-        "reason": "글에 나온 'JB2609-0115'를 작업지시 JB2609-0115에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260910-N의 작업지시 JB2609-0115",
+        "reason": "글에 'JB2609-0115'가 적혀 있습니다: “JB2609-0115 잔량 900개는 주간조에 넘김.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26571,13 +26583,13 @@
         "mentionText": "RP-26-007",
         "targetObjectRef": "mes.maintenance_order:RP-26-007",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260911-N → 정비 지시 RP-26-007"
+        "name": "교대 인수인계 메모 HN-260911-N의 정비 지시 RP-26-007"
       },
       "evidence": {
         "candidateId": "DL-HN-260911-N-e1",
         "fingerprint": "4907bccae871dde5",
-        "title": "교대 인수인계 메모 HN-260911-N → 정비 지시 RP-26-007",
-        "reason": "글에 나온 'RP-26-007'을 정비 지시 RP-26-007에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260911-N의 정비 지시 RP-26-007",
+        "reason": "글에 'RP-26-007'이 적혀 있습니다: “RP-26-007 윤활 배관 점검·보충 이후 1라인 블랭킹기 이상 없음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26625,13 +26637,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260914-D → 설비 P103"
+        "name": "교대 인수인계 메모 HN-260914-D의 설비 P103"
       },
       "evidence": {
         "candidateId": "DL-HN-260914-D-e1",
         "fingerprint": "e07b2faa7814fcc1",
-        "title": "교대 인수인계 메모 HN-260914-D → 설비 P103",
-        "reason": "글에 나온 'P103'을 설비 P103에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260914-D의 설비 P103",
+        "reason": "글에 'P103'이 적혀 있습니다: “P103 이음 발생.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26679,13 +26691,13 @@
         "mentionText": "P101",
         "targetObjectRef": "mes.equipment:P101",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260914-D → 설비 P101"
+        "name": "교대 인수인계 메모 HN-260914-D의 설비 P101"
       },
       "evidence": {
         "candidateId": "DL-HN-260914-D-e2",
         "fingerprint": "273d0908f43bc344",
-        "title": "교대 인수인계 메모 HN-260914-D → 설비 P101",
-        "reason": "글에 나온 'P101'을 설비 P101에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260914-D의 설비 P101",
+        "reason": "글에 'P101'이 적혀 있습니다: “P101 누유 없음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26733,13 +26745,13 @@
         "mentionText": "P201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260916-D → 설비 P201"
+        "name": "교대 인수인계 메모 HN-260916-D의 설비 P201"
       },
       "evidence": {
         "candidateId": "DL-HN-260916-D-e1",
         "fingerprint": "430bcb0c4acd55d1",
-        "title": "교대 인수인계 메모 HN-260916-D → 설비 P201",
-        "reason": "글에 나온 'P201'을 설비 P201에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260916-D의 설비 P201",
+        "reason": "글에 'P201'이 적혀 있습니다: “P201 누유 없음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26787,13 +26799,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260916-N → 설비 P103"
+        "name": "교대 인수인계 메모 HN-260916-N의 설비 P103"
       },
       "evidence": {
         "candidateId": "DL-HN-260916-N-e1",
         "fingerprint": "e4b5e12c5d06a3a2",
-        "title": "교대 인수인계 메모 HN-260916-N → 설비 P103",
-        "reason": "글에 나온 'P103'을 설비 P103에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260916-N의 설비 P103",
+        "reason": "글에 'P103'이 적혀 있습니다: “P103 누유 없음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26841,13 +26853,13 @@
         "mentionText": "JB2609-0121",
         "targetObjectRef": "mes.work_order:JB2609-0121",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260917-D → 작업지시 JB2609-0121"
+        "name": "교대 인수인계 메모 HN-260917-D의 작업지시 JB2609-0121"
       },
       "evidence": {
         "candidateId": "DL-HN-260917-D-e1",
         "fingerprint": "9083cb75290f289d",
-        "title": "교대 인수인계 메모 HN-260917-D → 작업지시 JB2609-0121",
-        "reason": "글에 나온 'JB2609-0121'을 작업지시 JB2609-0121에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260917-D의 작업지시 JB2609-0121",
+        "reason": "글에 'JB2609-0121'이 적혀 있습니다: “JB2609-0121 잔량 2,000개는 야간조에 넘김.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26895,13 +26907,13 @@
         "mentionText": "JB2609-0125",
         "targetObjectRef": "mes.work_order:JB2609-0125",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260918-N → 작업지시 JB2609-0125"
+        "name": "교대 인수인계 메모 HN-260918-N의 작업지시 JB2609-0125"
       },
       "evidence": {
         "candidateId": "DL-HN-260918-N-e1",
         "fingerprint": "1b9af1bc26be4ad4",
-        "title": "교대 인수인계 메모 HN-260918-N → 작업지시 JB2609-0125",
-        "reason": "글에 나온 'JB2609-0125'를 작업지시 JB2609-0125에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260918-N의 작업지시 JB2609-0125",
+        "reason": "글에 'JB2609-0125'가 적혀 있습니다: “JB2609-0125 잔량 400개는 주간조에 넘김.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26949,13 +26961,13 @@
         "mentionText": "P201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-260930-D → 설비 P201"
+        "name": "교대 인수인계 메모 HN-260930-D의 설비 P201"
       },
       "evidence": {
         "candidateId": "DL-HN-260930-D-e1",
         "fingerprint": "05b6709ef7c98fee",
-        "title": "교대 인수인계 메모 HN-260930-D → 설비 P201",
-        "reason": "글에 나온 'P201'을 설비 P201에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-260930-D의 설비 P201",
+        "reason": "글에 'P201'이 적혀 있습니다: “P201 누유 없음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27003,13 +27015,13 @@
         "mentionText": "RP-26-005",
         "targetObjectRef": "mes.maintenance_order:RP-26-005",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261006-D → 정비 지시 RP-26-005"
+        "name": "교대 인수인계 메모 HN-261006-D의 정비 지시 RP-26-005"
       },
       "evidence": {
         "candidateId": "DL-HN-261006-D-e1",
         "fingerprint": "a046f94e82059063",
-        "title": "교대 인수인계 메모 HN-261006-D → 정비 지시 RP-26-005",
-        "reason": "글에 나온 'RP-26-005'를 정비 지시 RP-26-005에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261006-D의 정비 지시 RP-26-005",
+        "reason": "글에 'RP-26-005'가 적혀 있습니다: “RP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27057,13 +27069,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261006-D → 설비 P103"
+        "name": "교대 인수인계 메모 HN-261006-D의 설비 P103"
       },
       "evidence": {
         "candidateId": "DL-HN-261006-D-e2",
         "fingerprint": "54e738bbc272f45d",
-        "title": "교대 인수인계 메모 HN-261006-D → 설비 P103",
-        "reason": "글에 나온 'P103'을 설비 P103에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261006-D의 설비 P103",
+        "reason": "글에 'P103'이 적혀 있습니다: “RP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27111,13 +27123,13 @@
         "mentionText": "JB2610-0117",
         "targetObjectRef": "mes.work_order:JB2610-0117",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261009-N → 작업지시 JB2610-0117"
+        "name": "교대 인수인계 메모 HN-261009-N의 작업지시 JB2610-0117"
       },
       "evidence": {
         "candidateId": "DL-HN-261009-N-e1",
         "fingerprint": "676a0ccd9efee308",
-        "title": "교대 인수인계 메모 HN-261009-N → 작업지시 JB2610-0117",
-        "reason": "글에 나온 'JB2610-0117'을 작업지시 JB2610-0117에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261009-N의 작업지시 JB2610-0117",
+        "reason": "글에 'JB2610-0117'이 적혀 있습니다: “JB2610-0117 잔량 800개는 주간조에 넘김.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27165,13 +27177,13 @@
         "mentionText": "LT261017-1",
         "targetObjectRef": "erp.shipment:DL2610-0036",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261014-N → 출하 DL2610-0036"
+        "name": "교대 인수인계 메모 HN-261014-N의 출하 DL2610-0036"
       },
       "evidence": {
         "candidateId": "DL-HN-261014-N-e1",
         "fingerprint": "dbc4bd4fada940c1",
-        "title": "교대 인수인계 메모 HN-261014-N → 출하 DL2610-0036",
-        "reason": "글에 나온 'LT261017-1'을 출하 DL2610-0036에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261014-N의 출하 DL2610-0036",
+        "reason": "글에 적힌 'LT261017-1'로 출하 DL2610-0036을 찾았습니다: “LT261017-1 출하 전 외관 확인 완료.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27192,8 +27204,8 @@
         ],
         "confidenceItems": [
           {
-            "label": "글의 설비 이름·별명을 설비 목록과 맞춤",
-            "weight": 0.8,
+            "label": "글에 원천 키가 그대로 적혀 있음 — 평가에서 잘못 찾은 것 0건(20개 중 20개)",
+            "weight": 0.95,
             "group": "근거"
           }
         ],
@@ -27206,7 +27218,7 @@
         "observations": [],
         "times": []
       },
-      "aiConfidence": 0.8,
+      "aiConfidence": 0.95,
       "options": []
     },
     {
@@ -27219,13 +27231,13 @@
         "mentionText": "JB2610-0125",
         "targetObjectRef": "mes.work_order:JB2610-0125",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261014-N → 작업지시 JB2610-0125"
+        "name": "교대 인수인계 메모 HN-261014-N의 작업지시 JB2610-0125"
       },
       "evidence": {
         "candidateId": "DL-HN-261014-N-e2",
         "fingerprint": "a105d68a02c830db",
-        "title": "교대 인수인계 메모 HN-261014-N → 작업지시 JB2610-0125",
-        "reason": "글에 나온 'JB2610-0125'를 작업지시 JB2610-0125에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261014-N의 작업지시 JB2610-0125",
+        "reason": "글에 'JB2610-0125'가 적혀 있습니다: “JB2610-0125 잔량 400개는 주간조에 넘김.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27273,13 +27285,13 @@
         "mentionText": "P201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261015-D → 설비 P201"
+        "name": "교대 인수인계 메모 HN-261015-D의 설비 P201"
       },
       "evidence": {
         "candidateId": "DL-HN-261015-D-e1",
         "fingerprint": "c699bd839c5b0d98",
-        "title": "교대 인수인계 메모 HN-261015-D → 설비 P201",
-        "reason": "글에 나온 'P201'을 설비 P201에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261015-D의 설비 P201",
+        "reason": "글에 'P201'이 적혀 있습니다: “교대 직후 P201 이음이 들려서 가동 멈추고 확인함.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27327,13 +27339,13 @@
         "mentionText": "JB2610-0131",
         "targetObjectRef": "mes.work_order:JB2610-0131",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261017-D → 작업지시 JB2610-0131"
+        "name": "교대 인수인계 메모 HN-261017-D의 작업지시 JB2610-0131"
       },
       "evidence": {
         "candidateId": "DL-HN-261017-D-e1",
         "fingerprint": "ef284c350758b8b6",
-        "title": "교대 인수인계 메모 HN-261017-D → 작업지시 JB2610-0131",
-        "reason": "글에 나온 'JB2610-0131'을 작업지시 JB2610-0131에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261017-D의 작업지시 JB2610-0131",
+        "reason": "글에 'JB2610-0131'이 적혀 있습니다: “JB2610-0131 잔량 300개는 야간조에 넘김.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27381,13 +27393,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261019-D → 설비 P103"
+        "name": "교대 인수인계 메모 HN-261019-D의 설비 P103"
       },
       "evidence": {
         "candidateId": "DL-HN-261019-D-e1",
         "fingerprint": "ade74b57b0f331c0",
-        "title": "교대 인수인계 메모 HN-261019-D → 설비 P103",
-        "reason": "글에 나온 'P103'을 설비 P103에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261019-D의 설비 P103",
+        "reason": "글에 'P103'이 적혀 있습니다: “점심 직후 P103 이음이 들려서 가동 멈추고 확인함.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27435,13 +27447,13 @@
         "mentionText": "LT261024-1",
         "targetObjectRef": "erp.shipment:DL2610-0050",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261024-D → 출하 DL2610-0050"
+        "name": "교대 인수인계 메모 HN-261024-D의 출하 DL2610-0050"
       },
       "evidence": {
         "candidateId": "DL-HN-261024-D-e1",
         "fingerprint": "f7a7a11d46d8d43e",
-        "title": "교대 인수인계 메모 HN-261024-D → 출하 DL2610-0050",
-        "reason": "글에 나온 'LT261024-1'을 출하 DL2610-0050에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261024-D의 출하 DL2610-0050",
+        "reason": "글에 적힌 'LT261024-1'로 출하 DL2610-0050을 찾았습니다: “LT261024-1 출하 전 외관 확인 완료.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27462,8 +27474,8 @@
         ],
         "confidenceItems": [
           {
-            "label": "글의 설비 이름·별명을 설비 목록과 맞춤",
-            "weight": 0.8,
+            "label": "글에 원천 키가 그대로 적혀 있음 — 평가에서 잘못 찾은 것 0건(20개 중 20개)",
+            "weight": 0.95,
             "group": "근거"
           }
         ],
@@ -27476,7 +27488,7 @@
         "observations": [],
         "times": []
       },
-      "aiConfidence": 0.8,
+      "aiConfidence": 0.95,
       "options": []
     },
     {
@@ -27489,13 +27501,13 @@
         "mentionText": "JB2610-0139",
         "targetObjectRef": "mes.work_order:JB2610-0139",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261024-N → 작업지시 JB2610-0139"
+        "name": "교대 인수인계 메모 HN-261024-N의 작업지시 JB2610-0139"
       },
       "evidence": {
         "candidateId": "DL-HN-261024-N-e1",
         "fingerprint": "a03e86ff0709c56a",
-        "title": "교대 인수인계 메모 HN-261024-N → 작업지시 JB2610-0139",
-        "reason": "글에 나온 'JB2610-0139'를 작업지시 JB2610-0139에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261024-N의 작업지시 JB2610-0139",
+        "reason": "글에 'JB2610-0139'가 적혀 있습니다: “JB2610-0139 잔량 1,100개는 주간조에 넘김.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27543,13 +27555,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261028-D → 설비 P103"
+        "name": "교대 인수인계 메모 HN-261028-D의 설비 P103"
       },
       "evidence": {
         "candidateId": "DL-HN-261028-D-e1",
         "fingerprint": "e3de2a38fcd2ef2b",
-        "title": "교대 인수인계 메모 HN-261028-D → 설비 P103",
-        "reason": "글에 나온 'P103'을 설비 P103에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261028-D의 설비 P103",
+        "reason": "글에 'P103'이 적혀 있습니다: “P103 진동 상한 넘음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27597,13 +27609,13 @@
         "mentionText": "P101",
         "targetObjectRef": "mes.equipment:P101",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261029-D → 설비 P101"
+        "name": "교대 인수인계 메모 HN-261029-D의 설비 P101"
       },
       "evidence": {
         "candidateId": "DL-HN-261029-D-e1",
         "fingerprint": "c03c2f4babeba2b6",
-        "title": "교대 인수인계 메모 HN-261029-D → 설비 P101",
-        "reason": "글에 나온 'P101'을 설비 P101에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261029-D의 설비 P101",
+        "reason": "글에 'P101'이 적혀 있습니다: “P101 누유 없음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27651,13 +27663,13 @@
         "mentionText": "RP-26-011",
         "targetObjectRef": "mes.maintenance_order:RP-26-011",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261029-D → 정비 지시 RP-26-011"
+        "name": "교대 인수인계 메모 HN-261029-D의 정비 지시 RP-26-011"
       },
       "evidence": {
         "candidateId": "DL-HN-261029-D-e2",
         "fingerprint": "c6af1d1d867da9ef",
-        "title": "교대 인수인계 메모 HN-261029-D → 정비 지시 RP-26-011",
-        "reason": "글에 나온 'RP-26-011'을 정비 지시 RP-26-011에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261029-D의 정비 지시 RP-26-011",
+        "reason": "글에 'RP-26-011'이 적혀 있습니다: “RP-26-011 유압 펌프 필터 교체 이후 1라인 블랭킹기 압력 저하 없음.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27705,13 +27717,13 @@
         "mentionText": "RP-26-041",
         "targetObjectRef": "mes.maintenance_order:RP-26-041",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261029-N → 정비 지시 RP-26-041"
+        "name": "교대 인수인계 메모 HN-261029-N의 정비 지시 RP-26-041"
       },
       "evidence": {
         "candidateId": "DL-HN-261029-N-e1",
         "fingerprint": "97d4456231a619dc",
-        "title": "교대 인수인계 메모 HN-261029-N → 정비 지시 RP-26-041",
-        "reason": "글에 나온 'RP-26-041'을 정비 지시 RP-26-041에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261029-N의 정비 지시 RP-26-041",
+        "reason": "글에 'RP-26-041'이 적혀 있습니다: “RP-26-041 정비 진행 중.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27759,13 +27771,13 @@
         "mentionText": "JB2610-0141",
         "targetObjectRef": "mes.work_order:JB2610-0141",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261029-N → 작업지시 JB2610-0141"
+        "name": "교대 인수인계 메모 HN-261029-N의 작업지시 JB2610-0141"
       },
       "evidence": {
         "candidateId": "DL-HN-261029-N-e2",
         "fingerprint": "4cb5e5b28642ee90",
-        "title": "교대 인수인계 메모 HN-261029-N → 작업지시 JB2610-0141",
-        "reason": "글에 나온 'JB2610-0141'을 작업지시 JB2610-0141에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261029-N의 작업지시 JB2610-0141",
+        "reason": "글에 'JB2610-0141'이 적혀 있습니다: “JB2610-0141 성형은 P103 정지로 중단, 잔량 3,200개.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27813,13 +27825,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261029-N → 설비 P103"
+        "name": "교대 인수인계 메모 HN-261029-N의 설비 P103"
       },
       "evidence": {
         "candidateId": "DL-HN-261029-N-e3",
         "fingerprint": "a6bbf29fa636e564",
-        "title": "교대 인수인계 메모 HN-261029-N → 설비 P103",
-        "reason": "글에 나온 'P103'을 설비 P103에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261029-N의 설비 P103",
+        "reason": "글에 'P103'이 적혀 있습니다: “JB2610-0141 성형은 P103 정지로 중단, 잔량 3,200개.”",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27867,13 +27879,13 @@
         "mentionText": "JB2610-0138",
         "targetObjectRef": "mes.work_order:JB2610-0138",
         "expressionKind": "OBSERVED",
-        "name": "교대 인수인계 메모 HN-261029-N → 작업지시 JB2610-0138"
+        "name": "교대 인수인계 메모 HN-261029-N의 작업지시 JB2610-0138"
       },
       "evidence": {
         "candidateId": "DL-HN-261029-N-e4",
         "fingerprint": "a88a650880ba47f9",
-        "title": "교대 인수인계 메모 HN-261029-N → 작업지시 JB2610-0138",
-        "reason": "글에 나온 'JB2610-0138'을 작업지시 JB2610-0138에 잇습니다. 원천 키나 설비 이름과 맞춘 결과입니다.",
+        "title": "교대 인수인계 메모 HN-261029-N의 작업지시 JB2610-0138",
+        "reason": "글에 'JB2610-0138'이 적혀 있습니다: “JB2610-0138 잔량 2,400개는 주간조에 넘김.”",
         "items": [
           {
             "sourceId": "MES_MAIN",

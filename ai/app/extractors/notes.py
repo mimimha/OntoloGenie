@@ -515,7 +515,12 @@ def to_candidates(doc: Document, extraction: DocumentExtraction) -> list[Candida
                 confidence=confidence(
                     [("근거", "후보 설비가 여럿", 0.3)]
                     if ambiguous
-                    else document_link(e.text.upper() == refs[0].split(":")[1].upper()),
+                    # 작업지시·정비·로트 번호는 원천 값이 글에 그대로 적힌 것이다(로트는 출하의 로트 번호로 찾음).
+                    # 설비만 이름·별명('3호기')으로 맞춘다
+                    else document_link(
+                        e.type != EntityType.EQUIPMENT
+                        or e.text.upper() == refs[0].split(":")[1].upper()
+                    ),
                     hold="후보 설비가 여럿" if ambiguous else None,
                 ),
                 review_status="HELD" if ambiguous else "PENDING",
