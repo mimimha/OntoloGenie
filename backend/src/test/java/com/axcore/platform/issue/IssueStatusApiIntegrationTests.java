@@ -10,10 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.axcore.platform.TestcontainersConfiguration;
 import com.axcore.platform.global.security.LoginAccount;
-import jakarta.servlet.http.Cookie;
 import java.time.Instant;
 import java.util.Map;
-import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -313,7 +311,7 @@ class IssueStatusApiIntegrationTests {
 
         mockMvc.perform(
                         patch(PATH, issueId)
-                                .with(csrfToken())
+                                .with(IssueTestFixtures.csrfToken())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(body("CHECKING", "확인", null, 0)))
                 .andExpect(status().isUnauthorized())
@@ -342,7 +340,7 @@ class IssueStatusApiIntegrationTests {
         mockMvc.perform(
                         patch(PATH, issueId)
                                 .with(loggedIn(roleCode))
-                                .with(csrfToken())
+                                .with(IssueTestFixtures.csrfToken())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(body("CHECKING", "확인", null, 0)))
                 .andExpect(status().isForbidden())
@@ -400,7 +398,7 @@ class IssueStatusApiIntegrationTests {
         return mockMvc.perform(
                 patch(PATH, issueId)
                         .with(loggedIn("ADMIN"))
-                        .with(csrfToken())
+                        .with(IssueTestFixtures.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json));
     }
@@ -437,19 +435,6 @@ class IssueStatusApiIntegrationTests {
                 .param("id", issueId)
                 .query(Long.class)
                 .single();
-    }
-
-    /**
-     * 화면처럼 XSRF-TOKEN 쿠키와 X-XSRF-TOKEN 헤더를 같은 값으로 보낸다. spring-security-test의 csrf()는 공유 컨텍스트의
-     * CsrfFilter 저장소를 바꿔 같은 컨텍스트를 쓰는 다른 테스트의 실제 로그인 요청을 깨뜨리므로 쓰지 않는다.
-     */
-    private static RequestPostProcessor csrfToken() {
-        String token = UUID.randomUUID().toString();
-        return request -> {
-            request.setCookies(new Cookie("XSRF-TOKEN", token));
-            request.addHeader("X-XSRF-TOKEN", token);
-            return request;
-        };
     }
 
     private RequestPostProcessor loggedIn(String roleCode) {

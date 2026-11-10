@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 
 public enum IssueErrorCode implements ErrorCode {
     INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT, "지금 상태에서는 요청한 상태로 바꿀 수 없습니다."),
+    ISSUE_ALREADY_RESOLVED(HttpStatus.CONFLICT, "이미 해결된 문제입니다."),
     REVERIFICATION_REQUIRED(HttpStatus.UNPROCESSABLE_CONTENT, "해결로 변경하려면 이 문제의 재검증 통과 기록이 필요합니다.");
 
     private final HttpStatus status;

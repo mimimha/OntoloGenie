@@ -107,6 +107,18 @@ public class Issue extends BaseTimeEntity {
         resolvedOutcome = PASSED;
     }
 
+    /**
+     * 원천 담당자에게 플랫폼 밖에서 알렸다고 기록한다(API 068, FN-ISS-04). 다시 전달하면 마지막 전달로 덮어쓴다. 상태는 바꾸지 않는다. 해결된 문제는
+     * 호출하는 쪽이 먼저 거절한다.
+     */
+    public void forward(long accountId, Instant at) {
+        if (status == IssueStatus.RESOLVED) {
+            throw new IllegalStateException("해결된 문제는 전달 기록을 남기지 않습니다.");
+        }
+        forwardedAt = at;
+        forwardedBy = accountId;
+    }
+
     private void requireNext(IssueStatus next) {
         if (!status.canMoveTo(next)) {
             throw new IllegalStateException("문제 상태를 " + status + "에서 " + next + "(으)로 바꿀 수 없습니다.");
