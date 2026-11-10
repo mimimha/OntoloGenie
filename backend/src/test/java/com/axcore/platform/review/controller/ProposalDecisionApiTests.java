@@ -30,7 +30,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import tools.jackson.databind.json.JsonMapper;
 
-@SpringBootTest(properties = "test.context=proposal-decision")
+@SpringBootTest(properties = "test.context=csrf-api")
 @AutoConfigureMockMvc
 @ActiveProfiles("api")
 @Import(TestcontainersConfiguration.class)

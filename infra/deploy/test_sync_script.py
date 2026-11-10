@@ -39,24 +39,38 @@ if args[0] == 'compose':
         count = int((state / 'ups').read_text()) if (state / 'ups').exists() else 0
         (state / 'ups').write_text(str(count + 1))
     sys.exit(0)
-if args[0] == 'inspect':
-    template = args[args.index('--format') + 1]
-    if 'Health' in template:
-        ups = int((state / 'ups').read_text())
-        if args[-1] == 'kafka-console':
-            print('true false none')
-            sys.exit(0)
-        fail = os.environ.get('TEST_FAIL_HEALTH') == '1' and ups == 1
-        fail = fail or os.environ.get('TEST_FAIL_ROLLBACK') == '1'
-        print('true false unhealthy' if fail else 'true false healthy')
-    else:
-        print('true')
-    sys.exit(0)
-if args[0] == 'exec':
-    if 'http://kafka-console:8080/' in args and os.environ.get('TEST_FAIL_CONSOLE_HTTP') == '1':
-        sys.exit(1)
-    sys.exit(0)
 sys.exit(2)
+'''
+
+
+FAKE_DOCKER_STATUS = r'''#!/usr/bin/env bash
+# Repeated health probes do not need a new Python interpreter for each command.
+case "$1" in
+    inspect)
+        printf '%s\n' "$*" >> "$TEST_STATE/commands"
+        if [[ "$3" == *Health* ]]; then
+            if [[ "${@: -1}" == kafka-console ]]; then
+                echo 'true false none'
+            elif [[ "$TEST_FAIL_ROLLBACK" == 1 ]] ||
+                { [[ "$TEST_FAIL_HEALTH" == 1 ]] && [[ "$(<"$TEST_STATE/ups")" == 1 ]]; }; then
+                echo 'true false unhealthy'
+            else
+                echo 'true false healthy'
+            fi
+        else
+            echo true
+        fi
+        exit 0 ;;
+    exec)
+        printf '%s\n' "$*" >> "$TEST_STATE/commands"
+        for argument in "$@"; do
+            if [[ "$argument" == http://kafka-console:8080/ && "$TEST_FAIL_CONSOLE_HTTP" == 1 ]]; then
+                exit 1
+            fi
+        done
+        exit 0 ;;
+esac
+exec python3 "${0%/*}/docker-python" "$@"
 '''
 
 
@@ -84,8 +98,9 @@ class ConfigurationShellTests(unittest.TestCase):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(content)
             docker = commands / "docker"
-            docker.write_text(FAKE_DOCKER)
+            docker.write_text(FAKE_DOCKER_STATUS)
             docker.chmod(0o755)
+            (commands / "docker-python").write_text(FAKE_DOCKER)
             sleeper = commands / "sleep"
             sleeper.write_text("#!/bin/sh\nexit 0\n")
             sleeper.chmod(0o755)
@@ -155,6 +170,12 @@ class ConfigurationShellTests(unittest.TestCase):
         self.assertEqual(result["title"], "old")
         self.assertEqual(result["ups"], 2)
         self.assertIn("복구 검사 실패", result["output"])
+        probes = result["commands"].splitlines().count(
+            "exec prometheus wget -T 5 -qO- http://kafka-console:8080/"
+        )
+        self.assertEqual(probes, 48, "반영·복구 검사 모두 24회 재시도해야 합니다.")
+        self.assertFalse(result["manifest"])
+        self.assertEqual(result["secret_snapshots"], [])
 
     def test_initial_compose_failure_restores_settings_before_staging(self):
         result = self.run_case(initial_config_fail=True)

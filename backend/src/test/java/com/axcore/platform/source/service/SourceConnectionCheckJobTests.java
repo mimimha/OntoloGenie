@@ -3,7 +3,7 @@ package com.axcore.platform.source.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
-import com.axcore.platform.TestcontainersConfiguration;
+import com.axcore.platform.SourceTestcontainersConfiguration;
 import com.axcore.platform.batch.domain.QueuedJobType;
 import com.axcore.platform.batch.service.QueuedJobHandler;
 import com.axcore.platform.batch.service.QueuedJobPoller;
@@ -40,7 +40,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
             "AXCORE_SOURCE_CREDENTIAL_KEY_1=dGVzdC1vbmx5LXNvdXJjZS1jcmVkZW50aWFsLWtleSE="
         })
 @ActiveProfiles("batch")
-@Import(TestcontainersConfiguration.class)
+@Import(SourceTestcontainersConfiguration.class)
 class SourceConnectionCheckJobTests {
 
     static final String PUBLICATION = "axc_src_cdc";

@@ -33,7 +33,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-@SpringBootTest(properties = "test.context=proposal-object-type-approval")
+@SpringBootTest(properties = "test.context=csrf-api")
 @AutoConfigureMockMvc
 @ActiveProfiles("api")
 @Import(TestcontainersConfiguration.class)
