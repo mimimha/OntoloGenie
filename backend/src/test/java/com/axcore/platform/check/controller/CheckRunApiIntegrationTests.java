@@ -16,6 +16,7 @@ import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.issue.IssueTestFixtures;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -166,6 +167,54 @@ class CheckRunApiIntegrationTests {
                 .andExpect(jsonPath("$.data.reused").value(true));
     }
 
+    /**
+     * 개발 가이드 14.2: 오래 걸리는 작업은 접수 1줄과 결과 1줄을 남긴다. 접수 줄은 요청한 사람·SUCCEEDED이고 합류하거나 결과를 재사용해도 남긴다. 범위
+     * 종류와 개수만 남기고 ID 목록은 넣지 않는다.
+     */
+    @Test
+    void recordsIntakeLineForNewJoinedAndReusedRequests() throws Exception {
+        rule();
+        long first = id(request(MANUAL_ALL).andExpect(status().isAccepted()));
+        request(MANUAL_ALL).andExpect(status().isAccepted());
+        fixtures.setStatus(first, "SUCCEEDED");
+        request(MANUAL_ALL).andExpect(status().isOk());
+
+        List<Map<String, Object>> lines =
+                jdbcClient
+                        .sql(
+                                """
+                                select actor_type, actor_id, entry_point, status, event_kind,
+                                       checked_permission_code, input::text as input, result::text as result
+                                from action_execution
+                                where target_type = 'check_run' and target_id = :id
+                                order by id
+                                """)
+                        .param("id", first)
+                        .query()
+                        .listOfRows();
+        assertThat(lines).hasSize(3);
+        assertThat(lines)
+                .allSatisfy(
+                        line ->
+                                assertThat(line)
+                                        .containsEntry("actor_type", "USER")
+                                        .containsEntry("actor_id", accountId)
+                                        .containsEntry("entry_point", "WEB")
+                                        .containsEntry("status", "SUCCEEDED")
+                                        .containsEntry("event_kind", "CHECK_RUN")
+                                        .containsEntry("checked_permission_code", "ADMIN"));
+        assertThat((String) lines.get(0).get("input"))
+                .contains("\"triggerKind\": \"MANUAL\"")
+                .contains("\"scopeKind\": \"ALL\"")
+                .contains("\"linkMappingCount\": 1")
+                .doesNotContain("linkMappingIds");
+        assertThat((String) lines.get(0).get("result"))
+                .contains("\"joined\": false", "\"reused\": false");
+        assertThat((String) lines.get(1).get("result")).contains("\"joined\": true");
+        assertThat((String) lines.get(2).get("result"))
+                .contains("\"reused\": true", "\"status\": \"SUCCEEDED\"");
+    }
+
     @Test
     void startsNewCheckAfterNewSyncOrFailure() throws Exception {
         rule();
@@ -275,6 +324,50 @@ class CheckRunApiIntegrationTests {
                 .andExpect(jsonPath("$.data.scope.linkMappingIds[0]").value(ruleId));
     }
 
+    /** 규칙을 개정한 뒤에도 옛 개정본에서 나온 열린 문제는 같은 코드의 반영 중인 개정본으로 재검증한다(246). */
+    @Test
+    void reverifiesIssuesWithTheCurrentRevisionOfTheirRule() throws Exception {
+        long first = rule();
+        long previous = fixtures.insertRun("MANUAL", "SUCCEEDED", accountId, key());
+        long issueId = issue(previous, first);
+        long sameRuleIssue = issue(previous, first);
+        String code =
+                jdbcClient
+                        .sql("select code from link_mapping where id = :id")
+                        .param("id", first)
+                        .query(String.class)
+                        .single();
+        jdbcClient
+                .sql(
+                        "update link_mapping set status = 'RETIRED', retired_at = now() where id = :id")
+                .param("id", first)
+                .update();
+        long second =
+                jdbcClient
+                        .sql(
+                                """
+                                insert into link_mapping (link_type_id, code, revision, status)
+                                values (:type, :code, 2, 'ACTIVE') returning id
+                                """)
+                        .param("type", linkType)
+                        .param("code", code)
+                        .query(Long.class)
+                        .single();
+        fixtures.insertCondition(second, 1, workerId, employeeNo, "[]", "[]");
+
+        request(
+                        reverify(
+                                previous,
+                                "{\"kind\":\"ISSUES\",\"issueIds\":["
+                                        + issueId
+                                        + ","
+                                        + sameRuleIssue
+                                        + "]}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.scope.linkMappingIds", hasSize(1)))
+                .andExpect(jsonPath("$.data.scope.linkMappingIds[0]").value(second));
+    }
+
     @Test
     void keepsManualAndReverificationApart() throws Exception {
         rule();
@@ -325,10 +418,12 @@ class CheckRunApiIntegrationTests {
         request(reverify(previous, "{\"kind\":\"ISSUES\",\"issueIds\":[" + resolved + "]}"))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.error.details.reason").value("해결된 문제는 재검증하지 않습니다."));
+        // 폐기만 되고 반영 중인 개정본이 없는 규칙 코드
         request(reverify(previous, "{\"kind\":\"ISSUES\",\"issueIds\":[" + onRetired + "]}"))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.error.details.field").value("scope.issueIds"))
-                .andExpect(jsonPath("$.error.details.linkMappingIds", hasSize(1)));
+                .andExpect(jsonPath("$.error.details.issueIds[0]").value(onRetired))
+                .andExpect(jsonPath("$.error.details.linkMappingCodes", hasSize(1)));
     }
 
     @ParameterizedTest

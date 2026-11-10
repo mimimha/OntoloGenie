@@ -8,6 +8,7 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.ontology.dto.ObjectDetailResponse;
+import com.axcore.platform.ontology.dto.ObjectLinkEvidenceResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkSearchRequest;
 import com.axcore.platform.ontology.dto.ObjectLinkSearchRequest.Direction;
@@ -32,7 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class ObjectQueryService implements ObjectSearchQuery, ObjectDetailQuery {
+public class ObjectQueryService
+        implements ObjectSearchQuery, ObjectDetailQuery, ObjectEvidenceQuery {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
 
@@ -130,6 +132,24 @@ public class ObjectQueryService implements ObjectSearchQuery, ObjectDetailQuery 
                 request.linkTypeId(),
                 direction,
                 page);
+    }
+
+    @Override
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ObjectLinkEvidenceResponse linkEvidence(LoginAccount actor, long objectId, long linkId) {
+        DataAccess access = dataAccessPolicy.of(actor);
+        Set<Long> visibleTypeIds = access.visibleObjectTypeIds();
+        if (!visibleTypeIds.isEmpty()) {
+            var evidence =
+                    objects.findLinkEvidence(
+                            objectId, linkId, visibleTypeIds, maskedTypes(access, visibleTypeIds));
+            if (evidence.isPresent()) {
+                return evidence.get();
+            }
+        }
+        throw new BusinessException(
+                CommonErrorCode.RESOURCE_NOT_FOUND,
+                Map.of("resource", "object_link", "id", linkId));
     }
 
     private static List<Long> maskedTypes(DataAccess access, Set<Long> visibleTypeIds) {

@@ -1,5 +1,6 @@
 package com.axcore.platform.review.service;
 
+import com.axcore.platform.check.domain.CandidateCheckTarget;
 import com.axcore.platform.check.service.CandidateCheckService;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.review.dto.AiProposalRequest;
@@ -41,9 +42,12 @@ public class AiProposalService {
         } catch (DataIntegrityViolationException ex) {
             throw BusinessException.invalidField("proposals", "후보의 형식과 값을 확인해 주세요.");
         }
-        // 같은 분석의 매핑 후보까지 모두 저장한 뒤 검사 기준을 고정한다.
+        // 같은 분석의 매핑 후보까지 모두 저장한 뒤 검사 기준을 고정한다. 검사 대상이 아닌 종류는 접수하지 않는다.
         for (int i = 0; i < ids.size(); i++) {
             var proposal = proposals.get(i);
+            if (!CandidateCheckTarget.requiresCheck(proposal.itemKind())) {
+                continue;
+            }
             Set<Long> types = new HashSet<>();
             collectTypes(analysisRunId, proposal.itemKind(), proposal.payload(), types);
             for (var option : proposal.options()) {

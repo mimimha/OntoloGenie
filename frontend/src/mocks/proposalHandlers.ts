@@ -184,7 +184,11 @@ export const proposalHandlers = [
         'VALIDATION_FAILED',
         '현재 개정의 대안을 선택해 주세요.',
       )
-    if (decision === 'APPROVE' && item.latestCheck?.status !== 'SUCCEEDED')
+    if (
+      decision === 'APPROVE' &&
+      item.itemKind === 'LINK_RULE' &&
+      item.latestCheck?.status !== 'SUCCEEDED'
+    )
       return failed(
         422,
         'REVIEW_VALIDATION_FAILED',

@@ -12,6 +12,7 @@ import com.axcore.platform.check.domain.TransformStep;
 import com.axcore.platform.check.repository.LinkMappingRuleRepository;
 import com.axcore.platform.check.repository.LinkMappingRuleRepository.ConditionRow;
 import com.axcore.platform.check.repository.LinkMappingRuleRepository.RuleRow;
+import com.axcore.platform.mapping.repository.ObjectSourceMappingRepository;
 import com.axcore.platform.ontology.domain.LinkCardinality;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,13 +39,15 @@ public class LinkMappingRuleLoader {
     private static final TypeReference<Map<String, Object>> FILTER = new TypeReference<>() {};
 
     private final LinkMappingRuleRepository repository;
+    private final ObjectSourceMappingRepository mappingRepository;
     private final JsonMapper json;
 
     /** 이 규칙이 읽는 원천 자원(출발·도착 유형에 활성 매핑된 자원). 검사 요청 때 데이터 기준을 정하는 데 쓴다. */
     public List<Long> resourceIds(long linkMappingId) {
         RuleRow rule = requireRule(linkMappingId);
-        TreeSet<Long> ids = new TreeSet<>(repository.findMappedResourceIds(rule.sourceTypeId()));
-        ids.addAll(repository.findMappedResourceIds(rule.targetTypeId()));
+        TreeSet<Long> ids =
+                new TreeSet<>(mappingRepository.findActiveSourceResourceIds(rule.sourceTypeId()));
+        ids.addAll(mappingRepository.findActiveSourceResourceIds(rule.targetTypeId()));
         return List.copyOf(ids);
     }
 
@@ -57,8 +60,8 @@ public class LinkMappingRuleLoader {
      */
     public LinkMappingRule load(long linkMappingId, CheckDataBasis runBasis) {
         RuleRow rule = requireRule(linkMappingId);
-        List<Long> sourceIds = repository.findMappedResourceIds(rule.sourceTypeId());
-        List<Long> targetIds = repository.findMappedResourceIds(rule.targetTypeId());
+        List<Long> sourceIds = mappingRepository.findActiveSourceResourceIds(rule.sourceTypeId());
+        List<Long> targetIds = mappingRepository.findActiveSourceResourceIds(rule.targetTypeId());
 
         TreeSet<Long> needed = new TreeSet<>(sourceIds);
         needed.addAll(targetIds);

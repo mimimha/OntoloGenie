@@ -41,6 +41,15 @@ public interface ObjectSourceMappingRepository extends JpaRepository<ObjectSourc
             value = "select exists(select 1 from object_instance where source_mapping_id = :id)")
     boolean hasObjects(@Param("id") Long id);
 
+    /** 객체 유형에 켜진 매핑으로 연결된 원천 자원. 같은 자원은 한 번만, 번호 순으로 돌려준다. 정합성 검사가 규칙이 읽는 자원을 정할 때 쓴다(191). */
+    @Query(
+            """
+            select distinct m.sourceResourceId from ObjectSourceMapping m
+            where m.objectTypeId = :objectTypeId and m.active = true
+            order by m.sourceResourceId
+            """)
+    List<Long> findActiveSourceResourceIds(@Param("objectTypeId") Long objectTypeId);
+
     /** 한 원천 자원의 켜진 매핑. 전체 읽기(Jira 197)가 이 매핑으로 객체를 만든다. */
     List<ObjectSourceMapping> findBySourceResourceIdAndActiveTrueOrderById(Long sourceResourceId);
 }

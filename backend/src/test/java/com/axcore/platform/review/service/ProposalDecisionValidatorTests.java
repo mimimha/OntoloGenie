@@ -183,6 +183,39 @@ class ProposalDecisionValidatorTests {
                 .isSameAs(item);
     }
 
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "OBJECT_TYPE",
+                "PROPERTY",
+                "LINK_TYPE",
+                "OBJECT_MAPPING",
+                "PROPERTY_MAPPING",
+                "DOCUMENT_LINK"
+            })
+    void approvesKindsThatAreNotCandidateCheckTargetsWithoutACheck(String kind) {
+        ReflectionTestUtils.setField(item, "itemKind", kind);
+        given(items.findForUpdate(10L)).willReturn(Optional.of(item));
+
+        var validated = validator.validate(10L, request(2, "APPROVE", null), admin);
+
+        assertThat(validated.item()).isSameAs(item);
+        assertThat(validated.basisCheckRunId()).isNull();
+        verifyNoInteractions(checks);
+    }
+
+    @Test
+    void approvesADocumentLinkWithTheChosenOptionWithoutACheck() {
+        ReflectionTestUtils.setField(item, "itemKind", "DOCUMENT_LINK");
+        given(items.findForUpdate(10L)).willReturn(Optional.of(item));
+        given(options.existsByIdAndProposalItemIdAndRevision(99L, 10L, 2)).willReturn(true);
+
+        var validated = validator.validate(10L, request(2, "APPROVE", 99L), admin);
+
+        assertThat(validated.basisCheckRunId()).isNull();
+        verifyNoInteractions(checks);
+    }
+
     private static ProposalDecisionRequest request(int revision, String decision, Long optionId) {
         return new ProposalDecisionRequest(revision, decision, optionId, "검토 사유");
     }

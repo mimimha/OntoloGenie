@@ -142,6 +142,35 @@ test('미지원 후보는 실행 실패 대신 자동 시험 미지원으로 표
   expect(requested).not.toHaveBeenCalled()
 })
 
+test('검사 대상이 아닌 종류는 검사 결과 없이 승인할 수 있다고 안내한다', async () => {
+  const requested = vi.fn(() => HttpResponse.json({ data: [] }))
+  server.use(
+    http.get('/api/v1/proposals/:id', () =>
+      HttpResponse.json({
+        data: {
+          ...proposal,
+          itemKind: 'OBJECT_TYPE',
+          checkRequired: false,
+          latestCheck: null,
+        },
+      }),
+    ),
+    http.get('/api/v1/checks/runs/:id/results', requested),
+  )
+  open()
+  const panel = await screen.findByRole('region', { name: '정합성 검사' })
+  expect(within(panel).getByRole('status')).toHaveTextContent(
+    /검사 대상 아님: 이 종류는 원천 행으로 시험하지 않으며/,
+  )
+  expect(
+    within(panel).queryByText('아직 검사 결과가 없습니다.'),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.getByText(/승인에 검사 결과가 필요하지 않습니다\. AI 신뢰도만으로/),
+  ).toBeInTheDocument()
+  expect(requested).not.toHaveBeenCalled()
+})
+
 test('수동 실행 API 연결 전에는 재검사를 비활성화하고 쓰기 요청을 보내지 않는다', async () => {
   const write = vi.fn(() => HttpResponse.json({ data: {} }))
   server.use(http.post('/api/v1/*', write))

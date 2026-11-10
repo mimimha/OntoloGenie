@@ -311,6 +311,8 @@ public class LinkRecomputeService {
                 linkType.getTargetTypeId().equals(linkType.getSourceTypeId())
                         ? sources
                         : ruleLinks.activeObjects(linkType.getTargetTypeId());
+        Map<Long, LinkableObject> sourcesById =
+                sources.stream().collect(Collectors.toMap(LinkableObject::id, Function.identity()));
 
         Map<Pair, List<Desired>> wants = new LinkedHashMap<>();
         for (RulePlan plan : plans) {
@@ -318,11 +320,7 @@ public class LinkRecomputeService {
                     .forEach(
                             (pair, evidence) ->
                                     wants.computeIfAbsent(pair, p -> new ArrayList<>())
-                                            .add(
-                                                    new Desired(
-                                                            plan.ruleId(),
-                                                            plan.rule().getCode(),
-                                                            evidence)));
+                                            .add(new Desired(plan, evidence)));
         }
         dropAmbiguous(wants, linkType.getCardinality());
 
@@ -344,7 +342,7 @@ public class LinkRecomputeService {
             desired.put(
                     entry.getKey(),
                     entry.getValue().stream()
-                            .filter(want -> want.ruleCode().equals(currentCode))
+                            .filter(want -> want.plan().rule().getCode().equals(currentCode))
                             .findFirst()
                             .orElse(entry.getValue().getFirst()));
         }
@@ -371,25 +369,28 @@ public class LinkRecomputeService {
             Pair pair = entry.getKey();
             Desired want = entry.getValue();
             StoredLink link = byPair.get(pair);
+            if (link != null && !link.isRule()) {
+                continue; // 보류 건 승인·문서 연결은 그대로 둔다.
+            }
+            long ruleId = want.plan().ruleId();
+            boolean sameActiveRule =
+                    link != null && link.active() && Objects.equals(link.linkMappingId(), ruleId);
+            // 변환 전 값을 추가하는 이유만으로 기존 활성 연결을 다시 저장하지 않는다.
+            if (sameActiveRule && Objects.equals(link.evidence(), want.evidence())) {
+                continue;
+            }
+            Map<String, Object> evidence =
+                    want.plan().withRawValues(want.evidence(), sourcesById.get(pair.source()));
             if (link == null) {
                 result.activated.add(
                         ruleLinks.insertRuleLink(
-                                linkType.getId(),
-                                pair.source(),
-                                pair.target(),
-                                want.ruleId(),
-                                want.evidence()));
+                                linkType.getId(), pair.source(), pair.target(), ruleId, evidence));
                 continue;
             }
-            if (!link.isRule()) {
-                continue; // 보류 건 승인·문서 연결은 그대로 둔다.
-            }
-            if (link.active()
-                    && Objects.equals(link.linkMappingId(), want.ruleId())
-                    && Objects.equals(link.evidence(), want.evidence())) {
+            if (sameActiveRule && Objects.equals(link.evidence(), evidence)) {
                 continue;
             }
-            ruleLinks.confirmRuleLink(link.id(), want.ruleId(), want.evidence());
+            ruleLinks.confirmRuleLink(link.id(), ruleId, evidence);
             (link.active() ? result.updated : result.activated).add(link.id());
         }
     }
@@ -456,7 +457,7 @@ public class LinkRecomputeService {
 
     private record Pair(long source, long target) {}
 
-    private record Desired(long ruleId, String ruleCode, Map<String, Object> evidence) {}
+    private record Desired(RulePlan plan, Map<String, Object> evidence) {}
 
     /** 관계 유형마다 연결 하나를 한 번만 다루므로 같은 연결이 두 목록에 들어가지 않는다. */
     private static final class Accumulator {
@@ -671,6 +672,19 @@ public class LinkRecomputeService {
             evidence.put("ruleCode", rule.getCode());
             evidence.put("revision", rule.getRevision());
             evidence.put("matchedValues", values);
+            return evidence;
+        }
+
+        private Map<String, Object> withRawValues(
+                Map<String, Object> matchedEvidence, LinkableObject source) {
+            Map<String, String> rawValues = new LinkedHashMap<>();
+            for (Condition condition : conditions) {
+                rawValues.put(
+                        String.valueOf(condition.sequenceNo()),
+                        String.valueOf(source.properties().get(condition.sourceCode())));
+            }
+            Map<String, Object> evidence = new LinkedHashMap<>(matchedEvidence);
+            evidence.put("rawValues", rawValues);
             return evidence;
         }
 

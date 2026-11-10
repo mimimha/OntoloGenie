@@ -1,5 +1,6 @@
 package com.axcore.platform.review.service;
 
+import com.axcore.platform.check.domain.CandidateCheckTarget;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
@@ -71,8 +72,10 @@ public class ProposalDecisionValidator {
                     "selectedOptionId", "같은 후보·revision의 선택지를 지정해 주세요.");
         }
 
+        // 검사 대상이 아닌 종류(CandidateCheckTarget)는 승인에 검사 결과를 요구하지 않고 근거 검사도 없다(null).
         Long basisCheckRunId = null;
-        if ("APPROVE".equals(request.decision())) {
+        if ("APPROVE".equals(request.decision())
+                && CandidateCheckTarget.requiresCheck(item.getItemKind())) {
             basisCheckRunId =
                     checks.findSuccessfulCheckRunId(proposalId, item.getRevision()).orElse(null);
             if (basisCheckRunId == null) {

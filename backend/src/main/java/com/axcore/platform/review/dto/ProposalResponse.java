@@ -19,6 +19,7 @@ public record ProposalResponse(
         String applyStatus,
         String applyError,
         Instant appliedAt,
+        boolean checkRequired,
         LatestCheckResponse latestCheck) {
 
     public ProposalResponse {

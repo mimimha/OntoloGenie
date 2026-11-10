@@ -22,8 +22,9 @@ public record ProposalWriteResponse(
         Instant appliedAt,
         Long createdBy,
         Instant createdAt,
-        long checkRunId) {
-    public static ProposalWriteResponse from(ProposalItem item, long checkRunId) {
+        Long checkRunId) {
+    /** checkRunId는 검사 대상이 아닌 종류(CandidateCheckTarget)면 null이다. */
+    public static ProposalWriteResponse from(ProposalItem item, Long checkRunId) {
         return new ProposalWriteResponse(
                 item.getId(),
                 item.getAnalysisRunId(),

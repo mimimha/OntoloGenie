@@ -62,7 +62,7 @@ public class CheckRunController {
             @Valid @RequestBody CheckRunCreateRequest request,
             @AuthenticationPrincipal LoginAccount account) {
         requireAdmin(account);
-        CheckRunRequestResponse response = checkRunRequestService.request(request, account.id());
+        CheckRunRequestResponse response = checkRunRequestService.request(request, account);
         HttpStatus status = response.reused() ? HttpStatus.OK : HttpStatus.ACCEPTED;
         return ResponseEntity.status(status).body(ApiResponse.of(response));
     }
