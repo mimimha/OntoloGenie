@@ -2,22 +2,31 @@ package com.axcore.platform.check.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.axcore.platform.TestcontainersConfiguration;
 import com.axcore.platform.batch.service.QueuedJobPoller;
 import com.axcore.platform.batch.service.QueuedJobRunner;
 import com.axcore.platform.check.CheckRunTestFixtures;
 import com.axcore.platform.check.domain.CheckResult;
+import com.axcore.platform.check.domain.IssueReverification;
+import com.axcore.platform.check.domain.IssueReverification.Verdict;
 import com.axcore.platform.check.repository.CheckResultRepository;
 import com.axcore.platform.check.service.CheckRunJob.Outcome;
 import com.axcore.platform.check.service.CheckRunJob.SkippedRule;
+import com.axcore.platform.issue.IssueTestFixtures;
 import com.axcore.platform.source.service.CdcReloadJob;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -43,6 +52,8 @@ class CheckRunJobTests {
     @MockitoBean QueuedJobPoller queuedJobPoller;
     // 감시 작업이 시험 데이터에 다시 읽기를 넣지 않게 막는다.
     @MockitoBean CdcReloadJob cdcReloadJob;
+    // 문제별 재검증 결과를 받는 확장 지점(135가 구현). 넘긴 값을 확인한다.
+    @MockitoBean IssueReverificationRecorder reverificationRecorder;
 
     @Autowired QueuedJobRunner runner;
     @Autowired CheckRunJob job;
@@ -187,6 +198,63 @@ class CheckRunJobTests {
                 .isEqualTo(resultsOf(first).getFirst().getId());
     }
 
+    /**
+     * 범위가 ISSUES인 재검증은 문제마다 판정을 만들어 확장 지점(135)에 넘긴다(246). 문제는 옛 개정본에서 나왔어도 같은 코드의 반영 중인 개정본으로 판정한다.
+     */
+    @Test
+    void reverificationJudgesEachIssueWithTheCurrentRevisionOfItsRule() {
+        long first = rule("{}");
+        long detected =
+                fixtures.insertRun(
+                        "MANUAL", "SUCCEEDED", accountId, "detected-" + UUID.randomUUID());
+        IssueTestFixtures issueFixtures = new IssueTestFixtures(jdbc);
+        long matched = issueOn(issueFixtures, detected, first, woObject("WO1"));
+        long unmatched = issueOn(issueFixtures, detected, first, woObject("WO2"));
+        long deleted = issueOn(issueFixtures, detected, first, woObject("WO4"));
+        long withoutObject = issueFixtures.insertIssue(detected, first, "UNMATCHED", "NEW", "{}");
+        long second = revise(first);
+        long runId =
+                fixtures.insertQueuedRun(
+                        "REVERIFY",
+                        "{\"kind\": \"ISSUES\", \"linkMappingIds\": [%d], \"issueIds\": [%d, %d, %d, %d]}"
+                                .formatted(second, matched, unmatched, deleted, withoutObject),
+                        basis(),
+                        accountId);
+
+        assertThat(runner.runNext(job)).isTrue();
+
+        assertThat(status(runId)).isEqualTo("SUCCEEDED");
+        ArgumentCaptor<List<IssueReverification>> captured = ArgumentCaptor.captor();
+        verify(reverificationRecorder).record(eq(runId), captured.capture(), any());
+        assertThat(captured.getValue())
+                .extracting(
+                        IssueReverification::issueId,
+                        IssueReverification::linkMappingId,
+                        IssueReverification::verdict)
+                .containsExactly(
+                        tuple(matched, second, Verdict.PASSED),
+                        tuple(unmatched, second, Verdict.FAILED),
+                        tuple(deleted, second, Verdict.NOT_EVALUATED),
+                        tuple(withoutObject, second, Verdict.NOT_EVALUATED));
+        assertThat(captured.getValue().get(1).detail())
+                .containsEntry("rawValue", "E2")
+                .containsEntry("transformedValue", "E2")
+                .containsEntry("targetFound", false)
+                .containsEntry("classification", "UNMATCHED");
+        assertThat(captured.getValue().get(2).reason()).contains("판정 대상에 없습니다");
+    }
+
+    @Test
+    void reverificationOfRulesOnlyDoesNotCallTheRecorder() {
+        long rule = rule("{}");
+        long runId = queue("REVERIFY", rule);
+
+        runner.runNext(job);
+
+        assertThat(status(runId)).isEqualTo("SUCCEEDED");
+        verifyNoInteractions(reverificationRecorder);
+    }
+
     @Test
     void skipsRulesThatCannotBeCheckedAndChecksTheRest() {
         long good = rule("{}");
@@ -264,6 +332,58 @@ class CheckRunJobTests {
                         + " {\"sourceResourceId\": %d, \"lastSuccessfulSyncRunId\": null}]}"
                                 .formatted(eqResource);
         return fixtures.insertQueuedRun(triggerKind, scope, basis, accountId);
+    }
+
+    private String basis() {
+        return "{\"resources\": [{\"sourceResourceId\": %d, \"lastSuccessfulSyncRunId\": null},"
+                        .formatted(woResource)
+                + " {\"sourceResourceId\": %d, \"lastSuccessfulSyncRunId\": null}]}"
+                        .formatted(eqResource);
+    }
+
+    /** 같은 코드로 다음 개정본을 만들고 앞 개정본을 폐기한다. 비교 조건은 개정본을 만든 트랜잭션에서 넣는다. */
+    private long revise(long previous) {
+        return new TransactionTemplate(transactionManager)
+                .execute(
+                        tx -> {
+                            jdbc.sql(
+                                            "update link_mapping set status = 'RETIRED', retired_at = now() where id = :id")
+                                    .param("id", previous)
+                                    .update();
+                            long next =
+                                    jdbc.sql(
+                                                    """
+                                                    insert into link_mapping (link_type_id, code, revision, status)
+                                                    select link_type_id, code, revision + 1, 'ACTIVE'
+                                                    from link_mapping where id = :id
+                                                    returning id
+                                                    """)
+                                            .param("id", previous)
+                                            .query(Long.class)
+                                            .single();
+                            fixtures.insertCondition(next, 1, woEqCode, eqCode, "[]", "[]");
+                            return next;
+                        });
+    }
+
+    private long woObject(String key) {
+        return jdbc.sql(
+                        "select id from object_instance where object_type_id = :type and source_key->>'id' = :key")
+                .param("type", woType)
+                .param("key", key)
+                .query(Long.class)
+                .single();
+    }
+
+    private long issueOn(IssueTestFixtures issueFixtures, long detected, long rule, long objectId) {
+        long issue =
+                issueFixtures.insertIssue(
+                        detected, rule, "UNMATCHED", "FIXED_PENDING_REVERIFY", "{}");
+        jdbc.sql("update issue set object_instance_id = :object where id = :id")
+                .param("object", objectId)
+                .param("id", issue)
+                .update();
+        return issue;
     }
 
     private void markRunning(long runId) {

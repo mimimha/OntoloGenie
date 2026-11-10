@@ -72,7 +72,29 @@ FN-ISS-01~04의 정합성 문제 목록·근거 조회, 처리 상태 변경, �
 | RESOLVED | 없음. 같은 문제가 다시 나오면 새 문제로 등록된다 |
 
 - 표에 없는 전환과 같은 상태로의 변경은 409 `INVALID_STATUS_TRANSITION`이다. `details`에 `currentStatus`, `requestedStatus`, `allowedStatuses`를 준다.
-- **정책 확인 필요(246):** 한 칸씩만 앞으로 가고, 되돌림은 FIXED_PENDING_REVERIFY → CHECKING 하나만 열었다. NEW·CHECKING에서 바로 RESOLVED로 가는 길은 막았다. 관리자가 "원천을 고쳤다"고 표시한 시점이 있어야 아래 재검증 시점 검사를 할 수 있어서다. 표는 `IssueStatus.nextStatuses()` 한 곳에 있다.
+- 표는 `IssueStatus.nextStatuses()` 한 곳에 있다.
+
+### 상태 전환 정책 (246 확정)
+
+| 전환 | 누가 | 조건 |
+| --- | --- | --- |
+| (등록) → NEW | 검사(SYNC·MANUAL) | 같은 `dedupeKey`의 열린 문제가 없을 때 |
+| NEW → CHECKING | 관리자(067) | 없음 |
+| CHECKING → FIXED_PENDING_REVERIFY | 관리자(067) | 없음. 이 시각이 "원천을 고쳤다"는 기준이 된다 |
+| FIXED_PENDING_REVERIFY → CHECKING | 관리자(067) 또는 재검증 실패 시 검사 | 검사는 조치완료 표시 뒤에 시작한 재검증에서 FAILED일 때만 |
+| FIXED_PENDING_REVERIFY → RESOLVED | **관리자만**(067) | 아래 해결 조건. 재검증이 통과해도 자동으로 해결하지 않는다(2026-10-27 결정, 시나리오 S5-6) |
+| RESOLVED → (없음) | — | 끝 상태. 같은 문제가 다시 나오면 새 문제로 등록된다 |
+
+- **한 칸씩만 앞으로 간다.** NEW·CHECKING에서 바로 RESOLVED로 가는 길은 없다. 관리자가 "원천을 고쳤다"고 표시한 시점이 있어야 해결 조건 3(조치완료 뒤에 시작한 재검증)을 검사할 수 있기 때문이다.
+- **되돌림은 FIXED_PENDING_REVERIFY → CHECKING 하나다.** 재검증이 실패했거나 관리자가 다시 확인해야 한다고 판단한 경우다.
+- **수집 중 분류(SYNC)는 상태를 바꾸지 않는다.** 같은 문제를 다시 찾아도, 사라져도 그대로 둔다. 수집이 늦게 따라와 고치기 전 자료로 판단할 수 있어서다. 해결은 재검증 기록을 근거로 사람이 한다.
+- **규칙을 개정한 뒤의 재검증:** 문제는 규칙 코드로 묶여 처음 발견한 개정본을 계속 가리킨다. 재검증(060 ISSUES)은 그 개정본이 아니라 같은 규칙 코드의 지금 반영 중인 개정본으로 검사한다(`docs/check-run.md`). 그래서 규칙이 틀려 생긴 문제(오탐)는 규칙을 고친 새 개정본을 승인하고, 조치완료로 바꾼 뒤 재검증이 통과하면 해결로 닫는다. 별도의 "종결" 상태는 두지 않는다.
+- **재검증 기록 조회(070, 정유림):** 관리자가 해결 근거로 고를 검사는 070의 행 중 `triggerKind=REVERIFY`, `status=SUCCEEDED`, `outcome=PASSED`인 것이다.
+
+#### 알려진 한계
+
+- 규칙 코드를 대체 없이 폐기하면 그 규칙의 열린 문제는 재검증을 접수할 수 없어(422) 해결로 갈 수 없다. 지금은 승인 반영(189)에 폐기만 하는 경로가 없어 생기지 않는다. 그 경로를 만들 때 함께 정한다.
+- 재검증의 검증 기록(135, `issue_verification`)이 아직 없어서, 해결 전환은 그 작업이 끝나야 실제로 쓸 수 있다. 검사 실행기는 문제별 판정을 만들어 확장 지점 `IssueReverificationRecorder`로 넘기므로, 135는 그 인터페이스를 구현하면 된다(`docs/check-run.md` "문제별 재검증 판정").
 
 ### 검사가 바꾸는 상태 (재검증 실패)
 
@@ -140,5 +162,5 @@ FN-ISS-01~04의 정합성 문제 목록·근거 조회, 처리 상태 변경, �
 
 ## 기준
 
-- Notion API 065~069. 로컬 사본: 문서 저장소 `erd/ontology-mvp-v2/notion/api_fixed/065.md`~`069.md`.
+- Notion API 065·066·067·070. 로컬 사본: 문서 저장소 `erd/ontology-mvp-v2/notion/api_fixed/065.md`, `066.md`, `067.md`, `070.md`.
 - 스키마: `V2__create_operations.sql`의 `issue`, `issue_verification`, `issue_history`.

@@ -24,7 +24,7 @@ FN-CHK-01·02의 검사 실행 목록·상태 조회, 수동 검사·재검증 �
 
 출발과 도착의 객체 유형이 같으면 자기 자신을 잇는 쌍을 먼저 제외한 뒤 관계 수를 센다. 자기 자신만 일치하면 미연결로 기록하고, 다른 객체도 하나 일치하면 그 객체만 관계 수에 반영한다. 후보 시험, 승인 반영, SYNC에 같은 기준을 적용한다.
 
-**아직 없는 것:** 재검증의 문제별 검증 기록·이전 결과 비교(134·135).
+**아직 없는 것:** 재검증의 문제별 검증 기록(`issue_verification`)·이전 결과 비교(134·135). 문제별 판정은 실행기가 만들어 확장 지점(`IssueReverificationRecorder`)에 넘긴다(아래 "문제별 재검증 판정").
 
 **수동 검사의 역할(2026-11-06 합의):** 평소 판정은 수집 뒤 배치가 주기적으로 넣는 SYNC가 한다. 수동 검사(MANUAL)는 실패한 후보 시험을 다시 돌리거나, 장애 복구 뒤·문제가 의심될 때 고른 규칙을 다시 점검하는 데 쓴다. issue는 SYNC·MANUAL 판정에서 만들고, 원천 사이 규칙의 미연결은 확인 대기(`link_check_pending`)를 거친다(191-3).
 
@@ -44,7 +44,7 @@ FN-CHK-01·02의 검사 실행 목록·상태 조회, 수동 검사·재검증 �
 | --- | --- |
 | ALL | 반영 중(`link_mapping.status=ACTIVE`)인 모든 규칙 개정본 |
 | LINK_MAPPINGS | 지정한 규칙 개정본. 모두 ACTIVE여야 한다 |
-| ISSUES | 지정한 문제가 나온 규칙 개정본. 문제는 열려 있어야 하고(RESOLVED 아님) 반영된 규칙에서 나왔어야 하며, 그 규칙이 ACTIVE여야 한다 |
+| ISSUES | 지정한 문제가 나온 규칙 **코드**의 지금 반영 중인(ACTIVE) 개정본(246). 문제는 열려 있어야 하고(RESOLVED 아님) 반영된 규칙에서 나왔어야 한다. 문제는 규칙 코드로 묶여 개정 뒤에도 옛 개정본을 가리키므로, 옛 개정본이 아니라 같은 코드의 현재 개정본으로 재검증한다. 실행기(135)는 문제의 규칙 코드로 이 목록에서 검사할 개정본을 찾는다(코드마다 ACTIVE는 하나) |
 
 ### 저장되는 범위와 데이터 기준
 
@@ -73,6 +73,7 @@ FN-CHK-01·02의 검사 실행 목록·상태 조회, 수동 검사·재검증 �
 | 반영 중인 규칙이 하나도 없음(ALL) | 422 `BUSINESS_RULE_VIOLATION`, `details.field=scope` |
 | 없거나 ACTIVE가 아닌 규칙 | 422, `details.linkMappingIds` |
 | 없는 문제, 해결된 문제, 승인 전 후보에서 나온 문제 | 422, `details.issueIds` |
+| 규칙 코드에 반영 중인 개정본이 없는 문제(폐기만 됨) | 422, `details.issueIds`·`linkMappingCodes` |
 | 검사 입력으로 바꿀 수 없는 규칙(비교 조건 없음, 저장된 변환을 읽을 수 없음) | 422, `details.linkMappingId`·`reason` |
 | 비교 대상이 없음, 후보 시험(CANDIDATE)임, 성공(SUCCEEDED)이 아님 | 422, `details.field=comparedToRunId` |
 
@@ -121,7 +122,24 @@ batch 프로필의 작업 표 처리기(`QueuedJobHandler`, `CHECK_RUN`)다. `tr
 | `previous_result_id` | 같은 규칙 개정본의 가장 최근 결과. 결과는 성공하는 트랜잭션에서만 저장되므로 성공한 검사의 결과다 |
 | `sample_rows` | 정상이 아닌 행 최대 20개, 객체 ID 순. `objectInstanceId`, `sourceResourceId`, `sourceKey`, `classification`, `rawValue`, `transformedValue`, `reason`, `targetObjectIds`. 조건이 여럿이면 값을 조건 순서대로 ` / `로 잇는다 |
 
-**감사 결과 줄:** `triggerKind`, `checkedRuleCount`, `skippedRules[]`. 원천 값은 넣지 않는다.
+**감사 결과 줄:** `triggerKind`, `checkedRuleCount`, `skippedRules[]`. 문제별 재검증이면 `reverification`(PASSED·FAILED·NOT_EVALUATED 건수)도 넣는다. 원천 값은 넣지 않는다.
+
+### 문제별 재검증 판정 (246, 135 확장 지점)
+
+범위가 ISSUES인 재검증(REVERIFY)이면 실행기가 `scope.issueIds`의 문제마다 판정(`IssueReverification`)을 만든다.
+
+1. 문제가 나온 개정본의 규칙 코드로, 이 검사가 판정한 같은 코드의 개정본을 찾는다. 접수 때 같은 코드의 반영 중인 개정본을 범위에 넣었기 때문이다(위 "ISSUES" 범위).
+2. 그 판정에서 문제 객체(`issue.object_instance_id`)의 출발 행 결과를 본다.
+
+| 판정 | 조건 | `detail` |
+|---|---|---|
+| PASSED | 출발 행이 정상(MATCHED) | `rawValue`, `transformedValue`, `targetFound`, `classification` (070 `detail`에 쓸 값) |
+| FAILED | 출발 행이 미연결·중복·조건 위반 | 같음 |
+| NOT_EVALUATED | 문제에 객체가 없음, 같은 코드의 규칙을 판정하지 못함(실행 때 반영 중 아님·건너뜀), 객체가 판정 대상에 없음(원천 삭제·행 조건 밖) | 비어 있음. `reason`에 이유 |
+
+- 결과를 저장하는 complete 트랜잭션에서, 검사를 SUCCEEDED로 바꾸기 전에 `IssueReverificationRecorder.record(checkRunId, 판정 목록, 시각)`을 부른다. 구현이 예외를 던지면 결과 저장도 함께 롤백되고 검사는 실패한다.
+- 구현은 135(정유림)가 한다. `issue_verification`에 PASSED·FAILED를 기록하고, FAILED면 `IssueStatusService.reopenAfterFailedReverification`을 부른다. NOT_EVALUATED를 기록할지는 135가 정한다(`issue_verification.outcome`은 PASSED·FAILED만 받는다).
+- 구현이 없으면 부르지 않고 규칙별 결과만 저장한다. 범위가 ALL·LINK_MAPPINGS인 재검증도 부르지 않는다.
 
 **알려 둘 것**
 
@@ -204,9 +222,9 @@ batch의 `@Scheduled`(247)가 `axcore.check.sync.interval`(기본 5분)마다 SY
 
 ## 검증
 
-- `CheckRunApiIntegrationTests` 32개: 접수(ALL·LINK_MAPPINGS·ISSUES), 데이터 기준(마지막 성공 수집, 수집 전 null), 합류(QUEUED·RUNNING), 성공 재사용, 새 수집·실패 뒤 새 검사, MANUAL·REVERIFY 분리, 422 각 경우, 400 12가지, 목록 필터·정렬·페이지, 상태 조회·저장 기준 이름 변환·404, 401·403(역할·CSRF).
+- `CheckRunApiIntegrationTests` 33개: 접수(ALL·LINK_MAPPINGS·ISSUES, 규칙 개정 뒤 문제를 현재 개정본으로 재검증), 데이터 기준(마지막 성공 수집, 수집 전 null), 합류(QUEUED·RUNNING), 성공 재사용, 새 수집·실패 뒤 새 검사, MANUAL·REVERIFY 분리, 422 각 경우, 400 12가지, 목록 필터·정렬·페이지, 상태 조회·저장 기준 이름 변환·404, 401·403(역할·CSRF).
 - `LinkMappingRuleLoaderTests` 7개: 변환 결과(객체 유형, 조건 이름·변환·관계 수·자원·행 조건·기준 걸러내기), 바꾼 입력으로 판정 엔진이 실제로 판정함, 비활성 매핑 제외, 기준 누락·조건 없음·없는 규칙·읽을 수 없는 변환 거절.
-- `CheckRunJobTests` 7개: 작업 표에서 가져가 규칙별 결과 저장(건수·표본·원천 키), 지운·플랫폼·비활성 매핑 객체 제외, 행 조건 적용, 같은 규칙 직전 결과 연결, 판정할 수 없는 규칙 건너뛰기와 감사 결과, 모두 건너뛰면 FAILED, 후보 시험은 가져가지 않음.
+- `CheckRunJobTests` 9개: 작업 표에서 가져가 규칙별 결과 저장(건수·표본·원천 키), 지운·플랫폼·비활성 매핑 객체 제외, 행 조건 적용, 같은 규칙 직전 결과 연결, 판정할 수 없는 규칙 건너뛰기와 감사 결과, 모두 건너뛰면 FAILED, 후보 시험은 가져가지 않음, 문제별 재검증 판정(옛 개정본 문제를 현재 개정본으로 PASSED·FAILED·NOT_EVALUATED)과 확장 지점 호출, 규칙 범위 재검증은 확장 지점을 부르지 않음.
 - `CheckIssueJudgmentTests` 9개: 같은 원천은 모든 문제를 issue로 한 번만, 원천 사이 미연결은 확인 대기·중복은 issue, 연결·출발 삭제로 닫기, 대기 시간 뒤 승격, FULL_COMPARE 수집이 처음 본 뒤 없거나 CDC 원천이 비정상이면 승격하지 않음, 도착 키 실패로 미연결 보류, 적재 전·복구 중 건너뛰기(SYNC는 결과 없는 성공, 이유는 감사 결과), 폐기한 규칙의 대기 닫기, 재검증은 issue 없음.
 - `SyncCheckRequesterTests` 6개: 반영 중인 규칙 전부와 마지막 성공 수집 기준으로 넣기, 대기 중 SYNC에 합류, 데이터가 그대로면 성공한 SYNC 재사용·바뀌면 새로 넣기, 확인 대기가 있으면 주기 구간마다 새로 넣기, 반영 중인 규칙이 없으면 넣지 않기, 시험에서 주기 작업이 꺼져 있음.
 - `CheckResultCreateTests` 3개: 판정 결과로 만든 검사 결과를 JPA로 저장(규칙·후보 대상, 건수, null 값 표본, 직전 결과), 잘못된 ID 거절.
