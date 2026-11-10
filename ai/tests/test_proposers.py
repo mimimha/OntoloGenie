@@ -290,7 +290,7 @@ def test_llm_semantics_with_mock_merges_and_holds(data, result):
     defect, defect_rule = by_id["OT-mes.defect"], by_id_rule["OT-mes.defect"]
     if defect_rule.payload.category != "transaction":
         assert defect.payload.category == "transaction"
-        assert "표 종류는 거래 문서입니다(AI 판단. 규칙 판단은" in defect.reason
+        assert "분류: 거래 문서 (AI 판단, 규칙 판단" in defect.reason
     # LLM 동의는 점수에 더하지 않는다
     assert worker.ai_confidence == by_id_rule["OT-mes.worker"].ai_confidence
     # 보류 권고 규칙을 LLM이 맞다고 보면 보류는 그대로, 상한만 실측(22개 중 19개)대로 0.6

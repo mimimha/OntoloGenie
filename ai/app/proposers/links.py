@@ -1134,7 +1134,7 @@ def via_relations(tables: Tables, singles: list[Relation]) -> list[Relation]:
                         distinct_coverage=round(rows, 3),
                         row_coverage=round(rows, 3),
                         matched=[(f"{p}|{q}", f"{p}|{q}") for p, q in pairs[:3]],
-                        hold=f"{hop.table}를 거쳐야 이어지는 관계라 연결 규칙(두 객체의 속성 비교)으로 표현할 수 없음. 관계 유형만 제안",
+                        hold=f"{hop.table} 경유 관계라 연결 규칙 생성 불가. 관계 유형만 제안",
                         via=(hop, h_cols[a]),
                     )
                 )
@@ -1339,20 +1339,37 @@ def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
             cond_text += f" ({rel.source[0].name}로 {rel.via[0].table}를 찾아 그 {rel.via[1].name}로 비교)"
         key_text = {
             "primary": "기본키",
-            "alternate": "다른 유일 키",
-            "none": "종류 값(키 아님)",
+            "alternate": "유일값",
+            "none": "키 아님",
         }[rel.target_key]
         how = _how_text(rel, steps_by_column)
         # 안 이어지는 값은 코드가 아닌 글(담당 칸의 사람 이름 등)일 수 있어 이름 모양은 가린다
         source_cols = " ".join(c.name for c in rel.source)
         unmatched = [mask_value(str(v), source_cols) for v in rel.unmatched]
         target_cols = " + ".join(c.name for c in rel.target)
-        reason = (
-            f"{' + '.join(c.ref for c in rel.source)}의 값이 {t_table}의 {key_text} "
-            f"{josa(target_cols, '으로/로')} 이어집니다{cond_text}. {how}. "
-            f"서로 다른 값 기준 {rel.distinct_coverage:.0%}, 행 기준 {rel.row_coverage:.0%}가 이어집니다."
-            + (f" 안 이어지는 값 예: {unmatched}." if unmatched else "")
-        )
+        # 표 이름(erp.employee)은 검토 화면용 이름(readable)에서 객체 유형 이름으로 바꾼다
+        if rel.distinct_coverage >= 0.995 and rel.row_coverage >= 0.995:
+            matched_text = "일치율 100%"
+        else:
+            matched_text = (
+                f"일치율 값 {rel.distinct_coverage:.0%} / 행 {rel.row_coverage:.0%}"
+            )
+        parts = [
+            f"대상 키: {t_table} {target_cols} ({key_text})",
+            "비교: 원값"
+            if rel.rule_type == "same_value"
+            else f"비교: {how.removeprefix('비교 방법: ')}",
+            matched_text,
+        ]
+        if rel.condition:
+            parts.append(f"적용 조건: {rel.condition[0].name} = {rel.condition[1]}")
+        if rel.via:
+            parts.append(
+                f"경유: {rel.via[0].table} ({rel.source[0].name} → {rel.via[1].name})"
+            )
+        if unmatched:
+            parts.append(f"불일치 예: {', '.join(unmatched)}")
+        reason = " · ".join(parts)
         single = len(rel.source) == 1
         evidence = [
             Evidence(
@@ -1360,7 +1377,7 @@ def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
                 locator=rel.source[0].ref
                 if single
                 else s_table + "." + "+".join(c.name for c in rel.source),
-                snippet=f"출발 값 예 {[m[0] for m in rel.matched]}",
+                snippet="출발 값 예: " + ", ".join(str(m[0]) for m in rel.matched),
                 values=[m[0] for m in rel.matched] if single else [],
             ),
             Evidence(
@@ -1368,7 +1385,7 @@ def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
                 locator=rel.target[0].ref
                 if single
                 else t_table + "." + "+".join(c.name for c in rel.target),
-                snippet=f"도착 값 예 {[m[1] for m in rel.matched]}",
+                snippet="도착 값 예: " + ", ".join(str(m[1]) for m in rel.matched),
                 values=[m[1] for m in rel.matched] if single else [],
             ),
         ]

@@ -8,11 +8,12 @@
 
 import re
 
-from app.proposers.korean import josa, particle
+from app.proposers.korean import josa
 
 
 def _short(name: str) -> str:
-    short = " ".join(re.sub(r"\s*\([^)]*\)", "", name).split())
+    # 괄호 설명을 지우고 띄어쓰기는 split으로 정리한다(앞 공백까지 정규식으로 잡으면 되돌아가기가 생긴다)
+    short = " ".join(re.sub(r"\([^()]*\)", " ", name).split())
     return short or name
 
 
@@ -49,40 +50,64 @@ class Names:
         return self.props.get(ref or "", (ref or "").rsplit(".", 1)[-1])
 
 
-def _relation_sentence(source: str, target: str) -> str:
-    return f"{josa(source, '이/가')} {josa(target, '을/를')} 가리킵니다."
+# 한글은 \w에 들어가 'erp.employee의'를 놓치므로 영문·숫자만 경계로 본다
+_TABLE_KEY = re.compile(
+    r"(?<![A-Za-z0-9_.])([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)(?![A-Za-z0-9_.])"
+)
+_CONDITION = re.compile(r"\((\w+) = ([^)]+)일 때\)")
+_VIA = re.compile(r"\(\w+로 ([a-z][\w]*\.[a-z][\w]*)를 찾아 그 \w+로 비교\)")
 
 
-def _rest_of(description: str | None) -> str:
-    """'X가 Y를 가리킨다 (...). 개수 관계는 …' 에서 첫 문장 뒤의 설명(괄호·개수 관계)만 남긴다."""
-    text = description or ""
-    _, sep, tail = text.partition("가리킨다")
-    if not sep:
-        return ""
-    return tail.lstrip(".").strip()
+def _table_names(text: str, names: Names) -> str:
+    """이유·보류 이유의 원천 표 이름(mes.work_order)을 객체 유형 이름(작업지시)으로. 모르는 표는 그대로."""
+    return _TABLE_KEY.sub(
+        lambda m: names.table(m.group(1)) if m.group(1) in names.tables else m.group(1),
+        text,
+    )
 
 
-def _name_link_type(link_type: dict, names: Names) -> None:
+def _name_link_type(link_type: dict, names: Names, document: bool = False) -> None:
     source = names.type(link_type.get("sourceTypeCode"))
     target = names.type(link_type.get("targetTypeCode"))
     if not source or not target:
         return
-    rest = _rest_of(link_type.get("description"))
-    if "글이" in (link_type.get("description") or ""):
-        link_type["name"] = f"{source} → {target} (글에서 언급)"
+    original = link_type.get("description") or ""
+    if document:
+        # 목업 '메모의 설비 연결' 형식
+        link_type["name"] = f"{source}의 {target} 연결"
         link_type["description"] = (
-            f"{source}의 글이 {josa(target, '을/를')} 언급합니다. "
-            "원천 키가 아니라 글에서 찾은 연결입니다."
+            f"{source} 본문에 기재된 {josa(target, '과/와')} 연결"
         )
         return
     link_type["name"] = f"{source} → {target}"
-    sentence = _relation_sentence(source, target)
-    if rest.startswith("(") and ")" in rest:
-        # '(wo_no로 mes.work_order를 찾아 …)'는 문장 안에 넣는다
-        paren, _, after = rest.partition(")")
-        sentence = f"{sentence[:-1]} {paren})."
-        rest = after.lstrip(".").strip()
-    link_type["description"] = f"{sentence} {rest}".strip()
+    parts = [f"{source}에서 {target} 참조"]
+    condition = _CONDITION.search(original)
+    if condition:
+        parts.append(f"적용 조건: {condition[1]} = {condition[2]}")
+    via = _VIA.search(original)
+    if via:
+        parts.append(f"{names.table(via[1])} 경유")
+    if "(1:1)" in original:
+        # 데이터에서는 1:1로만 보여도 업무상 한쪽이 여러 건일 수 있다
+        parts.append("데이터상 1:1, 업무상 1:N 여부 확인 필요")
+    link_type["description"] = " · ".join(parts)
+
+
+def _link_rule_description(payload: dict, names: Names) -> str | None:
+    """payload.description('비교 방법: 값을 그대로 비교')을 무엇과 무엇을 맞추는지로 바꾼다."""
+    link_type = payload.get("linkType") or {}
+    source = names.type(link_type.get("sourceTypeCode"))
+    target = names.type(link_type.get("targetTypeCode"))
+    conditions = payload.get("conditions") or []
+    if not source or not target or not conditions:
+        return None
+    by = "·".join(names.prop(c.get("sourceProperty")) for c in conditions)
+    to = "·".join(names.prop(c.get("targetProperty")) for c in conditions)
+    how = (payload.get("description") or "").removeprefix("비교 방법: ")
+    rule = f"연결 기준: {source} {by} = {target} {to}"
+    if how in ("", "값을 그대로 비교"):
+        return rule
+    return f"{rule} (비교: {how})"
 
 
 def _link_rule_name(payload: dict, names: Names) -> tuple[str, str] | None:
@@ -140,30 +165,31 @@ def _document_name(
     doc = names.table(doc_table) if doc_table else "문서"
     target = names.table(table)
     mention = payload.get("mentionText") or key
-    where = f"{doc} {payload.get('documentId', '')}".strip()
+    # 목록에 같은 문서 종류 이름이 줄마다 반복되지 않게 제목은 '문서 번호 → 대상'으로 쓴다
+    doc_id = payload.get("documentId") or doc
     excerpt = _excerpt(evidence, payload)
-    quote = f": “{excerpt}”" if excerpt else "."
+    quote = f" · “{excerpt}”" if excerpt else ""
     quoted = f"'{mention}'"
     if choices > 1:
         # 보류 권고(후보 설비가 여럿): 첫 후보로 단정하지 않는다
-        title = f"{where}의 {target} (후보 {choices}개)"
-        lead = f"{quoted}에 맞는 {josa(target, '이/가')} {choices}개라 하나로 정하지 못했습니다{quote}"
+        title = f"{doc_id} → {target} (후보 {choices}개)"
+        lead = f"본문 {quoted} 해당 {target} 후보 {choices}개{quote}"
         # 원래 이유의 첫 문장은 같은 말이라 빼고, 단서(작성자 배치 라인 등)만 잇는다
         hint = evidence.get("reason") or ""
         hint = hint[hint.find("작성자") :] if "작성자" in hint else ""
         return title, f"{lead} {hint}".strip()
-    title = f"{where}의 {target} {key}"
+    title = f"{doc_id} → {target} {key}"
     alias = any(
         "이름·별명" in (c.get("label") or "")
         for c in evidence.get("confidenceItems") or []
     )
     if mention.strip().upper() == key.strip().upper():
-        lead = f"글에 {quoted}{particle(mention, '이/가')} 적혀 있습니다"
+        lead = f"본문 기재 {quoted}"
     elif alias:
-        lead = f"글의 {quoted}{particle(mention, '을/를')} {target} {key}의 이름·별명으로 봤습니다"
+        lead = f"본문 {quoted} → {target} {key} (명칭·별칭 일치)"
     else:
         # 로트 번호처럼 다른 컬럼 값으로 찾은 경우
-        lead = f"글에 적힌 {quoted}{particle(mention, '으로/로')} {target} {josa(key, '을/를')} 찾았습니다"
+        lead = f"본문 {quoted} → {target} {key} (다른 컬럼 값 일치)"
     return title, lead + quote
 
 
@@ -180,35 +206,49 @@ def readable(proposals: list[dict]) -> list[dict]:
             p.get("evidence") or {},
         )
         made = None
-        if kind == "LINK_RULE":
+        if kind == "OBJECT_TYPE":
+            # 규칙만 쓴 설명('원천 erp.attendance의 한 행')을 문장으로. LLM 설명은 그대로 둔다
+            plain = re.fullmatch(
+                r"원천 (\S+)의 한 행", payload.get("description") or ""
+            )
+            if plain and payload.get("name"):
+                payload["description"] = (
+                    f"원천 테이블 {plain[1]} (1행 = {payload['name']} 1건)"
+                )
+        elif kind == "LINK_RULE":
             if payload.get("linkType"):
                 _name_link_type(payload["linkType"], names)
+            description = _link_rule_description(payload, names)
+            if description:
+                payload["description"] = description
             made = _link_rule_name(payload, names)
         elif kind == "LINK_TYPE":
-            _name_link_type(payload, names)
+            document = str(evidence.get("candidateId") or "").startswith("LT-DOC-")
+            _name_link_type(payload, names, document)
             if payload.get("name"):
                 evidence["title"] = payload["name"]
-            # '글 11건에서 WORK_ORDER 언급 13개를 찾았다.'의 유형 코드를 이름으로
-            target = payload.get("targetTypeCode")
-            if target and target in evidence.get("reason", ""):
-                evidence["reason"] = (
-                    evidence["reason"]
-                    .replace(target, names.type(target))
-                    .replace("찾았다.", "찾았습니다.")
-                )
+            if document:
+                # 'HANDOVER_NOTE 11건에 WORK_ORDER 13개가 …'의 유형 코드를 이름으로
+                reason = evidence.get("reason") or ""
+                for key in ("sourceTypeCode", "targetTypeCode"):
+                    code = payload.get(key)
+                    if code:
+                        reason = reason.replace(code, names.type(code))
+                evidence["reason"] = reason
         elif kind == "DOCUMENT_LINK":
             choices = len(p.get("options") or [])
             if evidence.get("holdRecommended"):
                 choices = max(choices, 2)
             made = _document_name(payload, evidence, names, choices)
+        if kind in ("LINK_RULE", "LINK_TYPE"):
+            for key in ("reason", "holdReason"):
+                if evidence.get(key):
+                    evidence[key] = _table_names(evidence[key], names)
         if made:
             title, lead = made
             payload["name"] = title
             evidence["title"] = title
-            # 문서 연결은 새 문장으로 바꾸고(보류면 단서만 잇는다), 연결 규칙은 쉬운 요약을 앞에 붙인다
-            evidence["reason"] = (
-                lead
-                if kind == "DOCUMENT_LINK"
-                else f"{lead} {evidence.get('reason') or ''}".strip()
-            )
+            # 문서 연결은 새 문구로 바꾼다(보류면 단서만 잇는다). 연결 규칙은 이유를 그대로 둔다
+            if kind == "DOCUMENT_LINK":
+                evidence["reason"] = lead
     return proposals

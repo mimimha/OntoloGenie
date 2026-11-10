@@ -151,7 +151,7 @@ def classify(
     if pk and any(n in times for n in pk):
         return (
             "history",
-            f"기본키에 날짜·시각({', '.join(n for n in pk if n in times)})이 있음",
+            f"기본키에 일자 컬럼 {', '.join(n for n in pk if n in times)} 포함",
         )
     if len(pk) > 1:
         refs = [n for n in pk if n in pk_out]
@@ -163,29 +163,48 @@ def classify(
         if refs and seq:
             return (
                 "detail",
-                f"기본키 {pk} 중 {refs}가 다른 표를 가리키고 {seq}가 정수 순번",
+                f"복합 기본키 {_cols(pk)} 중 {_cols(refs)} 상위 참조, {_cols(seq)} 순번",
             )
-        return "snapshot", f"여러 컬럼 기본키 {pk}의 조합별 기록"
+        return "snapshot", f"복합 기본키 {_cols(pk)} 기준"
     if not in_tables and times:
         return (
             "history",
-            f"다른 표가 가리키지 않고 날짜·시각 컬럼({', '.join(times)})이 있음",
+            f"참조하는 테이블 없음, 일자 컬럼 {', '.join(times)} 보유",
         )
     status = [n for n, c in names.items() if _is_status(n, c.comment)]
     if status and len(times) >= 2:
         return (
             "transaction",
-            f"상태 컬럼({', '.join(status)})과 날짜·시각 컬럼 {len(times)}개",
+            f"상태 컬럼 {', '.join(status)}, 일자 컬럼 {len(times)}개 보유",
         )
     return (
         "master",
-        f"다른 표 {len(in_tables)}개가 가리킴"
+        f"타 테이블 {len(in_tables)}개에서 참조"
         if in_tables
-        else "기준 정보로 판단(다른 규칙에 해당 없음)",
+        else "기타 분류 조건 미해당",
     )
 
 
 # 표 종류 이름 (models/candidate.py ObjectCategory)
+
+
+def _cols(names) -> str:
+    """컬럼 목록을 ['a', 'b'] 대신 a, b로 쓴다."""
+    return ", ".join(str(n) for n in names)
+
+
+# 속성 자료형 이름 (models/candidate.py DataType)
+TYPE_TEXT = {
+    "STRING": "문자",
+    "INTEGER": "정수",
+    "DECIMAL": "소수",
+    "DATE": "날짜",
+    "TIME": "시각",
+    "DATETIME": "일시",
+    "BOOLEAN": "예/아니요",
+    "JSON": "JSON",
+}
+
 CATEGORY_TEXT = {
     "master": "기준 정보",
     "transaction": "거래 문서",
@@ -244,7 +263,7 @@ def _table_candidates(
     table_evidence = Evidence(
         source_id=source,
         locator=key,
-        snippet=f"{len(df)}행, 기본키 {keys or '없음'}, 이 표를 가리키는 표 {sorted(in_tables) or '없음'}",
+        snippet=f"{len(df):,}행 · 기본키 {_cols(keys) or '없음'} · 참조 테이블 {_cols(sorted(in_tables)) or '없음'}",
     )
     out = [
         Candidate(
@@ -256,12 +275,11 @@ def _table_candidates(
                 description=f"원천 {key}의 한 행",
                 category=category,
             ),
-            reason=f"원천 표 {key}의 한 행을 객체 하나로 봅니다. "
-            f"표 종류는 {CATEGORY_TEXT.get(category, category)}입니다({why}). "
+            reason=f"분류: {CATEGORY_TEXT.get(category, category)} ({why}) · "
             + (
-                "이름은 표 주석에서 가져왔습니다."
+                "명칭: 테이블 주석 기준"
                 if schema.description
-                else "표 주석이 없어 표 이름을 그대로 썼습니다."
+                else "명칭: 테이블명 사용 (주석 없음)"
             ),
             evidence=[table_evidence],
             confidence=score.build(
@@ -285,9 +303,9 @@ def _table_candidates(
                     resource_key=key,
                     key_columns=keys,
                 ),
-                reason=f"{key}의 기본키 {keys}로 행을 구분한다"
+                reason=f"행 식별: 기본키 {_cols(keys)}"
                 if schema.primary_key
-                else f"{key}에 선언된 기본키가 없어 값이 모두 다른 컬럼 {keys}를 키로 쓴다",
+                else f"행 식별: 중복 없는 컬럼 {_cols(keys)} (선언된 기본키 없음)",
                 evidence=[table_evidence],
                 confidence=score.build(score.object_mapping(bool(schema.primary_key))),
             )
@@ -335,19 +353,19 @@ def _table_candidates(
                     if personal
                     else Sensitivity.NORMAL,
                 ),
-                reason=f"자료형 {dtype.value}"
+                reason=f"자료형: {TYPE_TEXT.get(dtype.value, dtype.value)} "
                 + (
-                    f"(선언 {col.declared_type})"
+                    f"({col.declared_type})"
                     if col.declared_type
                     else "(값 모양으로 추정)"
                 )
-                + (", 식별 키" if col.name in keys else "")
+                + (" · 식별 키" if col.name in keys else "")
                 + (
-                    ", 빈 값 없음(관찰)"
+                    " · 빈 값 없음"
                     if stats.null_count == 0
-                    else f", 빈 값 {stats.null_count}행"
+                    else f" · 빈 값 {stats.null_count}행"
                 )
-                + (f", 개인정보: {why_personal}" if personal else ""),
+                + (f" · 개인정보 ({why_personal})" if personal else ""),
                 evidence=[evidence],
                 confidence=score.build(
                     score.property_(
