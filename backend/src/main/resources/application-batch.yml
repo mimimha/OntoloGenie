@@ -32,3 +32,7 @@ axcore:
       retry-delay: 5s
       # 소비할 원천(CDC 표가 있는 원천)을 다시 찾는 간격, 복구 중인 원천이 풀렸는지 확인하는 간격.
       refresh-interval: 30s
+  check:
+    # 원천 사이 규칙의 미연결을 확인 대기(link_check_pending)에 두는 시간(191-3). 원천이 정상인 채로 이만큼 지나도 안 맞으면 issue로 올린다.
+    # 기본값은 임시이고 246에서 확정한다.
+    pending-wait: 10m
