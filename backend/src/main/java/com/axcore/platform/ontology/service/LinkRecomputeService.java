@@ -75,8 +75,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class LinkRecomputeService {
 
-    private static final String LINK_TYPE_LOCK = "link:type:";
-
     private final LinkMappingRepository rules;
     private final LinkMappingConditionRepository conditions;
     private final LinkTypeRepository linkTypes;
@@ -217,7 +215,7 @@ public class LinkRecomputeService {
         }
         TreeSet<Long> ordered = new TreeSet<>(linkTypeIds);
         for (Long linkTypeId : ordered) {
-            ruleLinks.lock(LINK_TYPE_LOCK + linkTypeId);
+            ruleLinks.lockLinkType(linkTypeId);
         }
         // 잠근 뒤에 규칙을 읽는다. 기다리는 동안 커밋된 새 개정본을 보고 계산하기 위해서다.
         List<LinkMapping> active =

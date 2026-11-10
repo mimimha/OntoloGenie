@@ -43,11 +43,29 @@ code를 DB ID로 바꾸는 일은 이 서비스가 한다. 아직 승인되지 �
 | OBJECT_MAPPING | `object_source_mapping` 추가, `source_resource.loaded_lsn` 비움 | 1 |
 | PROPERTY_MAPPING | `property_source_mapping` 추가, `source_resource.loaded_lsn` 비움 | 1 |
 | LINK_RULE | 이전 `link_mapping` 개정본 RETIRED, 새 개정본·비교 항목 추가, `object_link` 재조정, `held_item` 추가 | 2 (186·189) |
-| DOCUMENT_LINK | `object_link`(origin=DOCUMENT) 추가 | 3 (181) |
+| DOCUMENT_LINK | `object_link`(origin=DOCUMENT) 추가 또는 같은 쌍의 비활성 행 되살림 | 3 (329) |
 
-반영기가 없는 종류는 `APPLY_KIND_NOT_SUPPORTED`로 거절한다. 1단계(정의·매핑 5종)와 2단계(LINK_RULE)는 반영기가 있고, DOCUMENT_LINK는 아직 이 상태다(S15P31C106-329). 호출 방식은 바뀌지 않는다.
+모든 종류에 반영기가 있다. 반영기가 없는 종류가 생기면 `APPLY_KIND_NOT_SUPPORTED`로 거절한다.
 
-선행 후보가 먼저 반영돼야 한다: 객체 유형 → 속성·관계 유형 → 객체 매핑 → 속성 매핑 → 관계 규칙.
+선행 후보가 먼저 반영돼야 한다: 객체 유형 → 속성·관계 유형 → 객체 매핑 → 속성 매핑 → 관계 규칙. 문서 연결은 관계 유형이 있고 문서·대상 객체가 적재된 뒤에 반영된다.
+
+### DOCUMENT_LINK (S15P31C106-329)
+
+저장·검증은 확정 연결 저장 서비스(`ConfirmedLinkService.saveDocument`, `docs/confirmed-link.md`)가 한다. 반영기는 payload를 읽어 객체를 찾는다.
+
+| payload | 뜻 | 대신 쓸 수 있는 값 |
+| --- | --- | --- |
+| `linkTypeCode` | 관계 유형 코드 | `linkTypeId` |
+| `documentId` | 문서 객체(관계 유형의 출발 유형)의 원천 키 값. 예: `HN-260804-D` | `sourceObjectId` |
+| `targetObjectRef` | `원천표:키값`. 예: `mes.equipment:P201`. 원천표는 `source_resource.resource_key` | `targetObjectId` |
+| `expressionKind` | OBSERVED·ESTIMATED(결정 U8). 그 밖의 값은 `APPLY_PAYLOAD_INVALID` | |
+| `spanStart`·`spanEnd`·`mentionText` | 원문 구간과 언급 문자열. 근거에만 남긴다 | |
+
+- 원천 키로 찾는 객체는 관계 유형의 그 쪽 유형이고, **키 컬럼이 하나인 매핑**으로 만든 객체만 본다. 못 찾으면 `APPLY_REFERENCE_MISSING`(적재 전이면 적재 뒤 다시 승인), 여럿이면 `APPLY_PAYLOAD_INVALID`다.
+- 근거(`object_link.evidence`): `{"expression_kind", "document_id", "span_start", "span_end", "quote"}`. DB CHECK가 `expression_kind` 키 이름을 정해 두어 문서 근거는 snake_case로 쓴다.
+- 같은 쌍의 문서 연결이 이미 있으면(같은 메모가 같은 설비를 두 번 언급) 그 연결로 성공한다. `summary.outcome`은 `ALREADY_LINKED`, `changes`는 비어 있다.
+- 저장 서비스 오류는 반영 오류로 바꾼다: 이미 다른 출처의 활성 연결이 있으면 `APPLY_TARGET_EXISTS`, 없는 객체는 `APPLY_REFERENCE_MISSING`, 유형 불일치·원천 삭제·관계 수 초과는 `APPLY_PAYLOAD_INVALID`. 원래 코드는 `details.linkError`에 남는다.
+- 한계: payload에 없는 관찰 표현·시간 표현(후보 `evidence.observations`·`times`)은 연결 근거에 넣지 않는다. 반영 계약(`ApplyCommand`)이 후보 근거를 넘기지 않기 때문이다. 같은 쌍을 다시 언급한 후보의 근거는 합치지 않는다(첫 근거만 남음).
 
 ### AI 묶음 후보 (API-105)
 

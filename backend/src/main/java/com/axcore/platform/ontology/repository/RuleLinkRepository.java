@@ -28,6 +28,14 @@ public class RuleLinkRepository {
     private final JdbcClient jdbc;
     private final JsonMapper json;
 
+    /**
+     * 관계 유형 하나의 연결을 쓰는 트랜잭션끼리 줄 세우는 잠금(트랜잭션 끝까지). 규칙 재계산(181)과 확정 연결 저장(329)이 같은 이름을 써야 같은 쌍을 동시에
+     * 넣지 않는다.
+     */
+    public void lockLinkType(long linkTypeId) {
+        lock("link:type:" + linkTypeId);
+    }
+
     /** 이름 하나에 트랜잭션 끝까지 걸리는 잠금. */
     public void lock(String key) {
         jdbc.sql("select pg_advisory_xact_lock(hashtext(:key))")
