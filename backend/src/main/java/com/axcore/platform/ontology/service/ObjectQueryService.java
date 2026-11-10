@@ -7,10 +7,15 @@ import com.axcore.platform.auth.service.MaskedProperties;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.ontology.dto.ObjectDetailResponse;
+import com.axcore.platform.ontology.dto.ObjectLinkResponse;
+import com.axcore.platform.ontology.dto.ObjectLinkSearchRequest;
+import com.axcore.platform.ontology.dto.ObjectLinkSearchRequest.Direction;
 import com.axcore.platform.ontology.dto.ObjectSearchRequest;
 import com.axcore.platform.ontology.dto.ObjectSearchRequest.Status;
 import com.axcore.platform.ontology.dto.ObjectSearchResponse;
 import com.axcore.platform.ontology.repository.ObjectQueryRepository;
+import com.axcore.platform.ontology.repository.ObjectQueryRepository.DetailRow;
 import com.axcore.platform.ontology.repository.ObjectQueryRepository.ObjectRow;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -27,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class ObjectQueryService implements ObjectSearchQuery {
+public class ObjectQueryService implements ObjectSearchQuery, ObjectDetailQuery {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
 
@@ -62,12 +67,79 @@ public class ObjectQueryService implements ObjectSearchQuery {
             return Page.empty(page);
         }
 
-        List<Long> maskedTypeIds =
-                visibleTypeIds.stream().filter(id -> !access.canViewRestricted(id)).toList();
         String q = request.q();
         String pattern = q == null || q.isBlank() ? null : SearchPattern.contains(q);
-        return objects.search(visibleTypeIds, maskedTypeIds, status, pattern, page)
+        return objects.search(
+                        visibleTypeIds, maskedTypes(access, visibleTypeIds), status, pattern, page)
                 .map(row -> toResponse(row, access));
+    }
+
+    @Override
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ObjectDetailResponse detail(LoginAccount actor, long objectId) {
+        DataAccess access = dataAccessPolicy.of(actor);
+        Set<Long> visibleTypeIds = access.visibleObjectTypeIds();
+        if (visibleTypeIds.isEmpty()) {
+            throw notFound(objectId);
+        }
+        DetailRow detail =
+                objects.findDetail(
+                                objectId,
+                                visibleTypeIds,
+                                maskedTypes(access, visibleTypeIds),
+                                RoleCode.ADMIN.name().equals(actor.roleCode()))
+                        .orElseThrow(() -> notFound(objectId));
+        ObjectRow row = detail.object();
+        MaskedProperties masked = access.mask(row.objectTypeId(), row.properties());
+        return new ObjectDetailResponse(
+                row.id(),
+                row.objectTypeId(),
+                row.objectTypeName(),
+                row.displayName(),
+                masked.properties(),
+                detail.propertyNames(),
+                masked.restrictedPropertyCodes(),
+                row.status(),
+                row.sourceMappingId(),
+                detail.sourceSystemName(),
+                detail.sourceResourceKey(),
+                row.sourceKey(),
+                row.firstCollectedAt(),
+                row.lastSyncedAt(),
+                dataAsOf(row.asOfCode(), masked.properties()));
+    }
+
+    @Override
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public Page<ObjectLinkResponse> links(
+            LoginAccount actor, long objectId, ObjectLinkSearchRequest request) {
+        DataAccess access = dataAccessPolicy.of(actor);
+        Set<Long> visibleTypeIds = access.visibleObjectTypeIds();
+        if (visibleTypeIds.isEmpty() || !objects.existsActive(objectId, visibleTypeIds)) {
+            throw notFound(objectId);
+        }
+        Direction direction = request.direction() == null ? Direction.BOTH : request.direction();
+        PageRequest page =
+                PageRequest.of(
+                        request.page() == null ? 0 : request.page(),
+                        request.size() == null ? DEFAULT_PAGE_SIZE : request.size());
+        return objects.links(
+                objectId,
+                visibleTypeIds,
+                maskedTypes(access, visibleTypeIds),
+                request.linkTypeId(),
+                direction,
+                page);
+    }
+
+    private static List<Long> maskedTypes(DataAccess access, Set<Long> visibleTypeIds) {
+        return visibleTypeIds.stream().filter(id -> !access.canViewRestricted(id)).toList();
+    }
+
+    private static BusinessException notFound(long objectId) {
+        return new BusinessException(
+                CommonErrorCode.RESOURCE_NOT_FOUND,
+                Map.of("resource", "object_instance", "id", objectId));
     }
 
     private static ObjectSearchResponse toResponse(ObjectRow row, DataAccess access) {

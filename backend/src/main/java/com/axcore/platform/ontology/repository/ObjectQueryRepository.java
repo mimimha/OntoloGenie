@@ -1,13 +1,21 @@
 package com.axcore.platform.ontology.repository;
 
+import com.axcore.platform.ontology.dto.ObjectLinkEvidenceResponse;
+import com.axcore.platform.ontology.dto.ObjectLinkResponse;
+import com.axcore.platform.ontology.dto.ObjectLinkResponse.ExpressionKind;
+import com.axcore.platform.ontology.dto.ObjectLinkResponse.Origin;
+import com.axcore.platform.ontology.dto.ObjectLinkResponse.RelatedObject;
+import com.axcore.platform.ontology.dto.ObjectLinkSearchRequest.Direction;
 import com.axcore.platform.ontology.dto.ObjectSearchRequest.Status;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -18,12 +26,18 @@ import org.springframework.stereotype.Repository;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Entity를 두지 않고 기존 JDBC로 접근하는 object_instance의 검색과 페이지 조회. */
+/** Entity가 없는 object_instance·object_link의 검색, 상세, 활성 관계 조회. */
 @Repository
 @RequiredArgsConstructor
 public class ObjectQueryRepository {
 
     private static final TypeReference<Map<String, Object>> JSON_OBJECT = new TypeReference<>() {};
+    private static final TypeReference<Map<String, String>> PROPERTY_NAMES =
+            new TypeReference<>() {};
+
+    // 관계 근거의 열람 정책은 138에서 적용한다.
+    private static final ObjectLinkEvidenceResponse EMPTY_EVIDENCE =
+            new ObjectLinkEvidenceResponse(null, null, null, null, null, null);
 
     private static final String OBJECTS = "from object_instance oi\n";
 
@@ -100,6 +114,23 @@ public class ObjectQueryRepository {
                     where pd.object_type_id = oi.object_type_id and pd.temporal_role = 'AS_OF') as as_of_code
             """;
 
+    private static final String LINK_OBJECTS =
+            """
+            from object_link l
+            join object_instance oi on oi.id = case when l.source_object_id = :id
+                                                    then l.target_object_id else l.source_object_id end
+            """;
+
+    // 기준 객체의 상태와 권한은 같은 트랜잭션에서 existsActive로 먼저 확인한다.
+    private static final String LINK_FILTERS =
+            """
+            where l.status = 'ACTIVE' and oi.status = 'ACTIVE'
+              and ((:includeOut and l.source_object_id = :id)
+                   or (:includeIn and l.target_object_id = :id))
+              and oi.object_type_id in (:visibleTypeIds)
+              and (cast(:linkTypeId as bigint) is null or l.link_type_id = :linkTypeId)
+            """;
+
     private final JdbcClient jdbc;
     private final JsonMapper json;
 
@@ -136,6 +167,137 @@ public class ObjectQueryRepository {
         return new PageImpl<>(rows, page, total);
     }
 
+    public Optional<DetailRow> findDetail(
+            long id,
+            Collection<Long> visibleTypeIds,
+            Collection<Long> maskedTypeIds,
+            boolean includeDeleted) {
+        return withDisplayScope(
+                        jdbc.sql(
+                                SELECT
+                                        + """
+                                        , ds.name as source_system_name, sr.resource_key,
+                                          coalesce((
+                                              select jsonb_object_agg(pd.code, pd.name)
+                                              from property_definition pd
+                                              where pd.object_type_id = oi.object_type_id
+                                                and jsonb_exists(oi.properties, pd.code)
+                                          ), '{}'::jsonb)::text as property_names
+                                        """
+                                        + OBJECTS
+                                        + DISPLAY_JOINS
+                                        + """
+                                        left join object_source_mapping osm on osm.id = oi.source_mapping_id
+                                        left join source_resource sr on sr.id = osm.source_resource_id
+                                        left join data_source ds on ds.id = sr.data_source_id
+                                        where oi.id = :id and oi.object_type_id in (:visibleTypeIds)
+                                          and (:includeDeleted or oi.status = 'ACTIVE')
+                                        """),
+                        maskedTypeIds)
+                .param("id", id)
+                .param("visibleTypeIds", visibleTypeIds)
+                .param("includeDeleted", includeDeleted)
+                .query(
+                        (rs, rowNum) ->
+                                new DetailRow(
+                                        row(rs),
+                                        json.readValue(
+                                                rs.getString("property_names"), PROPERTY_NAMES),
+                                        rs.getString("source_system_name"),
+                                        rs.getString("resource_key")))
+                .optional();
+    }
+
+    public boolean existsActive(long id, Collection<Long> visibleTypeIds) {
+        return scopedQuery(
+                        "select exists (select 1 " + OBJECTS + FILTERS + " and oi.id = :id)",
+                        visibleTypeIds,
+                        Status.ACTIVE)
+                .param("id", id)
+                .query(Boolean.class)
+                .single();
+    }
+
+    public Page<ObjectLinkResponse> links(
+            long id,
+            Collection<Long> visibleTypeIds,
+            Collection<Long> maskedTypeIds,
+            Long linkTypeId,
+            Direction direction,
+            Pageable page) {
+        String select =
+                """
+                select l.id, l.link_type_id, lt.name as link_type_name,
+                       l.source_object_id, l.target_object_id, l.origin, l.status,
+                       l.link_mapping_id, l.confirmed_by,
+                       case when l.origin = 'DOCUMENT' then l.evidence ->> 'expression_kind' end as expression_kind,
+                       oi.id as related_id, oi.object_type_id, ot.name as object_type_name, shown.display_name
+                """;
+        List<ObjectLinkResponse> rows =
+                withDisplayScope(
+                                linkQuery(
+                                        select
+                                                + LINK_OBJECTS
+                                                + "join link_type lt on lt.id = l.link_type_id\n"
+                                                + DISPLAY_JOINS
+                                                + LINK_FILTERS
+                                                + "order by l.id limit :limit offset :offset",
+                                        id,
+                                        visibleTypeIds,
+                                        linkTypeId,
+                                        direction),
+                                maskedTypeIds)
+                        .param("limit", page.getPageSize())
+                        .param("offset", page.getOffset())
+                        .query((rs, rowNum) -> linkRow(rs))
+                        .list();
+        long total =
+                linkQuery(
+                                "select count(*) " + LINK_OBJECTS + LINK_FILTERS,
+                                id,
+                                visibleTypeIds,
+                                linkTypeId,
+                                direction)
+                        .query(Long.class)
+                        .single();
+        return new PageImpl<>(rows, page, total);
+    }
+
+    private JdbcClient.StatementSpec linkQuery(
+            String sql,
+            long id,
+            Collection<Long> visibleTypeIds,
+            Long linkTypeId,
+            Direction direction) {
+        return jdbc.sql(sql)
+                .param("id", id)
+                .param("visibleTypeIds", visibleTypeIds)
+                .param("linkTypeId", linkTypeId, Types.BIGINT)
+                .param("includeOut", direction != Direction.IN)
+                .param("includeIn", direction != Direction.OUT);
+    }
+
+    private static ObjectLinkResponse linkRow(ResultSet rs) throws SQLException {
+        String expression = rs.getString("expression_kind");
+        return new ObjectLinkResponse(
+                rs.getLong("id"),
+                rs.getLong("link_type_id"),
+                rs.getString("link_type_name"),
+                rs.getLong("source_object_id"),
+                rs.getLong("target_object_id"),
+                new RelatedObject(
+                        rs.getLong("related_id"),
+                        rs.getString("display_name"),
+                        rs.getLong("object_type_id"),
+                        rs.getString("object_type_name")),
+                Origin.valueOf(rs.getString("origin")),
+                rs.getString("status"),
+                rs.getObject("link_mapping_id", Long.class),
+                EMPTY_EVIDENCE,
+                expression == null ? null : ExpressionKind.valueOf(expression),
+                rs.getObject("confirmed_by", Long.class));
+    }
+
     private JdbcClient.StatementSpec displayQuery(
             String sql,
             Collection<Long> visibleTypeIds,
@@ -143,11 +305,13 @@ public class ObjectQueryRepository {
             Status status,
             String pattern) {
         JdbcClient.StatementSpec query =
-                scopedQuery(sql, visibleTypeIds, status)
-                        .param(
-                                "maskedTypeIds",
-                                new SqlArrayValue("bigint", maskedTypeIds.toArray()));
+                withDisplayScope(scopedQuery(sql, visibleTypeIds, status), maskedTypeIds);
         return pattern == null ? query : query.param("pattern", pattern);
+    }
+
+    private static JdbcClient.StatementSpec withDisplayScope(
+            JdbcClient.StatementSpec query, Collection<Long> maskedTypeIds) {
+        return query.param("maskedTypeIds", new SqlArrayValue("bigint", maskedTypeIds.toArray()));
     }
 
     private JdbcClient.StatementSpec scopedQuery(
@@ -171,6 +335,12 @@ public class ObjectQueryRepository {
                 lastSyncedAt == null ? null : lastSyncedAt.toInstant(),
                 rs.getString("as_of_code"));
     }
+
+    public record DetailRow(
+            ObjectRow object,
+            Map<String, String> propertyNames,
+            String sourceSystemName,
+            String sourceResourceKey) {}
 
     public record ObjectRow(
             long id,
