@@ -1,18 +1,25 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import Button from '../../components/Button'
+import SuggestedQuestions from './SuggestedQuestions'
+import { suggestedQuestions } from './suggestions'
+import type { ReferenceObject } from './types'
 
 type ChatComposerProps = {
   disabled: boolean
   initialDraft?: string
+  // 첫 질문 전까지의 참고 객체. 추천 질문을 그 객체에 맞춘다. 없으면 null(150).
+  reference?: ReferenceObject | null
   onSend: (content: string) => Promise<void>
 }
 
 function ChatComposer({
   disabled,
   initialDraft = '',
+  reference = null,
   onSend,
 }: ChatComposerProps) {
   const [draft, setDraft] = useState(initialDraft)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const content = draft.trim()
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -26,8 +33,19 @@ function ChatComposer({
     }
   }
 
+  // 추천 질문을 고르면 입력란에 채우고 바로 고쳐 쓸 수 있게 입력란으로 옮긴다.
+  function handlePick(text: string) {
+    setDraft(text)
+    inputRef.current?.focus()
+  }
+
   return (
     <form onSubmit={handleSubmit} className="border-t border-slate-200 p-3">
+      <SuggestedQuestions
+        questions={suggestedQuestions(reference)}
+        disabled={disabled}
+        onPick={handlePick}
+      />
       <label
         htmlFor="agent-input"
         className="text-sm font-medium text-slate-700"
@@ -36,6 +54,7 @@ function ChatComposer({
       </label>
       <textarea
         id="agent-input"
+        ref={inputRef}
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         disabled={disabled}
