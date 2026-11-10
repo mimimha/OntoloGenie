@@ -65,6 +65,8 @@ FN-CHK-01·02의 검사 실행 목록·상태 조회, 수동 검사·재검증 �
 - MANUAL과 REVERIFY는 규칙과 기준이 같아도 다른 검사다.
 - 동시에 같은 요청이 와도 부분 유일 인덱스와 `on conflict do nothing`으로 하나만 남는다. 그 사이 상대 검사가 끝나면 최대 3번 다시 본다.
 
+**감사 기록(접수 줄):** 새로 넣었든 합류했든 결과를 다시 썼든 요청마다 한 줄을 남긴다(개발 가이드 14.2). 요청자(USER)·WEB·`SUCCEEDED`·`event_kind=CHECK_RUN`, `target_type=check_run`·`target_id`=검사 ID. 입력은 `triggerKind`·`scopeKind`·`linkMappingCount`(재검증이면 `issueCount`·`comparedToRunId`), 결과는 `joined`·`reused`·`status`다. ID 목록은 넣지 않는다. 결과 줄은 배치 실행 틀이 남기고 같은 검사 ID로 묶인다.
+
 ### 거절
 
 | 경우 | 응답 |

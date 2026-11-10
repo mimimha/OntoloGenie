@@ -1,5 +1,12 @@
 package com.axcore.platform.check.service;
 
+import com.axcore.platform.audit.domain.Actor;
+import com.axcore.platform.audit.domain.AuditEntry;
+import com.axcore.platform.audit.domain.EntryPoint;
+import com.axcore.platform.audit.domain.EventKind;
+import com.axcore.platform.audit.domain.ExecutionStatus;
+import com.axcore.platform.audit.service.AuditRecorder;
+import com.axcore.platform.batch.domain.QueuedJobType;
 import com.axcore.platform.check.domain.CheckDataBasis;
 import com.axcore.platform.check.dto.CheckRunCreateRequest;
 import com.axcore.platform.check.dto.CheckRunCreateRequest.Scope;
@@ -9,6 +16,7 @@ import com.axcore.platform.check.repository.CheckRunRepository.NewRun;
 import com.axcore.platform.check.repository.CheckRunRepository.RunState;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
+import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.issue.domain.Issue;
 import com.axcore.platform.issue.domain.IssueStatus;
 import com.axcore.platform.issue.repository.IssueRepository;
@@ -39,6 +47,9 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>같은 종류·비교 대상·범위(규칙 개정본 목록)·데이터 기준이면 같은 작업이다. 성공한 같은 작업이 있으면 다시 쓰고(200), 대기·실행 중이면 합류한다(202). 이
  * API는 중복 요청에 409를 쓰지 않는다.
+ *
+ * <p>감사 기록은 접수 줄을 남긴다(개발 가이드 14.2). 새로 넣었든 합류했든 다시 썼든 요청한 사람·{@code SUCCEEDED} 한 줄이고, 배치 실행 틀이 남기는
+ * 결과 줄과 {@code check_run} ID로 묶인다. 범위 종류와 규칙·문제 개수만 남기고 ID 목록은 넣지 않는다.
  */
 @Service
 @RequiredArgsConstructor
@@ -50,11 +61,12 @@ public class CheckRunRequestService {
     private final LinkMappingRepository linkMappingRepository;
     private final IssueRepository issueRepository;
     private final LinkMappingRuleLoader ruleLoader;
+    private final AuditRecorder audits;
     private final JsonMapper json;
     private final Clock clock;
 
     @Transactional
-    public CheckRunRequestResponse request(CheckRunCreateRequest request, long accountId) {
+    public CheckRunRequestResponse request(CheckRunCreateRequest request, LoginAccount account) {
         String triggerKind = request.triggerKind();
         Scope scope = request.scope();
         requireShape(triggerKind, scope, request.comparedToRunId());
@@ -102,10 +114,36 @@ public class CheckRunRequestService {
                         workKey,
                         basisJson,
                         request.comparedToRunId(),
-                        accountId,
+                        account.id(),
                         Instant.now(clock));
 
-        // 같은 작업이 그 사이 끝나거나 롤백되면 다시 본다.
+        CheckRunRequestResponse response = accept(workKey, run);
+        audits.record(
+                AuditEntry.builder()
+                        .eventKind(EventKind.CHECK_RUN)
+                        .actor(Actor.user(account))
+                        .entryPoint(EntryPoint.WEB)
+                        .status(ExecutionStatus.SUCCEEDED)
+                        .checkedPermissionCode("ADMIN")
+                        .targetType(QueuedJobType.CHECK_RUN.table())
+                        .targetId(response.run().id())
+                        .input(
+                                intake(
+                                        triggerKind,
+                                        scope.kind(),
+                                        storedScope,
+                                        request.comparedToRunId()))
+                        .result(
+                                Map.of(
+                                        "joined", response.joined(),
+                                        "reused", response.reused(),
+                                        "status", response.run().status()))
+                        .build());
+        return response;
+    }
+
+    // 같은 작업이 그 사이 끝나거나 롤백되면 다시 본다.
+    private CheckRunRequestResponse accept(String workKey, NewRun run) {
         for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             Optional<Long> succeeded = checkRunRepository.findSucceeded(workKey);
             if (succeeded.isPresent()) {
@@ -121,6 +159,27 @@ public class CheckRunRequestService {
             }
         }
         throw new IllegalStateException("검사 요청을 접수하지 못했습니다: " + workKey);
+    }
+
+    /** 접수 줄의 입력. ID 목록 대신 개수만 남긴다. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> intake(
+            String triggerKind,
+            String scopeKind,
+            Map<String, Object> storedScope,
+            Long comparedToRunId) {
+        Map<String, Object> input = new LinkedHashMap<>();
+        input.put("triggerKind", triggerKind);
+        input.put("scopeKind", scopeKind);
+        input.put("linkMappingCount", ((List<Long>) storedScope.get("linkMappingIds")).size());
+        Object issueIds = storedScope.get("issueIds");
+        if (issueIds instanceof List<?> issues) {
+            input.put("issueCount", issues.size());
+        }
+        if (comparedToRunId != null) {
+            input.put("comparedToRunId", comparedToRunId);
+        }
+        return input;
     }
 
     /** 종류·범위·비교 대상의 조합. 틀리면 400이다. */

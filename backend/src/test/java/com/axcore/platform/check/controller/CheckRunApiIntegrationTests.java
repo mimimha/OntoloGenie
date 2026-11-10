@@ -16,6 +16,7 @@ import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.issue.IssueTestFixtures;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -164,6 +165,54 @@ class CheckRunApiIntegrationTests {
                 .andExpect(jsonPath("$.data.status").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.data.joined").value(false))
                 .andExpect(jsonPath("$.data.reused").value(true));
+    }
+
+    /**
+     * 개발 가이드 14.2: 오래 걸리는 작업은 접수 1줄과 결과 1줄을 남긴다. 접수 줄은 요청한 사람·SUCCEEDED이고 합류하거나 결과를 재사용해도 남긴다. 범위
+     * 종류와 개수만 남기고 ID 목록은 넣지 않는다.
+     */
+    @Test
+    void recordsIntakeLineForNewJoinedAndReusedRequests() throws Exception {
+        rule();
+        long first = id(request(MANUAL_ALL).andExpect(status().isAccepted()));
+        request(MANUAL_ALL).andExpect(status().isAccepted());
+        fixtures.setStatus(first, "SUCCEEDED");
+        request(MANUAL_ALL).andExpect(status().isOk());
+
+        List<Map<String, Object>> lines =
+                jdbcClient
+                        .sql(
+                                """
+                                select actor_type, actor_id, entry_point, status, event_kind,
+                                       checked_permission_code, input::text as input, result::text as result
+                                from action_execution
+                                where target_type = 'check_run' and target_id = :id
+                                order by id
+                                """)
+                        .param("id", first)
+                        .query()
+                        .listOfRows();
+        assertThat(lines).hasSize(3);
+        assertThat(lines)
+                .allSatisfy(
+                        line ->
+                                assertThat(line)
+                                        .containsEntry("actor_type", "USER")
+                                        .containsEntry("actor_id", accountId)
+                                        .containsEntry("entry_point", "WEB")
+                                        .containsEntry("status", "SUCCEEDED")
+                                        .containsEntry("event_kind", "CHECK_RUN")
+                                        .containsEntry("checked_permission_code", "ADMIN"));
+        assertThat((String) lines.get(0).get("input"))
+                .contains("\"triggerKind\": \"MANUAL\"")
+                .contains("\"scopeKind\": \"ALL\"")
+                .contains("\"linkMappingCount\": 1")
+                .doesNotContain("linkMappingIds");
+        assertThat((String) lines.get(0).get("result"))
+                .contains("\"joined\": false", "\"reused\": false");
+        assertThat((String) lines.get(1).get("result")).contains("\"joined\": true");
+        assertThat((String) lines.get(2).get("result"))
+                .contains("\"reused\": true", "\"status\": \"SUCCEEDED\"");
     }
 
     @Test

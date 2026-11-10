@@ -7,11 +7,12 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 /**
- * 승인된 연결 규칙 개정본과 그 비교 조건, 규칙이 읽는 원천 자원을 읽는다(S15P31C106-190).
+ * 승인된 연결 규칙 개정본과 그 비교 조건을 읽는다(S15P31C106-190). 규칙이 읽는 원천 자원은 매핑 도메인의 JPA Repository({@code
+ * ObjectSourceMappingRepository})로 읽는다.
  *
  * <p>JdbcClient를 쓰는 이유(.ai/rules/database.md "조회·저장 방식"): 다른 도메인 테이블을 한 번의 SQL로 join하는 읽기 전용 조회다.
- * 규칙 개정본과 관계 유형(관계 수), 비교 조건과 양쪽 속성·객체 유형 코드(엔진이 찾는 이름 {@code 객체유형코드.속성코드}), 유형의 활성 매핑 원천 자원을 각각 한
- * 문장으로 읽는다. 쓰지 않는다. 규칙 ID만 고르는 조회는 JPA({@code LinkMappingRepository})를 쓴다.
+ * 규칙 개정본과 관계 유형(관계 수), 비교 조건과 양쪽 속성·객체 유형 코드(엔진이 찾는 이름 {@code 객체유형코드.속성코드})를 각각 한 문장으로 읽는다. 쓰지 않는다.
+ * 규칙 ID만 고르는 조회는 JPA({@code LinkMappingRepository})를 쓴다.
  */
 @Repository
 @RequiredArgsConstructor
@@ -75,20 +76,6 @@ public class LinkMappingRuleRepository {
                                         rs.getString("target_property"),
                                         rs.getString("source_transforms"),
                                         rs.getString("target_transforms")))
-                .list();
-    }
-
-    /** 객체 유형에 활성 매핑으로 연결된 원천 자원. 같은 자원은 한 번만 돌려준다. */
-    public List<Long> findMappedResourceIds(long objectTypeId) {
-        return jdbc.sql(
-                        """
-                        select distinct source_resource_id
-                        from object_source_mapping
-                        where object_type_id = :typeId and is_active
-                        order by source_resource_id
-                        """)
-                .param("typeId", objectTypeId)
-                .query(Long.class)
                 .list();
     }
 
