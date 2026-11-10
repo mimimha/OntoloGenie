@@ -73,7 +73,7 @@ GET /api/v1/audit/actions/456
 
 현재 프론트와 같은 후보 필터 없는 기본 목록 및 기간·상태 목록도 위 시나리오 안에서 확인한다. 권한·페이지·중복·revision 등의 기존 검증은 `ProposalDecisionApiTests`, `ProposalDecisionServiceTests`, `ProposalDecisionHistoryApiTests`, `AuditExecutionApiTests`를 재사용한다. 새로 중복 작성하지 않는다.
 
-테스트 전용 `QueryProbeApplier`는 규칙과 보류 행을 실제 DB에 생성한다. 이 값들이 커밋 또는 롤백된 후 기존 API에서 정확히 조회되는지를 검증하며, 실제 관계 계산·보류 분류 알고리즘 구현을 의미하지 않는다. 운영 반영기 미제공 상태를 성공 대역으로 바꾸지 않는다. 실제 종류별 반영기 수령 후 성공 시나리오와 관계 재조정·보류 생성은 별도 연동 검증이 필요하다.
+테스트용 `ProposalApplyService`는 `QueryApplyProbe`에 위임해 규칙과 보류 행을 실제 DB에 생성한다. `QueryApplyProbe`는 종류별 반영기로 등록하지 않으므로 실제 `LINK_RULE` 반영기와 충돌하지 않는다. 커밋 또는 롤백된 후 기존 API의 조회 결과를 검증한다. 실제 `LINK_RULE` 반영기가 추가되면 관계 재조정·보류 생성은 별도 연동 검증이 필요하다.
 
 검증 명령과 실제 결과는 이 문서의 후속 검증 기록에 남긴다. 팀원 리뷰·MR 병합·병합 후 배포 동작 확인은 별도 완료 조건이다.
 
@@ -95,3 +95,8 @@ GET /api/v1/audit/actions/456
 - 병합 상태에서 `./backend/gradlew.bat -p backend spotlessCheck test --tests '*ProposalApplyResultQueryApiTests' --console=plain`: 종료 코드 0, BUILD SUCCESSFUL(1분 25초). XML 기준 3건, 실패·오류·Skip 0. 전체 build는 반복하지 않았다.
 - 최신 develop과 비교한 133 변경은 테스트·문서 5개다. 운영 조회 메서드·프론트·Migration은 추가 수정하지 않았다. Push·MR 생성은 수행하지 않았다.
 - 현재 JPA 우선 규칙을 확인했다. 신규 운영 Repository·SQL은 없고, 테스트 데이터 생성·롤백 유도·DB 상태 검증에만 JdbcClient를 쓴다. 규칙에는 테스트 fixture 적용 범위가 별도로 명시돼 있지 않다.
+
+## 후속 검증 — LINK_RULE 테스트 대역 분리 (2026-11-09)
+
+- 임시 `LINK_RULE` 반영기 빈을 등록하고 `test --tests '*ProposalApplyResultQueryApiTests'`를 실행했다. 분리 전에는 중복 등록으로 3건이 실패했고, 분리 후에는 같은 빈을 등록한 상태에서 3건 모두 통과했다.
+- 임시 빈 제거 후 `spotlessApply spotlessCheck`와 관련 승인·반영 테스트 7개 클래스를 실행했다. 51건 통과, 실패·오류·Skip 0.

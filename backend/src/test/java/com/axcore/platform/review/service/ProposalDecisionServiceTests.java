@@ -45,6 +45,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -59,6 +60,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -77,7 +80,7 @@ class ProposalDecisionServiceTests {
     @Autowired JdbcClient jdbc;
     @Autowired JsonMapper json;
     @Autowired PlatformTransactionManager transactions;
-    @Autowired RecordingApplier applier;
+    @Autowired ApplyProbe applier;
     @MockitoSpyBean AuditRecorder audits;
     private DecisionHistoryFixtures data;
     private long account;
@@ -87,8 +90,15 @@ class ProposalDecisionServiceTests {
     @TestConfiguration
     static class ApplyConfiguration {
         @Bean
-        RecordingApplier recordingApplier(JdbcClient jdbc) {
-            return new RecordingApplier(jdbc);
+        ApplyProbe applyProbe(JdbcClient jdbc) {
+            return new ApplyProbe(jdbc);
+        }
+
+        @Bean
+        @Primary
+        ProposalApplyService testApplyService(
+                ObjectProvider<ProposalApplier> appliers, ApplyProbe probe) {
+            return new TestApplyService(appliers, probe);
         }
 
         @Bean
@@ -98,11 +108,23 @@ class ProposalDecisionServiceTests {
         }
     }
 
-    /**
-     * Only a transaction probe on a kind without a production applier yet (DOCUMENT_LINK, Jira
-     * 329).
-     */
-    static class RecordingApplier implements ProposalApplier {
+    static class TestApplyService extends ProposalApplyService {
+        private final ApplyProbe probe;
+
+        TestApplyService(ObjectProvider<ProposalApplier> appliers, ApplyProbe probe) {
+            super(appliers);
+            this.probe = probe;
+        }
+
+        @Override
+        @Transactional(propagation = Propagation.MANDATORY)
+        public ApplyResult apply(ApplyCommand command) {
+            return probe.apply(command);
+        }
+    }
+
+    /** 반영기 목록에 등록하지 않고 131의 트랜잭션과 오류 처리를 확인한다. */
+    static class ApplyProbe {
         private final JdbcClient jdbc;
         final AtomicInteger calls = new AtomicInteger();
         volatile ApplyCommand command;
@@ -114,17 +136,11 @@ class ProposalDecisionServiceTests {
         volatile CountDownLatch release;
         volatile Runnable duringApply;
 
-        RecordingApplier(JdbcClient jdbc) {
+        ApplyProbe(JdbcClient jdbc) {
             this.jdbc = jdbc;
         }
 
-        @Override
-        public ProposalItemKind kind() {
-            return ProposalItemKind.DOCUMENT_LINK;
-        }
-
-        @Override
-        public ApplyResult apply(ApplyCommand input) {
+        ApplyResult apply(ApplyCommand input) {
             calls.incrementAndGet();
             command = input;
             long id =
@@ -184,10 +200,11 @@ class ProposalDecisionServiceTests {
     void prepare() {
         data = new DecisionHistoryFixtures(jdbc);
         account = data.account();
-        proposal = data.proposal(account, "{\"code\":\"IMMUTABLE\",\"optional\":null}");
-        jdbc.sql("update proposal_item set item_kind='DOCUMENT_LINK' where id=:id")
-                .param("id", proposal)
-                .update();
+        proposal =
+                data.proposal(
+                        account,
+                        ProposalItemKind.OBJECT_TYPE,
+                        "{\"code\":\"IMMUTABLE\",\"optional\":null}");
         basisCheckRunId = data.successfulCheck(proposal, 1, account);
         applier.calls.set(0);
         applier.command = null;
@@ -230,7 +247,7 @@ class ProposalDecisionServiceTests {
         var result = service.decide(proposal, request(option), login());
 
         assertThat(applier.command.proposalItemId()).isEqualTo(proposal);
-        assertThat(applier.command.itemKind()).isEqualTo(ProposalItemKind.DOCUMENT_LINK);
+        assertThat(applier.command.itemKind()).isEqualTo(ProposalItemKind.OBJECT_TYPE);
         assertThat(applier.command.origin()).isEqualTo(ProposalOrigin.valueOf(origin));
         assertThat(applier.command.decidedBy()).isEqualTo(account);
         assertThat(applier.command.payload())
@@ -381,7 +398,7 @@ class ProposalDecisionServiceTests {
                                 applyService.apply(
                                         new ApplyCommand(
                                                 proposal,
-                                                ProposalItemKind.DOCUMENT_LINK,
+                                                ProposalItemKind.OBJECT_TYPE,
                                                 ProposalOrigin.MANUAL,
                                                 Map.of(),
                                                 account)))
