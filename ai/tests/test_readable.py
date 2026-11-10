@@ -177,6 +177,9 @@ def test_held_document_link_keeps_reason_and_does_not_pick_first_option():
     assert "EQ-01" not in out["payload"]["name"]
     assert out["evidence"]["reason"].startswith("'2호기'에 맞는")
     assert "작성자의 배치 라인이 단서" in out["evidence"]["reason"]
+    # 같은 말을 두 번 쓰지 않는다(원래 이유의 첫 문장은 빼고 단서만)
+    assert "하나로 정할 수 없다" not in out["evidence"]["reason"]
+    assert "하나로 정하지 못했습니다" in out["evidence"]["reason"]
 
 
 def test_document_link_shows_alias_and_memo_excerpt():

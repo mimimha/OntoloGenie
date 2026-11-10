@@ -268,3 +268,35 @@ def test_independent_datasets_keep_their_scores(name, found, wrong_pending, wron
     # 틀린 후보가 늘어도 알 수 있게 둔다(2026-11-09 값)
     assert len(report["wrong_pending"]) <= wrong_pending
     assert report["wrong_held"] <= wrong_held
+
+
+def test_gtin_with_leading_zero_links_to_fixed_length_barcode(tmp_path):
+    # 바코드(EAN-13)는 숫자뿐이지만 글자형·고정 길이 코드라 도착 키로 본다.
+    # 고객 불만의 GTIN-14는 앞의 0을 떼면 바코드와 같다(B7)
+    barcodes = [f"8801234{i:06d}" for i in range(100, 160)]
+    write_table(
+        tmp_path,
+        "erp",
+        "item",
+        ["item_cd"],
+        {
+            "item_cd": ("varchar(8)", [f"IT{i:04d}" for i in range(60)]),
+            "barcode": ("char(13)", barcodes),
+        },
+    )
+    write_table(
+        tmp_path,
+        "qms",
+        "complaint",
+        ["complaint_no"],
+        {
+            "complaint_no": ("varchar(8)", [f"CP{i:04d}" for i in range(120)]),
+            "product_gtin": (
+                "varchar(14)",
+                ["0" + barcodes[i % 60] for i in range(120)],
+            ),
+        },
+    )
+    rule = rules(tmp_path)[("qms.complaint.product_gtin", "erp.item.barcode")]
+    steps = rule.payload.conditions[0].source_transforms
+    assert any(s.op.value == "STRIP_PREFIX" and s.arg == "0" for s in steps)
