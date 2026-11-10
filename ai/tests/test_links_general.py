@@ -250,7 +250,7 @@ def test_quantity_is_not_used_as_second_column_of_a_composite_key(tmp_path):
 
 @pytest.mark.parametrize(
     "name, found, wrong_pending, wrong_held",
-    [("b4", 14, 0, 4), ("b6", 17, 2, 6), ("b8", 20, 1, 2)],
+    [("b4", 14, 0, 4), ("b6", 17, 1, 7), ("b8", 20, 1, 2), ("b9", 20, 0, 6)],
 )
 def test_independent_datasets_keep_their_scores(name, found, wrong_pending, wrong_held):
     # 독립 데이터(규칙만, LLM 없음): 고친 코드로 찾는 관계 수가 떨어지거나 틀린 후보가 늘면 알 수 있게 둔다.

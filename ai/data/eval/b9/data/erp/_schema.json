@@ -1,0 +1,268 @@
+{
+  "tables": {
+    "거래처": {
+      "description": "고객사·원료 공급사·포장재 공급사를 함께 관리하는 업체 기준정보",
+      "primary_key": [
+        "거래처코드"
+      ],
+      "columns": {
+        "거래처코드": {
+          "type": "VARCHAR(10)",
+          "comment": "업체 고유 코드"
+        },
+        "거래처명": {
+          "type": "VARCHAR(50)",
+          "comment": ""
+        },
+        "거래처구분": {
+          "type": "VARCHAR(10)",
+          "comment": "고객사/원료공급사/포장재공급사"
+        },
+        "사업자번호": {
+          "type": "CHAR(12)",
+          "comment": "사업자등록번호(하이픈 포함)"
+        },
+        "대표자명": {
+          "type": "VARCHAR(20)",
+          "comment": ""
+        },
+        "지역": {
+          "type": "VARCHAR(20)",
+          "comment": ""
+        },
+        "거래등급": {
+          "type": "INTEGER",
+          "comment": "1(우수)~5"
+        },
+        "등록일자": {
+          "type": "DATE",
+          "comment": ""
+        },
+        "사용여부": {
+          "type": "CHAR(1)",
+          "comment": "Y/N"
+        }
+      }
+    },
+    "품목": {
+      "description": "완제품·원료·포장재 품목 기준정보",
+      "primary_key": [
+        "품목코드"
+      ],
+      "columns": {
+        "품목코드": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "품목명": {
+          "type": "VARCHAR(60)",
+          "comment": ""
+        },
+        "품목구분": {
+          "type": "VARCHAR(10)",
+          "comment": "완제품/원료/포장재"
+        },
+        "규격": {
+          "type": "VARCHAR(20)",
+          "comment": ""
+        },
+        "단위": {
+          "type": "VARCHAR(5)",
+          "comment": ""
+        },
+        "표준단가": {
+          "type": "NUMERIC(12,2)",
+          "comment": "원"
+        },
+        "바코드": {
+          "type": "CHAR(13)",
+          "comment": "완제품 EAN-13"
+        },
+        "주거래처코드": {
+          "type": "VARCHAR(10)",
+          "comment": "주 매입·매출 업체"
+        },
+        "보관조건": {
+          "type": "VARCHAR(20)",
+          "comment": ""
+        },
+        "사용여부": {
+          "type": "CHAR(1)",
+          "comment": "Y/N"
+        }
+      }
+    },
+    "처방": {
+      "description": "완제품별 처방(BOM) 원료 구성과 배합비",
+      "primary_key": [
+        "제품코드",
+        "처방버전",
+        "순번"
+      ],
+      "columns": {
+        "제품코드": {
+          "type": "VARCHAR(10)",
+          "comment": "완제품"
+        },
+        "처방버전": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "순번": {
+          "type": "INTEGER",
+          "comment": "투입 순서"
+        },
+        "원료코드": {
+          "type": "VARCHAR(10)",
+          "comment": "투입 원료"
+        },
+        "배합비율": {
+          "type": "NUMERIC(7,3)",
+          "comment": "%"
+        },
+        "투입상": {
+          "type": "CHAR(1)",
+          "comment": "A/B/C 상"
+        },
+        "비고": {
+          "type": "VARCHAR(100)",
+          "comment": ""
+        }
+      }
+    },
+    "생산지시": {
+      "description": "고객사 위탁 생산 작업지시",
+      "primary_key": [
+        "지시번호"
+      ],
+      "columns": {
+        "지시번호": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "지시일자": {
+          "type": "DATE",
+          "comment": ""
+        },
+        "제품코드": {
+          "type": "VARCHAR(10)",
+          "comment": "생산 완제품"
+        },
+        "처방버전": {
+          "type": "INTEGER",
+          "comment": "적용 처방 버전"
+        },
+        "고객사코드": {
+          "type": "VARCHAR(10)",
+          "comment": "위탁 고객사"
+        },
+        "지시수량": {
+          "type": "INTEGER",
+          "comment": "EA"
+        },
+        "배치크기": {
+          "type": "NUMERIC(10,1)",
+          "comment": "kg"
+        },
+        "생산라인": {
+          "type": "INTEGER",
+          "comment": "라인 번호"
+        },
+        "진행상태": {
+          "type": "VARCHAR(10)",
+          "comment": "지시/진행/완료/취소"
+        },
+        "작성자": {
+          "type": "VARCHAR(10)",
+          "comment": "사번"
+        }
+      }
+    },
+    "칭량실적": {
+      "description": "작업지시별 원료 칭량 기록",
+      "primary_key": [
+        "칭량ID"
+      ],
+      "columns": {
+        "칭량ID": {
+          "type": "INTEGER",
+          "comment": "일련번호"
+        },
+        "지시번호": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "칭량순번": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "원료코드": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "원료로트번호": {
+          "type": "VARCHAR(15)",
+          "comment": "투입한 원료 로트"
+        },
+        "지시중량": {
+          "type": "NUMERIC(10,3)",
+          "comment": "kg"
+        },
+        "실칭량": {
+          "type": "NUMERIC(10,3)",
+          "comment": "kg"
+        },
+        "저울번호": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "칭량자": {
+          "type": "VARCHAR(10)",
+          "comment": "사번"
+        },
+        "칭량일시": {
+          "type": "TIMESTAMP",
+          "comment": ""
+        }
+      }
+    },
+    "충전실적": {
+      "description": "충전·포장 라인 작업 실적 로그",
+      "primary_key": [],
+      "columns": {
+        "지시번호": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "충전일자": {
+          "type": "DATE",
+          "comment": ""
+        },
+        "충전라인": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "충전설비": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "작업조": {
+          "type": "VARCHAR(4)",
+          "comment": ""
+        },
+        "충전수량": {
+          "type": "INTEGER",
+          "comment": "EA"
+        },
+        "불량수량": {
+          "type": "INTEGER",
+          "comment": "EA"
+        },
+        "작업자": {
+          "type": "VARCHAR(10)",
+          "comment": "사번"
+        }
+      }
+    }
+  }
+}

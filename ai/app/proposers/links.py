@@ -69,6 +69,9 @@ LOW_COVERAGE = 0.8
 # 숫자만 겹친 보류 연결에서 출발 값 종류가 이보다 적고 도착 값 종류의 FEW_SHARE 미만이면 우연으로 보고 뺀다
 FEW_VALUES = 10
 FEW_SHARE = 0.3
+FEW_OF_MASTER = (
+    0.1  # 값 몇 개가 도착 코드표의 이 비율보다 적게 닿으면 다른 코드일 수 있다
+)
 # 순번 키 여러 개에 겹칠 때 하나를 고르려면 도착 값 종류의 이만큼에 닿아야 한다
 TIGHT_SHARE = 0.8
 # 이름 비교에서 뺄 흔한 꼬리말
@@ -429,7 +432,14 @@ def _number_groups(source: Column, target: Column, key: str) -> Relation | None:
     )
     example = f"{pairs[0][0]} = {pairs[0][1]}"
     hold = None
-    if letters_differ:
+    if letters_differ and all(len(_groups(v)) >= 2 for v in hit):
+        # 연도·순번 문서 번호(WO-25-0001 ↔ QI-25-00001)는 같은 해·같은 순번의 다른 문서가 많다(B9).
+        # 진짜 참조(SO-2026-0012 ↔ ORD2026-0012)일 수도 있어 빼지 않고 보류로 보인다
+        hold = (
+            f"연도·순번 문서 번호가 숫자만 같음({example}). 같은 해·같은 순번의 다른 문서일 수 있어 "
+            "업무 의미 확인 필요"
+        )
+    elif letters_differ:
         hold = (
             f"다른 시스템의 번호를 숫자로만 이었다({example}). 글자가 달라 다른 대상일 수 있어 "
             "업무 의미 확인 필요"
@@ -659,6 +669,19 @@ def _single(source: Column, target: Column, key: str) -> Relation | None:
         if rel.hold is None and set(source.name.lower().split("_")) & QUANTITY_WORDS:
             rel.hold = "수량·개수 컬럼이라 번호와 숫자가 우연히 겹칠 수 있음"
             rel.number_only = True
+        few, targets = len(_distinct(source)), len(_distinct(target))
+        if (
+            rel.hold is None
+            and few < FEW_VALUES
+            and few < FEW_OF_MASTER * targets
+            and not name_evidence(source, target)
+        ):
+            # 판매 조직 1000·1100·2000 ↔ 플랜트 60개, 라인 C0001~6 ↔ 고객 C0001~80처럼 값 몇 개가 큰 코드표의
+            # 일부에만 닿으면 같은 모양의 다른 코드일 수 있다(B5·B6)
+            rel.hold = (
+                f"코드 값 {few}개가 도착 값 {targets}개 중 일부에만 닿고 컬럼 이름에도 근거가 없음. "
+                "같은 모양의 다른 코드일 수 있어 확인 필요"
+            )
         # 보류인데 원래 값은 하나도 같지 않은 연결: 숫자(일련번호)만 같아서 이어진 것
         if (
             rel.hold is not None
@@ -737,6 +760,15 @@ def _compare(source: Column, target: Column, key: str) -> Relation | None:
     # 분석기 기준(서로 다른 값 3개 이상·포함률 0.6)에 못 미치는 경우
     distinct = _distinct(source)
     hit = distinct & targets
+    if (
+        len(distinct) < 3
+        and is_sequence_key(target)
+        and source.values.str.fullmatch(r"\d+").all()
+        and not name_evidence(source, target)
+    ):
+        # 숫자 한두 가지(처방 버전 1·2, 연도 25)가 1, 2, 3… 순번 키에 닿는 것은 우연이다(B9 8건 모두 오답).
+        # 컬럼 이름이 이어지면(plant_id 1·2 → plant.plant_id) 진짜 참조일 수 있어 아래에서 보류로 본다
+        return None
     if (
         hit
         and len(source.values) >= 10
