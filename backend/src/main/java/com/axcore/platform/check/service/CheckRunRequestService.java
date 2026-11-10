@@ -20,6 +20,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -243,15 +244,62 @@ public class CheckRunRequestService {
                             "승인 전 후보에서 나온 문제는 재검증 대상이 아닙니다.",
                             Map.of("issueIds", fromProposals));
                 }
-                List<Long> rules =
-                        List.copyOf(
-                                new TreeSet<>(
-                                        issues.stream().map(Issue::getLinkMappingId).toList()));
-                stored.put("linkMappingIds", requireActive(rules, "scope.issueIds"));
+                stored.put("linkMappingIds", currentRevisions(issues));
                 stored.put("issueIds", issueIds);
             }
         }
         return stored;
+    }
+
+    /**
+     * 문제를 재검증할 규칙 개정본: 문제가 나온 개정본의 규칙 코드에서 지금 반영 중인(ACTIVE) 개정본(Jira 246).
+     *
+     * <p>문제는 규칙 코드로 묶인다({@code IssueDedupeKey}). 그래서 규칙을 개정해도 같은 행의 문제는 처음 발견한 옛 개정본을 가리킨 채 열려 있다.
+     * 옛 개정본으로만 재검증하면 개정 뒤에는 접수되지 않아 그 문제를 해결로 바꿀 길이 없다. 규칙이 틀려 생긴 문제(오탐)도 규칙을 고친 새 개정본으로 재검증해 닫는다.
+     * 같은 코드의 ACTIVE 개정본은 하나뿐이라 실행기는 문제의 규칙 코드로 검사할 개정본을 찾는다.
+     *
+     * <p>규칙 코드에 반영 중인 개정본이 없으면(폐기만 됨) 422다.
+     */
+    private List<Long> currentRevisions(List<Issue> issues) {
+        Map<Long, String> codeByRevision =
+                linkMappingRepository
+                        .findAllById(
+                                issues.stream()
+                                        .map(Issue::getLinkMappingId)
+                                        .collect(Collectors.toSet()))
+                        .stream()
+                        .collect(Collectors.toMap(LinkMapping::getId, LinkMapping::getCode));
+        Map<String, Optional<Long>> activeByCode = new LinkedHashMap<>();
+        TreeSet<Long> revisions = new TreeSet<>();
+        List<Long> withoutActive = new ArrayList<>();
+        TreeSet<String> retiredCodes = new TreeSet<>();
+        for (Issue issue : issues) {
+            String code = codeByRevision.get(issue.getLinkMappingId());
+            Optional<Long> active =
+                    activeByCode.computeIfAbsent(
+                            code,
+                            c ->
+                                    linkMappingRepository
+                                            .findByCodeAndStatus(c, LinkMappingStatus.ACTIVE)
+                                            .map(LinkMapping::getId));
+            if (active.isPresent()) {
+                revisions.add(active.get());
+            } else {
+                withoutActive.add(issue.getId());
+                retiredCodes.add(code);
+            }
+        }
+        if (!withoutActive.isEmpty()) {
+            throw rejected(
+                    "scope.issueIds",
+                    "반영 중인 개정본이 없는 규칙에서 나온 문제입니다.",
+                    Map.of(
+                            "issueIds",
+                            withoutActive,
+                            "linkMappingCodes",
+                            List.copyOf(retiredCodes)));
+        }
+        return List.copyOf(revisions);
     }
 
     private List<Long> requireActive(List<Long> ruleIds, String field) {

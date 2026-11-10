@@ -11,6 +11,8 @@ import com.axcore.platform.check.domain.CheckInput;
 import com.axcore.platform.check.domain.CheckOutcome;
 import com.axcore.platform.check.domain.CheckResult;
 import com.axcore.platform.check.domain.CheckRow;
+import com.axcore.platform.check.domain.IssueReverification;
+import com.axcore.platform.check.domain.IssueReverification.Verdict;
 import com.axcore.platform.check.domain.LinkMappingRule;
 import com.axcore.platform.check.domain.LinkMappingRule.ObjectTypeRef;
 import com.axcore.platform.check.domain.ObjectRowFilter;
@@ -21,18 +23,24 @@ import com.axcore.platform.check.repository.CheckRunRepository;
 import com.axcore.platform.check.repository.CheckRunRepository.RunToExecute;
 import com.axcore.platform.check.service.CheckIssueJudge.RulePlan;
 import com.axcore.platform.check.service.CheckIssueJudge.Totals;
+import com.axcore.platform.issue.domain.Issue;
+import com.axcore.platform.issue.repository.IssueRepository;
 import com.axcore.platform.ontology.domain.LinkMapping;
 import com.axcore.platform.ontology.domain.LinkMappingStatus;
 import com.axcore.platform.ontology.repository.LinkMappingRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -60,6 +68,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 건너뛴다. complete에서 결과를 저장한 같은 트랜잭션에 issue 등록·확인 대기를 처리한다({@link CheckIssueJudge#apply}).
  * 재검증(REVERIFY)은 issue를 만들지 않는다(문제별 검증 기록·비교는 134·135).
  *
+ * <p><b>문제별 재검증(246)</b>: 범위가 ISSUES인 재검증이면 run에서 문제마다 판정 결과({@link IssueReverification})를 만든다. 문제의
+ * 규칙 코드로 판정한 개정본을 찾고, 그 판정에서 문제 객체의 출발 행 결과를 본다. complete에서 결과 저장과 같은 트랜잭션에 {@link
+ * IssueReverificationRecorder}(135 구현)에 넘긴다. 구현이 없으면 넘기지 않는다.
+ *
  * <p>MVP라 규칙마다 양 끝 유형의 활성 객체를 모두 읽는다(181과 같은 한계).
  */
 @Slf4j
@@ -77,6 +89,8 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
     private final CheckObjectReader objects;
     private final RuleEvaluationEngine engine;
     private final CheckIssueJudge judge;
+    private final IssueRepository issues;
+    private final ObjectProvider<IssueReverificationRecorder> reverificationRecorders;
     private final TransactionTemplate snapshot;
     private final Clock clock;
 
@@ -88,6 +102,8 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
             CheckObjectReader objects,
             RuleEvaluationEngine engine,
             CheckIssueJudge judge,
+            IssueRepository issues,
+            ObjectProvider<IssueReverificationRecorder> reverificationRecorders,
             PlatformTransactionManager transactionManager,
             Clock clock) {
         this.runs = runs;
@@ -97,6 +113,8 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         this.objects = objects;
         this.engine = engine;
         this.judge = judge;
+        this.issues = issues;
+        this.reverificationRecorders = reverificationRecorders;
         this.snapshot = new TransactionTemplate(transactionManager);
         this.snapshot.setReadOnly(true);
         this.snapshot.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
@@ -177,8 +195,89 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                                     .map(s -> s.linkMappingId() + "(" + s.reason() + ")")
                                     .collect(Collectors.joining(", ")));
         }
+        List<IssueReverification> reverifications =
+                "REVERIFY".equals(run.triggerKind()) && !run.issueIds().isEmpty()
+                        ? reverify(run.issueIds(), active, evaluated)
+                        : List.of();
         return new Outcome(
-                run.triggerKind(), List.copyOf(evaluated), List.copyOf(skipped), new Totals());
+                run.triggerKind(),
+                List.copyOf(evaluated),
+                List.copyOf(skipped),
+                new Totals(),
+                reverifications);
+    }
+
+    /**
+     * 문제마다 재검증 판정을 만든다(246). 문제는 규칙 코드로 묶이므로 문제가 나온 개정본의 코드로, 이 검사가 판정한 같은 코드의 개정본을 찾는다(접수 때 같은 코드의
+     * 반영 중인 개정본을 범위에 넣었다).
+     */
+    private List<IssueReverification> reverify(
+            List<Long> issueIds, Map<Long, LinkMapping> active, List<RuleEvaluated> evaluated) {
+        Map<String, Long> activeByCode = new LinkedHashMap<>();
+        active.values().forEach(rule -> activeByCode.put(rule.getCode(), rule.getId()));
+        Map<Long, CheckEvaluation> evaluationByRule = new LinkedHashMap<>();
+        for (RuleEvaluated rule : evaluated) {
+            evaluationByRule.put(
+                    rule.evaluation().rule().target().linkMappingId(), rule.evaluation());
+        }
+        List<Issue> targets =
+                issues.findAllById(issueIds).stream()
+                        .sorted(Comparator.comparing(Issue::getId))
+                        .toList();
+        Map<Long, String> codeByRevision =
+                linkMappings
+                        .findAllById(
+                                targets.stream()
+                                        .map(Issue::getLinkMappingId)
+                                        .filter(Objects::nonNull)
+                                        .collect(Collectors.toSet()))
+                        .stream()
+                        .collect(Collectors.toMap(LinkMapping::getId, LinkMapping::getCode));
+
+        List<IssueReverification> verdicts = new ArrayList<>();
+        for (Issue issue : targets) {
+            Long revision = activeByCode.get(codeByRevision.get(issue.getLinkMappingId()));
+            CheckEvaluation evaluation = revision == null ? null : evaluationByRule.get(revision);
+            if (issue.getObjectInstanceId() == null) {
+                verdicts.add(notEvaluated(issue, revision, "문제에 객체가 없습니다."));
+            } else if (evaluation == null) {
+                verdicts.add(notEvaluated(issue, revision, "같은 코드의 규칙을 판정하지 못했습니다."));
+            } else {
+                Optional<RowResult> row =
+                        evaluation.rows().stream()
+                                .filter(
+                                        r ->
+                                                issue.getObjectInstanceId()
+                                                        .equals(r.source().objectInstanceId()))
+                                .findFirst();
+                verdicts.add(
+                        row.map(r -> judged(issue, revision, evaluation, r))
+                                .orElseGet(
+                                        () ->
+                                                notEvaluated(
+                                                        issue,
+                                                        revision,
+                                                        "객체가 판정 대상에 없습니다(원천 삭제·행 조건 밖).")));
+            }
+        }
+        return List.copyOf(verdicts);
+    }
+
+    private static IssueReverification judged(
+            Issue issue, long revision, CheckEvaluation evaluation, RowResult row) {
+        List<CheckCondition> conditions = evaluation.rule().conditions();
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("rawValue", CheckRowText.rawValue(row, conditions));
+        detail.put("transformedValue", CheckRowText.transformedValue(row, conditions));
+        detail.put("targetFound", !row.targets().isEmpty());
+        detail.put("classification", row.outcome().name());
+        Verdict verdict = row.outcome() == CheckOutcome.MATCHED ? Verdict.PASSED : Verdict.FAILED;
+        return new IssueReverification(issue.getId(), revision, verdict, detail, null);
+    }
+
+    private static IssueReverification notEvaluated(Issue issue, Long revision, String reason) {
+        return new IssueReverification(
+                issue.getId(), revision, Verdict.NOT_EVALUATED, Map.of(), reason);
     }
 
     /** issue를 만드는 검사인지. SYNC와 수동 검사(복구 뒤 안전 점검, 결정 8장)만이다. */
@@ -271,6 +370,11 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         if (judges(outcome.triggerKind())) {
             outcome.judgment().addRetiredClosed(judge.closeRetiredRules(jobId, now));
         }
+        if (!outcome.reverifications().isEmpty()) {
+            reverificationRecorders
+                    .orderedStream()
+                    .forEach(recorder -> recorder.record(jobId, outcome.reverifications(), now));
+        }
         runs.markSucceeded(jobId, now);
     }
 
@@ -291,6 +395,17 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         if (judges(outcome.triggerKind())) {
             result.put("judgment", outcome.judgment().toResult());
         }
+        if (!outcome.reverifications().isEmpty()) {
+            Map<String, Long> counts = new LinkedHashMap<>();
+            for (Verdict verdict : Verdict.values()) {
+                counts.put(
+                        verdict.name(),
+                        outcome.reverifications().stream()
+                                .filter(r -> r.verdict() == verdict)
+                                .count());
+            }
+            result.put("reverification", counts);
+        }
         return result;
     }
 
@@ -302,7 +417,8 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
             String triggerKind,
             List<RuleEvaluated> evaluated,
             List<SkippedRule> skipped,
-            Totals judgment) {}
+            Totals judgment,
+            List<IssueReverification> reverifications) {}
 
     /** 규칙 하나의 판정과 저장할 표본. plan은 issue를 만드는 검사(SYNC·MANUAL)에만 있다. */
     public record RuleEvaluated(

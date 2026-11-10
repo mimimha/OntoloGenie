@@ -193,7 +193,8 @@ public class CheckRunRepository {
                                 new RunToExecute(
                                         id,
                                         rs.getString("trigger_kind"),
-                                        linkMappingIds(rs.getString("scope")),
+                                        ids(rs.getString("scope"), "linkMappingIds"),
+                                        ids(rs.getString("scope"), "issueIds"),
                                         basis(rs.getString("data_basis"))))
                 .optional();
     }
@@ -218,8 +219,9 @@ public class CheckRunRepository {
                 .update();
     }
 
-    private List<Long> linkMappingIds(String scope) {
-        Object ids = json.readValue(scope, OBJECT).get("linkMappingIds");
+    /** 저장 범위의 ID 목록({@code linkMappingIds}·{@code issueIds}). 없으면 빈 목록. */
+    private List<Long> ids(String scope, String key) {
+        Object ids = json.readValue(scope, OBJECT).get(key);
         List<Long> converted = new ArrayList<>();
         if (ids instanceof List<?> list) {
             for (Object item : list) {
@@ -293,8 +295,15 @@ public class CheckRunRepository {
 
     public record RunState(String triggerKind, String status) {}
 
+    /**
+     * @param issueIds 재검증할 문제(범위 ISSUES). 다른 범위면 비어 있다
+     */
     public record RunToExecute(
-            long id, String triggerKind, List<Long> linkMappingIds, CheckDataBasis dataBasis) {}
+            long id,
+            String triggerKind,
+            List<Long> linkMappingIds,
+            List<Long> issueIds,
+            CheckDataBasis dataBasis) {}
 
     public record NewRun(
             String triggerKind,

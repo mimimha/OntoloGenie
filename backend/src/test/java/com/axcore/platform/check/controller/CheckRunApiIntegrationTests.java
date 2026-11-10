@@ -275,6 +275,50 @@ class CheckRunApiIntegrationTests {
                 .andExpect(jsonPath("$.data.scope.linkMappingIds[0]").value(ruleId));
     }
 
+    /** 규칙을 개정한 뒤에도 옛 개정본에서 나온 열린 문제는 같은 코드의 반영 중인 개정본으로 재검증한다(246). */
+    @Test
+    void reverifiesIssuesWithTheCurrentRevisionOfTheirRule() throws Exception {
+        long first = rule();
+        long previous = fixtures.insertRun("MANUAL", "SUCCEEDED", accountId, key());
+        long issueId = issue(previous, first);
+        long sameRuleIssue = issue(previous, first);
+        String code =
+                jdbcClient
+                        .sql("select code from link_mapping where id = :id")
+                        .param("id", first)
+                        .query(String.class)
+                        .single();
+        jdbcClient
+                .sql(
+                        "update link_mapping set status = 'RETIRED', retired_at = now() where id = :id")
+                .param("id", first)
+                .update();
+        long second =
+                jdbcClient
+                        .sql(
+                                """
+                                insert into link_mapping (link_type_id, code, revision, status)
+                                values (:type, :code, 2, 'ACTIVE') returning id
+                                """)
+                        .param("type", linkType)
+                        .param("code", code)
+                        .query(Long.class)
+                        .single();
+        fixtures.insertCondition(second, 1, workerId, employeeNo, "[]", "[]");
+
+        request(
+                        reverify(
+                                previous,
+                                "{\"kind\":\"ISSUES\",\"issueIds\":["
+                                        + issueId
+                                        + ","
+                                        + sameRuleIssue
+                                        + "]}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.scope.linkMappingIds", hasSize(1)))
+                .andExpect(jsonPath("$.data.scope.linkMappingIds[0]").value(second));
+    }
+
     @Test
     void keepsManualAndReverificationApart() throws Exception {
         rule();
@@ -325,10 +369,12 @@ class CheckRunApiIntegrationTests {
         request(reverify(previous, "{\"kind\":\"ISSUES\",\"issueIds\":[" + resolved + "]}"))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.error.details.reason").value("해결된 문제는 재검증하지 않습니다."));
+        // 폐기만 되고 반영 중인 개정본이 없는 규칙 코드
         request(reverify(previous, "{\"kind\":\"ISSUES\",\"issueIds\":[" + onRetired + "]}"))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.error.details.field").value("scope.issueIds"))
-                .andExpect(jsonPath("$.error.details.linkMappingIds", hasSize(1)));
+                .andExpect(jsonPath("$.error.details.issueIds[0]").value(onRetired))
+                .andExpect(jsonPath("$.error.details.linkMappingCodes", hasSize(1)));
     }
 
     @ParameterizedTest
