@@ -148,7 +148,7 @@ public class SourceRowConverter {
         return text.substring(0, text.offsetByCodePoints(0, maxLength));
     }
 
-    Object propertyValue(Object value, List<TransformStep> steps, PropertyDataType type) {
+    public Object propertyValue(Object value, List<TransformStep> steps, PropertyDataType type) {
         if (value == null) {
             return null;
         }
@@ -290,7 +290,7 @@ public class SourceRowConverter {
     }
 
     /** 값을 속성 자료형으로 바꾸지 못했다. 원천 값을 담지 않는다. */
-    static class ConversionException extends RuntimeException {
+    public static class ConversionException extends RuntimeException {
 
         ConversionException() {
             super("value conversion failed", null, false, false);

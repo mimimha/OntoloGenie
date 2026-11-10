@@ -180,11 +180,64 @@ class RuleEvaluationEngineTests {
                 .containsExactly(CheckOutcome.DUPLICATE);
     }
 
+    @Test
+    void excludesSelfFromMatchedTargetsForEveryCardinality() {
+        CheckRow first = sameTypeRow(1);
+        CheckRow second = sameTypeRow(2);
+        List<CheckRow> rows = List.of(first, second);
+        for (LinkCardinality cardinality : LinkCardinality.values()) {
+            var result = evaluate(cardinality, List.of(condition(List.of())), rows, rows, true);
+
+            assertThat(result.matchedCount()).isEqualTo(2);
+            assertThat(result.rows().getFirst().targets())
+                    .extracting(target -> target.row())
+                    .containsExactly(second);
+            assertThat(result.rows().getLast().targets())
+                    .extracting(target -> target.row())
+                    .containsExactly(first);
+        }
+    }
+
+    @Test
+    void countsOtherSourcesOnlyWhenTheyCanLinkToTheSameTarget() {
+        CheckRow first = sameTypeRow(1);
+        CheckRow second = sameTypeRow(2);
+        CheckRow third = sameTypeRow(3);
+        var conditions = List.of(condition(List.of()));
+        var sources = List.of(first, second);
+
+        var selfOnlyTarget =
+                evaluate(LinkCardinality.ONE_TO_MANY, conditions, sources, List.of(first), true);
+        assertThat(selfOnlyTarget.rows())
+                .extracting(row -> row.outcome())
+                .containsExactly(CheckOutcome.UNMATCHED, CheckOutcome.MATCHED);
+
+        var sharedTarget =
+                evaluate(
+                        LinkCardinality.ONE_TO_MANY,
+                        conditions,
+                        sources,
+                        List.of(first, third),
+                        true);
+        assertThat(sharedTarget.rows())
+                .extracting(row -> row.outcome())
+                .containsExactly(CheckOutcome.DUPLICATE, CheckOutcome.DUPLICATE);
+    }
+
     private CheckEvaluation evaluate(
             LinkCardinality cardinality,
             List<CheckCondition> conditions,
             List<CheckRow> sourceRows,
             List<CheckRow> targetRows) {
+        return evaluate(cardinality, conditions, sourceRows, targetRows, false);
+    }
+
+    private CheckEvaluation evaluate(
+            LinkCardinality cardinality,
+            List<CheckCondition> conditions,
+            List<CheckRow> sourceRows,
+            List<CheckRow> targetRows,
+            boolean excludesSelf) {
         var basis =
                 new CheckDataBasis(
                         List.of(
@@ -193,7 +246,7 @@ class RuleEvaluationEngineTests {
         var rule =
                 new CheckRuleInput(CheckTarget.forProposal(20L, 3), basis, cardinality, conditions);
 
-        return engine.evaluate(new CheckInput(rule, sourceRows, targetRows));
+        return engine.evaluate(new CheckInput(rule, sourceRows, targetRows), excludesSelf);
     }
 
     private CheckCondition condition(List<TransformStep> sourceTransforms) {
@@ -207,6 +260,10 @@ class RuleEvaluationEngineTests {
 
     private CheckRow target(int key, String value) {
         return row(12L, key, Map.of("TARGET.code", value));
+    }
+
+    private CheckRow sameTypeRow(int key) {
+        return row(11L, key, Map.of("SOURCE.code", "A", "TARGET.code", "A"));
     }
 
     private CheckRow row(long resourceId, int key, Map<String, Object> values) {

@@ -13,15 +13,8 @@ import {
   type Decision,
   type DecisionInput,
 } from './decisionApi'
-import { applyLabels, reviewLabels } from './labels'
+import { applyLabels, candidateCheckLabel, reviewLabels } from './labels'
 import type { Proposal, ProposalOption } from './types'
-
-const checkLabels: Record<string, string> = {
-  QUEUED: '대기',
-  RUNNING: '실행 중',
-  SUCCEEDED: '완료',
-  FAILED: '실패',
-}
 
 const actions = [
   ['APPROVE', '승인'],
@@ -194,7 +187,7 @@ export default function ProposalDecision({
       )}
       <p className="text-sm text-slate-600">
         {proposal.latestCheck
-          ? `최근 검사 #${proposal.latestCheck.checkRunId}: ${checkLabels[proposal.latestCheck.status] ?? proposal.latestCheck.status}.`
+          ? `최근 검사 #${proposal.latestCheck.checkRunId}: ${candidateCheckLabel(proposal.latestCheck)}.`
           : '아직 검사 이력이 없습니다.'}{' '}
         실제 승인 가능 여부는 같은 개정의 검사 결과를 기준으로 서버에서 최종
         확인합니다. AI 신뢰도만으로 승인하지 않습니다.

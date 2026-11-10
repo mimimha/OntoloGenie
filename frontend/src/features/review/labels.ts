@@ -39,6 +39,20 @@ export const applyLabels: Record<string, string> = {
   FAILED: '반영 실패',
 }
 
+const checkLabels: Record<string, string> = {
+  QUEUED: '대기',
+  RUNNING: '실행 중',
+  SUCCEEDED: '완료',
+  FAILED: '실패',
+}
+
+export function candidateCheckLabel(
+  check: NonNullable<Proposal['latestCheck']>,
+) {
+  if (check.unsupported) return '이 후보는 아직 자동 시험을 지원하지 않음'
+  return checkLabels[check.status] ?? check.status
+}
+
 export function proposalTitle(proposal: Proposal) {
   const name = proposal.payload.name
   const code = proposal.payload.code

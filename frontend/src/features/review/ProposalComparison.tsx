@@ -4,7 +4,7 @@ import Button from '../../components/Button'
 import Dialog from '../../components/Dialog'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import { fetchProposal, fetchProposalOptions } from './api'
-import { confidence, proposalTitle } from './labels'
+import { candidateCheckLabel, confidence, proposalTitle } from './labels'
 import { isRecord } from '../../api/errors'
 import { transformLabels } from './ruleDraft'
 import type { Proposal, ProposalOption } from './types'
@@ -251,14 +251,7 @@ function ComparisonDialog({
           {latest.latestCheck ? (
             <p className="mt-2">
               검사 #{latest.latestCheck.checkRunId} ·{' '}
-              {(
-                {
-                  SUCCEEDED: '완료',
-                  FAILED: '실패',
-                  QUEUED: '대기',
-                  RUNNING: '실행 중',
-                } as Record<string, string>
-              )[latest.latestCheck.status] ?? latest.latestCheck.status}
+              {candidateCheckLabel(latest.latestCheck)}
             </p>
           ) : (
             <p className="mt-2">아직 검사 결과가 없습니다.</p>
