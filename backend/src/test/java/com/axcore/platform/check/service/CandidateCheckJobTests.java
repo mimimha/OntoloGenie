@@ -2,7 +2,7 @@ package com.axcore.platform.check.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.axcore.platform.TestcontainersConfiguration;
+import com.axcore.platform.SourceTestcontainersConfiguration;
 import com.axcore.platform.batch.service.QueuedJobHandler;
 import com.axcore.platform.batch.service.QueuedJobPoller;
 import com.axcore.platform.batch.service.QueuedJobRunner;
@@ -41,7 +41,7 @@ import tools.jackson.databind.json.JsonMapper;
             "AXCORE_SOURCE_CREDENTIAL_KEY_1=dGVzdC1vbmx5LXNvdXJjZS1jcmVkZW50aWFsLWtleSE="
         })
 @ActiveProfiles("batch")
-@Import(TestcontainersConfiguration.class)
+@Import(SourceTestcontainersConfiguration.class)
 class CandidateCheckJobTests {
 
     @MockitoBean QueuedJobPoller poller;
