@@ -184,3 +184,124 @@ groups:
           isPaused: false
           notification_settings:
             receiver: axcore-mattermost
+        - uid: ag3unxzlfz9xca
+          title: axcore-app-container-unhealthy
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: axcore-prometheus
+              model:
+                editorMode: code
+                expr: "axcore_docker_container_health{\r\n  job=\"node\",\r\n  project=\"axcore\",\r\n  service=~\"backend|ai|frontend|batch|nginx\",\r\n  health=\"unhealthy\"\r\n}\r\nand on(instance, job)\r\n(axcore_docker_state_collection_success{job=\"node\"} == 1)\r\nand on(instance, job)\r\n((time() - axcore_docker_state_collection_timestamp_seconds{job=\"node\"}) < 90)"
+                instant: true
+                intervalMs: 1000
+                legendFormat: __auto
+                maxDataPoints: 43200
+                range: false
+                refId: A
+            - refId: C
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 0
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                        type: last
+                      type: query
+                datasource:
+                    type: __expr__
+                    uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: NoData
+          execErrState: Error
+          for: 2m
+          annotations:
+            description: |-
+                서버: {{ $labels.instance }}
+                서비스: {{ $labels.service }}
+                컨테이너: {{ $labels.name }}
+                unhealthy 값: {{ $values.A.Value }} (1=헬스체크 실패, 0=해당 상태 아님)
+
+                Docker unhealthy 상태가 2분 지속되었습니다.
+                컨테이너가 실행 중이어도 애플리케이션이 정상 응답하지 않을 수 있습니다.
+                배포 진행 여부와 해당 컨테이너의 헬스체크 결과·로그를 확인하세요.
+            summary: '{{ $labels.instance }} / {{ $labels.service }} 헬스체크 실패 경고'
+          isPaused: false
+          notification_settings:
+            receiver: axcore-mattermost
+        - uid: ag3uoqeqx7xtse
+          title: axcore-app-container-missing
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: axcore-prometheus
+              model:
+                editorMode: code
+                expr: "axcore_docker_service_present{\r\n  job=\"node\",\r\n  project=\"axcore\",\r\n  service=~\"backend|ai|frontend|batch|nginx\"\r\n}\r\nand on(instance, job)\r\n(axcore_docker_state_collection_success{job=\"node\"} == 1)\r\nand on(instance, job)\r\n((time() - axcore_docker_state_collection_timestamp_seconds{job=\"node\"}) < 90)"
+                instant: true
+                intervalMs: 1000
+                legendFormat: __auto
+                maxDataPoints: 43200
+                range: false
+                refId: A
+            - refId: C
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 1
+                        type: lt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                        type: last
+                      type: query
+                datasource:
+                    type: __expr__
+                    uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: NoData
+          execErrState: Error
+          for: 2m
+          annotations:
+            description: |-
+                서버: {{ $labels.instance }}
+                서비스: {{ $labels.service }}
+                컨테이너 존재 값: {{ $values.A.Value }} (1=존재, 0=누락)
+
+                기대 서비스의 컨테이너가 2분 동안 조회되지 않았습니다.
+                배포 중 컨테이너 교체 여부와 해당 서비스의 생성·삭제 상태를 확인하세요.
+                이 알림은 컨테이너 삭제 또는 미생성을 감지하며, 중지 여부는 별도 규칙으로 판단합니다.
+            summary: '{{ $labels.instance }} / {{ $labels.service }} 컨테이너 누락 경고'
+          isPaused: false
+          notification_settings:
+            receiver: axcore-mattermost
