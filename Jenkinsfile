@@ -1,4 +1,4 @@
-// Jenkins 파이프라인 정의. Job 1(axcore-mr-check)과 Job 2(axcore-deploy)가 같은 파일을 쓴다.
+// axcore-mr-check · axcore-deploy · axcore-sonarqube가 같은 파일을 쓴다.
 // - Job 1: MR이 열리거나 MR 브랜치에 push되면 실행. gitlabSourceBranch = MR 원본 브랜치. 검사만 한다.
 // - Job 2: develop에 push(머지)되면 실행. 바뀐 서비스를 빌드해 서버에 배포한다 (5-7).
 // 이 파일(지시서)은 항상 develop에서 읽고, 검사할 코드는 Checkout 단계에서 받는다.
@@ -23,6 +23,11 @@ pipeline {
         // 변경이 없어도 세 서비스를 모두 강제로 배포하고 싶을 때 (수동 실행 전용)
         booleanParam(name: 'FORCE_DEPLOY', defaultValue: false, description: '변경이 없어도 backend · AI · frontend 모두 배포')
         booleanParam(name: 'RUN_SONARQUBE', defaultValue: false, description: 'develop의 frontend · backend · AI를 모두 SonarQube로 분석')
+        string(name: 'ANALYSIS_COMMIT', defaultValue: '', description: 'axcore-sonarqube 전용: 분석할 전체 커밋 SHA. 수동 실행에서 비우면 develop')
+        string(name: 'ANALYSIS_RECIPIENT', defaultValue: '', description: 'axcore-sonarqube 전용: 결과를 받을 GitLab 사용자 ID')
+        booleanParam(name: 'ANALYZE_BACKEND', defaultValue: true, description: 'axcore-sonarqube 전용: backend 분석')
+        booleanParam(name: 'ANALYZE_FRONTEND', defaultValue: true, description: 'axcore-sonarqube 전용: frontend 분석')
+        booleanParam(name: 'ANALYZE_AI', defaultValue: true, description: 'axcore-sonarqube 전용: AI 분석')
     }
 
     environment {
@@ -32,7 +37,7 @@ pipeline {
         // 실제로 받을 대상.
         // - 배포 Job(axcore-deploy)은 무조건 origin/develop. GitLab이 MR 변수를 보내더라도(트리거 설정 실수 등) 머지 안 된 코드를 배포하지 않는다.
         // - MR 검사는 GitLab이 알려 준 MR 커밋 자체를 받는다 (브랜치 이름이 비거나 틀려도 정확한 코드). 수동 빌드는 MR 커밋이 없으므로 브랜치로.
-        CHECK_REF = "${env.JOB_NAME == 'axcore-deploy' ? 'origin/develop' : (env.gitlabMergeRequestLastCommit ?: ('origin/' + (env.gitlabSourceBranch ?: 'develop')))}"
+        CHECK_REF = "${env.JOB_NAME == 'axcore-deploy' ? 'origin/develop' : (env.JOB_NAME == 'axcore-sonarqube' ? (params.ANALYSIS_COMMIT ?: 'origin/develop') : (env.gitlabMergeRequestLastCommit ?: ('origin/' + (env.gitlabSourceBranch ?: 'develop'))))}"
         // Mattermost Incoming Webhook 주소. Jenkins 관리 → Credentials의 Secret text (ID: mm-webhook).
         // 로그에는 ****로 가려진다. 없으면 빌드가 시작하자마자 실패하니 먼저 등록할 것.
         MM_WEBHOOK = credentials('mm-webhook')
@@ -40,11 +45,18 @@ pipeline {
         DEPLOY_DIR = '/home/ubuntu/axcore'
         // 배포 단계는 Job 2(axcore-deploy)에서만 켠다. MR 검증(Job 1)은 절대 배포하지 않는다.
         IS_DEPLOY_JOB = "${env.JOB_NAME == 'axcore-deploy' ? 'true' : 'false'}"
+        IS_SONAR_JOB = "${env.JOB_NAME == 'axcore-sonarqube' ? 'true' : 'false'}"
     }
 
     stages {
         stage('Checkout') {
             steps {
+                script {
+                    if (env.IS_SONAR_JOB == 'true' && params.ANALYSIS_COMMIT &&
+                            !(params.ANALYSIS_COMMIT ==~ /[0-9a-f]{40}/)) {
+                        error 'ANALYSIS_COMMIT은 전체 커밋 SHA여야 합니다.'
+                    }
+                }
                 // 진단: GitLab 플러그인이 이 빌드에 넣어 준 변수 목록. 검사 대상이 엉뚱하면 여기부터 본다. (이메일은 가린다)
                 sh 'env | grep "^gitlab" | grep -vi email | sort || echo "(gitlab 변수 없음: 수동 빌드)"'
                 // 검사할 코드를 받는다. MR 검증이면 MR 커밋, develop 머지면 develop. (CHECK_REF 설명 참고)
@@ -62,9 +74,19 @@ pipeline {
                     env.GIT_SHA = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
                     echo "검사 대상: ${env.CHECK_REF} @ ${env.GIT_SHA} (브랜치=${env.CHECK_BRANCH}, 트리거=${env.gitlabActionType ?: '수동'})"
 
+                    if (env.IS_SONAR_JOB == 'true') {
+                        def head = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
+                        if (params.ANALYSIS_COMMIT && head != params.ANALYSIS_COMMIT) {
+                            error '분석 체크아웃과 전달받은 커밋 SHA가 다릅니다.'
+                        }
+                        if (sh(returnStatus: true, script: 'git merge-base --is-ancestor HEAD origin/develop') != 0) {
+                            error '분석 대상은 develop에 병합된 커밋이어야 합니다.'
+                        }
+                    }
+
                     // 안전망 (5-0c): MR 검사인데 받은 코드가 MR 코드가 아니면 멈춘다. 그대로 두면 develop을 검사하고 MR에 거짓 ✅가 찍힌다.
                     // 2026-10-30 실제 발생: MR 검사 빌드가 전부 develop을 받아 13초 만에 "전부 최신"으로 ✅를 찍었다.
-                    if (env.IS_DEPLOY_JOB != 'true' && env.gitlabActionType) {
+                    if (env.IS_DEPLOY_JOB != 'true' && env.IS_SONAR_JOB != 'true' && env.gitlabActionType) {
                         def head = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
                         if (env.gitlabMergeRequestLastCommit) {
                             if (head != env.gitlabMergeRequestLastCommit) {
@@ -77,7 +99,7 @@ pipeline {
 
                     // MR 검사에서 어느 서비스 검사를 돌릴지 정한다. develop과 갈라진 뒤 그 폴더가 바뀐 MR만 돌린다 (문서만 고친 MR에 gradle 몇 분을 쓰지 않는다).
                     // 수동 빌드는 폴더가 있는 서비스를 전부 돌린다 (develop 전체를 다시 검사하는 용도).
-                    if (env.IS_DEPLOY_JOB != 'true') {
+                    if (env.IS_DEPLOY_JOB != 'true' && env.IS_SONAR_JOB != 'true') {
                         if (!env.gitlabActionType) {
                             env.CHECK_BACKEND = 'true'
                             env.CHECK_FRONTEND = fileExists('frontend/package.json') ? 'true' : 'false'
@@ -94,7 +116,7 @@ pipeline {
                     }
 
                     // Webhook 빌드일 때만 GitLab에 "검사 중" 상태를 올린다. (수동 빌드는 대상 커밋이 없음)
-                    if (env.gitlabActionType) {
+                    if (env.IS_SONAR_JOB != 'true' && env.gitlabActionType) {
                         updateGitlabCommitStatus name: 'jenkins', state: 'running'
                     }
                 }
@@ -107,14 +129,14 @@ pipeline {
             // --no-daemon: 빌드가 끝나면 gradle JVM을 바로 내려 Jenkins 컨테이너 메모리를 돌려준다.
             // 주의: MR 브랜치의 build.gradle이 docker.sock이 있는 이 컨테이너에서 실행된다(팀원 계정을 신뢰). 분리는 보안 후속.
             // backend/ 가 안 바뀐 MR은 건너뛴다 (Checkout 단계의 CHECK_BACKEND).
-            when { expression { env.IS_DEPLOY_JOB != 'true' && env.CHECK_BACKEND == 'true' } }
+            when { expression { env.IS_DEPLOY_JOB != 'true' && env.IS_SONAR_JOB != 'true' && env.CHECK_BACKEND == 'true' } }
             steps {
                 dir('backend') {
                     script {
-                        def coverageTask = isManualSonarCheck() ? ' jacocoTestReport' : ''
-                        sh "./gradlew --no-daemon spotlessCheck build${coverageTask}"
+                        sh './gradlew --no-daemon spotlessCheck build jacocoTestReport'
                     }
                 }
+                script { publishTestResults('backend') }
             }
             post {
                 always {
@@ -129,21 +151,23 @@ pipeline {
         // 작업 폴더는 호스트 경로로 마운트한다: Jenkins 컨테이너의 /var/jenkins_home = 호스트 /home/ubuntu/axcore/jenkins-data (compose volumes).
         // 컨테이너 안에서 만든 파일(node_modules · dist · .pytest_cache)은 root 소유로 남지만 다음 검사도 같은 방식이라 문제없다.
         stage('Frontend check') {
-            when { expression { env.IS_DEPLOY_JOB != 'true' && env.CHECK_FRONTEND == 'true' } }
+            when { expression { env.IS_DEPLOY_JOB != 'true' && env.IS_SONAR_JOB != 'true' && env.CHECK_FRONTEND == 'true' } }
             steps {
                 script {
-                    def testCommand = isManualSonarCheck() ? 'npm run test:coverage' : 'npx vitest run'
+                    def testCommand = 'npm run test:coverage'
                     runFrontendCommands("npm run format:check && npm run lint && ${testCommand} && npm run build")
+                    publishTestResults('frontend')
                 }
             }
         }
 
         stage('AI check') {
-            when { expression { env.IS_DEPLOY_JOB != 'true' && env.CHECK_AI == 'true' } }
+            when { expression { env.IS_DEPLOY_JOB != 'true' && env.IS_SONAR_JOB != 'true' && env.CHECK_AI == 'true' } }
             steps {
                 script {
-                    def coverageOptions = isManualSonarCheck() ? ' --cov --cov-report=xml' : ''
+                    def coverageOptions = ' --cov --cov-report=xml'
                     runAiCommands("ruff check . && pytest -q --junitxml=test-results/pytest.xml${coverageOptions}")
+                    publishTestResults('ai')
                 }
             }
             post {
@@ -154,7 +178,7 @@ pipeline {
         }
 
         stage('Infra check') {
-            when { expression { env.IS_DEPLOY_JOB != 'true' && env.CHECK_INFRA == 'true' } }
+            when { expression { env.IS_DEPLOY_JOB != 'true' && env.IS_SONAR_JOB != 'true' && env.CHECK_INFRA == 'true' } }
             steps {
                 sh '''
                     bash -n infra/deploy/sync-config.sh
@@ -166,6 +190,10 @@ pipeline {
                     docker run --rm --network none --memory 256m \
                         -e PYTHONDONTWRITEBYTECODE=1 \
                         -v "$HOST_WS/infra/deploy:/work:ro" -w /work \
+                        python:3.11-slim python -m unittest discover -p 'test_*.py' -v
+                    docker run --rm --network none --memory 256m \
+                        -e PYTHONDONTWRITEBYTECODE=1 \
+                        -v "$HOST_WS/infra/ci:/work:ro" -w /work \
                         python:3.11-slim python -m unittest discover -p 'test_*.py' -v
                 '''
             }
@@ -327,45 +355,29 @@ pipeline {
         stage('SonarQube analysis') {
             when {
                 expression {
-                    if (env.CHECK_REF != 'origin/develop') {
-                        return false
-                    }
-                    if (env.IS_DEPLOY_JOB == 'true') {
-                        return env.ENABLE_SONARQUBE == 'true' && env.SONARQUBE_READY == 'true' &&
-                            (params.RUN_SONARQUBE || env.DEPLOY_FRONTEND == 'true' ||
-                                env.DEPLOY_BACKEND == 'true' || env.DEPLOY_AI == 'true')
-                    }
-                    return isManualSonarCheck()
+                    return env.IS_SONAR_JOB == 'true' || isManualSonarCheck()
                 }
             }
             steps {
                 script {
                     def components = [
-                        frontend: env.DEPLOY_FRONTEND,
-                        backend: env.DEPLOY_BACKEND,
-                        ai: env.DEPLOY_AI
+                        frontend: params.ANALYZE_FRONTEND,
+                        backend: params.ANALYZE_BACKEND,
+                        ai: params.ANALYZE_AI
                     ]
                     def gateRecipient = sonarGateRecipient()
                     def failedGateLinks = []
-                    components.findAll { component, deploy -> params.RUN_SONARQUBE || deploy == 'true' }.each { component, deploy ->
+                    components.findAll { component, selected -> params.RUN_SONARQUBE || selected }.each { component, selected ->
                         catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', catchInterruptions: false) {
                             echo "SonarQube analysis: ${component}"
+                            prepareSonarResults(component)
                             if (component == 'frontend') {
-                                if (env.IS_DEPLOY_JOB == 'true') {
-                                    runFrontendCommands('npm run test:coverage')
-                                }
                                 sh 'test -s frontend/coverage/lcov.info'
                             } else if (component == 'backend') {
                                 dir('backend') {
-                                    if (env.IS_DEPLOY_JOB == 'true') {
-                                        sh './gradlew --no-daemon jacocoTestReport'
-                                    }
                                     sh 'test -s build/reports/jacoco/test/jacocoTestReport.xml'
                                 }
                             } else if (component == 'ai') {
-                                if (env.IS_DEPLOY_JOB == 'true') {
-                                    runAiCommands('pytest -q --cov --cov-report=xml')
-                                }
                                 sh 'test -s ai/coverage/coverage.xml'
                             }
                             def credentialId = component == 'frontend' ? 'axcore-sonarqube-token' : "axcore-sonarqube-${component}-token"
@@ -373,6 +385,7 @@ pipeline {
                                 withEnv(["SONAR_COMPONENT=${component}", "SONAR_GATE_CHECK=${gateRecipient ? 'true' : 'false'}"]) {
                                     def gate = sh(returnStdout: true, script: '''
                                         set +x
+                                        mkdir -p ".sonar-cache/$SONAR_COMPONENT"
                                         HOST_WS=$(printf '%s' "$WORKSPACE" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
                                         set --
                                         if [ "$SONAR_GATE_CHECK" = true ]; then
@@ -383,7 +396,7 @@ pipeline {
                                         docker run --rm --memory 2g --cpus 2 --network axcore-net \
                                             --user "$(id -u):$(id -g)" \
                                             -e SONAR_HOST_URL=http://sonarqube:9000 -e SONAR_TOKEN \
-                                            -e SONAR_USER_HOME=/tmp/.sonar \
+                                            -e SONAR_USER_HOME="/workspace/.sonar-cache/$SONAR_COMPONENT" \
                                             -v "$HOST_WS:/workspace" -w "/workspace/$SONAR_COMPONENT" \
                                             sonarsource/sonar-scanner-cli:12.3.0.4285_8.1.0 "$@" >&2
                                         if [ "$SONAR_GATE_CHECK" = true ]; then
@@ -425,13 +438,28 @@ pipeline {
                 '''
             }
         }
+
+        stage('Queue SonarQube analysis') {
+            when { expression {
+                env.IS_DEPLOY_JOB == 'true' && env.ENABLE_SONARQUBE == 'true' &&
+                    env.SONARQUBE_READY == 'true' && currentBuild.currentResult == 'SUCCESS' &&
+                    (params.RUN_SONARQUBE || env.DEPLOY_BACKEND == 'true' ||
+                        env.DEPLOY_FRONTEND == 'true' || env.DEPLOY_AI == 'true')
+            } }
+            steps {
+                // 별도 작업 공간에서 검사한다. 분석 실패나 긴 테스트가 배포 완료를 붙잡지 않는다.
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE', catchInterruptions: false) {
+                    script { queueSonarAnalysis() }
+                }
+            }
+        }
     }
 
     post {
         success {
             script {
                 // GitLab MR 화면/커밋에 성공 표시
-                if (env.gitlabActionType) {
+                if (env.IS_SONAR_JOB != 'true' && env.gitlabActionType) {
                     updateGitlabCommitStatus name: 'jenkins', state: 'success'
                 }
                 // 성공 DM은 배포 Job만 보낸다. MR 검사 성공은 GitLab MR 화면의 ✅로 충분하다 (2026-10-30 결정). 실패는 둘 다 DM.
@@ -443,7 +471,7 @@ pipeline {
         failure {
             script {
                 // GitLab MR 화면/커밋에 실패 표시. 클릭하면 이 빌드 로그로 온다.
-                if (env.gitlabActionType) {
+                if (env.IS_SONAR_JOB != 'true' && env.gitlabActionType) {
                     updateGitlabCommitStatus name: 'jenkins', state: 'failed'
                 }
                 notifyMattermost(':x: 실패')
@@ -451,7 +479,7 @@ pipeline {
         }
         aborted {
             script {
-                if (env.gitlabActionType) {
+                if (env.IS_SONAR_JOB != 'true' && env.gitlabActionType) {
                     updateGitlabCommitStatus name: 'jenkins', state: 'canceled'
                 }
             }
@@ -462,6 +490,59 @@ pipeline {
 def isManualSonarCheck() {
     return env.JOB_NAME == 'axcore-mr-check' && params.RUN_SONARQUBE &&
         env.CHECK_REF == 'origin/develop' && !env.gitlabActionType
+}
+
+def publishTestResults(String component) {
+    // Only reached after the service's full checks succeed. A cache problem must not fail an MR.
+    if (runTestResultCache('publish', component) != 0) {
+        echo "${component}: 검사 결과 보관 실패. 분석 Job에서 다시 검사합니다."
+    }
+}
+
+def prepareSonarResults(String component) {
+    if (env.IS_SONAR_JOB != 'true' || restoreTestResults(component)) {
+        return
+    }
+    if (component == 'backend') {
+        dir('backend') { sh './gradlew --no-daemon jacocoTestReport' }
+    } else if (component == 'frontend') {
+        runFrontendCommands('npm run test:coverage')
+    } else if (component == 'ai') {
+        runAiCommands('pytest -q --cov --cov-report=xml')
+    }
+}
+
+def restoreTestResults(String component) {
+    return runTestResultCache('restore', component) == 0
+}
+
+def runTestResultCache(String action, String component) {
+    withEnv(["RESULT_ACTION=${action}", "RESULT_COMPONENT=${component}"]) {
+        return sh(returnStatus: true, script: '''
+            set -eu
+            HOST_WS=$(printf '%s' "$WORKSPACE" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
+            CACHE_DIR="${JENKINS_HOME:-/var/jenkins_home}/ci-results"
+            mkdir -p "$CACHE_DIR"
+            CACHE_HOST=$(printf '%s' "$CACHE_DIR" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
+            TREE=$(git rev-parse "HEAD:$RESULT_COMPONENT")
+            PIPELINE=$(git rev-parse HEAD:Jenkinsfile)
+            COMMIT=$(git rev-parse HEAD)
+            if [ "$RESULT_COMPONENT" = backend ]; then
+                RUNTIME="$(java -version 2>&1) ${JAVA_TOOL_OPTIONS:-} ${GRADLE_OPTS:-}"
+                set -- --user "$(id -u):$(id -g)"
+            else
+                if [ "$RESULT_COMPONENT" = frontend ]; then IMAGE=node:24.18.0-alpine; else IMAGE=python:3.11-slim; fi
+                RUNTIME=$(docker image inspect "$IMAGE" --format '{{.Id}}')
+                set --
+            fi
+            docker run --rm --network none --memory 256m "$@" \
+                -e BUILD_URL \
+                -v "$HOST_WS/infra/ci:/script:ro" \
+                -v "$HOST_WS/$RESULT_COMPONENT:/work" -v "$CACHE_HOST:/cache" \
+                python:3.11-slim python /script/result_cache.py "$RESULT_ACTION" "$RESULT_COMPONENT" \
+                --tree "$TREE" --pipeline "$PIPELINE" --runtime "$RUNTIME" --commit "$COMMIT"
+        ''')
+    }
 }
 
 def runFrontendCommands(String commands) {
@@ -493,6 +574,9 @@ def runAiCommands(String commands) {
 }
 
 def sonarGateRecipient() {
+    if (env.IS_SONAR_JOB == 'true') {
+        return params.ANALYSIS_RECIPIENT ==~ /[A-Za-z0-9_.-]+/ ? params.ANALYSIS_RECIPIENT : null
+    }
     if (env.JOB_NAME != 'axcore-deploy' || env.gitlabActionType != 'PUSH' ||
             env.gitlabSourceBranch != 'develop' || !(env.gitlabUserUsername ==~ /[A-Za-z0-9_.-]+/)) {
         return null
@@ -505,16 +589,27 @@ def sonarGateRecipient() {
     return env.gitlabUserUsername
 }
 
+def queueSonarAnalysis() {
+    build job: 'axcore-sonarqube', wait: false, propagate: false, parameters: [
+        string(name: 'ANALYSIS_COMMIT', value: sh(returnStdout: true, script: 'git rev-parse HEAD').trim()),
+        string(name: 'ANALYSIS_RECIPIENT', value: sonarGateRecipient() ?: ''),
+        booleanParam(name: 'RUN_SONARQUBE', value: false),
+        booleanParam(name: 'ANALYZE_BACKEND', value: params.RUN_SONARQUBE || env.DEPLOY_BACKEND == 'true'),
+        booleanParam(name: 'ANALYZE_FRONTEND', value: params.RUN_SONARQUBE || env.DEPLOY_FRONTEND == 'true'),
+        booleanParam(name: 'ANALYZE_AI', value: params.RUN_SONARQUBE || env.DEPLOY_AI == 'true')
+    ]
+}
+
 // Mattermost DM 전송. 받는 사람 = 이 빌드를 일으킨 GitLab 사용자(MR 작성자, 또는 develop에 머지한 사람).
 // SSAFY GitLab 아이디와 Mattermost 아이디가 같아서 "@아이디"로 바로 보낸다. 채널에는 올리지 않는다.
 // 아이디 변수는 이벤트마다 다르다: push(배포)는 gitlabUserUsername, MR 이벤트(검사)는 gitlabMergedByUser (2026-10-30 빌드 #44 로그로 확인).
 def notifyMattermost(String result) {
-    def who = env.gitlabUserUsername ?: env.gitlabMergedByUser
+    def who = env.IS_SONAR_JOB == 'true' ? sonarGateRecipient() : (env.gitlabUserUsername ?: env.gitlabMergedByUser)
     if (!who) {
         echo 'Mattermost 알림 생략: 수동 빌드라 받는 사람이 없음'
         return
     }
-    def what = env.gitlabMergeRequestIid
+    def what = env.IS_SONAR_JOB == 'true' ? "코드 분석 ${env.GIT_SHA}" : env.gitlabMergeRequestIid
         ? "MR !${env.gitlabMergeRequestIid} (${env.gitlabSourceBranch} → ${env.gitlabTargetBranch})"
         : 'develop 머지 반영'
     // 배포가 있었으면 서비스마다 어떤 버전으로 바뀌었는지(또는 롤백됐는지) 한 줄씩 붙인다. 값은 deployService가 env에 남긴다.

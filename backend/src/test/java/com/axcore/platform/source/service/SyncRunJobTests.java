@@ -3,7 +3,7 @@ package com.axcore.platform.source.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.axcore.platform.TestcontainersConfiguration;
+import com.axcore.platform.SourceTestcontainersConfiguration;
 import com.axcore.platform.batch.service.QueuedJobFailure;
 import com.axcore.platform.batch.service.QueuedJobPoller;
 import com.axcore.platform.batch.service.QueuedJobRunner;
@@ -43,7 +43,7 @@ import tools.jackson.databind.json.JsonMapper;
             "AXCORE_SOURCE_CREDENTIAL_KEY_1=dGVzdC1vbmx5LXNvdXJjZS1jcmVkZW50aWFsLWtleSE="
         })
 @ActiveProfiles("batch")
-@Import(TestcontainersConfiguration.class)
+@Import(SourceTestcontainersConfiguration.class)
 class SyncRunJobTests {
 
     static final String PUBLICATION = "axc_load_cdc";
@@ -622,10 +622,12 @@ class SyncRunJobTests {
         jdbc.sql(
                         """
                         update cdc_offset set recovery_reason = 'TRANSACTION_TOO_LARGE',
-                                              recovery_at = clock_timestamp() + interval '1 second'
+                                              recovery_at = (select started_at from sync_run where id = :early)
+                                                            + interval '1 second'
                         where topic = :t
                         """)
                 .param("t", topic)
+                .param("early", early)
                 .update();
         jdbc.sql("update source_resource set loaded_lsn = null where data_source_id = :s")
                 .param("s", sourceId)
@@ -638,8 +640,11 @@ class SyncRunJobTests {
                 .containsEntry("loaded_lsn", null);
         assertThat(offsetRow(topic)).containsEntry("recovery_reason", "TRANSACTION_TOO_LARGE");
 
-        jdbc.sql("update cdc_offset set recovery_at = clock_timestamp() where topic = :t")
+        // JVM과 Docker DB의 시계 차이에 기대지 않고 앞 실행의 실제 시작 시각을 경계로 쓴다.
+        jdbc.sql(
+                        "update cdc_offset set recovery_at = (select started_at from sync_run where id = :early) where topic = :t")
                 .param("t", topic)
+                .param("early", early)
                 .update();
         long late = queueRun(workOrderId);
         assertThat(queuedJobRunner.runNext(job)).isTrue();

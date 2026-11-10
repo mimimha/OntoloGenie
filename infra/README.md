@@ -200,7 +200,7 @@ Jenkins 관리 → Nodes → Built-In Node → Configure에서 **Number of execu
 
 ### SonarQube 배포와 코드 분석
 
-최초 편입은 [SonarQube 운영 절차](sonarqube/README.md)를 따른다. 활성화된 `axcore-deploy`는 Git의 Compose 변경을 반영하고 SonarQube 준비 상태를 확인한다. 배포 대상 서비스의 정적 분석도 제출한다. 수동으로 세 서비스를 모두 분석하려면 `RUN_SONARQUBE`를 선택한다.
+최초 편입과 별도 `axcore-sonarqube` Job 등록은 [SonarQube 운영 절차](sonarqube/README.md)를 따른다. 활성화된 `axcore-deploy`는 Git의 Compose 변경을 반영하고 SonarQube 준비 상태를 확인한다. 배포 성공 후 전체 SHA와 변경 서비스를 별도 Job에 비동기로 전달하며 커버리지 테스트·분석 완료를 기다리지 않는다. 수동으로 세 서비스를 모두 분석하려면 `RUN_SONARQUBE`를 선택한다.
 
 | 폴더 | 검사 | 어디서 | 비고 |
 | --- | --- | --- | --- |
@@ -210,7 +210,7 @@ Jenkins 관리 → Nodes → Built-In Node → Configure에서 **Number of execu
 
 frontend · ai 컨테이너에는 docker.sock을 붙이지 않는다. 작업 폴더는 호스트 경로(`/home/ubuntu/axcore/jenkins-data/workspace/axcore-mr-check/...`)로 마운트한다(Jenkins 컨테이너의 `/var/jenkins_home`이 호스트의 `jenkins-data`). 컨테이너가 만든 `node_modules` · `dist` · `.pytest_cache`는 root 소유로 작업 폴더에 남지만 다음 검사도 같은 방식이라 문제없다. 지워야 하면 `docker run --rm -v /home/ubuntu/axcore/jenkins-data/workspace/axcore-mr-check/frontend:/app alpine rm -rf /app/node_modules /app/dist`.
 
-- 테스트는 Testcontainers로 테스트용 PostgreSQL 컨테이너를 띄운다. Jenkins 컨테이너의 docker.sock을 쓰며, 그 컨테이너는 기본 bridge에 뜨고 서버 포트로 열리므로 Jenkins 컨테이너에서는 axcore-net 게이트웨이(=서버)로 닿는다. 그 주소가 compose의 `TESTCONTAINERS_HOST_OVERRIDE`다. axcore-net을 지웠다 다시 만들면 게이트웨이가 바뀔 수 있으니 `docker network inspect axcore-net -f '{{(index .IPAM.Config 0).Gateway}}'`로 다시 확인한다.
+- 테스트는 Testcontainers로 JVM당 공유 PostgreSQL 서버를 띄우고, migration을 적용한 빈 템플릿에서 컨텍스트별 독립 DB를 복제한다. 원천 클러스터 설정을 바꾸는 테스트는 전용 컨테이너를 유지한다([테스트 초기화 설명](../docs/backend-test-performance.md)). Jenkins 컨테이너의 docker.sock을 쓰며, 그 컨테이너는 기본 bridge에 뜨고 서버 포트로 열리므로 Jenkins 컨테이너에서는 axcore-net 게이트웨이(=서버)로 닿는다. 그 주소가 compose의 `TESTCONTAINERS_HOST_OVERRIDE`다. axcore-net을 지웠다 다시 만들면 게이트웨이가 바뀔 수 있으니 `docker network inspect axcore-net -f '{{(index .IPAM.Config 0).Gateway}}'`로 다시 확인한다.
 - gradle 캐시는 `jenkins-data/.gradle`에 남아 두 번째부터 빠르다. 첫 실행은 Gradle 배포판과 의존성을 받느라 몇 분 걸린다.
 - 메모리: compose `mem_limit: 4g`. 2026-11-01 실측(gradle 결과 폴더를 지우고 수동 실행해 컴파일·테스트 전부 돌림): 평소 0.9GiB, 빌드 중 최고 2.0GiB, 끝나면 0.9GiB로 복귀. 다시 재려면 `docker compose exec jenkins rm -rf /var/jenkins_home/workspace/axcore-mr-check/backend/build` 뒤 수동 실행하고 `docker stats --no-stream --format '{{.MemUsage}}' jenkins`를 10초 간격으로 찍는다.
 - `junit` 단계는 Jenkins의 JUnit 플러그인이 있어야 돈다 (초기 추천 플러그인에 포함).

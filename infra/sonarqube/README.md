@@ -31,15 +31,41 @@
    docker exec jenkins test -w /home/ubuntu/axcore/sonarqube
    ```
 
-5. 파이프라인 변경을 `develop`에 반영한 후 Jenkins에서 `ENABLE_SONARQUBE=true`를 설정한다. `axcore-deploy`를 수동 실행하고 `RUN_SONARQUBE`를 선택해 초기 편입과 분석을 확인한다. 성공한 분석은 SonarQube 프로젝트 화면에서 해당 커밋과 결과까지 확인한다.
+5. 아래 별도 분석 Job을 먼저 등록하고 파이프라인 변경을 `develop`에 반영한다. Jenkins에서 `ENABLE_SONARQUBE=true`를 설정한다. `axcore-deploy`를 수동 실행하고 `RUN_SONARQUBE`를 선택해 초기 편입과 분석 예약을 확인한다. 성공한 분석은 별도 Job과 SonarQube 프로젝트 화면에서 해당 커밋과 결과까지 확인한다.
+
+## 분석 Job 등록 및 전환
+
+운영자 적용이 필요한 설정이며 저장소 변경만으로 Job이 생성되지는 않는다.
+
+1. 이름이 정확히 `axcore-sonarqube`인 Pipeline Job을 만든다. 기존 두 Job과 같은 저장소·`gitlab-clone` 자격 증명·`develop` 브랜치·Script Path `Jenkinsfile`을 사용한다. Webhook·SCM polling 트리거는 설정하지 않는다.
+2. 첫 실행 전 `ANALYSIS_COMMIT`·`ANALYSIS_RECIPIENT` 문자열 파라미터와 `ANALYZE_BACKEND`·`ANALYZE_FRONTEND`·`ANALYZE_AI`·`RUN_SONARQUBE` Boolean 파라미터를 Jenkinsfile과 같은 기본값으로 등록한다. `FORCE_DEPLOY=false`도 등록한다. Pipeline 실행 중 선언되는 파라미터에만 의존하면 첫 비동기 호출에 전달한 값이 누락될 수 있다.
+3. 기존 분석 토큰 3개와 `mm-webhook`에 접근할 수 있어야 한다. Job은 별도 workspace를 사용하며 운영 배포 자격 증명은 바인딩하지 않는다. 세 Job은 Docker CLI·Java 및 호스트 workspace 경로가 같은 기존 노드에서 실행한다.
+4. 병합 후 실제 배포에서 `Queue SonarQube analysis`가 즉시 반환하는지 확인한다. 별도 Job의 Checkout SHA가 배포의 전체 SHA와 같고, 지정한 서비스만 분석하는지 확인한다. 대기 중 develop이 바뀌어도 전달한 커밋을 검사해야 한다.
+5. 별도 분석 Job 실패·Quality Gate 대기가 배포 완료와 다음 배포를 막지 않는지 확인한다. 예약 자체가 실패하면 배포의 예약 단계가 UNSTABLE로 표시되지만 배포 결과는 유지된다. 로그를 확인해 Job 등록·권한을 복구하고 누락된 커밋 분석을 수동 재실행한다.
+
+수동 분석은 이 Job에서 실행한다. `ANALYSIS_COMMIT`을 비우면 최신 develop, 지정하면 소문자 40자리 SHA를 검사한다. `ANALYZE_*`로 서비스를 고르고 `RUN_SONARQUBE=true`이면 모두 검사한다. 기존 MR Job의 develop 수동 전체 분석도 유지한다.
+
+분석 Job 내부 실행은 직렬이며 다른 Job과 executor·호스트 CPU를 공유한다. 분리는 총 검사량을 없애거나 자원 경합을 해소하지 않는다. executor는 이번 변경에서 늘리지 않는다. 스캐너 캐시는 분석 Job workspace의 `.sonar-cache/<서비스>`에 보존한다. workspace를 지우면 캐시도 사라진다.
+
+### MR 검사 결과 재사용
+
+MR 서비스 검사가 성공하면 커버리지·JUnit·백엔드 컴파일 결과를 Jenkins 홈의 `ci-results/<서비스>/<키>`에 보관한다. 서비스당 최근 10개만 남기며 운영 DB/앱 이미지와는 별도다. 새 Jenkins 플러그인은 필요하지 않다. 기존 세 Job과 동일 노드·Jenkins 홈·호스트 경로 매핑을 사용한다.
+
+키에는 해당 서비스 Git tree(소스·테스트·의존성·빌드 설정 전체), Jenkinsfile Git blob, 캐시 프로그램 버전, 실행 환경을 포함한다. backend는 실제 Java 버전·JAVA_TOOL_OPTIONS·GRADLE_OPTS, frontend/AI는 검사 컨테이너 이미지 ID를 포함한다. 스쿼시 머지로 커밋 ID만 바뀌어도 서비스 파일과 파이프라인/환경이 같으면 재사용한다. 다른 서비스만 변경된 경우에도 backend 결과는 재사용할 수 있다. 서비스 파일이 달라지면 재검사한다.
+
+SonarQube Job은 배포 커밋을 체크아웃한 뒤 결과의 파일 목록·체크섬·필수 보고서·JUnit 성공 여부를 검증하고 복원한다. 원본 MR 커밋과 빌드 링크를 로그로 남긴다. backend의 클래스 파일도 함께 복원하므로 분석을 위한 재컴파일이 필요 없다. 보고서가 없거나 손상/불일치/만료/권한 문제로 복원하지 못하면 해당 서비스 테스트를 정상 실행한다. 재사용 여부와 무관하게 소스 정적 분석은 실행한다. 배포 Job에서는 재사용 검색이나 테스트를 실행하지 않는다.
+
+MR 검사는 매번 현재 코드의 전체 검사를 수행한다. 결과 재사용은 MR 검사 자체를 건너뛰는 기능이 아니다. 커버리지 출력은 기존 테스트 실행에서 함께 만들며 frontend/AI에는 커버리지 측정 비용이 추가된다. 총 시간 감소는 분석 Job의 중복 검사 제거와 컨텍스트 공유에서 얻는다. 기존 캐시 크기는 늘리지 않는다. 성공 결과가 처음 쌓이기 전에는 분석 Job이 기존처럼 테스트한다.
+
+캐시는 같은 Jenkins 노드와 기존 신뢰된 팀 MR 실행 환경을 전제로 한다. 서로 다른 노드/도구체인/테스트 실행 옵션을 도입하면 키와 저장소 구성을 함께 수정해야 한다.
 
 ## 자동 실행
 
 - `axcore-deploy`는 활성화 후 Git의 Compose를 검사한다. SonarQube의 CPU·메모리·프로세스 제한 및 재시작 정책 변경을 자동 반영한다. 적용 전에 현재 Compose와 PostgreSQL 덤프를 `/home/ubuntu/axcore/sonarqube/backup.*`에 남긴다. 이미지 버전, DB, 서비스 구성, 볼륨, 네트워크 변경은 별도 운영 작업으로 처리한다.
-- SonarQube가 UP이면 배포 대상인 frontend·backend·AI를 고정 태그의 스캐너 컨테이너로 순서대로 분석한다. `RUN_SONARQUBE`를 선택하면 세 서비스 모두 분석한다. 분석 단계는 결과를 병합 조건으로 사용하지 않는다.
-- 프론트 분석은 `npm run test:coverage`로 생성한 `frontend/coverage/lcov.info`를 읽는다. 배포 Job에서는 프론트 분석 직전에 생성하고, `axcore-mr-check` 수동 분석에서는 `Frontend check`의 테스트 실행에서 생성한다.
-- 백엔드 분석은 Gradle `jacocoTestReport`로 생성한 `backend/build/reports/jacoco/test/jacocoTestReport.xml`을 읽는다. 배포 Job에서는 백엔드 분석 직전에 테스트와 보고서 생성을 실행하고, `axcore-mr-check` 수동 분석에서는 `Backend check`에서 기존 테스트 실행과 함께 보고서를 생성한다.
-- AI 분석은 `pytest --cov --cov-report=xml`로 생성한 `ai/coverage/coverage.xml`을 읽는다. 배포 Job에서는 AI 분석 직전에 생성하고, `axcore-mr-check` 수동 분석에서는 `AI check`의 테스트 실행에서 생성한다.
+- SonarQube가 UP이고 배포가 성공하면 `axcore-deploy`가 전체 커밋 SHA·변경 서비스·알림 수신자를 `axcore-sonarqube`에 `wait: false`로 전달한다. `RUN_SONARQUBE`를 선택하면 세 서비스 모두 예약한다. 배포 Job은 커버리지 테스트·스캐너·Quality Gate를 기다리지 않는다. 분석 결과는 병합 조건으로 사용하지 않는다.
+- 프론트 분석은 MR 검사에서 생성한 `frontend/coverage/lcov.info`를 재사용하며 일치하는 결과가 없으면 별도 Job에서 `npm run test:coverage`로 생성한다.
+- 백엔드 분석은 MR 검사의 `backend/build/reports/jacoco/test/jacocoTestReport.xml`과 클래스 파일을 재사용하며 일치하는 결과가 없으면 별도 Job에서 `jacocoTestReport`를 실행한다.
+- AI 분석은 MR 검사의 `ai/coverage/coverage.xml`을 재사용하며 일치하는 결과가 없으면 별도 Job에서 `pytest --cov --cov-report=xml`로 생성한다.
 - 새 Compose는 SonarQube가 UP에 도달한 뒤 활성 파일로 저장한다. 갱신이 실패하면 이전 Compose를 다시 적용하고 UP을 확인한다. Jenkins는 해당 실행을 실패로 표시하고 분석을 생략한다. 복구도 실패하면 로그와 백업을 확인한다.
 - DB 덤프에는 SonarQube 운영 데이터가 포함된다. 백업 폴더에 운영자만 접근하도록 하고 보존 기간은 팀에서 정한다.
 
@@ -49,6 +75,6 @@
 
 Nginx 설정이 배포되면 팀원 브라우저에서 로그인과 프로젝트 조회를 확인한다. 이후 SonarQube의 Server base URL과 Jenkins의 `SONARQUBE_DASHBOARD_URL`을 공용 HTTPS 주소로 설정한다.
 
-`axcore-deploy`가 GitLab의 `develop` push 이벤트로 실행되고 이벤트 커밋이 실제 배포 체크아웃과 일치하면, Jenkins가 제출한 분석의 Quality Gate를 최대 2분 동안 기다린다. 미통과한 프로젝트가 있으면 이벤트를 일으킨 GitLab 사용자에게 대시보드 링크를 한 건의 Mattermost DM으로 보낸다. Quality Gate 미통과와 상태 조회 실패는 배포 결과를 변경하지 않는다.
+`axcore-deploy`가 GitLab의 `develop` push 이벤트로 실행되고 이벤트 커밋이 실제 배포 체크아웃과 일치하면 수신자를 별도 분석 Job에 전달한다. 분석 Job이 제출한 분석의 Quality Gate를 서비스마다 최대 2분 기다린다. 미통과한 프로젝트가 있으면 해당 사용자에게 대시보드 링크를 한 건의 Mattermost DM으로 보낸다. 분석 실패는 별도 Job에서 표시하고 수신자가 있을 때 실패 DM을 보낸다. Quality Gate 미통과와 상태 조회 실패는 배포 결과를 변경하지 않는다.
 
 기존 SonarQube 프로젝트 분석 토큰과 `mm-webhook`을 사용한다. 링크는 기본적으로 SSH 터널에서 접근하는 `http://localhost:9000`을 사용한다. 팀원이 접속할 수 있는 별도 SonarQube 주소가 있으면 Jenkins 전역 환경 변수 `SONARQUBE_DASHBOARD_URL`을 그 주소로 설정한다.
