@@ -106,7 +106,36 @@ class LinkRecomputeServiceTests {
                 .containsEntry("link_mapping_id", rule);
         assertThat(String.valueOf(link.get("evidence")))
                 .contains("\"ruleCode\": \"" + ruleCode + "\"")
-                .contains("\"1\": \"EQ-3\"");
+                .contains("\"matchedValues\": {\"1\": \"EQ-3\"}")
+                .contains("\"rawValues\": {\"1\": \" eq-3 \"}");
+
+        long linkId = result.activatedLinkIds().getFirst();
+        setProperty(wo, "equipment_code", "eq-3");
+        assertThat(recompute(wo).updatedLinkIds()).containsExactly(linkId);
+        assertThat(String.valueOf(link(linkId).get("evidence")))
+                .contains("\"rawValues\": {\"1\": \"eq-3\"}");
+        assertThat(recompute(wo).updatedLinkIds()).isEmpty();
+    }
+
+    @Test
+    void keepsLegacyEvidenceUntilTheLinkIsReactivated() {
+        long wo = workOrder(" eq-3 ");
+        long eq = equipment("EQ-3");
+        long linkId = recompute(wo).activatedLinkIds().getFirst();
+        jdbc.sql("update object_link set evidence = evidence - 'rawValues' where id = :id")
+                .param("id", linkId)
+                .update();
+        Object legacyEvidence = link(linkId).get("evidence");
+
+        assertThat(recompute(wo).updatedLinkIds()).isEmpty();
+        assertThat(link(linkId).get("evidence")).isEqualTo(legacyEvidence);
+
+        setStatus(eq, "DELETED_AT_SOURCE");
+        assertThat(recompute(eq).inactivatedLinkIds()).containsExactly(linkId);
+        setStatus(eq, "ACTIVE");
+        assertThat(recompute(eq).activatedLinkIds()).containsExactly(linkId);
+        assertThat(String.valueOf(link(linkId).get("evidence")))
+                .contains("\"rawValues\": {\"1\": \" eq-3 \"}");
     }
 
     @Test
