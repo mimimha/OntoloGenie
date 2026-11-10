@@ -63,7 +63,7 @@
 
 - CDC 반영은 배치 컨테이너의 상시 소비자가 한다. 같은 테이블의 전체 다시 읽기를 중복 실행하지 않는다. 이미 실행 중이면 기존 실행 ID를 반환한다.
 - CDC 테이블을 다시 읽어야 하면 `source_resource.loaded_lsn`을 비워 표시만 한다. 실행은 배치 감시 작업(`CdcReloadJob`)이 넣는다. batch 프로필 테스트에는 `@MockitoBean CdcReloadJob`을 둔다. 자세한 내용은 [C106 개발 가이드](../../docs/development-guide.md) 10.3이다.
-- 시작·완료·실패 시각을 기록하고 실행 중에는 heartbeat를 갱신한다. heartbeat가 멈춘 작업은 시간 초과 기준으로 실패 처리한다.
+- 시작·완료·실패 시각을 기록하고 실행 중에는 heartbeat를 갱신한다. heartbeat가 멈춘 작업은 시간 초과 기준으로 실패 처리한다. heartbeat 갱신은 `QueuedJobRunner`가, 정리는 `StaleJobCleanupJob`이 맡는다. 기준은 `axcore.batch.timeout.*`이다. 전체 읽기(SYNC_RUN)는 다른 작업과 다른 주기에서 한 번에 1건만 처리한다. 자세한 내용은 [C106 개발 가이드](../../docs/development-guide.md) 10.3이다.
 - 수동 실행과 예약 실행은 같은 수집 로직을 쓴다.
 - 반복 실행해도 같은 원천 데이터가 중복 생성되지 않게 한다.
 - `@Scheduled`와 작업 실행은 batch 프로필에서만 돈다. api는 작업 표에 `QUEUED` 행을 넣기만 한다.
@@ -71,6 +71,4 @@
 
 ## Team Decision Needed
 
-다음 항목은 아직 미결정이다. 팀이 결정한 후 이 문서와 개발 가이드에 반영한다.
-
-- heartbeat 시간 초과 기준
+지금 미결정 항목은 없다. 새로 생기면 여기에 적고, 팀이 결정한 후 이 문서와 개발 가이드에 반영한다.
