@@ -1,0 +1,173 @@
+{
+  "tables": {
+    "INSP_ITEM_MST": {
+      "description": "품질 시험 항목 기준정보",
+      "primary_key": [
+        "TEST_ID"
+      ],
+      "columns": {
+        "TEST_ID": {
+          "type": "INTEGER",
+          "comment": "시험항목 ID"
+        },
+        "TEST_CD": {
+          "type": "VARCHAR(10)",
+          "comment": "시험항목 약어(고유)"
+        },
+        "TEST_NM": {
+          "type": "VARCHAR(30)",
+          "comment": ""
+        },
+        "UNIT_CD": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "TEST_MTHD": {
+          "type": "VARCHAR(30)",
+          "comment": ""
+        },
+        "APPLY_TP": {
+          "type": "VARCHAR(3)",
+          "comment": "RM/FG/ALL"
+        },
+        "USE_YN": {
+          "type": "CHAR(1)",
+          "comment": ""
+        }
+      }
+    },
+    "QC_INSP_HDR": {
+      "description": "수입검사(IQC)·완제품검사(FQC) 의뢰 및 판정",
+      "primary_key": [
+        "INSP_NO"
+      ],
+      "columns": {
+        "INSP_NO": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "INSP_TP_CD": {
+          "type": "VARCHAR(3)",
+          "comment": "IQC/FQC"
+        },
+        "INSP_DT": {
+          "type": "DATE",
+          "comment": ""
+        },
+        "LOT_NO": {
+          "type": "VARCHAR(16)",
+          "comment": "검사 대상 로트"
+        },
+        "WO_YY": {
+          "type": "CHAR(2)",
+          "comment": "작업지시 연도"
+        },
+        "WO_SEQ": {
+          "type": "INTEGER",
+          "comment": "작업지시 일련번호"
+        },
+        "SMPL_QTY": {
+          "type": "INTEGER",
+          "comment": "채취 시료 수"
+        },
+        "JDG_CD": {
+          "type": "CHAR(1)",
+          "comment": "P/F"
+        },
+        "INSP_EMP_NO": {
+          "type": "VARCHAR(6)",
+          "comment": ""
+        },
+        "RMK": {
+          "type": "VARCHAR(100)",
+          "comment": ""
+        }
+      }
+    },
+    "QC_INSP_RSLT": {
+      "description": "검사 항목별 측정 결과",
+      "primary_key": [
+        "INSP_NO",
+        "INSP_SEQ"
+      ],
+      "columns": {
+        "INSP_NO": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "INSP_SEQ": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "TEST_CD": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "MEAS_VAL": {
+          "type": "NUMERIC(12,3)",
+          "comment": ""
+        },
+        "SPEC_MIN": {
+          "type": "NUMERIC(12,3)",
+          "comment": ""
+        },
+        "SPEC_MAX": {
+          "type": "NUMERIC(12,3)",
+          "comment": ""
+        },
+        "RSLT_CD": {
+          "type": "CHAR(1)",
+          "comment": "P/F"
+        }
+      }
+    },
+    "CUST_CMPL": {
+      "description": "고객 불만(VOC) 접수 및 처리",
+      "primary_key": [
+        "CMPL_NO"
+      ],
+      "columns": {
+        "CMPL_NO": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "RCPT_DT": {
+          "type": "DATE",
+          "comment": "접수일"
+        },
+        "CUST_NO": {
+          "type": "INTEGER",
+          "comment": "고객 번호"
+        },
+        "PRD_LOT_TXT": {
+          "type": "VARCHAR(40)",
+          "comment": "용기 인쇄 문자 그대로"
+        },
+        "CMPL_TP_CD": {
+          "type": "VARCHAR(3)",
+          "comment": "불만 유형 C01~C08"
+        },
+        "SEVERITY": {
+          "type": "INTEGER",
+          "comment": "1~5"
+        },
+        "CMPL_QTY": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "CMPL_DESC": {
+          "type": "VARCHAR(200)",
+          "comment": ""
+        },
+        "RTN_TRK_NO": {
+          "type": "CHAR(13)",
+          "comment": "반품 회수 송장번호"
+        },
+        "STAT_CD": {
+          "type": "VARCHAR(3)",
+          "comment": "RCV/INV/CLS"
+        }
+      }
+    }
+  }
+}

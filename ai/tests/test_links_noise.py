@@ -268,3 +268,85 @@ def test_codes_with_other_letters_matched_only_by_number_are_held(tmp_path):
     rule = found[("mes.defect_cd.dft_cd", "erp.vendor.vendor_cd")]
     assert rule.review_status == "HELD"
     assert rule.hold_reason.startswith("글자가 다른 값까지 숫자만 남겨")
+
+
+def test_few_number_values_are_dropped_and_dated_document_numbers_are_held(tmp_path):
+    # B9: 처방 버전(1·2)이 칭량 ID(1, 2, 3…)에 닿거나, 연도·순번 문서 번호(WO-25-0001 ↔ QI-25-00001)가
+    # 숫자만 같아 이어지던 것: 순번 키는 내지 않고, 문서 번호는 보류
+    write_table(
+        tmp_path,
+        "erp",
+        "weighing",
+        ["weigh_id"],
+        {
+            "weigh_id": ("integer", list(range(1, 81))),
+            "recipe_ver": ("integer", [1 + i % 2 for i in range(80)]),
+            "wo_no": ("varchar(12)", [f"WO-25-{i:04d}" for i in range(1, 81)]),
+        },
+    )
+    write_table(
+        tmp_path,
+        "qms",
+        "insp",
+        ["insp_no"],
+        {
+            "insp_no": ("varchar(12)", [f"QI-25-{i:05d}" for i in range(1, 81)]),
+            "result": ("varchar(4)", ["OK"] * 80),
+        },
+    )
+    found = rules(tmp_path)
+    assert ("erp.weighing.recipe_ver", "erp.weighing.weigh_id") not in found
+    # 연도·순번 문서 번호는 진짜 참조일 수도 있어 빼지 않고 보류로 보인다
+    rule = found[("erp.weighing.wo_no", "qms.insp.insp_no")]
+    assert rule.review_status == "HELD"
+    assert rule.hold_reason.startswith("연도·순번 문서 번호가 숫자만 같음")
+
+
+def test_few_codes_touching_small_part_of_master_are_held(tmp_path):
+    # B6: 판매 조직(1000·1100·2000)이 플랜트 코드 60개 중 일부와 글자까지 같지만 다른 코드다
+    write_table(
+        tmp_path,
+        "sap",
+        "plant",
+        ["werks"],
+        {"werks": ("varchar(4)", [f"{1000 + i * 100}" for i in range(60)])},
+    )
+    write_table(
+        tmp_path,
+        "sap",
+        "sales_order",
+        ["vbeln"],
+        {
+            "vbeln": ("varchar(10)", [f"00500{i:05d}" for i in range(120)]),
+            "vkorg": (
+                "varchar(4)",
+                [["1000", "1100", "2000"][i % 3] for i in range(120)],
+            ),
+        },
+    )
+    rule = rules(tmp_path)[("sap.sales_order.vkorg", "sap.plant.werks")]
+    assert rule.review_status == "HELD"
+    assert rule.hold_reason.startswith("코드 값 3개가 도착 값 60개 중 일부에만")
+
+
+def test_few_number_values_with_matching_column_name_are_held_not_dropped(tmp_path):
+    # 값이 1·2뿐이어도 컬럼 이름이 이어지면(plant_id → plant.plant_id) 진짜 참조일 수 있어 보류로 보인다
+    write_table(
+        tmp_path,
+        "mes",
+        "plant",
+        ["plant_id"],
+        {"plant_id": ("integer", [1, 2, 3, 4, 5])},
+    )
+    write_table(
+        tmp_path,
+        "mes",
+        "line",
+        ["line_id"],
+        {
+            "line_id": ("integer", list(range(101, 141))),
+            "plant_id": ("integer", [1 + i % 2 for i in range(40)]),
+        },
+    )
+    rule = rules(tmp_path)[("mes.line.plant_id", "mes.plant.plant_id")]
+    assert rule.review_status == "HELD"

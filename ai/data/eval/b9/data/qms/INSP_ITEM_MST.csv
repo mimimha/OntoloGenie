@@ -1,0 +1,26 @@
+TEST_ID,TEST_CD,TEST_NM,UNIT_CD,TEST_MTHD,APPLY_TP,USE_YN
+1,APP,외관,-,관능,ALL,Y
+2,ODR,향취,-,관능,ALL,Y
+3,COLOR,색상,-,기기분석,ALL,Y
+4,PH,pH,-,기기분석,ALL,Y
+5,VISC,점도,cP,관능,FG,Y
+6,SG,비중,g/ml,기기분석,RM,Y
+7,HARD,경도,g,기기분석,FG,Y
+8,MP,융점,℃,관능,RM,Y
+9,TAC,총호기성생균수,CFU/g,관능,ALL,Y
+10,YM,진균수,CFU/g,화장품안전기준 시험법,FG,Y
+11,ECOLI,대장균,-,미생물한도시험,FG,Y
+12,PSA,녹농균,-,관능,FG,Y
+13,SAU,황색포도상구균,-,관능,FG,Y
+14,PB,납,ppm,관능,RM,Y
+15,AS,비소,ppm,미생물한도시험,RM,Y
+16,HG,수은,ppm,기기분석,RM,Y
+17,SB,안티몬,ppm,관능,RM,Y
+18,CD,카드뮴,ppm,기기분석,RM,Y
+19,NI,니켈,ppm,기기분석,RM,Y
+20,MEOH,메탄올,%,미생물한도시험,RM,Y
+21,FA,포름알데하이드,ppm,미생물한도시험,RM,Y
+22,DIOX,디옥산,ppm,미생물한도시험,RM,Y
+23,FILL,충전량,ml,기기분석,FG,Y
+24,LEAK,누액,-,관능,FG,Y
+25,CAPT,캡 토크,kgf·cm,화장품안전기준 시험법,FG,Y

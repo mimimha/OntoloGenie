@@ -1,0 +1,202 @@
+{
+  "systems": [
+    "erp",
+    "wms",
+    "qms"
+  ],
+  "relations": [
+    {
+      "from": "erp.품목.주거래처코드",
+      "to": "erp.거래처.거래처코드",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.처방.제품코드",
+      "to": "erp.품목.품목코드",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.처방.원료코드",
+      "to": "erp.품목.품목코드",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.생산지시.제품코드",
+      "to": "erp.품목.품목코드",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.생산지시.고객사코드",
+      "to": "erp.거래처.거래처코드",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.칭량실적.지시번호",
+      "to": "erp.생산지시.지시번호",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.칭량실적.원료코드",
+      "to": "erp.품목.품목코드",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.충전실적.지시번호",
+      "to": "erp.생산지시.지시번호",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "wms.inventory_lot.receipt_no",
+      "to": "wms.inbound_receipt.receipt_no",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "wms.inventory_lot.zone_cd+wms.inventory_lot.bin_no",
+      "to": "wms.location.zone_cd+wms.location.bin_no",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "wms.shipment_line.shipment_no",
+      "to": "wms.shipment.shipment_no",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "wms.shipment_line.lot_no",
+      "to": "wms.inventory_lot.lot_no",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "qms.QC_INSP_RSLT.INSP_NO",
+      "to": "qms.QC_INSP_HDR.INSP_NO",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "qms.QC_INSP_RSLT.TEST_CD",
+      "to": "qms.INSP_ITEM_MST.TEST_CD",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "wms.inbound_receipt.supplier_biz_no",
+      "to": "erp.거래처.사업자번호",
+      "transform": "WMS는 하이픈 없는 10자리 숫자로 저장(1234567890), ERP는 3-2-5 하이픈 형식(123-45-67890). 대상은 PK가 아닌 고유 컬럼",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "wms.inventory_lot.item_cd",
+      "to": "erp.품목.품목코드",
+      "transform": "WMS는 하이픈 제거(RM2001), ERP는 RM-2001",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "wms.shipment.customer_cd",
+      "to": "erp.거래처.거래처코드",
+      "transform": "WMS는 소문자(c00103), ERP는 대문자(C00103)",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "erp.칭량실적.원료로트번호",
+      "to": "wms.inventory_lot.lot_no",
+      "transform": null,
+      "cardinality": "N:1"
+    },
+    {
+      "from": "qms.QC_INSP_HDR.LOT_NO",
+      "to": "wms.inventory_lot.lot_no",
+      "transform": "QMS는 두 글자 접두어 뒤에 하이픈을 하나 더 넣음(RL-250503-01), WMS는 RL250503-01. 첫 하이픈 제거",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "qms.QC_INSP_HDR.WO_YY+qms.QC_INSP_HDR.WO_SEQ",
+      "to": "erp.생산지시.지시번호",
+      "transform": "두 컬럼 결합: 'WO-' + WO_YY + '-' + WO_SEQ를 4자리 0채움(25, 12 → WO-25-0012). FQC 행만 값이 있음",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "qms.CUST_CMPL.PRD_LOT_TXT",
+      "to": "wms.inventory_lot.lot_no",
+      "transform": "용기 인쇄 문자열 'FL250503-01 / EXP 2028.05'에서 ' / ' 앞부분(앞 11자리)만 잘라야 로트번호",
+      "cardinality": "N:1"
+    },
+    {
+      "from": "qms.CUST_CMPL.CUST_NO",
+      "to": "erp.거래처.거래처코드",
+      "transform": "정수만 저장(103). 'C' 접두어 + 5자리 0채움 → C00103",
+      "cardinality": "N:1"
+    }
+  ],
+  "traps": [
+    {
+      "column": "qms.QC_INSP_HDR.SMPL_QTY",
+      "looks_like": "qms.INSP_ITEM_MST.TEST_ID",
+      "why": "시료 채취 수량(1~20)이라 값이 1~25 일련 ID 안에 전부 들어가지만 의미가 없는 수량"
+    },
+    {
+      "column": "qms.QC_INSP_RSLT.INSP_SEQ",
+      "looks_like": "qms.INSP_ITEM_MST.TEST_ID",
+      "why": "검사 내 결과 순번(1~2). 실제 시험항목 연결은 TEST_CD → INSP_ITEM_MST.TEST_CD"
+    },
+    {
+      "column": "erp.생산지시.생산라인",
+      "looks_like": "erp.칭량실적.칭량ID",
+      "why": "라인 번호(1~6)가 칭량 일련번호와 겹치지만 라인 기준정보 표가 없는 단순 속성"
+    },
+    {
+      "column": "erp.처방.순번",
+      "looks_like": "erp.칭량실적.칭량ID",
+      "why": "처방 내 투입 순서(1~8). 복합 PK의 일부일 뿐 칭량 일련번호와 무관"
+    },
+    {
+      "column": "wms.shipment.dock_no",
+      "looks_like": "wms.location.bin_no",
+      "why": "상차 도크 번호(1~8)로 랙 위치 번호와 값 범위가 같지만 다른 개념이며 bin_no 단독은 키도 아님"
+    },
+    {
+      "column": "wms.inbound_receipt.po_ref",
+      "looks_like": "erp.생산지시.지시번호",
+      "why": "구매발주번호 PO-25-0012가 작업지시 WO-25-0012와 숫자·형식이 같지만 발주는 이 데이터셋에 없는 다른 엔터티"
+    },
+    {
+      "column": "qms.CUST_CMPL.CMPL_TP_CD",
+      "looks_like": "erp.거래처.거래처코드",
+      "why": "불만 유형 코드 C01~C08이 거래처코드와 같은 'C' 접두어를 쓰지만 유형 분류 코드"
+    },
+    {
+      "column": "qms.CUST_CMPL.RTN_TRK_NO",
+      "looks_like": "erp.품목.바코드",
+      "why": "반품 송장번호도 CHAR(13) 숫자지만 바코드(880…)와 값이 겹치지 않는 택배 번호"
+    }
+  ],
+  "dirt": [
+    "erp.칭량실적.원료로트번호: 5건 값 누락",
+    "erp.충전실적.지시번호: 4건 값 누락",
+    "wms.inbound_receipt.supplier_biz_no: 2건 값 누락",
+    "wms.shipment.customer_cd: 2건 값 누락",
+    "qms.QC_INSP_HDR.LOT_NO: 8건 값 누락",
+    "erp.생산지시.고객사코드: 2건 값 누락",
+    "erp.칭량실적.원료로트번호: 존재하지 않는 로트 2건(RL250231-01, RL250718-09)",
+    "wms.inventory_lot.item_cd: 단종 원료 코드 RM2099 2건(ERP 미등록)",
+    "qms.CUST_CMPL.CUST_NO: ERP에 없는 고객 번호 998 1건",
+    "wms.shipment_line.lot_no: 존재하지 않는 로트 FL250999-01 1건",
+    "erp.생산지시.제품코드: 숫자 0 대신 영문 O 입력 1건(FG-1O05, WO-25-0009)",
+    "wms.inbound_receipt.supplier_biz_no: 하이픈이 남은 값 1건(GR250225-01)",
+    "wms.shipment.customer_cd: 소문자 규칙과 달리 대문자로 저장된 값 1건(SH250702-01)",
+    "qms.QC_INSP_HDR.LOT_NO: 소문자로 입력된 로트 1건(QI-25-00181)",
+    "qms.QC_INSP_RSLT.TEST_CD: 오타 AAP 1건(QI-25-00145)",
+    "wms.inventory_lot.receipt_no: 완제품(FG) 로트는 입고 전표가 없어 정상적으로 비어 있음(오염 아님)",
+    "qms.QC_INSP_HDR.WO_YY·WO_SEQ: 수입검사(IQC)는 작업지시가 없어 정상적으로 비어 있음(오염 아님)"
+  ]
+}

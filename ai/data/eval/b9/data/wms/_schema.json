@@ -1,0 +1,198 @@
+{
+  "tables": {
+    "location": {
+      "description": "창고 구역·랙 위치 기준정보",
+      "primary_key": [
+        "zone_cd",
+        "bin_no"
+      ],
+      "columns": {
+        "zone_cd": {
+          "type": "VARCHAR(5)",
+          "comment": "zone code"
+        },
+        "bin_no": {
+          "type": "INTEGER",
+          "comment": "bin number in zone"
+        },
+        "zone_name": {
+          "type": "VARCHAR(30)",
+          "comment": ""
+        },
+        "temp_range": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "max_pallet": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "use_yn": {
+          "type": "CHAR(1)",
+          "comment": ""
+        }
+      }
+    },
+    "inbound_receipt": {
+      "description": "원료·포장재 입고 전표",
+      "primary_key": [
+        "receipt_no"
+      ],
+      "columns": {
+        "receipt_no": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "receipt_date": {
+          "type": "DATE",
+          "comment": ""
+        },
+        "supplier_biz_no": {
+          "type": "VARCHAR(10)",
+          "comment": "supplier tax id"
+        },
+        "po_ref": {
+          "type": "VARCHAR(12)",
+          "comment": "purchase order ref"
+        },
+        "dock_no": {
+          "type": "INTEGER",
+          "comment": "unloading dock"
+        },
+        "pkg_cnt": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "receiver_id": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "remark": {
+          "type": "VARCHAR(100)",
+          "comment": ""
+        }
+      }
+    },
+    "inventory_lot": {
+      "description": "로트별 재고(원료·포장재·완제품)",
+      "primary_key": [
+        "lot_no"
+      ],
+      "columns": {
+        "lot_no": {
+          "type": "VARCHAR(15)",
+          "comment": ""
+        },
+        "item_cd": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        },
+        "lot_type": {
+          "type": "VARCHAR(2)",
+          "comment": "RM/PK/FG"
+        },
+        "receipt_no": {
+          "type": "VARCHAR(12)",
+          "comment": "inbound doc"
+        },
+        "zone_cd": {
+          "type": "VARCHAR(5)",
+          "comment": ""
+        },
+        "bin_no": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "qty_on_hand": {
+          "type": "NUMERIC(12,2)",
+          "comment": ""
+        },
+        "uom": {
+          "type": "VARCHAR(3)",
+          "comment": ""
+        },
+        "mfg_date": {
+          "type": "DATE",
+          "comment": ""
+        },
+        "exp_date": {
+          "type": "DATE",
+          "comment": ""
+        },
+        "lot_status": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "last_move_ts": {
+          "type": "TIMESTAMP",
+          "comment": ""
+        }
+      }
+    },
+    "shipment": {
+      "description": "완제품 출하 헤더",
+      "primary_key": [
+        "shipment_no"
+      ],
+      "columns": {
+        "shipment_no": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "ship_date": {
+          "type": "DATE",
+          "comment": ""
+        },
+        "customer_cd": {
+          "type": "VARCHAR(10)",
+          "comment": "ship-to"
+        },
+        "carrier": {
+          "type": "VARCHAR(20)",
+          "comment": ""
+        },
+        "vehicle_no": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "dock_no": {
+          "type": "INTEGER",
+          "comment": "loading dock"
+        },
+        "ship_status": {
+          "type": "VARCHAR(10)",
+          "comment": ""
+        }
+      }
+    },
+    "shipment_line": {
+      "description": "출하 상세(로트별 출하 수량)",
+      "primary_key": [
+        "shipment_no",
+        "line_seq"
+      ],
+      "columns": {
+        "shipment_no": {
+          "type": "VARCHAR(12)",
+          "comment": ""
+        },
+        "line_seq": {
+          "type": "INTEGER",
+          "comment": ""
+        },
+        "lot_no": {
+          "type": "VARCHAR(15)",
+          "comment": ""
+        },
+        "ship_qty": {
+          "type": "INTEGER",
+          "comment": "EA"
+        },
+        "box_cnt": {
+          "type": "INTEGER",
+          "comment": ""
+        }
+      }
+    }
+  }
+}

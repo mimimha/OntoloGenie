@@ -12,7 +12,7 @@ ai/
 ├── data/
 │   ├── data-v1.0/          개발용 원천 A (ERP 18·MES 15개 표, 표 정의, 적재 스크립트)
 │   ├── gold-v1.0/          A 정답셋 (원천 DB·AI 입력에 넣지 않음)
-│   ├── eval/b ~ b8/        독립 평가 데이터 B~B8: data/(원천) + answer.json(정답). 코드를 보지 않은 에이전트가 명세만 보고 만듦
+│   ├── eval/b ~ b9/        독립 평가 데이터 B~B9: data/(원천) + answer.json(정답). 코드를 보지 않은 에이전트가 명세만 보고 만듦
 │   └── scenario-v1.0/      시나리오 5 원천 수정분, CDC 변경 재현 단계
 ├── results/
 │   └── proposals-v1.0.api.json   분석 결과 샘플 (API 105 형식, 나머지 결과 JSON은 로컬에만)
@@ -26,7 +26,7 @@ ai/
 │   ├── llm/             LLM 호출(GMS·OpenAI·사내 서버), 크레딧 계산, 개인정보 가림
 │   ├── models/          후보·분석 데이터 모델
 │   ├── dataset/         데이터·정답 생성기
-│   ├── validators/      정답 점검·후보 평가 (gold_check, gold_source_check, evaluate_ontology, evaluate_notes)
+│   ├── validators/      정답 점검·후보 평가 (gold_check, gold_source_check, evaluate_ontology, evaluate_notes, scorecard)
 │   └── rules/           연결 규칙 변환 단계 (transforms.py)
 ├── tests/               pytest (fixtures: 가짜 원천·변환 사례)
 └── docs/
