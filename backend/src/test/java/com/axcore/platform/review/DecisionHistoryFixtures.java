@@ -1,5 +1,6 @@
 package com.axcore.platform.review;
 
+import com.axcore.platform.ontology.domain.ProposalItemKind;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -27,16 +28,21 @@ public final class DecisionHistoryFixtures {
     }
 
     public long proposal(long account, String payload) {
+        return proposal(account, ProposalItemKind.LINK_RULE, payload);
+    }
+
+    public long proposal(long account, ProposalItemKind kind, String payload) {
         return jdbc.sql(
                         """
                 with candidate as (
                     insert into proposal_item(origin, item_kind, payload, created_by)
-                    values ('MANUAL', 'LINK_RULE', cast(:payload as jsonb), :account) returning *
+                    values ('MANUAL', :kind, cast(:payload as jsonb), :account) returning *
                 )
                 insert into proposal_revision(proposal_item_id, revision, payload, evidence, created_by)
                 select id, revision, payload, evidence, created_by from candidate returning proposal_item_id
                 """)
                 .param("account", account)
+                .param("kind", kind.name())
                 .param("payload", payload)
                 .query(Long.class)
                 .single();
