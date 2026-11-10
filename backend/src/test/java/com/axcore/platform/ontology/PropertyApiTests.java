@@ -125,6 +125,37 @@ class PropertyApiTests {
     }
 
     @Test
+    void rejectsMakingDisplayPropertyRestricted() throws Exception {
+        LoginSession admin = loginAs("ADMIN");
+        long typeId = insertObjectType();
+        long propertyId = createProperty(admin, typeId, "machine_no", "STRING");
+        jdbcClient
+                .sql("update object_type set display_property_id = :property where id = :type")
+                .param("property", propertyId)
+                .param("type", typeId)
+                .update();
+
+        send(
+                        admin,
+                        patch(propertyPath(propertyId)),
+                        """
+                        {"name": "설비 번호", "dataType": "STRING", "isRequired": false,
+                         "sensitivity": "RESTRICTED", "rowVersion": 0}
+                        """)
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.error.code").value("BUSINESS_RULE_VIOLATION"))
+                .andExpect(jsonPath("$.error.details.field").value("sensitivity"));
+        send(
+                        admin,
+                        patch(propertyPath(propertyId)),
+                        """
+                        {"name": "설비 번호", "dataType": "STRING", "isRequired": false, "rowVersion": 0}
+                        """)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sensitivity").value("NORMAL"));
+    }
+
+    @Test
     void updatesKeepingOmittedFieldsAndChecksVersion() throws Exception {
         LoginSession admin = loginAs("ADMIN");
         long typeId = insertObjectType();
