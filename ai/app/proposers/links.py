@@ -44,13 +44,19 @@ from app.models.candidate import (
     SourceFilter,
 )
 from app.proposers import confidence as score
+from app.proposers.korean import josa, particle
 from app.proposers.objects import (
     TIME_TYPES,
     key_like_columns,
     observed_pair_key,
     to_code,
 )
-from app.rules.transforms import TransformStep, describe_steps
+from app.rules.transforms import (
+    TransformError,
+    TransformStep,
+    apply_steps,
+    describe_steps,
+)
 from app.sources.csv_reader import CsvSourceReader
 
 MIN_ROWS_FOR_SMALL = 20  # 값 종류가 적어도 이만큼 행이 모두 이어지면 보류 후보로 낸다
@@ -186,12 +192,24 @@ def target_keys(tables: Tables) -> list[tuple[Column, str]]:
                 and (
                     not col.values.str.fullmatch(r"[\d.\-]+").any()
                     or _hyphen_number_code(col.values)
+                    or _fixed_digit_code(col)
                 )
             ):
                 out.append((col, "alternate"))
             elif not pk and col.analysis.is_key_candidate:
                 out.append((col, "primary"))
     return out
+
+
+def _fixed_digit_code(col: Column) -> bool:
+    """바코드(EAN-13 8801234484770)처럼 글자형으로 선언된 고정 길이 숫자 코드. 수량·금액은 길이가 제각각이다."""
+    values = col.values
+    return bool(
+        col.declared.startswith(("char", "varchar", "text", "character"))
+        and values.str.fullmatch(r"\d+").all()
+        and values.str.len().nunique() == 1
+        and values.str.len().iloc[0] >= 8
+    )
 
 
 def _hyphen_number_code(values: pd.Series) -> bool:
@@ -703,12 +721,7 @@ def _compare(source: Column, target: Column, key: str) -> Relation | None:
             rel.hold = "숫자뿐인 값에 0 채우기·접두어를 붙여야 같아짐. 번호가 우연히 같을 수 있어 업무 의미 확인 필요"
         elif (swap := _prefix_swap(link.source_transforms)) and no_raw_overlap:
             # 글자가 다른 번호끼리(거래처 C001 ↔ 설비 EQ-001)는 일련번호만 같은 다른 대상일 때가 많다
-            from app.proposers.readable import josa
-
-            old, new = (
-                josa(swap[0], "을/를")[len(swap[0]) :],
-                josa(swap[1], "으로/로")[len(swap[1]) :],
-            )
+            old, new = particle(swap[0], "을/를"), particle(swap[1], "으로/로")
             rel.hold = f"접두어 '{swap[0]}'{old} '{swap[1]}'{new} 바꿔야 같아짐. 일련번호만 우연히 같을 수 있어 업무 의미 확인 필요"
         elif (
             no_raw_overlap
@@ -748,8 +761,6 @@ def _compare(source: Column, target: Column, key: str) -> Relation | None:
 
 
 def _row_coverage(values: pd.Series, targets: pd.Series, steps, target_steps) -> float:
-    from app.rules.transforms import TransformError, apply_steps
-
     t_steps = [TransformStep.model_validate(s) for s in target_steps]
 
     def conv(st, v):
@@ -937,8 +948,6 @@ def _best_composites(found: list[Relation]) -> list[Relation]:
 
 def _value_map(rel: Relation) -> Callable[[str], str | None]:
     """관계의 변환으로 출발 값 → 도착 원래 값. 안 이어지면 None."""
-    from app.rules.transforms import TransformError, apply_steps
-
     s_steps = [TransformStep.model_validate(x) for x in rel.source_steps]
     t_steps = [TransformStep.model_validate(x) for x in rel.target_steps]
     index = {}
@@ -1237,8 +1246,6 @@ def _cardinality(rel: Relation, tables: Tables) -> str:
 def _how_text(rel: Relation, steps_by_column: list[tuple[list, list]]) -> str:
     """제안 이유의 '어떻게 비교하는지' 부분(FN-AIP-05). 검토자가 변환 이름(EXTRACT_NUMBER 등)을
     몰라도 읽을 수 있게 컬럼마다 사람이 읽는 말로 쓰고, 실제로 이어진 값 한 쌍을 예로 붙인다."""
-    from app.proposers.readable import josa
-
     if rel.rule_type == "same_value":
         return "비교 방법: 값을 그대로 비교"
     parts = []
@@ -1303,8 +1310,6 @@ def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
             "none": "종류 값(키 아님)",
         }[rel.target_key]
         how = _how_text(rel, steps_by_column)
-        from app.proposers.readable import josa
-
         target_cols = " + ".join(c.name for c in rel.target)
         reason = (
             f"{' + '.join(c.ref for c in rel.source)}의 값이 {t_table}의 {key_text} "

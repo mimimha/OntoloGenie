@@ -13,6 +13,7 @@ import re
 from collections import Counter
 
 from app.models.candidate import Candidate
+from app.proposers.readable import readable
 
 
 def camel(name: str) -> str:
@@ -233,8 +234,6 @@ def to_api_proposals(candidates: list[Candidate]) -> list[dict]:
     out += [to_api(t) for code, t in types.items() if code not in paired]
     out += [to_api(c) for c in loose + groups.get("DOCUMENT_LINK", [])]
     # 검토 화면 목록 제목·관계 설명을 한국어로 붙인다(코드 대신 객체·속성 이름)
-    from app.proposers.readable import readable
-
     return readable(out)
 
 

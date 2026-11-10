@@ -8,42 +8,7 @@
 
 import re
 
-
-def _final_consonant(word: str) -> int | None:
-    """마지막 글자의 받침 번호(0은 받침 없음). 한글이 아니면 숫자·영문 읽기로 어림한다."""
-    if not word:
-        return 0
-    ch = word[-1]
-    if "가" <= ch <= "힣":
-        return (ord(ch) - ord("가")) % 28
-    if ch.isdigit():
-        # 일·칠·팔은 ㄹ 받침(8), 영·삼·육은 다른 받침(1)
-        return 8 if ch in "178" else 1 if ch in "036" else 0
-    if not ch.isascii() or not ch.isalpha():
-        return 0
-    tail = word.split("_")[-1].lower()
-    if len(tail) == 1 or not tail.isalpha():
-        # 글자 하나는 알파벳 이름으로 읽는다(엘·알 → ㄹ, 엠·엔 → 받침)
-        return 8 if ch.lower() in "lr" else 1 if ch.lower() in "mn" else 0
-    # 영어 낱말은 소리로 어림한다: name·time(ㅁ), line(ㄴ), level(ㄹ), group(ㅂ), string(ㅇ)
-    if tail.endswith("ng"):
-        return 1
-    if tail.endswith("e") and len(tail) > 2:
-        prev = tail[-2]
-        return 8 if prev == "l" else 1 if prev in "mn" else 0
-    last = tail[-1]
-    if last == "l":
-        return 8
-    return 1 if last in "mnpb" else 0  # number·order(-r)는 받침 없이 읽는다
-
-
-def josa(word: str, pair: str) -> str:
-    """word 뒤에 맞는 조사를 붙인다. pair: '이/가', '을/를', '은/는', '으로/로'."""
-    with_batchim, without = pair.split("/")
-    final = _final_consonant(word)
-    if pair == "으로/로":
-        return word + (without if final in (0, 8) else with_batchim)  # ㄹ 받침은 '로'
-    return word + (with_batchim if final else without)
+from app.proposers.korean import josa, particle
 
 
 def _short(name: str) -> str:
@@ -133,11 +98,6 @@ def _link_rule_name(payload: dict, names: Names) -> tuple[str, str] | None:
     return title, lead
 
 
-def _particle(word: str, pair: str) -> str:
-    """word 뒤에 붙을 조사만. 따옴표로 감싼 말 뒤에 쓴다."""
-    return josa(word, pair)[len(word) :]
-
-
 def _excerpt(evidence: dict, payload: dict, limit: int = 60) -> str:
     """언급이 든 문장. 검토자가 메모를 열지 않고도 어떤 문맥인지 보게 한다.
     줄·마침표에서 끊고(머리말 '[8/4 주간 → 야간 인수인계] 작성 52' 줄은 빠짐), 길면 언급 앞뒤만 남긴다."""
@@ -187,20 +147,23 @@ def _document_name(
     if choices > 1:
         # 보류 권고(후보 설비가 여럿): 첫 후보로 단정하지 않는다
         title = f"{where}의 {target} (후보 {choices}개)"
-        lead = f"{quoted}에 맞는 {josa(target, '이/가')} {choices}개입니다{quote}"
-        return title, lead
+        lead = f"{quoted}에 맞는 {josa(target, '이/가')} {choices}개라 하나로 정하지 못했습니다{quote}"
+        # 원래 이유의 첫 문장은 같은 말이라 빼고, 단서(작성자 배치 라인 등)만 잇는다
+        hint = evidence.get("reason") or ""
+        hint = hint[hint.find("작성자") :] if "작성자" in hint else ""
+        return title, f"{lead} {hint}".strip()
     title = f"{where}의 {target} {key}"
     alias = any(
         "이름·별명" in (c.get("label") or "")
         for c in evidence.get("confidenceItems") or []
     )
     if mention.strip().upper() == key.strip().upper():
-        lead = f"글에 {quoted}{_particle(mention, '이/가')} 적혀 있습니다"
+        lead = f"글에 {quoted}{particle(mention, '이/가')} 적혀 있습니다"
     elif alias:
-        lead = f"글의 {quoted}{_particle(mention, '을/를')} {target} {key}의 이름·별명으로 봤습니다"
+        lead = f"글의 {quoted}{particle(mention, '을/를')} {target} {key}의 이름·별명으로 봤습니다"
     else:
         # 로트 번호처럼 다른 컬럼 값으로 찾은 경우
-        lead = f"글에 적힌 {quoted}{_particle(mention, '으로/로')} {target} {josa(key, '을/를')} 찾았습니다"
+        lead = f"글에 적힌 {quoted}{particle(mention, '으로/로')} {target} {josa(key, '을/를')} 찾았습니다"
     return title, lead + quote
 
 
@@ -216,7 +179,7 @@ def readable(proposals: list[dict]) -> list[dict]:
             p.get("payload") or {},
             p.get("evidence") or {},
         )
-        made, held_doc = None, False
+        made = None
         if kind == "LINK_RULE":
             if payload.get("linkType"):
                 _name_link_type(payload["linkType"], names)
@@ -238,16 +201,14 @@ def readable(proposals: list[dict]) -> list[dict]:
             if evidence.get("holdRecommended"):
                 choices = max(choices, 2)
             made = _document_name(payload, evidence, names, choices)
-            held_doc = choices > 1
         if made:
             title, lead = made
             payload["name"] = title
             evidence["title"] = title
-            # 확정 문서 연결은 예전 문장(코드·조사 오류)을 새 문장으로 바꾸고,
-            # 연결 규칙과 보류 문서 연결은 쉬운 요약을 앞에 붙인다(정하지 못한 이유·단서를 남긴다)
+            # 문서 연결은 새 문장으로 바꾸고(보류면 단서만 잇는다), 연결 규칙은 쉬운 요약을 앞에 붙인다
             evidence["reason"] = (
                 lead
-                if kind == "DOCUMENT_LINK" and not held_doc
+                if kind == "DOCUMENT_LINK"
                 else f"{lead} {evidence.get('reason') or ''}".strip()
             )
     return proposals
