@@ -11,7 +11,9 @@ Alloy의 `discovery.docker`는 수집 대상을 찾고 cAdvisor는 자원 지표
 
 - `axcore_docker_container_restart_count`: Docker `RestartCount`의 현재 값이다. 게이지로 기록하며 컨테이너 재생성 시 초기화된다. 수동 재시작·배포를 포함한 모든 재기동의 누적 횟수가 아니므로 `rate()`로 계산하지 않는다.
 - `axcore_docker_container_state`: 상태별 0/1 값이다. `== 1`인 라벨이 현재 상태다. 중지된 컨테이너도 조회하며 일회성 `docker compose run` 컨테이너는 제외한다. `running`은 애플리케이션 준비 완료나 건강 상태를 의미하지 않는다.
-- `axcore_docker_state_collection_success`: 이번 수집 성공 1, 실패 0이다. Docker 접근 오류·시간 초과·조회 도중 컨테이너 삭제·알 수 없는 상태·대상 없음은 실패 처리한다. 다음 실행에서 다시 조회한다.
+- `axcore_docker_container_health`: Docker Health.Status를 `health="none|starting|healthy|unhealthy"`별 0/1 값으로 출력한다. 현재 상태만 1이다. 헬스체크가 없으면 none이 1이며 unhealthy는 0이다. 로그·환경변수는 수집하지 않는다. 이 지표는 컨테이너 삭제를 감지하지 않으며 서버 반영 및 알림 규칙 설정은 별도다.
+- `axcore_docker_service_present`: `EXPECTED_APP_SERVICES`의 backend·ai·frontend·batch·nginx 각각에 대해 컨테이너가 존재하면 1, 없으면 0을 출력한다. 중지된 컨테이너도 존재로 세며 실행 여부는 state 지표로 별도 판단한다. 일회성 컨테이너와 다른 프로젝트는 제외한다. 프로젝트 전체 목록이 정상적으로 비어 있어도 다섯 서비스의 0을 출력한다. Docker 조회 오류·불완전한 inspect 결과는 누락으로 오인하지 않고 수집 실패로 처리한다. 같은 서비스의 재생성 전후 컨테이너가 함께 있어도 존재 지표는 하나다. 알림은 수집 성공·최신 여부를 함께 검사해야 하며 서버 반영·알림 설정·실제 삭제 검증은 아직 별도다.
+- `axcore_docker_state_collection_success`: 이번 수집 성공 1, 실패 0이다. Docker 접근 오류·시간 초과·조회 도중 컨테이너 삭제·불완전한 응답·알 수 없는 상태는 실패 처리한다. 정상 조회 결과가 빈 목록인 경우는 성공이며 기대 서비스의 존재 값을 모두 0으로 출력한다. 다음 실행에서 다시 조회한다.
 - `axcore_docker_state_collection_timestamp_seconds`: 성공한 스냅샷의 수집 시각이다. 대시보드는 마지막 수집 후 90초 이상이면 컨테이너 값을 숨기고 수집 지연을 표시한다. 실패 시에도 기존 상태 스냅샷을 제거한다. 파일이 없거나 Prometheus 시계열이 사라지면 데이터 없음으로 표시한다.
 
 기존 `job="node"`, `instance` 라벨을 사용한다. Compose 프로젝트·서비스·이름·컨테이너 ID를 추가해 재생성 전후를 구분한다. 주기 수집 사이의 짧은 상태 변화는 놓칠 수 있다. Docker가 `RestartCount`를 초기화하는 경우에도 대시보드가 누적 이력을 복구하지 않는다.
@@ -40,9 +42,11 @@ while ($true) {
 }
 ```
 
-자동 검사 8개는 기존 6개에 CPU 한도 계산과 호스트 네트워크 파싱·잘못된 입력 검사를 추가했다. Docker나 서버를 실제로 제어하는 검사는 아니다. 실제 Docker 조회·Alloy 파싱·Prometheus 전달·Grafana 표시·수집 중단 시 지연 표시는 별도로 확인한다.
+자동 검사는 15개이며 CPU 한도, 호스트 네트워크, 건강 상태별 지표, 서비스 존재·누락·재생성·일회성 작업 제외, 빈 목록과 불완전한 Docker 응답 및 실패 스냅샷 처리를 다룬다. Docker나 서버를 실제로 제어하는 검사는 아니다. 실제 Docker 조회·Alloy 파싱·Prometheus 전달·Grafana 표시·수집 중단 시 지연 표시는 별도로 확인한다.
 
 ## 서버 적용 — 리뷰·병합 후 별도 승인 아래 실행
+
+기존 타이머가 설치된 서버에서 `collect.py`만 변경했다면 현재 배포 허용 목록에 따라 Jenkins가 파일을 동기화한다. 다음 타이머 실행에서 새 스크립트를 읽으므로 타이머 재설치는 필요 없다. 아래 systemd 설치 절차는 최초 설치·단위 정의 변경 시에 사용한다. 건강 상태·존재 지표를 추가하는 것만으로 Grafana 알림 규칙까지 자동 생성되지는 않는다.
 
 서버에는 `monitoring/docker-state/`와 `monitoring/textfile/` 디렉터리, 수정한 Alloy 설정 및 대시보드를 함께 반영한다. 지표 디렉터리는 Alloy가 이미 읽기 전용으로 마운트하는 `monitoring/` 아래에 있다. 기존 백업·비교·설정 검사 절차를 먼저 수행한다.
 

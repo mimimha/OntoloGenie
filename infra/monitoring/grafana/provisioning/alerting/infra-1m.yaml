@@ -1,0 +1,186 @@
+apiVersion: 1
+groups:
+    - orgId: 1
+      name: infra-1m
+      folder: Infra Alerts
+      interval: 1m
+      rules:
+        - uid: fg3u3g2c8o6psc
+          title: axcore-main-disk-usage-high
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: axcore-prometheus
+              model:
+                editorMode: code
+                expr: "100 * (\r\n  1 -\r\n  node_filesystem_avail_bytes{job=\"node\", mountpoint=\"/\"}\r\n  /\r\n  node_filesystem_size_bytes{job=\"node\", mountpoint=\"/\"}\r\n)"
+                instant: true
+                intervalMs: 1000
+                legendFormat: __auto
+                maxDataPoints: 43200
+                range: false
+                refId: A
+            - refId: C
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 85
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                        type: last
+                      type: query
+                datasource:
+                    type: __expr__
+                    uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: NoData
+          execErrState: Error
+          for: 5m
+          annotations:
+            description: |-
+                서버: axcore-main
+                디스크: / (루트 파일시스템)
+                디스크 사용률이 85% 기준을 초과한 상태로 5분 지속되었습니다.
+                Grafana 자원 대시보드에서 현재 사용률을 확인하고 로그·빌드 이미지 등의 용량을 점검하세요.
+            summary: axcore-main 루트 디스크 사용률 경고
+          isPaused: false
+          notification_settings:
+            receiver: axcore-mattermost
+        - uid: dg3u6swamjev4f
+          title: axcore-container-memory-usage-high
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: axcore-prometheus
+              model:
+                editorMode: code
+                expr: "100 *\r\ncontainer_memory_working_set_bytes{job=\"cadvisor\", service!=\"\"}\r\n/\r\non(instance, id) group_left()\r\n(\r\n  container_spec_memory_limit_bytes{job=\"cadvisor\", service!=\"\"} > 0\r\n)"
+                instant: true
+                intervalMs: 1000
+                legendFormat: __auto
+                maxDataPoints: 43200
+                range: false
+                refId: A
+            - refId: C
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 90
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                        type: last
+                      type: query
+                datasource:
+                    type: __expr__
+                    uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: NoData
+          execErrState: Error
+          for: 5m
+          annotations:
+            description: |-
+                서버: {{ $labels.instance }}
+                서비스: {{ $labels.service }}
+                컨테이너: {{ $labels.name }}
+                현재 메모리 사용률: {{ printf "%.2f" $values.A.Value }}%
+                발생 조건: 메모리 한도의 90% 초과 상태가 5분 지속
+
+                실행 중인 빌드·작업과 컨테이너 메모리 사용량을 확인하세요.
+                작업 종료 후에도 높은 사용량이 지속되는지 점검하세요.
+            summary: '{{ $labels.instance }} / {{ $labels.service }} 메모리 사용률 경고'
+          isPaused: false
+          notification_settings:
+            receiver: axcore-mattermost
+        - uid: bg3u6zft8vz7ke
+          title: axcore-app-container-not-running
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: axcore-prometheus
+              model:
+                editorMode: code
+                expr: "axcore_docker_container_state{\r\n  job=\"node\",\r\n  project=\"axcore\",\r\n  service=~\"backend|ai|frontend|batch|nginx\",\r\n  state=\"running\"\r\n}\r\nand on(instance, job)\r\n(axcore_docker_state_collection_success{job=\"node\"} == 1)\r\nand on(instance, job)\r\n((time() - axcore_docker_state_collection_timestamp_seconds{job=\"node\"}) < 90)"
+                instant: true
+                intervalMs: 1000
+                legendFormat: __auto
+                maxDataPoints: 43200
+                range: false
+                refId: A
+            - refId: C
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 1
+                        type: lt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                        type: last
+                      type: query
+                datasource:
+                    type: __expr__
+                    uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: NoData
+          execErrState: Error
+          for: 2m
+          annotations:
+            description: |-
+                서버: {{ $labels.instance }}
+                서비스: {{ $labels.service }}
+                컨테이너: {{ $labels.name }}
+                실행 상태 값: {{ $values.A.Value }} (1=실행 중, 0=실행 중 아님)
+
+                실행 중이 아닌 상태가 2분 지속되었습니다.
+                배포 진행 여부와 Docker 컨테이너 상태·로그를 확인하세요.
+                이 규칙은 unhealthy 상태나 삭제된 컨테이너는 감지하지 않습니다.
+            summary: '{{ $labels.instance }} / {{ $labels.service }} 컨테이너 실행 중지 경고'
+          isPaused: false
+          notification_settings:
+            receiver: axcore-mattermost
