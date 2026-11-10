@@ -35,17 +35,13 @@ public class ObjectQueryRepository {
     private static final TypeReference<Map<String, String>> PROPERTY_NAMES =
             new TypeReference<>() {};
 
-    // 관계 근거의 열람 정책은 138에서 적용한다.
     private static final ObjectLinkEvidenceResponse EMPTY_EVIDENCE =
             new ObjectLinkEvidenceResponse(null, null, null, null, null, null);
 
     private static final String OBJECTS = "from object_instance oi\n";
 
-    // 수집 시의 표시 이름은 매핑 변경 후에도 남을 수 있어 제한 사용자에게는 읽을 수 있는 값으로 다시 만든다.
-    private static final String DISPLAY_JOINS =
+    private static final String SOURCE_SCOPE_JOINS =
             """
-            join object_type ot on ot.id = oi.object_type_id
-            left join property_definition display_property on display_property.id = ot.display_property_id
             cross join lateral (
                 select oi.object_type_id <> all(:maskedTypeIds) as can_view_restricted
             ) scope
@@ -63,6 +59,16 @@ public class ObjectQueryRepository {
                         and sc.column_name = raw_key.key
                   ), false)
             ) source_mask on true
+            """;
+
+    // 수집 시의 표시 이름은 매핑 변경 후에도 남을 수 있어 제한 사용자에게는 읽을 수 있는 값으로 다시 만든다.
+    private static final String DISPLAY_JOINS =
+            """
+            join object_type ot on ot.id = oi.object_type_id
+            left join property_definition display_property on display_property.id = ot.display_property_id
+            """
+                    + SOURCE_SCOPE_JOINS
+                    + """
             cross join lateral (
                 select case
                     when scope.can_view_restricted
@@ -129,6 +135,51 @@ public class ObjectQueryRepository {
                    or (:includeIn and l.target_object_id = :id))
               and oi.object_type_id in (:visibleTypeIds)
               and (cast(:linkTypeId as bigint) is null or l.link_type_id = :linkTypeId)
+            """;
+
+    private static final String LINK_EVIDENCE_FIELDS =
+            """
+            , evidence_source.source_key as evidence_source_key,
+              case when evidence_scope.can_view then l.evidence::text end as evidence_payload
+            """;
+
+    // 관계 방향과 관계없이 원천 키는 출발 객체의 것을 사용한다.
+    private static final String LINK_EVIDENCE_JOINS =
+            """
+            join lateral (
+                select oi.object_type_id, oi.status, scope.can_view_restricted,
+                       case when l.origin = 'RULE'
+                            then (oi.source_key || coalesce(source_mask.masked_values, '{}'::jsonb))::text
+                       end as source_key
+                from object_instance oi
+            """
+                    + SOURCE_SCOPE_JOINS
+                    + """
+                where oi.id = l.source_object_id
+            ) evidence_source on true
+            join object_instance evidence_target on evidence_target.id = l.target_object_id
+            cross join lateral (
+                select evidence_target.object_type_id <> all(:maskedTypeIds) as can_view_restricted
+            ) target_scope
+            cross join lateral (
+                select case
+                    when l.origin not in ('RULE', 'DOCUMENT') then false
+                    when evidence_source.can_view_restricted and target_scope.can_view_restricted then true
+                    when l.origin = 'RULE' then coalesce((
+                        select bool_and(
+                            src.object_type_id = evidence_source.object_type_id
+                            and dst.object_type_id = evidence_target.object_type_id
+                            and (evidence_source.can_view_restricted or src.sensitivity = 'NORMAL')
+                            and (target_scope.can_view_restricted or dst.sensitivity = 'NORMAL')
+                        )
+                        from link_mapping_condition c
+                        join property_definition src on src.id = c.source_property_id
+                        join property_definition dst on dst.id = c.target_property_id
+                        where c.link_mapping_id = l.link_mapping_id
+                    ), false)
+                    else false
+                end as can_view
+            ) evidence_scope
             """;
 
     private final JdbcClient jdbc;
@@ -237,9 +288,11 @@ public class ObjectQueryRepository {
                 withDisplayScope(
                                 linkQuery(
                                         select
+                                                + LINK_EVIDENCE_FIELDS
                                                 + LINK_OBJECTS
                                                 + "join link_type lt on lt.id = l.link_type_id\n"
                                                 + DISPLAY_JOINS
+                                                + LINK_EVIDENCE_JOINS
                                                 + LINK_FILTERS
                                                 + "order by l.id limit :limit offset :offset",
                                         id,
@@ -263,6 +316,33 @@ public class ObjectQueryRepository {
         return new PageImpl<>(rows, page, total);
     }
 
+    public Optional<ObjectLinkEvidenceResponse> findLinkEvidence(
+            long objectId,
+            long linkId,
+            Collection<Long> visibleTypeIds,
+            Collection<Long> maskedTypeIds) {
+        return withDisplayScope(
+                        jdbc.sql(
+                                "select l.origin\n"
+                                        + LINK_EVIDENCE_FIELDS
+                                        + "from object_link l\n"
+                                        + LINK_EVIDENCE_JOINS
+                                        + """
+                                        where l.id = :linkId and l.status = 'ACTIVE'
+                                          and :objectId in (l.source_object_id, l.target_object_id)
+                                          and evidence_source.status = 'ACTIVE'
+                                          and evidence_target.status = 'ACTIVE'
+                                          and evidence_source.object_type_id in (:visibleTypeIds)
+                                          and evidence_target.object_type_id in (:visibleTypeIds)
+                                        """),
+                        maskedTypeIds)
+                .param("objectId", objectId)
+                .param("linkId", linkId)
+                .param("visibleTypeIds", visibleTypeIds)
+                .query((rs, rowNum) -> linkEvidence(rs, Origin.valueOf(rs.getString("origin"))))
+                .optional();
+    }
+
     private JdbcClient.StatementSpec linkQuery(
             String sql,
             long id,
@@ -277,8 +357,9 @@ public class ObjectQueryRepository {
                 .param("includeIn", direction != Direction.OUT);
     }
 
-    private static ObjectLinkResponse linkRow(ResultSet rs) throws SQLException {
+    private ObjectLinkResponse linkRow(ResultSet rs) throws SQLException {
         String expression = rs.getString("expression_kind");
+        Origin origin = Origin.valueOf(rs.getString("origin"));
         return new ObjectLinkResponse(
                 rs.getLong("id"),
                 rs.getLong("link_type_id"),
@@ -290,12 +371,55 @@ public class ObjectQueryRepository {
                         rs.getString("display_name"),
                         rs.getLong("object_type_id"),
                         rs.getString("object_type_name")),
-                Origin.valueOf(rs.getString("origin")),
+                origin,
                 rs.getString("status"),
                 rs.getObject("link_mapping_id", Long.class),
-                EMPTY_EVIDENCE,
+                linkEvidence(rs, origin),
                 expression == null ? null : ExpressionKind.valueOf(expression),
                 rs.getObject("confirmed_by", Long.class));
+    }
+
+    private ObjectLinkEvidenceResponse linkEvidence(ResultSet rs, Origin origin)
+            throws SQLException {
+        String stored = rs.getString("evidence_payload");
+        Map<String, Object> payload =
+                stored == null ? Map.of() : json.readValue(stored, JSON_OBJECT);
+        return switch (origin) {
+            case RULE -> {
+                String sourceKey = rs.getString("evidence_source_key");
+                yield new ObjectLinkEvidenceResponse(
+                        sourceKey == null ? null : json.readValue(sourceKey, JSON_OBJECT),
+                        comparisonValue(payload.get("rawValues")),
+                        comparisonValue(payload.get("matchedValues")),
+                        null,
+                        null,
+                        null);
+            }
+            case DOCUMENT ->
+                    new ObjectLinkEvidenceResponse(
+                            null,
+                            null,
+                            null,
+                            textValue(payload.get("quote")),
+                            textValue(payload.get("event")),
+                            textValue(
+                                    payload.getOrDefault(
+                                            "time_expression", payload.get("timeExpression"))));
+            case MANUAL -> EMPTY_EVIDENCE;
+        };
+    }
+
+    private static Object comparisonValue(Object value) {
+        if (!(value instanceof Map<?, ?> values)
+                || values.isEmpty()
+                || !values.values().stream().allMatch(String.class::isInstance)) {
+            return null;
+        }
+        return values.size() == 1 ? values.values().iterator().next() : values;
+    }
+
+    private static String textValue(Object value) {
+        return value instanceof String text ? text : null;
     }
 
     private JdbcClient.StatementSpec displayQuery(

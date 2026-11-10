@@ -1,5 +1,7 @@
 package com.axcore.platform.ontology;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -7,9 +9,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.axcore.platform.TestcontainersConfiguration;
+import com.axcore.platform.global.error.BusinessException;
+import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -18,6 +24,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -29,6 +36,7 @@ class ObjectSearchApiTests {
 
     @Autowired MockMvc mvc;
     @Autowired JdbcClient jdbc;
+    @Autowired ObjectProvider<ObjectEvidenceQuery> evidenceQuery;
 
     @Test
     void scopesListAndCountBeforePaginationAndMasksOnlyRestrictedProperties() throws Exception {
@@ -343,7 +351,7 @@ class ObjectSearchApiTests {
     }
 
     @Test
-    void documentLinkShowsExpressionKindAndConfirmerWithoutRawEvidence() throws Exception {
+    void documentEvidenceOnlyShowsTextToActorsWithRestrictedAccess() throws Exception {
         String tag = UUID.randomUUID().toString();
         long type = type(tag, tag);
         allowViewer(tag);
@@ -365,7 +373,8 @@ class ObjectSearchApiTests {
                         insert into object_link
                             (link_type_id, source_object_id, target_object_id, origin, confirmed_by, evidence)
                         values (:type, :source, :target, 'DOCUMENT', :confirmer,
-                                '{"expression_kind":"ESTIMATED","quote":"private document text"}'::jsonb)
+                                '{"expression_kind":"ESTIMATED","quote":"private document text",
+                                  "event":"noise","time_expression":"night shift","document_id":"private-id"}'::jsonb)
                         """)
                 .param("type", relation)
                 .param("source", source)
@@ -379,6 +388,109 @@ class ObjectSearchApiTests {
                 .andExpect(jsonPath("$.data[0].expressionKind").value("ESTIMATED"))
                 .andExpect(jsonPath("$.data[0].confirmedBy").value((int) confirmer))
                 .andExpect(jsonPath("$.data[0].evidence").isEmpty());
+        mvc.perform(get(PATH + "/{id}/links", target).with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].evidence.quote").value("private document text"))
+                .andExpect(jsonPath("$.data[0].evidence.event").value("noise"))
+                .andExpect(jsonPath("$.data[0].evidence.timeExpression").value("night shift"))
+                .andExpect(jsonPath("$.data[0].evidence.document_id").doesNotHaveJsonPath());
+    }
+
+    @Test
+    @Transactional
+    void ruleEvidenceUsesTheSourceKeyAndStoredValuesInBothDirections() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long sourceType = type(tag + "-source", tag);
+        long targetType = type(tag + "-target", tag);
+        allowViewer(tag);
+        long sourceProperty = property(sourceType, "code", "STRING", "NORMAL", null);
+        long targetProperty = property(targetType, "code", "STRING", "NORMAL", null);
+        long serial = property(sourceType, "serial", "STRING", "RESTRICTED", null);
+        long mapping = restrictedKeyMapping(sourceType, serial, tag);
+        long source = sourceObject(sourceType, mapping, "private-serial", "ACTIVE");
+        long target = object(targetType, "Target", "{}");
+        long relation = linkType(tag, sourceType, targetType);
+        long link = link(relation, source, target, "ACTIVE");
+        condition(link, sourceProperty, targetProperty, 1);
+
+        for (long objectId : new long[] {source, target}) {
+            mvc.perform(get(PATH + "/{id}/links", objectId).with(actor("VIEWER")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data[0].evidence.sourceKey.serial").value(nullValue()))
+                    .andExpect(
+                            jsonPath("$.data[0].evidence.transformedValue").value("private-label"))
+                    .andExpect(jsonPath("$.data[0].evidence.rawValue").doesNotHaveJsonPath())
+                    .andExpect(jsonPath("$.meta.totalElements").value(1));
+        }
+
+        LoginAccount admin = new LoginAccount(1L, "tester", "ADMIN", false);
+        var evidence = evidenceQuery.getObject().linkEvidence(admin, target, link);
+        assertThat(evidence.sourceKey()).containsEntry("serial", "private-serial");
+        assertThat(evidence.transformedValue()).isEqualTo("private-label");
+        assertThat(evidence.rawValue()).isNull();
+
+        long unrelated = object(targetType, "Unrelated", "{}");
+        assertThatThrownBy(() -> evidenceQuery.getObject().linkEvidence(admin, unrelated, link))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        error ->
+                                assertThat(error.getErrorCode())
+                                        .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    @Test
+    @Transactional
+    void multiConditionRuleEvidenceIsHiddenIfOneTargetPropertyIsRestricted() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long sourceType = type(tag + "-source", tag);
+        long targetType = type(tag + "-target", tag);
+        allowViewer(tag);
+        long sourceProperty = property(sourceType, "code", "STRING", "NORMAL", null);
+        long targetProperty = property(targetType, "code", "STRING", "NORMAL", null);
+        long sourceSerial = property(sourceType, "serial", "STRING", "NORMAL", null);
+        long targetSerial = property(targetType, "serial", "STRING", "RESTRICTED", null);
+        long source = object(sourceType, "Source", "{}");
+        long target = object(targetType, "Target", "{}");
+        long link = link(linkType(tag, sourceType, targetType), source, target, "ACTIVE");
+        condition(link, sourceProperty, targetProperty, 1);
+        condition(link, sourceSerial, targetSerial, 2);
+        jdbc.sql(
+                        """
+                        update object_link
+                        set evidence = '{
+                            "rawValues":{"1":"old raw","2":"private serial"},
+                            "matchedValues":{"1":"CODE","2":"PRIVATE SERIAL"}
+                        }'::jsonb
+                        where id = :id
+                        """)
+                .param("id", link)
+                .update();
+
+        mvc.perform(get(PATH + "/{id}/links", source).with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].evidence.rawValue['1']").value("old raw"))
+                .andExpect(jsonPath("$.data[0].evidence.rawValue['2']").value("private serial"))
+                .andExpect(jsonPath("$.data[0].evidence.transformedValue['1']").value("CODE"))
+                .andExpect(
+                        jsonPath("$.data[0].evidence.transformedValue['2']")
+                                .value("PRIVATE SERIAL"));
+        mvc.perform(get(PATH + "/{id}/links", source).with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].evidence").isEmpty());
+        LoginAccount viewer = new LoginAccount(1L, "tester", "VIEWER", false);
+        assertThat(evidenceQuery.getObject().linkEvidence(viewer, source, link).transformedValue())
+                .isNull();
+
+        jdbc.sql(
+                        "update object_link set status = 'INACTIVE', inactivated_at = now() where id = :id")
+                .param("id", link)
+                .update();
+        assertThatThrownBy(() -> evidenceQuery.getObject().linkEvidence(viewer, source, link))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        error ->
+                                assertThat(error.getErrorCode())
+                                        .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
     }
 
     @Test
@@ -452,6 +564,21 @@ class ObjectSearchApiTests {
                 .param("status", status)
                 .query(Long.class)
                 .single();
+    }
+
+    private void condition(long link, long sourceProperty, long targetProperty, int sequence) {
+        jdbc.sql(
+                        """
+                insert into link_mapping_condition
+                    (link_mapping_id, source_property_id, target_property_id, sequence_no)
+                select link_mapping_id, :sourceProperty, :targetProperty, :sequence
+                from object_link where id = :link
+                """)
+                .param("link", link)
+                .param("sourceProperty", sourceProperty)
+                .param("targetProperty", targetProperty)
+                .param("sequence", sequence)
+                .update();
     }
 
     private static RequestPostProcessor actor(String role) {
