@@ -12,17 +12,36 @@ import IssuesPanel from '../issues/IssuesPanel'
 import { fetchProposals, PROPOSAL_PAGE_SIZE } from './api'
 import {
   applyLabels,
+  changeLabels,
   confidence,
+  filterKindLabels,
   kindLabels,
   originLabels,
   proposalTitle,
   reviewLabels,
 } from './labels'
-import type { ProposalFilters } from './types'
+import type { Proposal, ProposalFilters } from './types'
+
+// 목록에서 바로 보이게: AI 보류 권고(검토 대기일 때만), 재분석 비교
+function ProposalFlags({ item }: { item: Proposal }) {
+  const held =
+    item.evidence?.holdRecommended === true && item.reviewStatus === 'PENDING'
+  const change = item.evidence?.changeType
+  const changeLabel = typeof change === 'string' ? changeLabels[change] : null
+  if (!held && !changeLabel) return null
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {held && <StatusBadge tone="warning">보류 권고</StatusBadge>}
+      {changeLabel && (
+        <StatusBadge tone="info">재분석 {changeLabel}</StatusBadge>
+      )}
+    </div>
+  )
+}
 
 const fields = [
   { key: 'origin', label: '제안 출처', options: originLabels },
-  { key: 'itemKind', label: '제안 종류', options: kindLabels },
+  { key: 'itemKind', label: '제안 종류', options: filterKindLabels },
   { key: 'reviewStatus', label: '검토 상태', options: reviewLabels },
   { key: 'applyStatus', label: '반영 상태', options: applyLabels },
 ] as const
@@ -207,6 +226,7 @@ function ProposalList() {
                   <p className="mt-1 text-xs text-slate-500">
                     #{item.id} · 개정 {item.revision}
                   </p>
+                  <ProposalFlags item={item} />
                 </td>
                 <td className="px-4 py-4 text-sm">
                   {kindLabels[item.itemKind] ?? item.itemKind}
