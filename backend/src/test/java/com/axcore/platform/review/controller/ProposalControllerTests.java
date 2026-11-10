@@ -205,7 +205,7 @@ class ProposalControllerTests {
 
     private ProposalResponse sampleResponse() {
         LatestCheckResponse latestCheck =
-                new LatestCheckResponse(402L, "SUCCEEDED", 2, 3, new BigDecimal("0.6667"));
+                new LatestCheckResponse(402L, "SUCCEEDED", 2, 3, new BigDecimal("0.6667"), false);
 
         return new ProposalResponse(
                 10L,

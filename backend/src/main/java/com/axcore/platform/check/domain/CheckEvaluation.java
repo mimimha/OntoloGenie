@@ -1,10 +1,12 @@
 package com.axcore.platform.check.domain;
 
+import java.util.AbstractList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.RandomAccess;
 
 /** 규칙 하나의 검사 결과. 모든 건수는 출발 원천 행을 기준으로 집계한다. */
 public record CheckEvaluation(CheckRuleInput rule, List<RowResult> rows) {
@@ -54,7 +56,58 @@ public record CheckEvaluation(CheckRuleInput rule, List<RowResult> rows) {
             Objects.requireNonNull(source, "source");
             Objects.requireNonNull(outcome, "outcome");
             transformedValues = copyValues(transformedValues);
-            targets = List.copyOf(targets);
+            if (!(targets instanceof TargetsWithoutSelf)) {
+                targets = List.copyOf(targets);
+            }
+        }
+
+        /** 제외할 위치는 오름차순이다. 같은 비교값의 도착 목록을 출발 행마다 복사하지 않는다. */
+        public RowResult(
+                CheckRow source,
+                CheckOutcome outcome,
+                Map<Integer, String> transformedValues,
+                List<MatchedTarget> targets,
+                String reason,
+                List<Integer> selfIndexes) {
+            this(
+                    source,
+                    outcome,
+                    transformedValues,
+                    selfIndexes.isEmpty() ? targets : new TargetsWithoutSelf(targets, selfIndexes),
+                    reason);
+        }
+    }
+
+    private static final class TargetsWithoutSelf extends AbstractList<MatchedTarget>
+            implements RandomAccess {
+        private final List<MatchedTarget> targets;
+        private final List<Integer> selfIndexes;
+
+        private TargetsWithoutSelf(List<MatchedTarget> targets, List<Integer> selfIndexes) {
+            this.targets = List.copyOf(targets);
+            this.selfIndexes = List.copyOf(selfIndexes);
+        }
+
+        @Override
+        public int size() {
+            return targets.size() - selfIndexes.size();
+        }
+
+        @Override
+        public MatchedTarget get(int index) {
+            Objects.checkIndex(index, size());
+            int left = 0;
+            int right = selfIndexes.size();
+            // 앞에서 제외한 행 수를 빼면, 각 제외 위치가 결과에서 건너뛸 위치가 된다.
+            while (left < right) {
+                int mid = (left + right) >>> 1;
+                if (selfIndexes.get(mid) - mid <= index) {
+                    left = mid + 1;
+                } else {
+                    right = mid;
+                }
+            }
+            return targets.get(index + left);
         }
     }
 

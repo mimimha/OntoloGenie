@@ -1,5 +1,6 @@
 package com.axcore.platform.review.repository;
 
+import com.axcore.platform.check.service.CandidateCheckService;
 import com.axcore.platform.review.dto.LatestCheckResponse;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -47,6 +48,7 @@ public class ProposalLatestCheckRepository {
                     target.proposal_item_id,
                     run.id as check_run_id,
                     run.status,
+                    run.status = 'FAILED' and run.error_message = :unsupportedMessage as unsupported,
                     case when run.status = 'SUCCEEDED' then result.matched_count end as matched_count,
                     case when run.status = 'SUCCEEDED' then result.total_count end as total_count
                 from targets target
@@ -68,6 +70,7 @@ public class ProposalLatestCheckRepository {
         return jdbcClient
                 .sql(sql)
                 .params(parameters)
+                .param("unsupportedMessage", CandidateCheckService.UNSUPPORTED_MESSAGE)
                 .query(
                         (rs, rowNum) -> {
                             Integer matchedCount = rs.getObject("matched_count", Integer.class);
@@ -91,7 +94,8 @@ public class ProposalLatestCheckRepository {
                                             rs.getString("status"),
                                             matchedCount,
                                             totalCount,
-                                            matchRate);
+                                            matchRate,
+                                            rs.getBoolean("unsupported"));
 
                             return Map.entry(rs.getLong("proposal_item_id"), response);
                         })

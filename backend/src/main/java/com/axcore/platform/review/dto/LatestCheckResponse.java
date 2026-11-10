@@ -9,4 +9,5 @@ public record LatestCheckResponse(
         String status,
         Integer matchedCount,
         Integer totalCount,
-        BigDecimal matchRate) {}
+        BigDecimal matchRate,
+        @JsonInclude(JsonInclude.Include.NON_DEFAULT) boolean unsupported) {}

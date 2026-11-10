@@ -17,6 +17,7 @@ export type Proposal = {
     matchedCount: number | null
     totalCount: number | null
     matchRate: number | null
+    unsupported?: boolean
   } | null
 }
 

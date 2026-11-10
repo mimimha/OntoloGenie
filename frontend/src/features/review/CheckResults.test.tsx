@@ -116,6 +116,32 @@ test.each(['QUEUED', 'RUNNING', 'FAILED'])(
   },
 )
 
+test('미지원 후보는 실행 실패 대신 자동 시험 미지원으로 표시한다', async () => {
+  const requested = vi.fn(() => HttpResponse.json({ data: [] }))
+  server.use(
+    http.get('/api/v1/proposals/:id', () =>
+      HttpResponse.json({
+        data: {
+          ...proposal,
+          latestCheck: {
+            ...proposal.latestCheck,
+            status: 'FAILED',
+            unsupported: true,
+          },
+        },
+      }),
+    ),
+    http.get('/api/v1/checks/runs/:id/results', requested),
+  )
+  open()
+  const panel = await screen.findByRole('region', { name: '정합성 검사' })
+  expect(
+    within(panel).getByText(/이 후보는 아직 자동 시험을 지원하지 않음/),
+  ).toBeInTheDocument()
+  expect(within(panel).queryByText(/검사 실행에 실패/)).not.toBeInTheDocument()
+  expect(requested).not.toHaveBeenCalled()
+})
+
 test('수동 실행 API 연결 전에는 재검사를 비활성화하고 쓰기 요청을 보내지 않는다', async () => {
   const write = vi.fn(() => HttpResponse.json({ data: {} }))
   server.use(http.post('/api/v1/*', write))

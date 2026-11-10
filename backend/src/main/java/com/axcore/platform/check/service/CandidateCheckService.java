@@ -17,6 +17,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 @RequiredArgsConstructor
 public class CandidateCheckService {
+    public static final String UNSUPPORTED_MESSAGE = "이 후보는 아직 자동 시험을 지원하지 않음";
+
     private final CandidateCheckRepository repository;
     private final JsonMapper json;
     private final Clock clock;

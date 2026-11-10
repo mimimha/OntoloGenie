@@ -192,7 +192,9 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         List<CheckRow> targetRows =
                 rows(rule.targetType(), rule.targetResourceIds(), rule.targetFilter(), "도착");
         CheckEvaluation evaluation =
-                engine.evaluate(new CheckInput(rule.input(), sourceRows, targetRows));
+                engine.evaluate(
+                        new CheckInput(rule.input(), sourceRows, targetRows),
+                        rule.sourceType().id() == rule.targetType().id());
         return new RuleEvaluated(evaluation, samples(evaluation), plan);
     }
 

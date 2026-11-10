@@ -7,7 +7,7 @@ import com.axcore.platform.check.domain.CheckEvaluation.RowResult;
 import com.axcore.platform.check.domain.CheckInput;
 import com.axcore.platform.check.domain.CheckOutcome;
 import com.axcore.platform.check.domain.CheckRow;
-import com.axcore.platform.ontology.domain.LinkCardinality;
+import com.axcore.platform.ontology.domain.LinkMatchGroup;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,6 +33,10 @@ public class RuleEvaluationEngine {
     }
 
     public CheckEvaluation evaluate(CheckInput input) {
+        return evaluate(input, false);
+    }
+
+    CheckEvaluation evaluate(CheckInput input, boolean excludesSelf) {
         Objects.requireNonNull(input, "input");
 
         if (input.sourceRows().isEmpty()) {
@@ -45,7 +49,7 @@ public class RuleEvaluationEngine {
         var duplicateTargetKeys = duplicateKeys(input.targetRows());
 
         // 도착 행을 비교값별로 묶어 출발 행마다 전체 도착 목록을 순회하지 않는다.
-        Map<List<String>, List<MatchedTarget>> targetIndex = new HashMap<>();
+        Map<List<String>, TargetGroup> targetIndex = new HashMap<>();
 
         for (CheckRow target : input.targetRows()) {
             var prepared = prepare(target, conditions, false);
@@ -57,31 +61,42 @@ public class RuleEvaluationEngine {
 
             if (prepared.key() != null) {
                 targetIndex
-                        .computeIfAbsent(prepared.key(), key -> new ArrayList<>())
-                        .add(new MatchedTarget(target, prepared.values()));
+                        .computeIfAbsent(prepared.key(), key -> new TargetGroup())
+                        .add(
+                                identity(target, excludesSelf),
+                                new MatchedTarget(target, prepared.values()),
+                                duplicateTargetKeys.contains(rowKey(target)));
             }
         }
+        // RowResult가 출발 행마다 같은 도착 묶음을 복사하지 않도록 한 번만 불변 리스트로 만든다.
+        targetIndex.values().forEach(TargetGroup::freeze);
+        TargetGroup emptyTargets = new TargetGroup();
 
         var sources =
                 input.sourceRows().stream().map(row -> prepare(row, conditions, true)).toList();
 
         // 출발이 ONE인 관계에서는 같은 도착에 연결되는 서로 다른 출발도 확인한다.
-        Map<List<String>, Set<RowKey>> sourceOwners = new HashMap<>();
+        Map<List<String>, Set<Object>> sourceOwners = new HashMap<>();
         for (PreparedRow source : sources) {
             if (source.key() != null) {
                 sourceOwners
                         .computeIfAbsent(source.key(), key -> new HashSet<>())
-                        .add(rowKey(source.row()));
+                        .add(identity(source.row(), excludesSelf));
             }
         }
 
         List<RowResult> results = new ArrayList<>();
 
         for (PreparedRow source : sources) {
-            List<MatchedTarget> targets =
-                    source.key() == null
-                            ? List.of()
-                            : targetIndex.getOrDefault(source.key(), List.of());
+            Object sourceId = identity(source.row(), excludesSelf);
+            TargetGroup targets = targetIndex.getOrDefault(source.key(), emptyTargets);
+            var matches =
+                    new LinkMatchGroup<>(
+                            sourceOwners.getOrDefault(source.key(), Set.of()),
+                            targets.positions.keySet(),
+                            excludesSelf);
+            List<Integer> selfIndexes =
+                    excludesSelf ? targets.positions.getOrDefault(sourceId, List.of()) : List.of();
 
             CheckOutcome outcome;
             String reason;
@@ -93,19 +108,17 @@ public class RuleEvaluationEngine {
             } else if (duplicateSourceKeys.contains(rowKey(source.row()))) {
                 outcome = CheckOutcome.DUPLICATE;
                 reason = "출발 원천 키가 중복되었습니다.";
-            } else if (targets.stream()
-                    .anyMatch(target -> duplicateTargetKeys.contains(rowKey(target.row())))) {
+            } else if (targets.duplicateIds.size()
+                    > (excludesSelf && targets.duplicateIds.contains(sourceId) ? 1 : 0)) {
                 outcome = CheckOutcome.DUPLICATE;
                 reason = "대응한 도착 원천 키가 중복되었습니다.";
-            } else if (destinationIsOne(cardinality) && targets.size() > 1) {
+            } else if (cardinality.destinationIsOne() && matches.targetCount(sourceId) > 1) {
                 outcome = CheckOutcome.DUPLICATE;
                 reason = "도착이 ONE인 관계에 복수 대상이 대응합니다.";
-            } else if (sourceIsOne(cardinality)
-                    && !targets.isEmpty()
-                    && sourceOwners.get(source.key()).size() > 1) {
+            } else if (cardinality.sourceIsOne() && matches.hasCompetingSources(sourceId)) {
                 outcome = CheckOutcome.DUPLICATE;
                 reason = "출발이 ONE인 관계에서 같은 도착에 복수 출발이 대응합니다.";
-            } else if (targets.isEmpty()) {
+            } else if (matches.targetCount(sourceId) == 0) {
                 outcome = CheckOutcome.UNMATCHED;
                 reason = "모든 비교 조건을 충족하는 도착 대상이 없습니다.";
             } else {
@@ -113,7 +126,14 @@ public class RuleEvaluationEngine {
                 reason = null;
             }
 
-            results.add(new RowResult(source.row(), outcome, source.values(), targets, reason));
+            results.add(
+                    new RowResult(
+                            source.row(),
+                            outcome,
+                            source.values(),
+                            targets.rows,
+                            reason,
+                            selfIndexes));
         }
 
         return new CheckEvaluation(input.rule(), results);
@@ -182,14 +202,29 @@ public class RuleEvaluationEngine {
         return new RowKey(row.sourceResourceId(), row.sourceKey());
     }
 
-    private boolean destinationIsOne(LinkCardinality cardinality) {
-        return cardinality == LinkCardinality.ONE_TO_ONE
-                || cardinality == LinkCardinality.MANY_TO_ONE;
+    private Object identity(CheckRow row, boolean excludesSelf) {
+        // 반영된 객체는 객체 ID로, 아직 객체가 없는 후보 시험은 원천 자원과 원천 키로 식별한다.
+        return excludesSelf && row.objectInstanceId() != null
+                ? row.objectInstanceId()
+                : rowKey(row);
     }
 
-    private boolean sourceIsOne(LinkCardinality cardinality) {
-        return cardinality == LinkCardinality.ONE_TO_ONE
-                || cardinality == LinkCardinality.ONE_TO_MANY;
+    private static final class TargetGroup {
+        private List<MatchedTarget> rows = new ArrayList<>();
+        private final Map<Object, List<Integer>> positions = new HashMap<>();
+        private final Set<Object> duplicateIds = new HashSet<>();
+
+        private void add(Object id, MatchedTarget row, boolean duplicateKey) {
+            positions.computeIfAbsent(id, key -> new ArrayList<>()).add(rows.size());
+            rows.add(row);
+            if (duplicateKey) {
+                duplicateIds.add(id);
+            }
+        }
+
+        private void freeze() {
+            rows = List.copyOf(rows);
+        }
     }
 
     private record RowKey(long sourceResourceId, Map<String, Object> sourceKey) {}

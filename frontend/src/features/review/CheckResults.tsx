@@ -9,14 +9,8 @@ import {
   fetchCheckResults,
   type CheckResult,
 } from './checkApi'
+import { candidateCheckLabel } from './labels'
 import type { Proposal } from './types'
-
-const states: Record<string, string> = {
-  QUEUED: '대기',
-  RUNNING: '실행 중',
-  SUCCEEDED: '완료',
-  FAILED: '실패',
-}
 const outcomes: Record<string, string> = {
   MATCHED: '정상',
   UNMATCHED: '미연결',
@@ -203,8 +197,8 @@ export default function CheckResults({
       ) : (
         <>
           <p role="status">
-            검사 #{run.checkRunId} · {states[run.status] ?? run.status} · 제안
-            개정 {proposal.revision}
+            검사 #{run.checkRunId} · {candidateCheckLabel(run)} · 제안 개정{' '}
+            {proposal.revision}
           </p>
           {['QUEUED', 'RUNNING'].includes(run.status) &&
             (polling ? (
@@ -218,7 +212,7 @@ export default function CheckResults({
                 새로고침으로 다시 확인하세요.
               </p>
             ))}
-          {run.status === 'FAILED' && (
+          {run.status === 'FAILED' && !run.unsupported && (
             <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">
               검사 실행에 실패했습니다. 부분 결과를 정상 결과로 표시하지
               않습니다.

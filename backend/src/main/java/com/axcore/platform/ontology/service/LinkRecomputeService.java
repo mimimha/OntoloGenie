@@ -7,6 +7,7 @@ import com.axcore.platform.ontology.domain.LinkCardinality;
 import com.axcore.platform.ontology.domain.LinkMapping;
 import com.axcore.platform.ontology.domain.LinkMappingCondition;
 import com.axcore.platform.ontology.domain.LinkMappingStatus;
+import com.axcore.platform.ontology.domain.LinkMatchGroup;
 import com.axcore.platform.ontology.domain.LinkType;
 import com.axcore.platform.ontology.domain.ObjectType;
 import com.axcore.platform.ontology.domain.PropertyDefinition;
@@ -58,8 +59,8 @@ import org.springframework.transaction.annotation.Transactional;
  * <ul>
  *   <li>객체마다 규칙의 비교 조건대로 속성 값을 변환해 비교값(조건 순서대로의 문자열 목록)을 만든다. 값이 비었거나 단일 값이 아니거나 변환에 실패하면 비교값이 없고,
  *       그 객체는 이 규칙으로 연결되지 않는다(분류와 issue는 SYNC 검사가 한다). 기준은 검사 엔진과 같다.
- *   <li>비교값이 같은 출발 묶음과 도착 묶음을 잇는다. 도착이 ONE인 관계(ONE_TO_ONE·MANY_TO_ONE)에서 도착이 둘 이상이거나, 출발이 ONE인
- *       관계(ONE_TO_ONE·ONE_TO_MANY)에서 출발이 둘 이상이면 어느 쌍인지 정할 수 없어 잇지 않는다.
+ *   <li>비교값이 같은 출발 묶음과 도착 묶음을 잇는다. 자기 자신을 잇는 쌍을 제외한 뒤 관계 수를 센다. 도착이 ONE인 관계에서 도착이 둘 이상이거나, 출발이 ONE인
+ *       관계에서 같은 도착을 가리키는 출발이 둘 이상이면 어느 쌍인지 정할 수 없어 잇지 않는다.
  *   <li>원천에서 지운 객체(DELETED_AT_SOURCE)는 묶음에 넣지 않는다. 그래서 그 객체의 규칙 연결은 INACTIVE가 된다.
  * </ul>
  *
@@ -398,12 +399,8 @@ public class LinkRecomputeService {
      * 어느 쌍인지 정할 수 없는 출발·도착은 모두 뺀다.
      */
     private static void dropAmbiguous(Map<Pair, ?> desired, LinkCardinality cardinality) {
-        boolean destinationIsOne =
-                cardinality == LinkCardinality.ONE_TO_ONE
-                        || cardinality == LinkCardinality.MANY_TO_ONE;
-        boolean sourceIsOne =
-                cardinality == LinkCardinality.ONE_TO_ONE
-                        || cardinality == LinkCardinality.ONE_TO_MANY;
+        boolean destinationIsOne = cardinality.destinationIsOne();
+        boolean sourceIsOne = cardinality.sourceIsOne();
         Map<Long, Long> targetsPerSource =
                 desired.keySet().stream()
                         .collect(Collectors.groupingBy(Pair::source, Collectors.counting()));
@@ -533,21 +530,22 @@ public class LinkRecomputeService {
                 List<LinkableObject> sources,
                 List<LinkableObject> targets,
                 ValueTransformer transformer) {
-            Map<List<String>, List<Long>> sourcesByKey = group(sources, transformer, true);
-            Map<List<String>, List<Long>> targetsByKey = group(targets, transformer, false);
+            Map<List<String>, Set<Long>> sourcesByKey = group(sources, transformer, true);
+            Map<List<String>, Set<Long>> targetsByKey = group(targets, transformer, false);
             Map<Pair, Map<String, Object>> pairs = new LinkedHashMap<>();
-            for (Map.Entry<List<String>, List<Long>> entry : sourcesByKey.entrySet()) {
-                List<Long> sourceIds = entry.getValue();
-                List<Long> targetIds = targetsByKey.getOrDefault(entry.getKey(), List.of());
-                if (targetIds.isEmpty()
-                        || destinationIsOne() && targetIds.size() > 1
-                        || sourceIsOne() && sourceIds.size() > 1) {
+            for (Map.Entry<List<String>, Set<Long>> entry : sourcesByKey.entrySet()) {
+                Set<Long> targetIds = targetsByKey.get(entry.getKey());
+                if (targetIds == null) {
                     continue;
                 }
+                var matches = new LinkMatchGroup<>(entry.getValue(), targetIds, true);
                 Map<String, Object> evidence = evidence(entry.getKey());
-                for (Long source : sourceIds) {
+                for (Long source : entry.getValue()) {
+                    if (mismatchReason(source, matches) != null) {
+                        continue;
+                    }
                     for (Long target : targetIds) {
-                        if (!source.equals(target)) {
+                        if (matches.includes(source, target)) {
                             pairs.put(new Pair(source, target), evidence);
                         }
                     }
@@ -556,30 +554,35 @@ public class LinkRecomputeService {
             return pairs;
         }
 
-        private Map<List<String>, List<Long>> group(
+        private Map<List<String>, Set<Long>> group(
                 List<LinkableObject> objects, ValueTransformer transformer, boolean source) {
             Filter filter = source ? sourceFilter : targetFilter;
-            Map<List<String>, List<Long>> grouped = new LinkedHashMap<>();
+            Map<List<String>, Set<Long>> grouped = new LinkedHashMap<>();
             for (LinkableObject object : objects) {
                 if (!filter.matches(object)) {
                     continue;
                 }
                 List<String> key = key(object, transformer, source);
                 if (key != null) {
-                    grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(object.id());
+                    grouped.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(object.id());
                 }
             }
             return grouped;
         }
 
-        private boolean destinationIsOne() {
-            return linkType.getCardinality() == LinkCardinality.ONE_TO_ONE
-                    || linkType.getCardinality() == LinkCardinality.MANY_TO_ONE;
-        }
-
-        private boolean sourceIsOne() {
-            return linkType.getCardinality() == LinkCardinality.ONE_TO_ONE
-                    || linkType.getCardinality() == LinkCardinality.ONE_TO_MANY;
+        private String mismatchReason(long source, LinkMatchGroup<Long> matches) {
+            int targetCount = matches.targetCount(source);
+            if (targetCount == 0) {
+                return "비교값이 같은 도착 객체가 없음";
+            }
+            LinkCardinality cardinality = linkType.getCardinality();
+            if (cardinality.destinationIsOne() && targetCount > 1) {
+                return "비교값이 같은 도착 객체가 둘 이상";
+            }
+            if (cardinality.sourceIsOne() && matches.hasCompetingSources(source)) {
+                return "같은 도착을 가리키는 출발 객체가 둘 이상";
+            }
+            return null;
         }
 
         private List<String> key(
@@ -629,8 +632,8 @@ public class LinkRecomputeService {
                 List<LinkableObject> sources,
                 List<LinkableObject> targets,
                 ValueTransformer transformer) {
-            Map<List<String>, List<Long>> targetsByKey = group(targets, transformer, false);
-            Map<List<String>, List<Long>> sourcesByKey = group(sources, transformer, true);
+            Map<List<String>, Set<Long>> targetsByKey = group(targets, transformer, false);
+            Map<List<String>, Set<Long>> sourcesByKey = group(sources, transformer, true);
             List<UnlinkedSource> unlinked = new ArrayList<>();
             for (LinkableObject object : sources) {
                 if (!sourceFilter.matches(object)) {
@@ -646,16 +649,12 @@ public class LinkRecomputeService {
                     continue;
                 }
                 String transformed = String.join(" / ", result.key());
-                List<Long> targetIds = targetsByKey.getOrDefault(result.key(), List.of());
-                String reason = null;
-                // 자기 관계에서 자기 자신만 같은 값이면 이을 도착이 없다(pairs도 자기 자신 쌍은 만들지 않는다).
-                if (targetIds.isEmpty() || targetIds.equals(List.of(object.id()))) {
-                    reason = "비교값이 같은 도착 객체가 없음";
-                } else if (destinationIsOne() && targetIds.size() > 1) {
-                    reason = "비교값이 같은 도착 객체가 둘 이상";
-                } else if (sourceIsOne() && sourcesByKey.get(result.key()).size() > 1) {
-                    reason = "같은 도착을 가리키는 출발 객체가 둘 이상";
-                }
+                var matches =
+                        new LinkMatchGroup<>(
+                                sourcesByKey.get(result.key()),
+                                targetsByKey.getOrDefault(result.key(), Set.of()),
+                                true);
+                String reason = mismatchReason(object.id(), matches);
                 // 이 규칙으로는 이을 수 있는 출발도 넣는다(이유 null). 다른 규칙과 합쳐 모호해졌거나 비활성 수동 연결과 겹쳐 실제로는 안 이어졌을 수
                 // 있다.
                 unlinked.add(new UnlinkedSource(object.id(), raw, transformed, reason));

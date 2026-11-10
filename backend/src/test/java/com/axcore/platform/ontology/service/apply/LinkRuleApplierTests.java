@@ -312,13 +312,15 @@ class LinkRuleApplierTests {
     }
 
     @Test
-    void selfRelationDoesNotMatchTheSourceItself() {
+    void manyToOneSelfRelationLinksTheOtherObjectAndHoldsOnlyTheObjectWithoutATarget() {
+        long first = equipment("EQ-3", "프레스");
+        long second = equipment("EQ-3", "선반");
         long lonely = equipment("EQ-9", "프레스");
         String selfLinkType = "EQ_EQ_" + suffix();
         jdbc.sql(
                         """
                         insert into link_type (code, name, source_type_id, target_type_id, cardinality, description)
-                        values (:code, '같은 코드 설비', :type, :type, 'MANY_TO_MANY', '자기 관계') returning id
+                        values (:code, '같은 코드 설비', :type, :type, 'MANY_TO_ONE', '자기 관계') returning id
                         """)
                 .param("code", selfLinkType)
                 .param("type", equipmentTypeId)
@@ -331,6 +333,16 @@ class LinkRuleApplierTests {
 
         ApplyResult result = apply(proposal(), payload);
 
+        assertThat(
+                        jdbc.sql(
+                                        """
+                                select source_object_id, target_object_id from object_link
+                                where link_mapping_id = :rule and status = 'ACTIVE'
+                                """)
+                                .param("rule", result.targetId())
+                                .query((rs, rowNum) -> List.of(rs.getLong(1), rs.getLong(2)))
+                                .list())
+                .containsExactlyInAnyOrder(List.of(first, second), List.of(second, first));
         assertThat(result.heldItemIds()).hasSize(1);
         assertThat(
                         row(

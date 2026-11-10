@@ -122,7 +122,8 @@ class ProposalResponseTests {
         @GetMapping("/test/proposal-dto/checked")
         ApiResponse<ProposalResponse> checkedProposal() {
             LatestCheckResponse latestCheck =
-                    new LatestCheckResponse(10L, "SUCCEEDED", 85, 100, new BigDecimal("0.85"));
+                    new LatestCheckResponse(
+                            10L, "SUCCEEDED", 85, 100, new BigDecimal("0.85"), false);
 
             ProposalResponse response =
                     new ProposalResponse(

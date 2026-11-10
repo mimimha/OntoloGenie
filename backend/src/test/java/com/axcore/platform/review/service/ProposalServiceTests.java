@@ -144,7 +144,8 @@ class ProposalServiceTests {
 
         given(proposalItemRepository.findById(10L)).willReturn(Optional.of(proposal));
 
-        LatestCheckResponse check = new LatestCheckResponse(402L, "QUEUED", null, null, null);
+        LatestCheckResponse check =
+                new LatestCheckResponse(402L, "QUEUED", null, null, null, false);
 
         given(proposalLatestCheckRepository.findLatestByProposalRevisions(Map.of(10L, 3)))
                 .willReturn(Map.of(10L, check));
@@ -169,10 +170,11 @@ class ProposalServiceTests {
                                 ArgumentMatchers.<Specification<ProposalItem>>any(), eq(pageable)))
                 .willReturn(new PageImpl<>(List.of(first, second), pageable, 2));
 
-        LatestCheckResponse firstCheck = new LatestCheckResponse(402L, "RUNNING", null, null, null);
+        LatestCheckResponse firstCheck =
+                new LatestCheckResponse(402L, "RUNNING", null, null, null, false);
 
         LatestCheckResponse secondCheck =
-                new LatestCheckResponse(403L, "SUCCEEDED", 1, 4, new BigDecimal("0.2500"));
+                new LatestCheckResponse(403L, "SUCCEEDED", 1, 4, new BigDecimal("0.2500"), false);
 
         given(proposalLatestCheckRepository.findLatestByProposalRevisions(Map.of(10L, 3, 11L, 2)))
                 .willReturn(Map.of(10L, firstCheck, 11L, secondCheck));
@@ -202,7 +204,8 @@ class ProposalServiceTests {
                                 ArgumentMatchers.<Specification<ProposalItem>>any(), eq(pageable)))
                 .willReturn(new PageImpl<>(proposals));
 
-        LatestCheckResponse check = new LatestCheckResponse(402L, "FAILED", null, null, null);
+        LatestCheckResponse check =
+                new LatestCheckResponse(402L, "FAILED", null, null, null, false);
 
         given(proposalLatestCheckRepository.findLatestByProposalRevisions(Map.of(10L, 3, 11L, 2)))
                 .willReturn(Map.of(10L, check));
