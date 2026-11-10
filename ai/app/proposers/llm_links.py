@@ -40,10 +40,8 @@ MAX_TARGETS = 60  # 한 번에 보여 주는 도착 키 수
 SAMPLES = 6
 MAX_PATTERN = 200  # LLM이 준 정규식 길이 상한
 MAX_VALUE = 64  # 식별자로 볼 값 길이 상한(정규식 적용 시간도 묶는다)
-# 반복 안에 다시 반복이 있는 정규식('(\d+)+')은 값에 따라 아주 느려질 수 있어 받지 않는다
-NESTED_REPEAT = re.compile(r"\((?:[^()\\]|\\.)*[+*}](?:[^()\\]|\\.)*\)[+*{]")
-# 되풀이되는 묶음 안의 선택('(a|aa)*')과 끝없는 되풀이가 바로 이어짐('\d*\d*')도 아주 느려질 수 있어 받지 않는다
-REPEATED_ALTERNATION = re.compile(r"\((?:[^()\\]|\\.)*\|(?:[^()\\]|\\.)*\)[+*{]")
+# 끝없는 되풀이가 바로 이어짐('\d*\d*')은 값에 따라 아주 느려질 수 있어 받지 않는다.
+# 되풀이되는 묶음 안의 되풀이('(\d+)+')·선택('(a|aa)*')은 _slow_group이 본다
 ATOM = r"(?:\\.|\[[^\]]*\]|[^\\()\[\]|])"
 ADJACENT_REPEATS = re.compile(ATOM + r"[+*]\??" + ATOM + r"[+*]")
 OUTPUT_TOKENS = 1500  # 예상 크레딧 계산용 호출당 출력 토큰
@@ -94,12 +92,47 @@ def _digits(value: str) -> str:
     return "".join(ch for ch in value if ch.isdigit() or ch == ".")
 
 
+def _bare(text: str) -> str:
+    """이스케이프(\\+)와 문자 묶음([+|])을 뺀, 정규식 기호로 읽히는 글자만."""
+    out, i = [], 0
+    while i < len(text):
+        ch = text[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if ch == "[":
+            i += 1
+            while i < len(text) and text[i] != "]":
+                i += 2 if text[i] == "\\" else 1
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _slow_group(pattern: str) -> bool:
+    """되풀이되는 괄호 묶음 안에 다시 되풀이('(\\d+)+')나 선택('(a|aa)*')이 있는지. 값에 따라 아주
+    느려질 수 있는 모양이다. 정규식으로 찾으면 그 검사 정규식도 느려질 수 있어 글자를 한 번 훑어 본다."""
+    bare = _bare(pattern)
+    starts = []
+    for i, ch in enumerate(bare):
+        if ch == "(":
+            starts.append(i)
+        elif ch == ")" and starts:
+            body = bare[starts.pop() + 1 : i]
+            if bare[i + 1 : i + 2] in ("+", "*", "{") and any(
+                c in body for c in "+*}|"
+            ):
+                return True
+    return False
+
+
 def safe_pattern(pattern: str | None) -> bool:
     return (
         bool(pattern)
         and len(pattern) <= MAX_PATTERN
-        and not NESTED_REPEAT.search(pattern)
-        and not REPEATED_ALTERNATION.search(pattern)
+        and not _slow_group(pattern)
         and not ADJACENT_REPEATS.search(pattern)
     )
 
@@ -375,7 +408,7 @@ def _verify(
         column_steps.append((allowed, []))
     needs_function = any(s[0] and s[0][0]["op"] == "MAP_VALUE" for s in column_steps)
     how = " / ".join(describe(st) for st in steps)
-    hold = f"LLM이 제안한 시스템 간 연결(변환: {how}). 값으로 확인함"
+    hold = f"LLM이 제안한 시스템 간 연결 (변환: {how}) · 값 확인 완료"
     if needs_function:
         hold += (
             ". 허용 변환으로 표현할 수 없어 대응표로 이었으니 변환 함수 추가 검토 필요"

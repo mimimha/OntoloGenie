@@ -281,8 +281,8 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
             if not same:
                 # 제안 이유의 표 종류도 최종 판단(LLM)으로 맞춘다. 규칙 판단은 괄호에 남긴다
                 update["reason"] = c.reason.replace(
-                    f"표 종류는 {old_text}입니다(",
-                    f"표 종류는 {new_text}입니다(AI 판단. 규칙 판단은 {old_text}: ",
+                    f"분류: {old_text} (",
+                    f"분류: {new_text} (AI 판단, 규칙 판단 {old_text}: ",
                 )
             c = _note(
                 c,

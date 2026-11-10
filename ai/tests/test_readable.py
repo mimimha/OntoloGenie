@@ -93,7 +93,10 @@ def proposals():
                 "sourceTypeCode": "HANDOVER_NOTE",
                 "targetTypeCode": "WORK_ORDER",
             },
-            "evidence": {"reason": "글 11건에서 WORK_ORDER 언급 13개를 찾았다."},
+            "evidence": {
+                "candidateId": "LT-DOC-ABOUT_WORK_ORDER",
+                "reason": "HANDOVER_NOTE 11건 · WORK_ORDER 기재 13건 · 일치 13건",
+            },
         },
         {
             "itemKind": "DOCUMENT_LINK",
@@ -116,27 +119,26 @@ def test_link_rule_link_type_and_document_link_get_korean_titles():
 
     assert rule["payload"]["name"] == "작업지시 → 수주 (수주 참조 번호)"
     assert rule["evidence"]["title"] == rule["payload"]["name"]
-    assert rule["evidence"]["reason"].startswith(
-        "작업지시의 수주 참조 번호로 수주를 찾습니다."
+    # 연결 규칙 이유는 분석 결과 그대로(항목형) 둔다
+    assert rule["evidence"]["reason"] == "값이 이어진다."
+    assert rule["payload"]["description"] == (
+        "연결 기준: 작업지시 수주 참조 번호 = 수주 수주 번호"
     )
     assert rule["payload"]["linkType"]["name"] == "작업지시 → 수주"
-    assert rule["payload"]["linkType"]["description"] == (
-        "작업지시가 수주를 가리킵니다. 개수 관계는 데이터에서 관찰한 값."
-    )
+    assert rule["payload"]["linkType"]["description"] == "작업지시에서 수주 참조"
     # 코드는 바꾸지 않는다(백엔드가 코드로 찾는다)
     assert rule["payload"]["code"] == "WORK_ORDER_SO_REF_TO_SALES_ORDER"
 
-    assert link_type["payload"]["name"] == "교대 인수인계 메모 → 작업지시 (글에서 언급)"
-    assert (
-        link_type["evidence"]["reason"]
-        == "글 11건에서 작업지시 언급 13개를 찾았습니다."
+    assert link_type["payload"]["name"] == "교대 인수인계 메모의 작업지시 연결"
+    assert link_type["payload"]["description"] == (
+        "교대 인수인계 메모 본문에 기재된 작업지시와 연결"
+    )
+    assert link_type["evidence"]["reason"] == (
+        "교대 인수인계 메모 11건 · 작업지시 기재 13건 · 일치 13건"
     )
 
-    assert (
-        document["payload"]["name"]
-        == "교대 인수인계 메모 HN-260820-N의 작업지시 JB2608-0129"
-    )
-    assert document["evidence"]["reason"] == ("글에 'JB2608-0129'가 적혀 있습니다.")
+    assert document["payload"]["name"] == "HN-260820-N → 작업지시 JB2608-0129"
+    assert document["evidence"]["reason"] == "본문 기재 'JB2608-0129'"
 
 
 def test_unknown_object_keeps_its_code():
@@ -169,17 +171,17 @@ def test_held_document_link_keeps_reason_and_does_not_pick_first_option():
     doc["payload"]["mentionText"] = "2호기"
     doc["evidence"]["holdRecommended"] = True
     doc["evidence"]["reason"] = (
-        "'2호기'는 설비 2대와 맞아 하나로 정할 수 없다. 작성자의 배치 라인이 단서가 될 수 있다."
+        "'2호기'는 설비 2대와 맞아 하나로 정할 수 없다. 작성자(작업자 24) 배치 라인 확인 필요."
     )
     doc["options"] = [{"optionNo": 1}, {"optionNo": 2}]
     out = readable(items)[5]
     assert out["payload"]["name"].endswith("(후보 2개)")
     assert "EQ-01" not in out["payload"]["name"]
-    assert out["evidence"]["reason"].startswith("'2호기'에 맞는")
-    assert "작성자의 배치 라인이 단서" in out["evidence"]["reason"]
+    assert out["evidence"]["reason"].startswith("본문 '2호기' 해당")
+    assert "작성자(작업자 24) 배치 라인 확인 필요" in out["evidence"]["reason"]
     # 같은 말을 두 번 쓰지 않는다(원래 이유의 첫 문장은 빼고 단서만)
     assert "하나로 정할 수 없다" not in out["evidence"]["reason"]
-    assert "하나로 정하지 못했습니다" in out["evidence"]["reason"]
+    assert "후보 2개" in out["evidence"]["reason"]
 
 
 def test_document_link_shows_alias_and_memo_excerpt():
@@ -201,13 +203,13 @@ def test_document_link_shows_alias_and_memo_excerpt():
         {"label": "글의 설비 이름·별명을 설비 목록과 맞춤", "weight": 0.8}
     ]
     out = readable(items)[5]
-    assert out["payload"]["name"] == "교대 인수인계 메모 HN-260820-N의 equipment P103"
+    assert out["payload"]["name"] == "HN-260820-N → equipment P103"
     reason = out["evidence"]["reason"]
     # 별명은 이름·별명과 맞춘 것이라고 쓰고, 앞뒤 원문을 붙인다
     assert reason.startswith(
-        "글의 '1라인 3호 프레스'를 equipment P103의 이름·별명으로 봤습니다"
+        "본문 '1라인 3호 프레스' → equipment P103 (명칭·별칭 일치)"
     )
-    assert ": “새벽 2시쯤 1라인 3호 프레스 진동이" in reason
+    assert " · “새벽 2시쯤 1라인 3호 프레스 진동이" in reason
 
 
 def test_lot_number_found_through_another_column_says_so():
@@ -218,7 +220,7 @@ def test_lot_number_found_through_another_column_says_so():
     )
     out = readable(items)[5]
     assert out["evidence"]["reason"] == (
-        "글에 적힌 'LT261017-1'로 shipment DL2610-0036을 찾았습니다."
+        "본문 'LT261017-1' → shipment DL2610-0036 (다른 컬럼 값 일치)"
     )
 
 
@@ -256,3 +258,44 @@ def test_long_table_comments_are_shortened_in_titles():
     assert (
         out[1]["payload"]["name"] == "자재·상품 품목 마스터(원자재, 포장재, OEM 상품)"
     )
+
+
+def test_descriptions_and_reasons_use_object_names_not_table_keys():
+    items = proposals()
+    items[0]["payload"]["description"] = "원천 mes.work_order의 한 행"
+    rule = items[3]
+    rule["payload"]["description"] = (
+        "비교 방법: so_ref는 숫자만 남김 (예: 'SO-1' → '1')"
+    )
+    rule["payload"]["linkType"]["description"] = (
+        "WORK_ORDER가 SALES_ORDER를 가리킨다 (status = OPEN일 때). "
+        "개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
+    )
+    rule["evidence"]["reason"] = "대상 키: erp.sales_order so_no (기본키) · 일치율 100%"
+    rule["evidence"]["holdReason"] = "mes.work_order 경유 관계"
+
+    out = readable(items)
+    payload, evidence = out[3]["payload"], out[3]["evidence"]
+
+    assert out[0]["payload"]["description"] == (
+        "원천 테이블 mes.work_order (1행 = 작업지시 1건)"
+    )
+    assert payload["description"] == (
+        "연결 기준: 작업지시 수주 참조 번호 = 수주 수주 번호 "
+        "(비교: so_ref는 숫자만 남김 (예: 'SO-1' → '1'))"
+    )
+    assert payload["linkType"]["description"] == (
+        "작업지시에서 수주 참조 · 적용 조건: status = OPEN · "
+        "데이터상 1:1, 업무상 1:N 여부 확인 필요"
+    )
+    assert evidence["reason"] == "대상 키: 수주 so_no (기본키) · 일치율 100%"
+    assert evidence["holdReason"] == "작업지시 경유 관계"
+
+
+def test_via_table_hold_keeps_its_confidence_cap():
+    from app.proposers.confidence import hold_cap
+
+    cap, _ = hold_cap(
+        "mes.work_order 경유 관계라 연결 규칙 생성 불가. 관계 유형만 제안"
+    )
+    assert cap == 0.4

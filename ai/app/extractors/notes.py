@@ -480,7 +480,7 @@ def to_candidates(doc: Document, extraction: DocumentExtraction) -> list[Candida
             Evidence(
                 source_id="mes",
                 locator=locator,
-                snippet=f"{doc.doc_id} {e.start}~{e.end}: {e.text}",
+                snippet=f"{doc.doc_id}: {_around(doc, e.start, e.end)}",
             ),
             Evidence(
                 source_id="mes",
@@ -492,7 +492,7 @@ def to_candidates(doc: Document, extraction: DocumentExtraction) -> list[Candida
         ambiguous = len(refs) > 1
         hint = ""
         if ambiguous and doc.author:
-            hint = f" 작성자 {doc.author}의 배치 라인이 단서가 될 수 있습니다."
+            hint = f" 작성자(작업자 {doc.author}) 배치 라인 확인 필요."
         out.append(
             Candidate(
                 candidate_id=f"DL-{doc.doc_id}-{e.id}",
@@ -535,6 +535,26 @@ def to_candidates(doc: Document, extraction: DocumentExtraction) -> list[Candida
     return out
 
 
+def _link_type_reason(
+    source: str, target: str, docs: int, group: list[Candidate]
+) -> str:
+    """유형 코드로 쓴다. 검토 화면 이름(readable)에서 객체 유형 이름으로 바꾼다."""
+    held = sum(c.review_status == "HELD" for c in group)
+    text = (
+        f"{source} {docs}건 · {target} 기재 {len(group)}건 · 일치 {len(group) - held}건"
+    )
+    return text + (f" · 확인 필요 {held}건 (후보 복수)" if held else "")
+
+
+def _around(doc: Document, start: int, end: int, width: int = 15) -> str:
+    """근거에 보여 줄 언급 앞뒤 글. 글자 위치(29~40) 대신 원문으로 보여 준다."""
+    a, b = max(doc.body_start, start - width), min(len(doc.text), end + width)
+    text = " ".join(doc.text[a:b].split())
+    return (
+        ("…" if a > doc.body_start else "") + text + ("…" if b < len(doc.text) else "")
+    )
+
+
 def document_link_types(links: list[Candidate]) -> list[Candidate]:
     """문서 연결이 쓰는 관계 유형마다 LINK_TYPE 후보 하나. 승인된 문서 연결은 이 관계 유형으로 저장된다."""
     groups: dict[str, list[Candidate]] = {}
@@ -561,7 +581,7 @@ def document_link_types(links: list[Candidate]) -> list[Candidate]:
                     cardinality="MANY_TO_MANY",
                     description=f"{source}의 글이 {target}를 언급한다. 원천 키가 아니라 글에서 찾은 연결이다.",
                 ),
-                reason=f"글 {len(docs)}건에서 {target} 언급 {len(group)}개를 찾았다.",
+                reason=_link_type_reason(source, target, len(docs), group),
                 evidence=[c.evidence[0] for c in group[:3]],
                 confidence=confidence(
                     [
@@ -597,7 +617,22 @@ def document_links(
     for doc in docs:
         extraction, _ = extract(doc, dictionary, equipment, answers.get(doc.doc_id))
         out += to_candidates(doc, extraction)
-    return len(docs), out, calls, failed
+    return len(docs), _one_per_target(out), calls, failed
+
+
+def _one_per_target(links: list[Candidate]) -> list[Candidate]:
+    """같은 메모가 같은 대상을 여러 번 적으면('P103 진동… P103 점검') 승인 결과가 같은 연결 하나라
+    한 건만 남긴다. 후보가 여럿인 언급(HELD, '3호기' → P103·P104)은 첫 후보만으로 같다고 볼 수 없어 그대로 둔다."""
+    seen: set[tuple[str, str]] = set()
+    out = []
+    for link in links:
+        if link.review_status != "HELD":
+            key = (link.payload.document_id, link.payload.target_object_ref)
+            if key in seen:
+                continue
+            seen.add(key)
+        out.append(link)
+    return out
 
 
 def _equipment(root: Path) -> list[Equipment]:
