@@ -9,7 +9,7 @@ import org.springframework.data.domain.Page;
 /** #137의 077 객체 상세와 078 활성 관계 조회 계약. */
 public interface ObjectDetailQuery {
 
-    /** 열람 가능한 속성만 반환한다. 객체가 없거나 조회 범위 밖이면 RESOURCE_NOT_FOUND로 처리한다. */
+    /** 민감 속성 값만 권한에 맞게 가린다. 객체가 없거나 조회 범위 밖이면 RESOURCE_NOT_FOUND로 처리한다. */
     ObjectDetailResponse detail(LoginAccount actor, long objectId);
 
     /**
