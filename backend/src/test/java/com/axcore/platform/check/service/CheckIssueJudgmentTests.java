@@ -243,8 +243,10 @@ class CheckIssueJudgmentTests {
 
         long notLoaded = run("SYNC", rule);
 
-        assertThat(status(notLoaded)).isEqualTo("FAILED");
-        assertThat(errorMessage(notLoaded)).contains("전체 적재 전인 CDC 표");
+        // SYNC는 모든 규칙을 건너뛰어도 결과 없는 성공이다. 이유는 감사 결과에만 남는다.
+        assertThat(status(notLoaded)).isEqualTo("SUCCEEDED");
+        assertThat(resultCount(notLoaded)).isZero();
+        assertThat(auditResult(notLoaded)).contains("전체 적재 전인 CDC 표");
 
         makeCdc(eqResource);
         jdbc.sql(
@@ -257,7 +259,7 @@ class CheckIssueJudgmentTests {
                 .update();
         long recovering = run("SYNC", rule);
 
-        assertThat(errorMessage(recovering)).contains("복구가 필요한 원천");
+        assertThat(auditResult(recovering)).contains("복구가 필요한 원천");
         assertThat(issuesOf(rule)).isEmpty();
     }
 
@@ -382,8 +384,21 @@ class CheckIssueJudgmentTests {
                 .single();
     }
 
-    private String errorMessage(long runId) {
-        return jdbc.sql("select error_message from check_run where id = :id")
+    private int resultCount(long runId) {
+        return jdbc.sql("select count(*) from check_result where check_run_id = :id")
+                .param("id", runId)
+                .query(Integer.class)
+                .single();
+    }
+
+    /** 배치가 남긴 감사 결과 줄(SYSTEM + BATCH)의 result. */
+    private String auditResult(long runId) {
+        return jdbc.sql(
+                        """
+                        select result::text from action_execution
+                        where target_type = 'check_run' and target_id = :id
+                        order by id desc limit 1
+                        """)
                 .param("id", runId)
                 .query(String.class)
                 .single();

@@ -1,0 +1,6 @@
+# 시험에서만 쓰는 batch 프로필 설정. classpath:/config/는 기본 설정 위에 덧씌워진다.
+# 주기 SYNC 검사 요청(SyncCheckJob)이 시험이 넣은 검사 사이에 SYNC를 넣지 않게 끈다. 요청 로직은 SyncCheckRequester를 직접 불러 시험한다.
+axcore:
+  check:
+    sync:
+      enabled: false

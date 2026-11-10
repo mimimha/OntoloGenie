@@ -36,3 +36,8 @@ axcore:
     # 원천 사이 규칙의 미연결을 확인 대기(link_check_pending)에 두는 시간(191-3). 원천이 정상인 채로 이만큼 지나도 안 맞으면 issue로 올린다.
     # 기본값은 임시이고 246에서 확정한다.
     pending-wait: 10m
+    sync:
+      # 반영 중인 규칙 전부를 검사하는 SYNC를 넣는 주기(191-4, SyncCheckJob). 같은 데이터 기준이면 성공한 SYNC를 다시 쓰고 새로 넣지 않는다.
+      # 끄려면 배포 설정 AXCORE_CHECK_SYNC_ENABLED=false.
+      enabled: ${AXCORE_CHECK_SYNC_ENABLED:true}
+      interval: 5m

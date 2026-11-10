@@ -176,7 +176,7 @@ public class CheckRunRepository {
                 .param("workKey", run.workKey())
                 .param("basis", run.basisJson())
                 .param("comparedTo", run.comparedToRunId(), Types.BIGINT)
-                .param("requestedBy", run.requestedBy())
+                .param("requestedBy", run.requestedBy(), Types.BIGINT)
                 .param("now", Timestamp.from(run.requestedAt()))
                 .query(Long.class)
                 .optional();
@@ -302,6 +302,6 @@ public class CheckRunRepository {
             String workKey,
             String basisJson,
             Long comparedToRunId,
-            long requestedBy,
+            Long requestedBy,
             Instant requestedAt) {}
 }

@@ -8,6 +8,9 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface LinkCheckPendingRepository extends JpaRepository<LinkCheckPending, Long> {
 
+    /** 이 상태의 확인 대기가 하나라도 있는지(SYNC 요청이 주기마다 새로 넣을지 정한다). */
+    boolean existsByStatus(Status status);
+
     /** 이 규칙 개정본의 대기 중인 것. 출발 객체마다 많아야 하나다(uq_link_check_pending_waiting). */
     List<LinkCheckPending> findByLinkMappingIdAndStatusOrderById(long linkMappingId, Status status);
 
