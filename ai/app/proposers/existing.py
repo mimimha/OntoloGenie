@@ -25,6 +25,8 @@
 import json
 from dataclasses import dataclass, field
 
+from app.proposers.api_format import fingerprint_payload
+
 
 @dataclass
 class Existing:
@@ -153,5 +155,60 @@ def filter_existing(
             continue
         if mark_changes and kind in COMPARED:
             p = _mark(p, change)
+        kept.append(p)
+    return kept, skipped
+
+
+def _decision(value: str) -> str:
+    """APPROVE·REJECT·HOLD로 맞춘다(APPROVED·REJECTED·HELD도 받는다)."""
+    head = (value or "").upper()
+    return {"APPROVED": "APPROVE", "REJECTED": "REJECT", "HELD": "HOLD"}.get(head, head)
+
+
+def _why(decision: dict) -> str:
+    return f"(사유: {decision['reason']})" if decision.get("reason") else ""
+
+
+def skip_past_decisions(
+    proposals: list[dict], decisions: list[dict]
+) -> tuple[list[dict], dict[str, int]]:
+    """과거 승인·거절 결과 참고 (FN-AIP-04, S15P31C106-281).
+
+    decisions: 018 pastDecisions `[{candidateId, itemKind, revision, fingerprint 또는 payload, decision, reason}]`.
+    - 같은 내용(지문)이 승인·거절됐으면 다시 내지 않는다.
+    - 같은 내용이 보류됐으면 내되 이유에 이전 보류를 적는다.
+    - 같은 후보 ID가 거절·보류됐는데 내용이 바뀌었으면 내되 이유에 이전 결정을 적는다.
+    """
+    skipped = {"APPROVE": 0, "REJECT": 0}
+    if not decisions:
+        return proposals, skipped
+    by_fingerprint: dict[str, dict] = {}
+    by_candidate: dict[str, dict] = {}
+    for d in decisions:
+        fp = d.get("fingerprint") or (
+            fingerprint_payload(d["payload"]) if d.get("payload") else None
+        )
+        entry = {**d, "decision": _decision(d.get("decision", ""))}
+        if fp:
+            by_fingerprint[fp] = entry
+        if d.get("candidateId"):
+            by_candidate[d["candidateId"]] = entry
+    kept = []
+    for p in proposals:
+        evidence = p.get("evidence") or {}
+        same = by_fingerprint.get(evidence.get("fingerprint"))
+        if same and same["decision"] in skipped:
+            skipped[same["decision"]] += 1
+            continue
+        if same and same["decision"] == "HOLD":
+            p = _note(p, f"같은 내용이 이전에 보류됐습니다{_why(same)}.")
+        else:
+            before = by_candidate.get(evidence.get("candidateId"))
+            if before and before["decision"] in ("REJECT", "HOLD"):
+                word = "거절" if before["decision"] == "REJECT" else "보류"
+                p = _note(
+                    p,
+                    f"이전에 {word}된 후보{_why(before)}인데 내용이 바뀌어 다시 제안합니다.",
+                )
         kept.append(p)
     return kept, skipped

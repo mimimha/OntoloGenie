@@ -27,11 +27,12 @@ from app.models.analysis import AnalysisStartRequest
 from app.models.candidate import Candidate
 from app.proposers.api_format import to_api_proposals
 from app.proposers.evidence import verify
-from app.proposers.existing import change_counts, filter_existing
+from app.proposers.existing import change_counts, filter_existing, skip_past_decisions
 from app.proposers.links import Tables
 from app.proposers.llm_links import estimate_credits as estimate_cross_links
 from app.proposers.llm_links import prepare as prepare_cross_links
 from app.proposers.llm_links import propose as cross_links
+from app.proposers.reanalysis import mark_changes
 from app.proposers.run import generate
 from app.proposers.semantics import estimate_credits as estimate_tables
 from app.proposers.semantics import interpret, prepare
@@ -96,17 +97,31 @@ def analyze(
         result.proposals, skipped = filter_existing(
             result.proposals, model_summary, mark_changes=reanalysis
         )
+        # 과거 승인·거절 결과 참고(S15P31C106-281). 백엔드가 pastDecisions를 보내지 않으면 그대로
+        result.proposals, decided = skip_past_decisions(
+            result.proposals,
+            [d.model_dump(by_alias=True) for d in request.past_decisions],
+        )
+        result.summary["pastDecisionSkipped"] = decided
         result.summary["proposals"] = len(result.proposals)
         result.summary["holdRecommended"] = sum(
             p["evidence"]["holdRecommended"] for p in result.proposals
         )
         result.summary["existingSkipped"] = skipped
         result.summary["modelSummarySkipReason"] = summary_skip
-        compared = reanalysis and bool(model_summary)
-        result.summary["changeBasis"] = "MODEL_SUMMARY" if compared else None
-        result.summary["changeCounts"] = (
-            change_counts(result.proposals, skipped) if compared else None
-        )
+        # 이전 후보를 받으면 이전 후보 기준(원래 계약), 없으면 확정 모델(043) 기준으로 표시한다
+        if reanalysis and request.previous_proposals:
+            result.summary["changeBasis"] = "PREVIOUS_PROPOSALS"
+            result.summary["changeCounts"] = mark_changes(
+                result.proposals,
+                [p.model_dump(by_alias=True) for p in request.previous_proposals],
+            )
+        elif reanalysis and model_summary:
+            result.summary["changeBasis"] = "MODEL_SUMMARY"
+            result.summary["changeCounts"] = change_counts(result.proposals, skipped)
+        else:
+            result.summary["changeBasis"] = None
+            result.summary["changeCounts"] = None
         result.summary["missingColumns"] = report.missing_columns
         result.summary["sampledTables"] = report.sampled_tables
         return result
