@@ -16,6 +16,7 @@ import com.axcore.platform.source.domain.SourceEndpoint;
 import com.axcore.platform.source.domain.SourceKind;
 import com.axcore.platform.source.domain.SourceRow;
 import com.axcore.platform.source.domain.SyncStrategy;
+import com.axcore.platform.source.repository.CdcConsumerRepository;
 import com.axcore.platform.source.repository.SourceTableReader;
 import com.axcore.platform.source.repository.SourceTableReader.Table;
 import com.axcore.platform.source.repository.SourceTableReader.TooManyRowsException;
@@ -65,6 +66,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
     static final String MAPPING_CHANGED = "수집하는 동안 원천 테이블 %s의 매핑이 바뀌었습니다. 다시 수집해 주세요.";
 
     private final SyncRunRepository syncRunRepository;
+    private final CdcConsumerRepository consumerRepository;
     private final FullLoadPlanner planner;
     private final SourceTableReader tableReader;
     private final SourceRowConverter converter;
@@ -76,6 +78,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
 
     public SyncRunJob(
             SyncRunRepository syncRunRepository,
+            CdcConsumerRepository consumerRepository,
             FullLoadPlanner planner,
             SourceTableReader tableReader,
             SourceRowConverter converter,
@@ -85,6 +88,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
             Clock clock,
             @Value("${axcore.source-load.max-rows}") int maxRows) {
         this.syncRunRepository = syncRunRepository;
+        this.consumerRepository = consumerRepository;
         this.planner = planner;
         this.tableReader = tableReader;
         this.converter = converter;
@@ -217,6 +221,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
             }
         }
         Instant now = Instant.now(clock);
+        boolean cdcLoaded = false;
         for (ResourceLoad resource : outcome.resources()) {
             FullLoadPlan plan = resource.plan();
             Counts counts = new Counts(resource.rowsRead(), 0, 0);
@@ -226,6 +231,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
                 if (plan.strategy() == SyncStrategy.CDC) {
                     syncRunRepository.markLoaded(plan.resourceId(), jobId, outcome.lsn());
                     toLsn = outcome.lsn();
+                    cdcLoaded = true;
                 }
             }
             syncRunRepository.finishResource(jobId, plan.resourceId(), counts, toLsn, now);
@@ -236,7 +242,28 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
         if (!loadedTypes.isEmpty()) {
             linkRecomputeService.recomputeObjectTypes(loadedTypes);
         }
+        if (cdcLoaded) {
+            releaseRecovery(jobId);
+        }
         syncRunRepository.finish(jobId, now);
+    }
+
+    /** 이번 읽기로 그 원천의 다시 읽기가 다 끝났으면 CDC 복구를 푼다(199). 소비자가 표시가 풀린 걸 보고 이어 받는다. */
+    private void releaseRecovery(long jobId) {
+        long dataSourceId =
+                syncRunRepository
+                        .findTarget(jobId)
+                        .orElseThrow(() -> new IllegalStateException("수집 실행이 없습니다: " + jobId))
+                        .dataSourceId();
+        consumerRepository
+                .releaseRecoveryIfReloaded(dataSourceId)
+                .ifPresent(
+                        resumeAfter ->
+                                log.info(
+                                        "CDC 복구를 풀었습니다 dataSourceId={} syncRunId={} resumeAfter={}",
+                                        dataSourceId,
+                                        jobId,
+                                        resumeAfter));
     }
 
     private Counts write(FullLoadPlan plan, ResourceLoad resource, FullLoad load) {

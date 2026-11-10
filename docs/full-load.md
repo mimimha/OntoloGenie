@@ -22,9 +22,10 @@
 2. **complete(한 트랜잭션)**
    - 원천 테이블 행을 잠그고 계획을 다시 만들어 비교한다. 읽는 동안 매핑·속성·객체 유형이 바뀌었으면 쓰지 않고 실패한다(다시 수집 필요).
    - 객체를 쓴다(`applyLoaded`). 세대는 `sync_run.id`다. 매핑마다 `finishLoad`로 이번에 안 나온 객체를 삭제 표시한다.
-   - CDC 테이블은 `full_load_done_gen`을 이번 세대로, `loaded_lsn`을 읽기 시점 LSN으로 올린다(더 새 세대가 이미 끝났으면 그대로). FULL_COMPARE 테이블은 두 칸을 쓰지 않는다.
+   - CDC 테이블은 `full_load_done_gen`을 이번 세대로, `loaded_lsn`을 읽기 시점 LSN으로 올린다(더 새 세대가 이미 끝났으면 그대로). 원천이 복구 중인데 이 실행이 복구 표시보다 먼저 시작했으면 `loaded_lsn`은 그대로 둔다(199). FULL_COMPARE 테이블은 두 칸을 쓰지 않는다.
    - `sync_run_resource`를 SUCCEEDED(읽은 행, 쓴 행, 삭제 표시 수, CDC 테이블은 `to_lsn`), `sync_run`을 SUCCEEDED로 바꾼다.
    - 마지막에 읽은 매핑의 객체 유형으로 연결을 다시 계산한다(`LinkRecomputeService.recomputeObjectTypes`, 198-7). 트랜잭션당 한 번, 객체를 다 쓴 뒤에 부른다. issue는 만들지 않는다(결정 문서 8장).
+   - CDC 테이블을 읽었으면 그 원천의 다시 읽기가 다 끝났는지 보고 CDC 복구를 푼다([cdc-consumer.md](cdc-consumer.md) 199).
 3. 실패하면 `sync_run`과 끝나지 않은 `sync_run_resource`를 함께 FAILED로 바꾼다. 테이블 행을 남겨 두면 같은 테이블을 다시 넣을 수 없다.
 
 ## 값 변환

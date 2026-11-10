@@ -46,7 +46,7 @@ class DatabaseMigrationTests {
 
         assertThat(Arrays.stream(applied).map(info -> info.getVersion().getVersion()))
                 .containsExactly(
-                        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
+                        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14");
         assertThat(applied).allMatch(info -> info.getState() == MigrationState.SUCCESS);
         assertThat(flyway.info().pending()).isEmpty();
     }
@@ -611,6 +611,9 @@ class DatabaseMigrationTests {
                 "recovery_reason = 'EPOCH_UNCERTAIN', recovery_at = now(), healthy_since = null");
         updateCdcOffset(
                 "recovery_reason = 'SOURCE_CHANGED', recovery_at = now(), healthy_since = null");
+        // V14: 이어 받을 기준 시각은 복구가 풀린 뒤에만 있다
+        violates("ck_cdc_offset_resume", () -> updateCdcOffset("resume_after = now()"));
+        updateCdcOffset("recovery_reason = null, recovery_at = null, resume_after = now()");
     }
 
     @Test

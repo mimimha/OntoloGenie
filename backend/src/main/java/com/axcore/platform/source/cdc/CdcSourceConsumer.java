@@ -1,7 +1,9 @@
 package com.axcore.platform.source.cdc;
 
+import com.axcore.platform.source.cdc.CdcMessage.BoundaryStatus;
 import com.axcore.platform.source.cdc.CdcMessage.ChangeEvent;
 import com.axcore.platform.source.cdc.CdcMessage.Heartbeat;
+import com.axcore.platform.source.cdc.CdcMessage.TransactionBoundary;
 import com.axcore.platform.source.cdc.CdcTransactionApplier.CdcSource;
 import com.axcore.platform.source.cdc.CdcTransactionApplier.Result;
 import com.axcore.platform.source.cdc.CdcTransactionApplier.Status;
@@ -13,11 +15,13 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.WakeupException;
 
@@ -34,7 +38,11 @@ import org.apache.kafka.common.errors.WakeupException;
  *       메시지가 없으면 비정상({@code healthy_since = NULL})이다. 확인 대기의 대기 시간은 정상 구간만 센다.
  *   <li>처리 장애(DB 예외 등): 위치를 옮기지 않고 {@code retryDelay} 뒤 저장된 위치부터 다시 읽는다(9.3).
  *   <li>원천 트랜잭션이 상한을 넘거나 메시지 순서·모양이 어긋나면 복구로 돌리고 멈춘다. 복구가 필요한 원천은 반영하지 않고 {@code refreshInterval}마다
- *       표시가 풀렸는지 본다. 풀리면 저장된 위치부터 다시 읽는다(풀어 주는 일은 199).
+ *       표시가 풀렸는지 본다.
+ *   <li>복구가 풀리면(199, 전체 읽기 저장 트랜잭션이 푼다) {@code cdc_offset.resume_after}가 있다. 저장된 위치가 아니라 그 시각 뒤에
+ *       토픽에 쓰인 첫 메시지로 가서, 처음 만나는 BEGIN부터 반영하고 그 BEGIN을 다음 위치로 저장한다. 그 앞의 메시지는 버린다. 그 시각 뒤에 커밋된 원천
+ *       트랜잭션은 그 뒤에 토픽에 쓰이므로 놓치지 않고, 그 앞에 쓰인 트랜잭션은 다시 읽은 스냅샷에 들어 있다. 그래서 복구를 일으킨 메시지(큰 트랜잭션, 모양이 어긋난
+ *       메시지)나 원천 교체 전 옛 DB 이벤트를 다시 만나지 않는다.
  * </ul>
  */
 @Slf4j
@@ -53,6 +61,10 @@ final class CdcSourceConsumer implements Runnable {
     private volatile boolean running = true;
     private boolean positioned;
     private boolean paused;
+
+    /** 복구를 푼 뒤 이어 받을 첫 BEGIN을 찾는 중. 그 전 메시지는 반영하지 않는다. */
+    private boolean seekingBegin;
+
     private SourceTransactionAssembler assembler;
     private Long reference;
     private Instant lastMessageAt;
@@ -132,6 +144,13 @@ final class CdcSourceConsumer implements Runnable {
             found = repository.findState(source.topic());
         }
         OffsetState state = found.orElseThrow();
+        assembler = new SourceTransactionAssembler(properties.maxEvents());
+        lastMessageAt = clock.instant();
+        if (state.recoveryReason() == null && state.resumeAfter() != null) {
+            resumeAfterRecovery(state);
+            return;
+        }
+        seekingBegin = false;
         if (state.recoveryReason() == null && state.nextOffset() < begin) {
             log.warn(
                     "저장된 소비 위치가 토픽 보관 기간을 넘어 복구로 돌림 topic={} next={} begin={}",
@@ -147,8 +166,27 @@ final class CdcSourceConsumer implements Runnable {
                         ? startReference.read(source.dataSourceId())
                         : null;
         consumer.seek(partition, state.nextOffset());
-        assembler = new SourceTransactionAssembler(properties.maxEvents());
-        lastMessageAt = clock.instant();
+        positioned = true;
+    }
+
+    /** 복구가 풀린 뒤 기준 시각 뒤의 첫 메시지로 간다. 기준 시각 뒤 메시지가 없으면 토픽 끝에서 기다린다. epoch 기준값은 해제 때 비웠으므로 새로 읽는다. */
+    private void resumeAfterRecovery(OffsetState state) {
+        OffsetAndTimestamp found =
+                consumer.offsetsForTimes(Map.of(partition, state.resumeAfter().toEpochMilli()))
+                        .get(partition);
+        long offset =
+                found != null
+                        ? found.offset()
+                        : consumer.endOffsets(List.of(partition)).get(partition);
+        log.info(
+                "CDC 복구가 풀려 기준 시각 뒤부터 이어 받음 topic={} resumeAfter={} offset={}",
+                source.topic(),
+                state.resumeAfter(),
+                offset);
+        paused = false;
+        reference = state.lastTxid() == null ? startReference.read(source.dataSourceId()) : null;
+        consumer.seek(partition, offset);
+        seekingBegin = true;
         positioned = true;
     }
 
@@ -176,6 +214,25 @@ final class CdcSourceConsumer implements Runnable {
         } catch (CdcProtocolException e) {
             recover(RecoveryReason.PROTOCOL_ERROR, record.offset(), e);
             return;
+        }
+        if (seekingBegin) {
+            if (message instanceof Heartbeat heartbeat) {
+                // 트랜잭션 중간일 수 있어 위치는 옮기지 않는다
+                repository.recordMessage(
+                        source.topic(), receivedAt, null, healthy(receivedAt, heartbeat.timeMs()));
+                return;
+            }
+            if (!(message instanceof TransactionBoundary boundary)
+                    || boundary.status() != BoundaryStatus.BEGIN) {
+                // 기준 시각 앞에 시작한 트랜잭션의 나머지다. 다시 읽은 스냅샷에 들어 있다
+                return;
+            }
+            if (!repository.resumeAt(source.topic(), record.offset())) {
+                // 그 사이 다시 복구가 필요해졌다. 상태를 다시 읽는다
+                positioned = false;
+                return;
+            }
+            seekingBegin = false;
         }
         if (message instanceof Heartbeat heartbeat) {
             Long advance = assembler.inTransaction() ? null : record.offset() + 1;

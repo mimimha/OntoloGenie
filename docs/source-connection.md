@@ -26,11 +26,12 @@
 | 009 | `GET /api/v1/sources` | 원천 목록. `sourceKind`·`connectionStatus`로 거르고 쪽 나눔(기본 20개) |
 | 010 | `POST /api/v1/sources` | 원천 등록. 201 |
 | 011 | `GET /api/v1/sources/{id}` | 원천 상세 + 가장 최근 연결 검사 |
-| 012 | `PATCH /api/v1/sources/{id}` | 원천 수정 |
+| 012 | `PATCH /api/v1/sources/{id}` | 원천 수정. host·port·database가 바뀌면 소비 중인 CDC 원천을 원천 교체(`SOURCE_CHANGED`)로 멈춘다([cdc-consumer.md](cdc-consumer.md) 199) |
 | 013 | `POST /api/v1/sources/{id}/test-connection` | 연결 검사 요청. 202, 실제 검사는 batch |
 | 100 | `GET /api/v1/sources/{id}/connection-checks/{checkId}` | 연결 검사 결과 |
 | 014 | `GET /api/v1/sources/{id}/resources` | 읽을 수 있는 표·뷰 목록 |
 | 015 | `GET /api/v1/sources/{id}/resources/{resourceId}/columns` | 표의 컬럼 목록 |
+| (번호 없음, 199) | `POST /api/v1/sources/{id}/cdc/reconnected` | 원천 교체 뒤 커넥터를 새 DB에 맞췄다고 알림. 202 `{dataSourceId, recoveryReason: "SLOT_LOST", reloadTables}`. 원천 교체 중이 아니면 409(`details.expected = SOURCE_CHANGED`) |
 
 **010 요청 본문**
 

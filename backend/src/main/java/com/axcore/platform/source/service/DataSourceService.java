@@ -5,15 +5,21 @@ import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.source.domain.ConnectionStatus;
 import com.axcore.platform.source.domain.CredentialPurpose;
 import com.axcore.platform.source.domain.DataSource;
+import com.axcore.platform.source.domain.RecoveryReason;
 import com.axcore.platform.source.domain.SourceKind;
+import com.axcore.platform.source.domain.SourceResource;
+import com.axcore.platform.source.domain.SyncStrategy;
+import com.axcore.platform.source.dto.CdcReconnectResponse;
 import com.axcore.platform.source.dto.CredentialRequest;
 import com.axcore.platform.source.dto.SourceCreateRequest;
 import com.axcore.platform.source.dto.SourceDetailResponse;
 import com.axcore.platform.source.dto.SourceResponse;
 import com.axcore.platform.source.dto.SourceResponse.CredentialResponse;
 import com.axcore.platform.source.dto.SourceUpdateRequest;
+import com.axcore.platform.source.repository.CdcConsumerRepository;
 import com.axcore.platform.source.repository.DataSourceRepository;
 import com.axcore.platform.source.repository.SourceQueryRepository;
+import com.axcore.platform.source.repository.SourceResourceRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import java.util.HashSet;
@@ -45,6 +51,8 @@ public class DataSourceService {
     private final SourceQueryRepository queryRepository;
     private final SourceCredentialService credentialService;
     private final EntityManager entityManager;
+    private final CdcConsumerRepository consumerRepository;
+    private final SourceResourceRepository resourceRepository;
 
     /** API 009. */
     public Page<SourceResponse> search(
@@ -122,9 +130,11 @@ public class DataSourceService {
         if (request.name() != null) {
             source.rename(request.name());
         }
-        if (request.connectionConfig() != null) {
-            source.changeConnectionConfig(
-                    normalizeConfig(request.connectionConfig(), source.getSourceKind()));
+        if (request.connectionConfig() != null
+                && source.changeConnectionConfig(
+                        normalizeConfig(request.connectionConfig(), source.getSourceKind()))) {
+            // 전체 읽기는 이제 새 DB를 읽지만 커넥터는 서버 설정대로 옛 DB를 본다. 둘을 맞출 때까지 CDC 반영을 멈춘다(199, 결정 문서 11.1-3)
+            consumerRepository.markSourceChanged(id);
         }
         if (!credentials.isEmpty()) {
             storeCredentials(id, credentials, accountId);
@@ -135,6 +145,31 @@ public class DataSourceService {
         // 응답의 rowVersion·수정 시각이 이번 변경을 반영하도록 먼저 DB에 쓴다.
         dataSourceRepository.flush();
         return response(source);
+    }
+
+    /**
+     * 원천 교체 뒤 관리자가 커넥터를 새 DB에 맞췄다고 알린다(199, 결정 문서 2026-11-10 3.3). 원천 교체 표시를 슬롯 재생성(SLOT_LOST) 복구로
+     * 바꾸고 그 원천의 CDC 테이블을 모두 다시 읽기 대상으로 표시한다. 배치 감시 작업이 다시 읽기를 넣고, 다 읽으면 복구가 풀려 소비자가 그 뒤부터 이어 받는다.
+     *
+     * @throws BusinessException CONFLICT: 원천 교체(SOURCE_CHANGED) 상태가 아니다
+     */
+    @Transactional
+    public CdcReconnectResponse reconnectCdc(Long id) {
+        findDataSource(id);
+        // cdc_offset → source_resource 순서로 잠근다(CDC 반영과 같은 순서)
+        if (!consumerRepository.markReconnected(id)) {
+            throw new BusinessException(
+                    CommonErrorCode.CONFLICT,
+                    Map.of(
+                            "field",
+                            "recoveryReason",
+                            "expected",
+                            RecoveryReason.SOURCE_CHANGED.name()));
+        }
+        List<SourceResource> tables =
+                resourceRepository.findByDataSourceIdAndSyncStrategy(id, SyncStrategy.CDC);
+        tables.forEach(SourceResource::requireFullReload);
+        return new CdcReconnectResponse(id, RecoveryReason.SLOT_LOST.name(), tables.size());
     }
 
     DataSource findDataSource(Long id) {

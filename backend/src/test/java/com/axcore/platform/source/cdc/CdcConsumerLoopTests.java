@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -188,6 +189,56 @@ class CdcConsumerLoopTests {
         assertThat(f.property(f.workOrderMapping, "7", "wo_no")).isEqualTo("WO-7b");
     }
 
+    /**
+     * 199: 복구가 풀리면 저장된 위치가 아니라 이어 받을 기준 시각 뒤에 쓰인 메시지부터 읽는다. 복구를 일으킨 메시지를 다시 만나지 않고, 기준 시각 앞에 시작한
+     * 트랜잭션의 나머지(757 END)와 heartbeat는 건너뛰며, 처음 만나는 BEGIN(758)부터 반영하고 그 위치를 저장한다.
+     */
+    @Test
+    void resumesFromFirstBeginAfterResumeTimeWhenRecoveryIsReleased() {
+        when(startReference.read(anyLong())).thenReturn(750L);
+        Fixture f = new Fixture();
+        List<String> before = new java.util.ArrayList<>(lines.subList(0, 11));
+        before.add("{\"payload\": {\"what\": 1}}");
+        // 757의 BEGIN과 변경까지(offset 12·13)
+        before.addAll(lines.subList(11, 13));
+        produce(f.topic, before);
+        f.register();
+        await().atMost(WAIT)
+                .until(() -> "PROTOCOL_ERROR".equals(offset(f.topic).get("recovery_reason")));
+
+        sleep(Duration.ofMillis(200));
+        Instant resumeAfter = Instant.now();
+        sleep(Duration.ofMillis(200));
+        // 757 END(14), 트랜잭션 밖이 아닐 수도 있는 heartbeat(15), 758(16~19)
+        List<String> after = new java.util.ArrayList<>();
+        after.add(lines.get(13));
+        after.add(lines.get(0));
+        after.addAll(lines.subList(14, 18));
+        produce(f.topic, after);
+        // 다시 읽기를 마친 전체 읽기 저장 트랜잭션이 복구를 풀었다고 하자
+        jdbc.sql(
+                        """
+                        update cdc_offset
+                        set recovery_reason = null, recovery_at = null, last_txid = null,
+                            resume_after = :resumeAfter
+                        where topic = :t
+                        """)
+                .param("resumeAfter", java.sql.Timestamp.from(resumeAfter))
+                .param("t", f.topic)
+                .update();
+
+        await().atMost(WAIT).until(() -> nextOffset(f.topic) == 20L);
+        // 757(WO-7 → WO-7b)은 기준 시각 앞에 시작했으므로 반영하지 않고, 758(8 삭제, 9 추가)은 반영한다
+        assertThat(f.property(f.workOrderMapping, "7", "wo_no")).isEqualTo("WO-7");
+        assertThat(f.status(f.workOrderMapping, "8")).isEqualTo("DELETED_AT_SOURCE");
+        assertThat(f.status(f.workOrderMapping, "9")).isEqualTo("ACTIVE");
+        Map<String, Object> offset = offset(f.topic);
+        assertThat(offset.get("resume_after")).isNull();
+        assertThat(offset.get("recovery_reason")).isNull();
+        assertThat(offset.get("last_txid")).isEqualTo("758");
+        assertThat(offset.get("healthy_since")).isNotNull();
+    }
+
     private static void produce(String topic, List<String> values) {
         Properties properties = new Properties();
         properties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers());
@@ -213,15 +264,19 @@ class CdcConsumerLoopTests {
     }
 
     private Map<String, Object> offset(String topic) {
-        return jdbc.sql(
+        return jdbc
+                .sql(
                         """
                         select next_offset, last_txid::text as last_txid, last_message_at, healthy_since,
-                               recovery_reason
+                               recovery_reason, resume_after
                         from cdc_offset where topic = :t
                         """)
                 .param("t", topic)
                 .query()
-                .singleRow();
+                .listOfRows()
+                .stream()
+                .findFirst()
+                .orElse(new java.util.HashMap<>());
     }
 
     private static void sleep(Duration duration) {

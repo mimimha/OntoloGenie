@@ -5,6 +5,7 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.response.ApiResponse;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.source.dto.CdcReconnectResponse;
 import com.axcore.platform.source.dto.ConnectionCheckResponse;
 import com.axcore.platform.source.dto.ConnectionCheckResultResponse;
 import com.axcore.platform.source.dto.SourceColumnResponse;
@@ -95,6 +96,16 @@ public class DataSourceController {
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
         return ApiResponse.of(connectionCheckService.request(id, loginAccount));
+    }
+
+    /** 원천 교체 뒤 커넥터를 새 DB에 맞췄다고 알린다(199). 다시 읽기는 배치 감시 작업이 넣으므로 접수만 한다. */
+    @PostMapping("/{id}/cdc/reconnected")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ApiResponse<CdcReconnectResponse> reconnectCdc(
+            @PathVariable("id") @Min(1) long id,
+            @AuthenticationPrincipal LoginAccount loginAccount) {
+        requireAdmin(loginAccount);
+        return ApiResponse.of(dataSourceService.reconnectCdc(id));
     }
 
     @GetMapping("/{id}/connection-checks/{checkId}")
