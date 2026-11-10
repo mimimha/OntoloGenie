@@ -16,6 +16,8 @@ public interface LinkTypeRepository extends JpaRepository<LinkType, Long> {
 
     boolean existsByCode(String code);
 
+    Optional<LinkType> findByCode(String code);
+
     List<LinkType> findBySourceTypeIdInOrTargetTypeIdIn(
             Collection<Long> sourceTypeIds, Collection<Long> targetTypeIds);
 

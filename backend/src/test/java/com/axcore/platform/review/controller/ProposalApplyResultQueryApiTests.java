@@ -18,6 +18,7 @@ import com.axcore.platform.ontology.domain.ProposalItemKind;
 import com.axcore.platform.ontology.dto.ApplyCommand;
 import com.axcore.platform.ontology.dto.ApplyResult;
 import com.axcore.platform.ontology.service.ProposalApplier;
+import com.axcore.platform.ontology.service.ProposalApplyService;
 import com.axcore.platform.review.DecisionHistoryFixtures;
 import java.time.Clock;
 import java.time.Instant;
@@ -83,13 +84,34 @@ class ProposalApplyResultQueryApiTests {
 
         @Bean
         @Primary
+        ProposalApplyService probeApplyService(QueryProbeApplier probe) {
+            return new ProposalApplyService(
+                    List.of(
+                            new ProposalApplier() {
+                                @Override
+                                public ProposalItemKind kind() {
+                                    return probe.kind();
+                                }
+
+                                @Override
+                                public ApplyResult apply(ApplyCommand command) {
+                                    return probe.apply(command);
+                                }
+                            }));
+        }
+
+        @Bean
+        @Primary
         Clock resultQueryClock() {
             return Clock.fixed(NOW, ZoneOffset.UTC);
         }
     }
 
-    /** 실제 반영기가 아닌 DB 트랜잭션 probe. 생성한 규칙·보류 행으로 조회 연결만 확인한다. */
-    static class QueryProbeApplier implements ProposalApplier {
+    /**
+     * 실제 반영기가 아닌 DB 트랜잭션 probe. 생성한 규칙·보류 행으로 조회 연결만 확인한다. 반영기 빈(ProposalApplier)으로 등록하지 않는다. 같은
+     * 종류의 실제 반영기(189 LINK_RULE)와 겹치면 컨텍스트가 뜨지 않으므로, 이 probe만 쓰는 ProposalApplyService를 @Primary로 둔다.
+     */
+    static class QueryProbeApplier {
         private final JdbcClient jdbc;
         long linkType;
         long sourceObject;
@@ -100,13 +122,11 @@ class ProposalApplyResultQueryApiTests {
             this.jdbc = jdbc;
         }
 
-        @Override
-        public ProposalItemKind kind() {
+        ProposalItemKind kind() {
             return ProposalItemKind.LINK_RULE;
         }
 
-        @Override
-        public ApplyResult apply(ApplyCommand command) {
+        ApplyResult apply(ApplyCommand command) {
             long mapping =
                     jdbc.sql(
                                     """
