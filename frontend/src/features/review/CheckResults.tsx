@@ -9,7 +9,11 @@ import {
   fetchCheckResults,
   type CheckResult,
 } from './checkApi'
-import { candidateCheckLabel } from './labels'
+import {
+  candidateCheckLabel,
+  CHECK_NOT_REQUIRED_MESSAGE,
+  requiresCandidateCheck,
+} from './labels'
 import type { Proposal } from './types'
 const outcomes: Record<string, string> = {
   MATCHED: '정상',
@@ -171,6 +175,18 @@ export default function CheckResults({
   onRefresh: () => void
 }) {
   const run = proposal.latestCheck
+  if (!requiresCandidateCheck(proposal))
+    return (
+      <section
+        className="space-y-2 rounded-xl border border-slate-200 p-5"
+        aria-label="정합성 검사"
+      >
+        <h3 className="font-semibold">정합성 검사</h3>
+        <p role="status" className="text-sm text-slate-600">
+          {CHECK_NOT_REQUIRED_MESSAGE}
+        </p>
+      </section>
+    )
   return (
     <section
       className="space-y-4 rounded-xl border border-slate-200 p-5"

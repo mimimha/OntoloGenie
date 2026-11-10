@@ -119,7 +119,7 @@ class AnalysisResultApiTests {
     }
 
     @Test
-    void storesAllCandidatePartsAndAutomaticCheck() throws Exception {
+    void storesAllCandidatePartsWithoutACheckForAnObjectType() throws Exception {
         long id = run("RUNNING");
         var response =
                 send(id, SUCCESS)
@@ -167,11 +167,11 @@ class AnalysisResultApiTests {
         assertThat(
                         count(
                                 "check_run",
-                                "trigger_kind='CANDIDATE' and status='QUEUED' and requested_by is null"
+                                "trigger_kind='CANDIDATE'"
                                         + " and scope->'proposalItems' @> '[{\"proposalItemId\":"
                                         + proposal
                                         + ",\"revision\":1}]'::jsonb"))
-                .isEqualTo(1);
+                .isZero(); // 객체 후보는 후보 검사 대상이 아니다(CandidateCheckTarget).
         assertThat(
                         count(
                                 "analysis_run",
@@ -360,7 +360,7 @@ class AnalysisResultApiTests {
     }
 
     @Test
-    void includesMappingsLaterInTheBatchInEveryCandidateCheck() throws Exception {
+    void includesMappingsLaterInTheBatchInTheRuleCandidateCheck() throws Exception {
         long id = run("RUNNING");
         var resource = resource();
         send(
@@ -368,6 +368,7 @@ class AnalysisResultApiTests {
                         """
                 {"status":"SUCCEEDED","proposals":[
                   {"itemKind":"OBJECT_TYPE","payload":{"code":"BATCH_NEW_TYPE"}},
+                  {"itemKind":"LINK_RULE","payload":{"code":"BATCH_RULE","linkTypeCode":"BATCH_LINK","linkType":{"code":"BATCH_LINK","sourceTypeCode":"BATCH_NEW_TYPE","targetTypeCode":"BATCH_NEW_TYPE"}}},
                   {"itemKind":"OBJECT_MAPPING","payload":{"objectTypeCode":"BATCH_NEW_TYPE","sourceId":"%s","resourceKey":"public.test"}}
                 ]}
                 """
@@ -384,7 +385,7 @@ class AnalysisResultApiTests {
                                 .param("resource", "[{\"sourceResourceId\":" + resource.id() + "}]")
                                 .query(Long.class)
                                 .single())
-                .isEqualTo(2);
+                .isEqualTo(1); // 셋 중 검사 대상은 연결 규칙 하나다.
     }
 
     @Test
@@ -419,7 +420,7 @@ class AnalysisResultApiTests {
                 json.readTree(response.getResponse().getContentAsString())
                         .path("data")
                         .path("proposalItemIds")
-                        .get(0)
+                        .get(2) // 연결 규칙(검사 대상)
                         .asLong();
         assertThat(
                         jdbc.sql(
@@ -443,7 +444,7 @@ class AnalysisResultApiTests {
                                 .param("resource", "[{\"sourceResourceId\":" + resource.id() + "}]")
                                 .query(Long.class)
                                 .single())
-                .isEqualTo(3);
+                .isEqualTo(1); // 속성·관계 유형 후보는 검사하지 않는다.
     }
 
     private Resource resource() {

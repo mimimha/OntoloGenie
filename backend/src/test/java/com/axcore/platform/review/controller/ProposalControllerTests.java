@@ -220,6 +220,7 @@ class ProposalControllerTests {
                 "NOT_APPLIED",
                 null,
                 null,
+                true,
                 latestCheck);
     }
 }

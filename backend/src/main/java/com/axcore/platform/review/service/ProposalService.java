@@ -1,5 +1,6 @@
 package com.axcore.platform.review.service;
 
+import com.axcore.platform.check.domain.CandidateCheckTarget;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.review.domain.ProposalItem;
@@ -143,6 +144,8 @@ public class ProposalService {
     }
 
     private ProposalResponse toResponse(ProposalItem proposal, LatestCheckResponse latestCheck) {
+        // 검사 대상이 아닌 종류는 latestCheck를 주지 않는다. 이 정책 전에 접수돼 "자동 시험 미지원"으로 실패한 검사가 남아 있어도 승인과 무관하다.
+        boolean checkRequired = CandidateCheckTarget.requiresCheck(proposal.getItemKind());
         return new ProposalResponse(
                 proposal.getId(),
                 proposal.getAnalysisRunId(),
@@ -156,6 +159,7 @@ public class ProposalService {
                 proposal.getApplyStatus(),
                 proposal.getApplyError(),
                 proposal.getAppliedAt(),
-                latestCheck);
+                checkRequired,
+                checkRequired ? latestCheck : null);
     }
 }

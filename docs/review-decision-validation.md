@@ -16,6 +16,7 @@ API 054의 승인·거절·보류 요청을 검증하는 모듈이다. 현재 �
 - 요청 revision과 현재 revision이 다르면 `409 REVISION_CONFLICT`.
 - 선택지가 있으면 같은 후보·revision에 속해야 한다. 아니면 `400 VALIDATION_FAILED` (`selectedOptionId`).
 - `APPROVE`만 같은 후보·revision의 성공한 `CANDIDATE` 검사 실행과 실제 `check_result`를 요구한다. 없으면 `422 REVIEW_VALIDATION_FAILED`.
+  - 이 조건은 후보 검사 대상인 연결 규칙(LINK_RULE)에만 적용한다(`CandidateCheckTarget`, 338 후속). 객체 유형·속성·관계 유형·매핑·문서 연결은 검사 없이 승인하고 근거 검사는 `null`이다.
 - 오류 details에는 현재 revision을 넣고, 같은 revision의 최근 검사가 있으면 ID와 상태도 넣는다.
 - `REJECT`·`HOLD`에는 승인용 성공 검사 조건을 적용하지 않는다.
 - 검증은 후보 상태·결정 이력·연결·감사 데이터를 변경하거나 재검사를 접수하지 않는다.

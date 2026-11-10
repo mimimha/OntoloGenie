@@ -133,7 +133,7 @@ ApplyResult(targetTable, targetId, heldItemIds, reloadResourceIds, summary, chan
 - 세 결정 모두 이전 `applyError`를 지운다. APPROVED·REJECTED 이후 재결정은 `PROPOSAL_ALREADY_DECIDED`로 거절한다. revision·payload·evidence·선택지를 변경하지 않는다.
 - `ProposalApplyPayloadResolver.resolve(lockedItem, selectedOptionId)`는 MANDATORY다. 선택지가 없으면 현재 `proposal_revision.payload`, 있으면 같은 후보·revision의 `proposal_option.payload`를 읽는다.
 - 원천 식별값·JSON null을 그대로 보존하며 원천 코드→ID 조회는 주헌님 서비스가 맡는다. 잘못된 선택지는 `VALIDATION_FAILED`와 `field=selectedOptionId`, 불변 revision 누락은 저장 데이터 불일치 예외로 처리한다.
-- 129는 관리자 권한, 후보 존재·최종 상태·revision·선택지를 검사한다. APPROVE만 같은 revision의 성공한 CANDIDATE 검사와 실제 결과를 요구한다. REJECT·HOLD에는 그 조건을 적용하지 않는다.
+- 129는 관리자 권한, 후보 존재·최종 상태·revision·선택지를 검사한다. APPROVE만 같은 revision의 성공한 CANDIDATE 검사와 실제 결과를 요구한다(후보 검사 대상인 LINK_RULE만, 338 후속). REJECT·HOLD에는 그 조건을 적용하지 않는다.
 - 최근 실패 검사가 있다는 이유로 같은 revision의 기존 성공 검사를 임의로 무효화하거나 AI 신뢰도·매칭률 승인 임계값을 추가하지 않는다.
 
 ## API 054와 133 조회 주의사항

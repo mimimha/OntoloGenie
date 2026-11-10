@@ -4,7 +4,13 @@ import Button from '../../components/Button'
 import Dialog from '../../components/Dialog'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import { fetchProposal, fetchProposalOptions } from './api'
-import { candidateCheckLabel, confidence, proposalTitle } from './labels'
+import {
+  candidateCheckLabel,
+  CHECK_NOT_REQUIRED_MESSAGE,
+  confidence,
+  proposalTitle,
+  requiresCandidateCheck,
+} from './labels'
 import { isRecord } from '../../api/errors'
 import { transformLabels } from './ruleDraft'
 import type { Proposal, ProposalOption } from './types'
@@ -248,7 +254,9 @@ function ComparisonDialog({
             아래는 제안 개정 전체의 정보이며, 보고 있는 개별 대안의 검사 결과가
             아닙니다.
           </p>
-          {latest.latestCheck ? (
+          {!requiresCandidateCheck(latest) ? (
+            <p className="mt-2">{CHECK_NOT_REQUIRED_MESSAGE}</p>
+          ) : latest.latestCheck ? (
             <p className="mt-2">
               검사 #{latest.latestCheck.checkRunId} ·{' '}
               {candidateCheckLabel(latest.latestCheck)}

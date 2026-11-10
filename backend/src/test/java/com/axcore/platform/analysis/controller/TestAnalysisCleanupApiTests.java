@@ -97,7 +97,7 @@ class TestAnalysisCleanupApiTests {
                 """)
                 .param("run", running)
                 .update();
-        assertThat(candidateChecks(free)).isEqualTo(2);
+        assertThat(candidateChecks(free)).isEqualTo(1);
 
         String body =
                 mvc.perform(delete("/api/v1/dev/test-analyses").with(admin()).with(csrf()))
@@ -185,7 +185,7 @@ class TestAnalysisCleanupApiTests {
         return json.readTree(body).path("data").path("id").asLong();
     }
 
-    // 실제 흐름(018 접수 → 105 결과 저장)으로 제안 두 건과 후보 검사 두 건을 만든다.
+    // 실제 흐름(018 접수 → 105 결과 저장)으로 제안 두 건과 후보 검사 한 건(연결 규칙만 검사 대상)을 만든다.
     private long succeededRun() throws Exception {
         long run = created();
         notify(run, "{\"status\":\"RUNNING\"}").andExpect(status().isOk());
@@ -194,7 +194,7 @@ class TestAnalysisCleanupApiTests {
                         """
                 {"status":"SUCCEEDED","proposals":[
                   {"itemKind":"OBJECT_TYPE","payload":{"code":"CLEANUP_WO","properties":[{"code":"wo_no"}]},"evidence":{"reason":"표"},"aiConfidence":0.5},
-                  {"itemKind":"LINK_TYPE","payload":{"code":"CLEANUP_LT","sourceTypeCode":"CLEANUP_WO","targetTypeCode":"CLEANUP_WO"},"evidence":{"reason":"관계"},"aiConfidence":0.8}
+                  {"itemKind":"LINK_RULE","payload":{"code":"CLEANUP_RULE","linkTypeCode":"CLEANUP_LT","linkType":{"code":"CLEANUP_LT","sourceTypeCode":"CLEANUP_WO","targetTypeCode":"CLEANUP_WO"}},"evidence":{"reason":"관계"},"aiConfidence":0.8}
                 ]}
                 """)
                 .andExpect(status().isOk());

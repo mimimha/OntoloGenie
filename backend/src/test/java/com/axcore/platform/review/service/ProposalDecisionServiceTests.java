@@ -117,9 +117,11 @@ class ProposalDecisionServiceTests {
     }
 
     /**
-     * Only a transaction probe; this is not the production OBJECT_TYPE implementation. It is not
-     * registered as a ProposalApplier bean (it would clash with the real applier of the same kind);
-     * the @Primary ProposalApplyService below uses only this probe.
+     * Only a transaction probe; this is not the production LINK_RULE implementation. LINK_RULE is
+     * used because it is the only kind whose approval needs a candidate check
+     * (CandidateCheckTarget). It is not registered as a ProposalApplier bean (it would clash with
+     * the real applier of the same kind); the @Primary ProposalApplyService below uses only this
+     * probe.
      */
     static class RecordingApplier {
         private final JdbcClient jdbc;
@@ -138,7 +140,7 @@ class ProposalDecisionServiceTests {
         }
 
         ProposalItemKind kind() {
-            return ProposalItemKind.OBJECT_TYPE;
+            return ProposalItemKind.LINK_RULE;
         }
 
         ApplyResult apply(ApplyCommand input) {
@@ -202,9 +204,6 @@ class ProposalDecisionServiceTests {
         data = new DecisionHistoryFixtures(jdbc);
         account = data.account();
         proposal = data.proposal(account, "{\"code\":\"IMMUTABLE\",\"optional\":null}");
-        jdbc.sql("update proposal_item set item_kind='OBJECT_TYPE' where id=:id")
-                .param("id", proposal)
-                .update();
         basisCheckRunId = data.successfulCheck(proposal, 1, account);
         applier.calls.set(0);
         applier.command = null;
@@ -247,7 +246,7 @@ class ProposalDecisionServiceTests {
         var result = service.decide(proposal, request(option), login());
 
         assertThat(applier.command.proposalItemId()).isEqualTo(proposal);
-        assertThat(applier.command.itemKind()).isEqualTo(ProposalItemKind.OBJECT_TYPE);
+        assertThat(applier.command.itemKind()).isEqualTo(ProposalItemKind.LINK_RULE);
         assertThat(applier.command.origin()).isEqualTo(ProposalOrigin.valueOf(origin));
         assertThat(applier.command.decidedBy()).isEqualTo(account);
         assertThat(applier.command.payload())
@@ -398,7 +397,7 @@ class ProposalDecisionServiceTests {
                                 applyService.apply(
                                         new ApplyCommand(
                                                 proposal,
-                                                ProposalItemKind.OBJECT_TYPE,
+                                                ProposalItemKind.LINK_RULE,
                                                 ProposalOrigin.MANUAL,
                                                 Map.of(),
                                                 account)))

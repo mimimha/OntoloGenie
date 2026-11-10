@@ -115,7 +115,9 @@ class AnalysisQueryApiTests {
                                 .andExpect(jsonPath("$.data[0].analysisRunId").value(id))
                                 .andExpect(jsonPath("$.data[0].origin").value("AI"))
                                 .andExpect(jsonPath("$.data[0].aiConfidence").value(0.92))
-                                .andExpect(jsonPath("$.data[0].latestCheck.status").value("QUEUED"))
+                                // 객체 후보는 후보 검사 대상이 아니다(CandidateCheckTarget).
+                                .andExpect(jsonPath("$.data[0].checkRequired").value(false))
+                                .andExpect(jsonPath("$.data[0].latestCheck").value(nullValue()))
                                 .andExpect(jsonPath("$.meta.totalElements").value(1)));
         long proposalId = proposals.get(0).path("id").asLong();
         assertThat(proposals.get(0))
