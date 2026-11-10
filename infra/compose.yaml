@@ -129,6 +129,11 @@ services:
       # 원천 접속 비밀번호 암호화 키(64·275). 수집·연결 검사 때 SYNC 계정 복호화. backend와 같은 값이다.
       AXCORE_SOURCE_CREDENTIAL_KEY_1: ${AXCORE_SOURCE_CREDENTIAL_KEY_1:-}
       AXCORE_SOURCE_CREDENTIAL_KEY_VERSION: ${AXCORE_SOURCE_CREDENTIAL_KEY_VERSION:-1}
+      # CDC 소비 루프(198-6). 커넥터를 등록한 뒤 .env.config에서 true로 켠다(infra/cdc/README.md "운영 연결 순서").
+      AXCORE_CDC_CONSUMER_ENABLED: ${AXCORE_CDC_CONSUMER_ENABLED:-false}
+      # 수집 뒤 검사(SYNC) 주기 요청(191-4). 데이터 기준이 같으면 새로 넣지 않는다.
+      # 운영 연결 전까지는 꺼 두고, CDC 소비자와 같이 .env.config에서 true로 켠다(앱 기본값은 true라 로컬 batch에서는 켜져 있다).
+      AXCORE_CHECK_SYNC_ENABLED: ${AXCORE_CHECK_SYNC_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy

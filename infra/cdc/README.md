@@ -46,7 +46,44 @@ docker exec kafka-connect curl -s localhost:8083/connectors           # 등록�
 docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
 ```
 
-## 커넥터 (2026-11-02 등록)
+## 현재 상태 (2026-11-10)
+
+**커넥터·복제 슬롯·원천 토픽이 없습니다.** 11-02~05 시험 때 만든 커넥터(아래 316 라우팅을 적용하기 전 설정), 원천의 슬롯 `axcore_erp`·`axcore_mes`, 표별 토픽·heartbeat 토픽을 지웠습니다(아래 "초기화"). 남은 것은 원천의 publication `axcore_cdc`, Kafka 내부 토픽(`__consumer_offsets`, `connect_*`), 켜져 있는 컨테이너 셋입니다. batch의 CDC 소비자와 수집 뒤 검사(SYNC) 주기 요청도 꺼져 있습니다(compose 기본값 `AXCORE_CDC_CONSUMER_ENABLED=false`, `AXCORE_CHECK_SYNC_ENABLED=false`).
+
+플랫폼에는 원천 `ERP_MAIN`·`MES_MAIN`과 CDC 표 27개가 등록돼 있고, 켜진 매핑·`cdc_offset`·적재 기록은 없습니다.
+
+## 운영 연결 순서 (S15P31C106-315)
+
+실제 적재를 시작하기 전에 아래 순서로 연결합니다. 결정 문서(`2026-11-05-cdc-initial-load.md` 11.1)의 "소비자 기동 → 매핑 승인 → 감시 작업이 첫 적재"와 같습니다.
+
+1. **매핑을 아직 켜지 않습니다.** 감시 작업(`CdcReloadJob`, 330)은 batch가 떠 있으면 늘 돌고, 켜진 매핑이 있고 `loaded_lsn`이 빈 CDC 표를 찾으면 바로 첫 적재(`FIRST_LOAD`)를 넣습니다. 커넥터보다 먼저 적재되면 적재와 슬롯 생성 사이의 변경을 받지 못합니다.
+2. **커넥터 등록.** 아래 "커넥터"의 `register-connectors.sh`를 실행합니다. 두 커넥터와 태스크가 RUNNING인지, 원천 슬롯이 `active`인지 확인합니다. 원천 토픽 `ERP_MAIN.all`·`MES_MAIN.all`은 첫 heartbeat(1분 안)나 첫 변경 때 생깁니다.
+3. **소비자·SYNC 켜기.** 서버 `~/axcore/.env.config`에 `AXCORE_CDC_CONSUMER_ENABLED=true`, `AXCORE_CHECK_SYNC_ENABLED=true`를 넣고 실행용 `.env`에 반영한 뒤 batch를 다시 만듭니다(Jenkins 설정 반영 범위는 [배포 안내](../deploy/README.md)). batch 로그에 `CDC 소비자 시작 topic=ERP_MAIN.all`이 나오고, `cdc_offset`에 원천마다 한 행이 생깁니다. 위치 기록이 없으면 토픽 처음부터 읽습니다.
+4. **매핑 승인.** 감시 작업이 표마다 첫 적재를 넣습니다. 끝나면 `source_resource.loaded_lsn`·`full_load_done_gen`이 채워집니다.
+5. **확인.** 원천 행 수와 객체 수, 원천에 변경을 한 번 넣었을 때 객체에 반영되는지, `cdc_offset`의 정상 표시(`healthy_since`), 수집 뒤 검사(SYNC) 결과를 봅니다.
+
+- 순서를 어겨 커넥터 없이 첫 적재가 먼저 돌았으면, 커넥터를 등록한 뒤 그 표들을 다시 읽습니다(073 수동 다시 읽기).
+- 적재 뒤 소비자가 토픽 보관 기간(7일)보다 오래 멈추면 소비자가 그 원천을 복구(`OFFSET_EXPIRED`)로 돌립니다. 전체 다시 읽기로 맞춥니다(199).
+- 원천 접속 정보가 바뀌면(`SOURCE_CHANGED`) 커넥터를 새 DB에 맞춘 뒤에야 다시 읽습니다. 감시 작업도 그동안은 그 원천을 건너뜁니다.
+
+### 초기화 (2026-11-10에 한 순서)
+
+연결을 끊고 처음 상태로 돌릴 때입니다. 커넥터만 지우면 원천 슬롯이 남아 WAL이 쌓이므로(최대 `max_slot_wal_keep_size` 2GB, 넘으면 슬롯을 잃음) 슬롯까지 지웁니다.
+
+```bash
+# 메인 서버: 커넥터 멈춤 → Connect가 저장한 읽은 위치 삭제 → 커넥터 삭제
+for n in cdc-erp cdc-mes; do docker exec kafka-connect curl -s -X PUT localhost:8083/connectors/$n/stop; done
+for n in cdc-erp cdc-mes; do docker exec kafka-connect curl -s -X DELETE localhost:8083/connectors/$n/offsets; done
+for n in cdc-erp cdc-mes; do docker exec kafka-connect curl -s -X DELETE localhost:8083/connectors/$n; done
+# 원천 서버(ERP·MES 각각): 슬롯 삭제. publication은 남긴다
+docker exec source-db psql -U source_admin -d erp -c "select pg_drop_replication_slot('axcore_erp')"
+# 메인 서버: 원천 토픽 삭제
+docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --delete --topic ERP_MAIN.all
+```
+
+플랫폼 `cdc_offset`에 행이 있으면 토픽을 지우기 전에 같이 정리해야 합니다. 새 토픽은 위치 0부터 다시 시작하는데, 남은 행의 다음 위치가 그보다 크면 소비자가 그만큼 건너뜁니다. 2026-11-10에는 소비자를 켠 적이 없어 행이 없었습니다.
+
+## 커넥터
 
 | 커넥터 | 원천 | `topic.prefix` | 복제 슬롯 | 토픽 |
 |---|---|---|---|---|
