@@ -79,6 +79,9 @@ public class AgentQuerySession {
                             null);
             reply.put("resultCategory", outcome.category().name());
             reply.put("data", outcome.data());
+            // AI가 계획의 기준 시점(dataAsOf)을 조회한 데이터의 시점으로 채울 수 있게 함께 알려 준다. 모르면 null이다(160).
+            reply.put(
+                    "dataAsOf", outcome.dataAsOf() == null ? null : outcome.dataAsOf().toString());
         } catch (RuntimeException ex) {
             log.error("Agent 조회 도구 {} 실패 question={}", toolCode, questionId, ex);
             result =
@@ -109,6 +112,11 @@ public class AgentQuerySession {
         if (unrecorded) {
             throw new IllegalStateException("조회 기록을 남기지 못했습니다.");
         }
+    }
+
+    /** 모든 조회 기록을 남겼는가. 실패 답변에 조회 결과를 남길지 정할 때 쓴다(160). */
+    public synchronized boolean allRecorded() {
+        return !unrecorded;
     }
 
     public synchronized List<AgentQueryResult> results() {

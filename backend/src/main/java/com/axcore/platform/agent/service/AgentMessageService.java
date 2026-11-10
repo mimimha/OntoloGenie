@@ -103,7 +103,7 @@ public class AgentMessageService {
 
     private void failStaleAnswers(long conversationId) {
         Instant limit = Instant.now(clock).minus(STALE_AFTER);
-        messages.findByConversationIdAndStatusAndCreatedAtBefore(
+        messages.findByConversationIdAndStatusAndCreatedAtBeforeOrderByIdAsc(
                         conversationId, MessageStatus.RUNNING, limit)
                 .forEach(answer -> answer.fail(STALE_CONTENT, STALE_REASON));
     }
