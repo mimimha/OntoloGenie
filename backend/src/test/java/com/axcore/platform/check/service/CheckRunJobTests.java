@@ -12,6 +12,7 @@ import com.axcore.platform.check.repository.CheckResultRepository;
 import com.axcore.platform.check.service.CheckRunJob.Outcome;
 import com.axcore.platform.check.service.CheckRunJob.SkippedRule;
 import com.axcore.platform.source.service.CdcReloadJob;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.assertj.core.api.InstanceOfAssertFactories;
@@ -85,6 +86,9 @@ class CheckRunJobTests {
         woMapping = fixtures.insertObjectMapping(woResource, woType, true);
         eqMapping = fixtures.insertObjectMapping(eqResource, eqType, true);
         linkType = fixtures.insertLinkType(woType, eqType, "MANY_TO_ONE");
+        // 수동 검사는 판정(191-3)을 거친다. FULL_COMPARE 표가 한 번은 수집되어 있어야 건너뛰지 않는다.
+        fixtures.insertSync(dataSource, woResource, accountId, "SUCCEEDED", Instant.now());
+        fixtures.insertSync(dataSource, eqResource, accountId, "SUCCEEDED", Instant.now());
 
         fixtures.insertObject(
                 woMapping, woType, "WO1", "{\"eq_code\": \"E1\", \"status\": \"OPEN\"}", "ACTIVE");

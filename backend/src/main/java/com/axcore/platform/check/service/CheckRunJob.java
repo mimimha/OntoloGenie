@@ -19,6 +19,8 @@ import com.axcore.platform.check.repository.CheckObjectReader.CheckObject;
 import com.axcore.platform.check.repository.CheckResultRepository;
 import com.axcore.platform.check.repository.CheckRunRepository;
 import com.axcore.platform.check.repository.CheckRunRepository.RunToExecute;
+import com.axcore.platform.check.service.CheckIssueJudge.RulePlan;
+import com.axcore.platform.check.service.CheckIssueJudge.Totals;
 import com.axcore.platform.ontology.domain.LinkMapping;
 import com.axcore.platform.ontology.domain.LinkMappingStatus;
 import com.axcore.platform.ontology.repository.LinkMappingRepository;
@@ -28,8 +30,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
@@ -55,8 +56,11 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p><b>complete</b>(한 트랜잭션): 검사 행을 잠가 RUNNING인지 보고, 판정한 규칙마다 {@code check_result} 한 행(건수, 같은 규칙
  * 개정본의 직전 결과, 정상이 아닌 행 표본 최대 {@value #SAMPLE_LIMIT}개)을 저장한 뒤 SUCCEEDED로 바꾼다.
  *
- * <p>아직 하지 않는 것: SYNC·MANUAL 판정의 issue 등록과 원천 사이 미연결의 확인 대기(191-3), 재검증의 문제별 검증 기록·비교(134·135).
- * MVP라 규칙마다 양 끝 유형의 활성 객체를 모두 읽는다(181과 같은 한계).
+ * <p><b>판정(191-3, SYNC·MANUAL만)</b>: run에서 {@link CheckIssueJudge#plan}으로 규칙을 분류하고, 수집이 준비되지 않은 규칙은
+ * 건너뛴다. complete에서 결과를 저장한 같은 트랜잭션에 issue 등록·확인 대기를 처리한다({@link CheckIssueJudge#apply}).
+ * 재검증(REVERIFY)은 issue를 만들지 않는다(문제별 검증 기록·비교는 134·135).
+ *
+ * <p>MVP라 규칙마다 양 끝 유형의 활성 객체를 모두 읽는다(181과 같은 한계).
  */
 @Slf4j
 @Component
@@ -72,6 +76,7 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
     private final LinkMappingRuleLoader ruleLoader;
     private final CheckObjectReader objects;
     private final RuleEvaluationEngine engine;
+    private final CheckIssueJudge judge;
     private final TransactionTemplate snapshot;
     private final Clock clock;
 
@@ -82,6 +87,7 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
             LinkMappingRuleLoader ruleLoader,
             CheckObjectReader objects,
             RuleEvaluationEngine engine,
+            CheckIssueJudge judge,
             PlatformTransactionManager transactionManager,
             Clock clock) {
         this.runs = runs;
@@ -90,6 +96,7 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         this.ruleLoader = ruleLoader;
         this.objects = objects;
         this.engine = engine;
+        this.judge = judge;
         this.snapshot = new TransactionTemplate(transactionManager);
         this.snapshot.setReadOnly(true);
         this.snapshot.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
@@ -127,22 +134,28 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         if (run.linkMappingIds().isEmpty()) {
             throw new QueuedJobFailure("검사할 규칙이 없습니다.");
         }
-        Set<Long> active =
+        Map<Long, LinkMapping> active =
                 linkMappings
                         .findByIdInAndStatus(run.linkMappingIds(), LinkMappingStatus.ACTIVE)
                         .stream()
-                        .map(LinkMapping::getId)
-                        .collect(Collectors.toSet());
+                        .collect(Collectors.toMap(LinkMapping::getId, Function.identity()));
+        boolean judges = judges(run.triggerKind());
 
         List<RuleEvaluated> evaluated = new ArrayList<>();
         List<SkippedRule> skipped = new ArrayList<>();
         for (long linkMappingId : run.linkMappingIds()) {
-            if (!active.contains(linkMappingId)) {
+            if (!active.containsKey(linkMappingId)) {
                 skipped.add(new SkippedRule(linkMappingId, NOT_ACTIVE));
                 continue;
             }
             try {
-                evaluated.add(evaluateRule(ruleLoader.load(linkMappingId, run.dataBasis())));
+                LinkMappingRule rule = ruleLoader.load(linkMappingId, run.dataBasis());
+                RulePlan plan = judges ? judge.plan(rule, active.get(linkMappingId)) : null;
+                if (plan != null && plan.skipReason() != null) {
+                    skipped.add(new SkippedRule(linkMappingId, plan.skipReason()));
+                    continue;
+                }
+                evaluated.add(evaluateRule(rule, plan));
             } catch (SkipRule | IllegalArgumentException | IllegalStateException e) {
                 // 규칙 하나의 입력·데이터 문제다. DB 오류(DataAccessException)는 여기서 잡지 않아 검사 전체가 실패한다.
                 String reason =
@@ -162,17 +175,23 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                                     .map(s -> s.linkMappingId() + "(" + s.reason() + ")")
                                     .collect(Collectors.joining(", ")));
         }
-        return new Outcome(run.triggerKind(), List.copyOf(evaluated), List.copyOf(skipped));
+        return new Outcome(
+                run.triggerKind(), List.copyOf(evaluated), List.copyOf(skipped), new Totals());
     }
 
-    private RuleEvaluated evaluateRule(LinkMappingRule rule) {
+    /** issue를 만드는 검사인지. SYNC와 수동 검사(복구 뒤 안전 점검, 결정 8장)만이다. */
+    private static boolean judges(String triggerKind) {
+        return "SYNC".equals(triggerKind) || "MANUAL".equals(triggerKind);
+    }
+
+    private RuleEvaluated evaluateRule(LinkMappingRule rule, RulePlan plan) {
         List<CheckRow> sourceRows =
                 rows(rule.sourceType(), rule.sourceResourceIds(), rule.sourceFilter(), "출발");
         List<CheckRow> targetRows =
                 rows(rule.targetType(), rule.targetResourceIds(), rule.targetFilter(), "도착");
         CheckEvaluation evaluation =
                 engine.evaluate(new CheckInput(rule.input(), sourceRows, targetRows));
-        return new RuleEvaluated(evaluation, samples(evaluation));
+        return new RuleEvaluated(evaluation, samples(evaluation), plan);
     }
 
     private List<CheckRow> rows(
@@ -214,18 +233,8 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
             sample.put("sourceResourceId", row.source().sourceResourceId());
             sample.put("sourceKey", row.source().sourceKey());
             sample.put("classification", row.outcome().name());
-            sample.put(
-                    "rawValue",
-                    joined(
-                            conditions.stream()
-                                    .map(c -> row.source().values().get(c.sourceProperty()))
-                                    .toList()));
-            sample.put(
-                    "transformedValue",
-                    joined(
-                            conditions.stream()
-                                    .map(c -> (Object) row.transformedValues().get(c.sequenceNo()))
-                                    .toList()));
+            sample.put("rawValue", CheckRowText.rawValue(row, conditions));
+            sample.put("transformedValue", CheckRowText.transformedValue(row, conditions));
             sample.put("reason", row.reason());
             sample.put(
                     "targetObjectIds",
@@ -238,21 +247,12 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         return samples;
     }
 
-    /** 값이 모두 비었으면 null. 하나라도 있으면 빈 값은 빈 문자열로 두고 잇는다. */
-    private static String joined(List<Object> values) {
-        if (values.stream().allMatch(Objects::isNull)) {
-            return null;
-        }
-        return values.stream()
-                .map(value -> value == null ? "" : String.valueOf(value))
-                .collect(Collectors.joining(" / "));
-    }
-
     @Override
     public void complete(long jobId, Outcome outcome) {
         if (!runs.lockIfRunning(jobId)) {
             throw new QueuedJobFailure("검사 실행이 이미 끝났거나 정리되어 결과를 저장하지 않았습니다.");
         }
+        Instant now = Instant.now(clock);
         for (RuleEvaluated rule : outcome.evaluated()) {
             long linkMappingId = rule.evaluation().rule().target().linkMappingId();
             Long previous =
@@ -260,8 +260,14 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                             .map(CheckResult::getId)
                             .orElse(null);
             results.save(CheckResult.of(jobId, previous, rule.evaluation(), rule.samples()));
+            if (rule.plan() != null) {
+                outcome.judgment().add(judge.apply(jobId, rule.plan(), rule.evaluation(), now));
+            }
         }
-        runs.markSucceeded(jobId, Instant.now(clock));
+        if (judges(outcome.triggerKind())) {
+            outcome.judgment().addRetiredClosed(judge.closeRetiredRules(jobId, now));
+        }
+        runs.markSucceeded(jobId, now);
     }
 
     @Override
@@ -278,15 +284,25 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                                                 "linkMappingId", s.linkMappingId(),
                                                 "reason", s.reason()))
                         .toList());
+        if (judges(outcome.triggerKind())) {
+            result.put("judgment", outcome.judgment().toResult());
+        }
         return result;
     }
 
-    /** run이 판정한 결과. complete가 저장한다. */
+    /**
+     * run이 판정한 결과. complete가 저장한다. judgment는 complete가 issue·확인 대기를 처리하며 채우는 집계로, 감사 결과 줄에 남긴다(작업
+     * 실행기가 complete와 auditResult에 같은 객체를 넘긴다).
+     */
     public record Outcome(
-            String triggerKind, List<RuleEvaluated> evaluated, List<SkippedRule> skipped) {}
+            String triggerKind,
+            List<RuleEvaluated> evaluated,
+            List<SkippedRule> skipped,
+            Totals judgment) {}
 
-    /** 규칙 하나의 판정과 저장할 표본. */
-    public record RuleEvaluated(CheckEvaluation evaluation, List<Map<String, Object>> samples) {}
+    /** 규칙 하나의 판정과 저장할 표본. plan은 issue를 만드는 검사(SYNC·MANUAL)에만 있다. */
+    public record RuleEvaluated(
+            CheckEvaluation evaluation, List<Map<String, Object>> samples, RulePlan plan) {}
 
     /** 판정하지 않은 규칙과 이유. 이유에는 원천 값을 넣지 않는다. */
     public record SkippedRule(long linkMappingId, String reason) {}

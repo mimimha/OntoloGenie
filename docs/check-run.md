@@ -14,7 +14,9 @@ FN-CHK-01·02의 검사 실행 목록·상태 조회, 수동 검사·재검증 �
 
 **실행기(191-2):** 접수된 MANUAL·REVERIFY·SYNC 검사는 batch의 `CheckRunJob`이 돌린다(아래 "실행기"). 원천이 아니라 수집한 플랫폼 객체(`object_instance`)를 읽어 판정한다(결정 문서 `2026-11-05-cdc-initial-load.md` 9.1: 수집·연결 계산과 같은 데이터를 본다). 원천을 읽는 것은 승인 전 후보 시험(CANDIDATE)뿐이고, 이 실행기는 CANDIDATE를 가져가지 않는다.
 
-**아직 없는 것:** SYNC·MANUAL 판정의 issue 등록과 원천 사이 미연결의 확인 대기(191-3), 주기적인 SYNC 요청(191-4), 재검증의 문제별 검증 기록·이전 결과 비교(134·135), 후보 시험 실행(CANDIDATE).
+**판정(191-3):** SYNC·MANUAL 검사는 결과를 저장한 같은 트랜잭션에서 issue를 등록하고, 원천 사이 규칙의 미연결은 확인 대기(`link_check_pending`)로 보낸다(아래 "판정"). 재검증(REVERIFY)은 issue를 만들지 않는다.
+
+**아직 없는 것:** 주기적인 SYNC 요청(191-4. 그 전까지 SYNC 검사는 넣는 곳이 없다), 재검증의 문제별 검증 기록·이전 결과 비교(134·135), 후보 시험 실행(CANDIDATE).
 
 **수동 검사의 역할(2026-11-06 합의):** 평소 판정은 수집 뒤 배치가 주기적으로 넣는 SYNC가 한다. 수동 검사(MANUAL)는 실패한 후보 시험을 다시 돌리거나, 장애 복구 뒤·문제가 의심될 때 고른 규칙을 다시 점검하는 데 쓴다. issue는 SYNC·MANUAL 판정에서 만들고, 원천 사이 규칙의 미연결은 확인 대기(`link_check_pending`)를 거친다(191-3).
 
@@ -118,6 +120,51 @@ batch 프로필의 작업 표 처리기(`QueuedJobHandler`, `CHECK_RUN`)다. `tr
 - 건너뛴 규칙이 있어도 성공한 검사는 같은 `work_key` 요청에 다시 쓰인다(060 성공 재사용). 데이터 기준이 바뀌면 새 검사가 된다.
 - 비용: 규칙마다 양 끝 유형의 활성 객체를 모두 읽는다(181과 같은 MVP 한계, Jira 335와 같이 본다).
 
+## 판정 (191-3, `CheckIssueJudge`)
+
+SYNC·MANUAL 검사에만 한다. 결정 문서 `2026-11-05-cdc-initial-load.md` 8장과 191 설계안 4장, 2026-11-10 결정(원천 사이 중복·위반은 바로 issue, 건너뛴 규칙은 감사 결과에만, FULL_COMPARE 표는 마지막 성공 수집 기준)을 따른다.
+
+**규칙 분류**(run 스냅샷): 출발·도착 유형에 활성 매핑된 원천 테이블이 모두 같은 원천이고 모두 CDC면 같은 원천, 그 밖은 원천 사이다.
+
+| 분류 | 미연결 | 중복·위반 |
+| --- | --- | --- |
+| 같은 원천 | 바로 issue | 바로 issue |
+| 원천 사이 | 확인 대기 | 바로 issue |
+
+**건너뛰기**(규칙 단위, run 스냅샷): 아래면 판정하지 않고 결과도 남기지 않는다. 이유는 감사 결과 `skippedRules`에만 남는다.
+
+- CDC 표가 전체 적재 전(`loaded_lsn IS NULL`)
+- CDC 표의 전체 읽기(FULL)가 대기·실행 중
+- CDC 표의 원천에 복구가 필요(`cdc_offset.recovery_reason`)
+- FULL_COMPARE 표가 한 번도 수집되지 않음
+
+**미연결 보류**: 도착 테이블에 도착 유형의 열린 수집 실패(`source_load_failure`)가 있으면 그 규칙의 미연결은 issue·확인 대기로 보내지 않는다. 키 실패(객체를 만들지 못한 행)이거나 비교 조건의 도착 속성 값 실패인 경우다(설계 검토 R5). 어느 출발 행이 그 행과 맞았을지 알 수 없어 규칙 단위로 보류한다. 그동안 그 규칙의 확인 대기도 건드리지 않는다.
+
+**issue 등록**: 194 `IssueRegistrationService`를 쓴다.
+
+- `dedupeKey = 종류:rule:규칙코드:object:출발객체ID`. 같은 열린 문제가 있으면 새로 만들지 않는다. 규칙을 개정해도 같은 문제로 묶인다.
+- 원본값·변환값은 표본과 같은 모양이다.
+- `evidence`: `ruleCode`, `revision`, `reason`, `transformedValues`, `targetObjectIds`, `crossSource`, `causeConfirmed=false`. 승격이면 `pendingId`, `pendingFirstSeenAt`이 더 붙는다.
+
+**확인 대기**(원천 사이 규칙의 미연결, 검사마다)
+
+1. 이번에 미연결인 출발 객체: 대기가 없으면 WAITING으로 넣고, 있으면 `last_check_run_id`만 바꾼다.
+2. 이 규칙의 WAITING 중 이번에 미연결이 아닌 것은 일시 불일치(TRANSIENT)로 닫는다. 출발 객체를 원천에서 지웠으면 SOURCE_DELETED, 아니면 LINKED다(중복·위반으로 바뀐 경우도 LINKED).
+3. 아직 미연결인 WAITING은 아래를 모두 만족하면 issue(UNMATCHED)로 올리고 PROMOTED로 닫는다. 같은 트랜잭션이다.
+   - 규칙의 CDC 원천이 모두 지금 정상(`healthy_since`가 있고 복구 필요 없음)이다.
+   - 규칙의 FULL_COMPARE 표마다 처음 본 시각 뒤에 끝난 성공 수집이 있다.
+   - `max(처음 본 시각, CDC 원천들의 healthy_since)`부터 대기 시간이 지났다. 대기 시간은 `axcore.check.pending-wait`이고 기본 10분이며 246에서 확정한다.
+4. 반영 중이 아닌 규칙 개정본의 WAITING은 RULE_RETIRED로 닫는다(모든 규칙 대상).
+
+FULL_COMPARE 표의 기준을 "마지막 성공 수집 시각부터 대기"로 하면, 수집 주기가 대기 시간보다 짧을 때 시작 시각이 계속 밀려 승격되지 않는다. 그래서 "처음 본 뒤 성공 수집이 한 번 더 있었고 대기 시간이 지남"으로 구현했다.
+
+**감사 결과 줄**: `judgment` 아래에 `issuesCreated`, `issuesExisting`, `heldUnmatched`, `pendingAdded`, `pendingClosed`, `pendingPromoted`를 남긴다.
+
+**한계**
+
+- 원천 사이에서 같은 원천으로 분류가 바뀐 규칙의 WAITING은 닫지 않는다(닫을 이유 코드가 없다).
+- 보류는 규칙 단위라, 수집 실패가 열려 있는 동안 그 규칙의 미연결은 하나도 issue가 되지 않는다.
+
 ## 규칙 → 판정 엔진 입력 (190, `LinkMappingRuleLoader`)
 
 실행기(191-2)와 060 접수가 함께 쓴다. API는 없다.
@@ -139,9 +186,10 @@ batch 프로필의 작업 표 처리기(`QueuedJobHandler`, `CHECK_RUN`)다. `tr
 - `CheckRunApiIntegrationTests` 32개: 접수(ALL·LINK_MAPPINGS·ISSUES), 데이터 기준(마지막 성공 수집, 수집 전 null), 합류(QUEUED·RUNNING), 성공 재사용, 새 수집·실패 뒤 새 검사, MANUAL·REVERIFY 분리, 422 각 경우, 400 12가지, 목록 필터·정렬·페이지, 상태 조회·저장 기준 이름 변환·404, 401·403(역할·CSRF).
 - `LinkMappingRuleLoaderTests` 7개: 변환 결과(객체 유형, 조건 이름·변환·관계 수·자원·행 조건·기준 걸러내기), 바꾼 입력으로 판정 엔진이 실제로 판정함, 비활성 매핑 제외, 기준 누락·조건 없음·없는 규칙·읽을 수 없는 변환 거절.
 - `CheckRunJobTests` 7개: 작업 표에서 가져가 규칙별 결과 저장(건수·표본·원천 키), 지운·플랫폼·비활성 매핑 객체 제외, 행 조건 적용, 같은 규칙 직전 결과 연결, 판정할 수 없는 규칙 건너뛰기와 감사 결과, 모두 건너뛰면 FAILED, 후보 시험은 가져가지 않음.
+- `CheckIssueJudgmentTests` 9개: 같은 원천은 모든 문제를 issue로 한 번만, 원천 사이 미연결은 확인 대기·중복은 issue, 연결·출발 삭제로 닫기, 대기 시간 뒤 승격, FULL_COMPARE 수집이 처음 본 뒤 없거나 CDC 원천이 비정상이면 승격하지 않음, 도착 키 실패로 미연결 보류, 적재 전·복구 중 건너뛰기, 폐기한 규칙의 대기 닫기, 재검증은 issue 없음.
 - `CheckResultCreateTests` 3개: 판정 결과로 만든 검사 결과를 JPA로 저장(규칙·후보 대상, 건수, null 값 표본, 직전 결과), 잘못된 ID 거절.
 
-DB 스키마·의존성 변경은 없다. 공용 코드 변경: 작업 표 처리기 `claimCondition`(기본은 모든 행이라 기존 처리기는 그대로), 정유림님 `CheckResult` 엔티티에 생성 메서드 `of`, `CheckResultRepository`에 직전 결과 조회.
+DB 스키마·의존성 변경은 없다(확인 대기 표는 V12에 있다. Entity `LinkCheckPending`을 새로 둔다). 공용 코드 변경: 작업 표 처리기 `claimCondition`(기본은 모든 행이라 기존 처리기는 그대로), 정유림님 `CheckResult` 엔티티에 생성 메서드 `of`, `CheckResultRepository`에 직전 결과 조회.
 
 ## 기준
 
