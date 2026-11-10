@@ -1,13 +1,28 @@
 package com.axcore.platform.issue;
 
+import jakarta.servlet.http.Cookie;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 /** 문제 테스트가 쓰는 검사 실행·규칙·문제 행을 DB에 직접 만든다. */
 public record IssueTestFixtures(JdbcClient jdbc) {
+
+    /**
+     * 화면처럼 XSRF-TOKEN 쿠키와 X-XSRF-TOKEN 헤더를 같은 값으로 보낸다. spring-security-test의 csrf()는 공유 컨텍스트의
+     * CsrfFilter 저장소를 바꿔 같은 컨텍스트를 쓰는 다른 테스트의 실제 로그인 요청을 깨뜨리므로 쓰지 않는다.
+     */
+    public static RequestPostProcessor csrfToken() {
+        String token = UUID.randomUUID().toString();
+        return request -> {
+            request.setCookies(new Cookie("XSRF-TOKEN", token));
+            request.addHeader("X-XSRF-TOKEN", token);
+            return request;
+        };
+    }
 
     public long insertAdmin() {
         return jdbc.sql(

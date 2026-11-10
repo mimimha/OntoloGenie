@@ -1,16 +1,18 @@
-# 정합성 문제 조회·등록·상태 변경 — S15P31C106-194·196
+# 정합성 문제 조회·등록·상태 변경·전달 기록 — S15P31C106-194·195·196
 
 ## 범위와 권한
 
-FN-ISS-01~03의 정합성 문제 목록·근거 조회, 처리 상태 변경 API와, 검사가 문제를 등록할 때 쓰는 중복 방지 등록 서비스를 제공한다. 모든 API는 세션 인증과 ADMIN 권한이 필요하다.
+FN-ISS-01~04의 정합성 문제 목록·근거 조회, 처리 상태 변경, 원천 전달 기록, 상태 이력 API와, 검사가 문제를 등록할 때 쓰는 중복 방지 등록 서비스를 제공한다. 모든 API는 세션 인증과 ADMIN 권한이 필요하다.
 
 | API | 요청 | 결과 |
 | --- | --- | --- |
 | 065 | `GET /api/v1/issues` | `data` 배열과 `meta.page/size/totalElements/hasNext` |
 | 066 | `GET /api/v1/issues/{id}` | `data` 객체. `id`는 1 이상 |
 | 067 | `PATCH /api/v1/issues/{id}/status` | 바뀐 `data` 객체(066과 같은 형식) |
+| 068 | `POST /api/v1/issues/{id}/forward` | 바뀐 `data` 객체(066과 같은 형식) |
+| 069 | `GET /api/v1/issues/{id}/history` | `data` 배열과 `meta` |
 
-065·066은 `issue`를 읽기만 한다. 원천 전달 기록(068)과 상태 이력 조회(069)는 195에서 만든다.
+065·066·069는 읽기만 한다.
 
 ## 목록 조건과 기본값
 
@@ -104,6 +106,23 @@ FN-ISS-01~03의 정합성 문제 목록·근거 조회, 처리 상태 변경 API
 
 거절된 요청은 상태·버전·이력을 바꾸지 않는다.
 
+## 원천 담당자 전달 기록 (068)
+
+요청: `rowVersion`(필수, 0 이상).
+
+- 플랫폼은 메시지를 보내지 않는다. 관리자가 플랫폼 밖에서 원천 담당자에게 알린 뒤 "전달함"을 기록한다(FN-ISS-04). 받는 사람 이름은 남기지 않는다.
+- `forwarded_at`=요청 시각, `forwarded_by`=요청 관리자로 함께 기록하고 `row_version`을 올린다. 상태는 바꾸지 않고 `issue_history`도 남기지 않는다. 원천 수정이 끝났다는 뜻이 아니다. 수정 완료 알림을 받으면 067로 FIXED_PENDING_REVERIFY로 바꾼다.
+- 다시 전달하면 마지막 전달 시각·관리자로 덮어쓴다. 전달 이력을 따로 쌓지 않는다(DB 칸이 하나뿐이다).
+- 해결된 문제는 409 `ISSUE_ALREADY_RESOLVED`다(새 코드, 명세에 없음). 다시 생기면 새 문제로 등록되므로 해결된 문제에 전달할 일이 없다고 봤다.
+- 버전이 다르면 409 `VERSION_CONFLICT`, 없는 문제는 404.
+
+## 상태 이력 (069)
+
+- `issue_history`를 `changed_at` 오름차순, 같으면 ID 오름차순으로 준다. 응답 필드는 `id`, `issueId`, `beforeStatus`, `afterStatus`, `changedAt`, `changedBy`, `checkRunId`, `note`.
+- 검사가 처음 등록한 행은 `beforeStatus=null`, `afterStatus=NEW`, `changedBy=null`, `checkRunId`=등록한 검사, `note=null`이다(`IssueRegistrationService`가 남김). 사람이 바꾼 행은 `changedBy`와 `note`가 있고, RESOLVED 행은 `checkRunId`에 근거 재검증이 있다(067이 남김).
+- 명세에 조회 파라미터가 없지만 응답에 `meta`가 있어 다른 목록처럼 `page`(기본 0)·`size`(기본 20)를 받는다.
+- 없는 문제는 404. 이력이 없는 문제(등록 서비스를 거치지 않고 넣은 행)는 200과 빈 배열이다.
+
 ## 오류와 검증
 
 입력 오류는 400, 미인증은 401, 권한 부족은 403, 없는 상세는 404(`RESOURCE_NOT_FOUND`, `resource=issue`)다. 결과가 없으면 200과 빈 배열이다.
@@ -114,10 +133,12 @@ FN-ISS-01~03의 정합성 문제 목록·근거 조회, 처리 상태 변경 API
 - `IssueStatusApiIntegrationTests`: 전환 흐름(앞으로·되돌림), 해결 성공, 해결 조건 위반(시점·뒤 실패·FAILED·다른 문제·REVERIFY 아님·미완료·없는 검사), 흐름 밖 전환, 해결 뒤 재변경, 버전 충돌, 400·401·403(CSRF 포함)·404.
 - `IssueStatusTests`: 전환 표.
 - `IssueReopenServiceTests`: 재검증 실패 때 되돌림과 이력, 조치완료 전 재검증 무시, NEW·CHECKING·RESOLVED 무변경, FAILED 기록 없는 호출 거절, 되돌린 뒤 다시 조치완료·해결.
+- `IssueForwardHistoryApiIntegrationTests`: 전달 기록(상태·이력 무변경), 재전달 덮어쓰기, 버전 충돌, 해결된 문제 거절, 등록→확인→조치완료→해결 이력 순서와 필드, 이력 페이지·다른 문제 제외, 빈 이력, 400·401·403(CSRF 포함)·404.
+- 테스트의 CSRF는 `IssueTestFixtures.csrfToken()`으로 쿠키·헤더를 직접 보낸다. spring-security-test `csrf()`는 같은 컨텍스트를 쓰는 다른 테스트의 실제 로그인 요청을 깨뜨린다.
 
 동시 등록은 테스트하지 않았다. PostgreSQL `on conflict`와 부분 유일 인덱스에 맡긴다. DB 스키마·의존성 변경은 없다.
 
 ## 기준
 
-- Notion API 065·066·067. 로컬 사본: 문서 저장소 `erd/ontology-mvp-v2/notion/api_fixed/065.md`, `066.md`, `067.md`.
+- Notion API 065~069. 로컬 사본: 문서 저장소 `erd/ontology-mvp-v2/notion/api_fixed/065.md`~`069.md`.
 - 스키마: `V2__create_operations.sql`의 `issue`, `issue_verification`, `issue_history`.

@@ -4,9 +4,14 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.response.ApiResponse;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.issue.dto.IssueForwardRequest;
+import com.axcore.platform.issue.dto.IssueHistoryResponse;
+import com.axcore.platform.issue.dto.IssueHistorySearchRequest;
 import com.axcore.platform.issue.dto.IssueResponse;
 import com.axcore.platform.issue.dto.IssueSearchRequest;
 import com.axcore.platform.issue.dto.IssueStatusChangeRequest;
+import com.axcore.platform.issue.service.IssueForwardService;
+import com.axcore.platform.issue.service.IssueHistoryService;
 import com.axcore.platform.issue.service.IssueQueryService;
 import com.axcore.platform.issue.service.IssueStatusService;
 import jakarta.validation.Valid;
@@ -21,11 +26,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 정합성 문제 목록 065, 문제·원본 근거 조회 066, 처리 상태 변경 067. 모두 ADMIN만 쓸 수 있다. */
+/** 정합성 문제 목록 065, 문제·원본 근거 조회 066, 처리 상태 변경 067, 원천 담당자 전달 기록 068, 상태 이력 069. 모두 ADMIN만 쓸 수 있다. */
 @RestController
 @RequestMapping("/api/v1/issues")
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -34,6 +40,8 @@ public class IssueController {
 
     private final IssueQueryService issueQueryService;
     private final IssueStatusService issueStatusService;
+    private final IssueForwardService issueForwardService;
+    private final IssueHistoryService issueHistoryService;
 
     @GetMapping
     public ApiResponse<List<IssueResponse>> search(
@@ -60,6 +68,26 @@ public class IssueController {
             @AuthenticationPrincipal LoginAccount account) {
         requireAdmin(account);
         return ApiResponse.of(issueStatusService.change(id, request, account.id()));
+    }
+
+    @PostMapping("/{id}/forward")
+    public ApiResponse<IssueResponse> forward(
+            @PathVariable("id") @Min(value = 1, message = "id는 1 이상이어야 합니다.") long id,
+            @Valid @RequestBody IssueForwardRequest request,
+            @AuthenticationPrincipal LoginAccount account) {
+        requireAdmin(account);
+        return ApiResponse.of(issueForwardService.forward(id, request, account.id()));
+    }
+
+    @GetMapping("/{id}/history")
+    public ApiResponse<List<IssueHistoryResponse>> history(
+            @PathVariable("id") @Min(value = 1, message = "id는 1 이상이어야 합니다.") long id,
+            @Valid @ModelAttribute IssueHistorySearchRequest request,
+            @AuthenticationPrincipal LoginAccount account) {
+        requireAdmin(account);
+        int page = request.page() == null ? 0 : request.page();
+        int size = request.size() == null ? 20 : request.size();
+        return ApiResponse.ofPage(issueHistoryService.search(id, PageRequest.of(page, size)));
     }
 
     private static void requireAdmin(LoginAccount account) {
