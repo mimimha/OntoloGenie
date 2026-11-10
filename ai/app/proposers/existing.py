@@ -176,6 +176,7 @@ def skip_past_decisions(
 
     decisions: 018 pastDecisions `[{candidateId, itemKind, revision, fingerprint 또는 payload, decision, reason}]`.
     - 같은 내용(지문)이 승인·거절됐으면 다시 내지 않는다.
+    - 문서 연결은 선택지 중 같은 내용이 승인됐으면 다시 내지 않는다.
     - 같은 내용이 보류됐으면 내되 이유에 이전 보류를 적는다.
     - 같은 후보 ID가 거절·보류됐는데 내용이 바뀌었으면 내되 이유에 이전 결정을 적는다.
     """
@@ -199,6 +200,15 @@ def skip_past_decisions(
         same = by_fingerprint.get(evidence.get("fingerprint"))
         if same and same["decision"] in skipped:
             skipped[same["decision"]] += 1
+            continue
+        if p.get("itemKind") == "DOCUMENT_LINK" and any(
+            by_fingerprint.get(fingerprint_payload(option["payload"]), {}).get(
+                "decision"
+            )
+            == "APPROVE"
+            for option in p.get("options") or []
+        ):
+            skipped["APPROVE"] += 1
             continue
         if same and same["decision"] == "HOLD":
             p = _note(p, f"같은 내용이 이전에 보류됐습니다{_why(same)}.")

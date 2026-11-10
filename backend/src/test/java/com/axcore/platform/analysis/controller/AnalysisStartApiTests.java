@@ -112,6 +112,8 @@ class AnalysisStartApiTests {
         JsonNode body = json.readTree(request.body());
         assertThat(body.path("runId").asLong()).isEqualTo(id);
         assertThat(body.path("runKind").asString()).isEqualTo("INITIAL");
+        assertThat(body.has("pastDecisions")).isFalse();
+        assertThat(body.has("previousProposals")).isFalse();
         assertThat(body.path("targets")).hasSize(2);
         JsonNode first = body.path("targets").get(0);
         assertThat(first.path("sourceResourceId").asLong()).isEqualTo(item);
@@ -138,6 +140,138 @@ class AnalysisStartApiTests {
         send(item, customer).andExpect(jsonPath("$.data.joined").value(true));
         assertThat(AI.requests).hasSize(1);
         assertThat(output).doesNotContain(PASSWORD).doesNotContain(TOKEN);
+    }
+
+    @Test
+    void reanalysisSendsLatestDecisionsAcrossDifferentTargets() throws Exception {
+        credential(source, CredentialPurpose.AI, "erp_ai", PASSWORD);
+        long item = resource(source, "erp.item", "{}");
+        long otherSource =
+                dataSource("HISTORY_" + UUID.randomUUID(), "CSV", "{\"path\":\"/data/history\"}");
+        long historicalTable = resource(otherSource, "history.orders", "{}");
+        long pastRun = historicalRun("SUCCEEDED", "2026-01-01", historicalTable);
+        long rejected = historicalProposal(pastRun, "work-order", "original", "edited");
+        long replaced = historicalProposal(pastRun, "work-order", "changed", null);
+        long selected = historicalProposal(pastRun, "relation", "parent", null);
+        long missing = historicalProposal(pastRun, "missing-option-evidence", "parent-only", null);
+        long modified = historicalProposal(pastRun, "modified-rule", "copied", "copied");
+        long evidenceOnly =
+                historicalProposal(
+                        pastRun, "evidence-only", "verified", "unverified", "evidence-only");
+        long modifiedOption =
+                historicalProposal(pastRun, "modified-option", "option-parent", "option-parent");
+        long laterRun = historicalRun("SUCCEEDED", "2099-01-01", historicalTable);
+        long document =
+                historicalProposal(pastRun, "DL-note-1", "primary", null, null, "DOCUMENT_LINK");
+        option(document, 1, 1, null, "{\"targetObjectRef\":\"mes.equipment:A\"}");
+        long documentOption =
+                option(
+                        document,
+                        1,
+                        2,
+                        null,
+                        """
+                        {
+                          "linkTypeCode": "NOTE_MENTIONS_EQUIPMENT",
+                          "documentId": "note-1",
+                          "spanStart": 0,
+                          "spanEnd": 6,
+                          "mentionText": "unit 3",
+                          "targetObjectRef": "mes.equipment:B",
+                          "expressionKind": "OBSERVED"
+                        }
+                        """);
+
+        decision(rejected, 1, "APPROVE", null, "이전 결정", "2026-01-02");
+        decision(rejected, 1, "REJECT", null, "같은 시각의 최신 결정", "2026-01-02");
+        decision(rejected, 2, "REJECT", null, "접수 이후 결정", "2099-01-02");
+        decision(replaced, 1, "APPROVE", null, "내용 변경", "2026-01-03");
+        decision(selected, 1, "REJECT", option(selected, 1, "chosen"), "선택지 거절", "2026-01-04");
+        decision(missing, 1, "REJECT", option(missing, 1, null), "선택지 지문 없음", "2026-01-04");
+        decision(modified, 2, "REJECT", null, "수정한 연결 규칙 거절", "2026-01-05");
+        decision(evidenceOnly, 2, "APPROVE", null, "같은 연결 규칙 승인", "2026-01-05");
+        decision(
+                modifiedOption,
+                2,
+                "REJECT",
+                option(modifiedOption, 2, "copied-option"),
+                "수정한 선택지 거절",
+                "2026-01-05");
+        decision(
+                historicalProposal(pastRun, "held", "held", null),
+                1,
+                "HOLD",
+                null,
+                "보류",
+                "2026-01-05");
+        decision(
+                historicalProposal(laterRun, "later", "later", null),
+                1,
+                "APPROVE",
+                null,
+                "접수 이후 분석",
+                "2026-01-05");
+
+        decision(document, 1, "APPROVE", documentOption, "확인", "2026-01-06");
+
+        runId(sendAnalysis("REANALYSIS", item));
+
+        assertThat(AI.requests).hasSize(1);
+        JsonNode body = json.readTree(AI.requests.element().body());
+        assertThat(body.path("pastDecisions"))
+                .isEqualTo(
+                        json.readTree(
+                                """
+                    [
+                      {"candidateId":"work-order","itemKind":"LINK_RULE","revision":1,"fingerprint":"original","decision":"REJECT","reason":"같은 시각의 최신 결정"},
+                      {"candidateId":"work-order","itemKind":"LINK_RULE","revision":1,"fingerprint":"changed","decision":"APPROVE","reason":"내용 변경"},
+                      {"candidateId":"relation","itemKind":"LINK_RULE","revision":1,"fingerprint":"chosen","decision":"REJECT","reason":"선택지 거절"},
+                      {"candidateId":"evidence-only","itemKind":"LINK_RULE","revision":2,"fingerprint":"verified","decision":"APPROVE","reason":"같은 연결 규칙 승인"},
+                      {"candidateId":"DL-note-1","itemKind":"DOCUMENT_LINK","revision":1,"decision":"APPROVE","reason":"확인","payload":{
+                        "linkTypeCode":"NOTE_MENTIONS_EQUIPMENT","documentId":"note-1","spanStart":0,"spanEnd":6,
+                        "mentionText":"unit 3","targetObjectRef":"mes.equipment:B","expressionKind":"OBSERVED"
+                      }}
+                    ]
+                    """));
+        assertThat(body.has("previousProposals")).isFalse();
+
+        sendAnalysis("REANALYSIS", item).andExpect(jsonPath("$.data.joined").value(true));
+        assertThat(AI.requests).hasSize(1);
+    }
+
+    @Test
+    void reanalysisUsesLatestSuccessPerTableAndOriginalRevisions() throws Exception {
+        credential(source, CredentialPurpose.AI, "erp_ai", PASSWORD);
+        long item = resource(source, "erp.item", "{}");
+        long customer = resource(source, "erp.customer", "{}");
+        long joint = historicalRun("SUCCEEDED", "2026-01-01", item, customer);
+        historicalProposal(joint, "joint-only-relation", "joint", null);
+        long tiedEarlier = historicalRun("SUCCEEDED", "2026-01-02", item);
+        historicalProposal(tiedEarlier, "earlier-tied-run", "earlier", null);
+        long itemOnly = historicalRun("SUCCEEDED", "2026-01-02", item);
+        historicalProposal(itemOnly, "item-only", "original-item", "edited-item");
+        historicalProposal(itemOnly, "shared", "older-shared", null);
+        long customerOnly = historicalRun("SUCCEEDED", "2026-01-03", customer);
+        historicalProposal(customerOnly, "shared", "newer-shared", null);
+        historicalProposal(customerOnly, "customer-only", "original-customer", null);
+        historicalProposal(customerOnly, "legacy-without-fingerprint", null, null);
+        long failed = historicalRun("FAILED", "2026-01-04", item, customer);
+        historicalProposal(failed, "failed", "failed", null);
+        long future = historicalRun("SUCCEEDED", "2099-01-01", item, customer);
+        historicalProposal(future, "future", "future", null);
+
+        runId(sendAnalysis("REANALYSIS", item, customer));
+
+        assertThat(AI.requests).hasSize(1);
+        JsonNode previous = json.readTree(AI.requests.element().body()).path("previousProposals");
+        assertThat(previous)
+                .containsExactlyInAnyOrder(
+                        json.readTree(
+                                "{\"candidateId\":\"item-only\",\"fingerprint\":\"original-item\"}"),
+                        json.readTree(
+                                "{\"candidateId\":\"shared\",\"fingerprint\":\"newer-shared\"}"),
+                        json.readTree(
+                                "{\"candidateId\":\"customer-only\",\"fingerprint\":\"original-customer\"}"));
     }
 
     @Test
@@ -214,6 +348,114 @@ class AnalysisStartApiTests {
         assertFailed(failed, "CSV 원천의 폴더 경로가 없습니다 (" + withoutPath + ")");
     }
 
+    private long historicalRun(String status, String finished, long... targets) {
+        long run =
+                jdbc.sql(
+                                """
+                insert into analysis_run(run_kind, work_key, status, requested_by, requested_at, finished_at, error_message)
+                values ('INITIAL', :key, :status, :account, cast(:finished as timestamptz) - interval '1 hour',
+                        cast(:finished as timestamptz), case when :status = 'FAILED' then '실패' end)
+                returning id
+                """)
+                        .param("key", "history-" + UUID.randomUUID())
+                        .param("status", status)
+                        .param("account", accountId)
+                        .param("finished", finished)
+                        .query(Long.class)
+                        .single();
+        for (long target : targets) {
+            jdbc.sql(
+                            "insert into analysis_run_target(analysis_run_id, source_resource_id) values (:run, :target)")
+                    .param("run", run)
+                    .param("target", target)
+                    .update();
+        }
+        return run;
+    }
+
+    private long historicalProposal(long run, String candidate, String original, String edited) {
+        return historicalProposal(run, candidate, original, edited, candidate + "-edited");
+    }
+
+    private long historicalProposal(
+            long run, String candidate, String original, String edited, String editedCode) {
+        return historicalProposal(run, candidate, original, edited, editedCode, "LINK_RULE");
+    }
+
+    private long historicalProposal(
+            long run,
+            String candidate,
+            String original,
+            String edited,
+            String editedCode,
+            String itemKind) {
+        return jdbc.sql(
+                        """
+                with item as (
+                    insert into proposal_item(analysis_run_id, origin, item_kind, revision, payload)
+                    values (:run, 'AI', :itemKind, case when :edited is null then 1 else 2 end, '{}')
+                    returning id
+                )
+                insert into proposal_revision(proposal_item_id, revision, payload, evidence)
+                select id, 1, jsonb_build_object('code', :candidate),
+                       jsonb_build_object('candidateId', :candidate, 'fingerprint', :original)
+                from item
+                union all
+                select id, 2, jsonb_build_object('code', :editedCode),
+                       jsonb_build_object('candidateId', :candidate, 'fingerprint', :edited)
+                from item where :edited is not null
+                returning proposal_item_id
+                """)
+                .param("run", run)
+                .param("itemKind", itemKind)
+                .param("candidate", candidate, java.sql.Types.VARCHAR)
+                .param("original", original, java.sql.Types.VARCHAR)
+                .param("edited", edited, java.sql.Types.VARCHAR)
+                .param("editedCode", editedCode, java.sql.Types.VARCHAR)
+                .query(Long.class)
+                .list()
+                .getFirst();
+    }
+
+    private long option(long proposal, int revision, String fingerprint) {
+        return option(proposal, revision, 1, fingerprint, "{}");
+    }
+
+    private long option(
+            long proposal, int revision, int optionNo, String fingerprint, String payload) {
+        return jdbc.sql(
+                        """
+                insert into proposal_option(proposal_item_id, revision, option_no, payload, evidence)
+                values (:proposal, :revision, :optionNo, cast(:payload as jsonb),
+                        jsonb_strip_nulls(jsonb_build_object('fingerprint', :fingerprint)))
+                returning id
+                """)
+                .param("proposal", proposal)
+                .param("revision", revision)
+                .param("optionNo", optionNo)
+                .param("fingerprint", fingerprint, java.sql.Types.VARCHAR)
+                .param("payload", payload)
+                .query(Long.class)
+                .single();
+    }
+
+    private void decision(
+            long proposal, int revision, String choice, Long option, String reason, String date) {
+        jdbc.sql(
+                        """
+                insert into review_decision(proposal_item_id, item_revision, decision, selected_option_id, reason, decided_by, decided_at)
+                values (:proposal, :revision, :choice, :option, :reason, :account, cast(:date as timestamptz))
+                """)
+                .param("proposal", proposal)
+                .param("revision", revision)
+                .param("choice", choice)
+                .param("option", option, java.sql.Types.BIGINT)
+                .param("reason", reason)
+                .param("account", accountId)
+                .param("date", date)
+                .update();
+    }
+
     private void assertFailed(long id, String reason) throws Exception {
         mvc.perform(get("/api/v1/analyses/{id}", id).with(authentication(admin())))
                 .andExpect(status().isOk())
@@ -235,6 +477,11 @@ class AnalysisStartApiTests {
 
     /** 첫 자원은 컬럼 두 개만, 나머지는 전체 컬럼으로 분석을 요청한다. */
     private ResultActions send(long withColumns, long... others) throws Exception {
+        return sendAnalysis("INITIAL", withColumns, others);
+    }
+
+    private ResultActions sendAnalysis(String kind, long withColumns, long... others)
+            throws Exception {
         StringBuilder targets =
                 new StringBuilder("{\"sourceResourceId\":")
                         .append(withColumns)
@@ -247,7 +494,12 @@ class AnalysisStartApiTests {
                                 .with(authentication(admin()))
                                 .with(csrf())
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"runKind\":\"INITIAL\",\"targets\":[" + targets + "]}"))
+                                .content(
+                                        "{\"runKind\":\""
+                                                + kind
+                                                + "\",\"targets\":["
+                                                + targets
+                                                + "]}"))
                 .andExpect(status().isAccepted());
     }
 
