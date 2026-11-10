@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.axcore.platform.TestcontainersConfiguration;
 import com.axcore.platform.batch.service.QueuedJobPoller;
+import com.axcore.platform.source.service.CdcReloadJob;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -69,8 +70,9 @@ class CdcConsumerLoopTests {
         registry.add("axcore.cdc.consumer.bootstrap-servers", KAFKA::getBootstrapServers);
     }
 
-    // 다른 배치 작업이 시험 중에 끼어들지 않게 막는다.
+    // 다른 배치 작업이 시험 중에 끼어들지 않게 막는다. 감시 작업이 시험 원천에 다시 읽기를 넣지 않게 한다(architecture.md 배치).
     @MockitoBean QueuedJobPoller queuedJobPoller;
+    @MockitoBean CdcReloadJob cdcReloadJob;
 
     // 처음 소비할 때의 epoch 기준값(원천 xmax 자리). 시험 원천에는 접속하지 않는다. 자료의 txId는 756~765다.
     @MockitoBean CdcStartReference startReference;
