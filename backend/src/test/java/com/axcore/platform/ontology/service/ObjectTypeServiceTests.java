@@ -5,12 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.ontology.domain.ObjectType;
+import com.axcore.platform.ontology.domain.PropertyDefinition;
+import com.axcore.platform.ontology.domain.PropertySensitivity;
 import com.axcore.platform.ontology.dto.DefinitionReference;
 import com.axcore.platform.ontology.dto.ObjectTypeCreateRequest;
 import com.axcore.platform.ontology.dto.ObjectTypeUpdateRequest;
@@ -124,8 +128,8 @@ class ObjectTypeServiceTests {
     @Test
     void rejectsDisplayPropertyOfAnotherType() {
         givenObjectType(existing(null));
-        given(propertyDefinitionRepository.existsByIdAndObjectTypeId(99L, TYPE_ID))
-                .willReturn(false);
+        PropertyDefinition property = property(TYPE_ID + 1, PropertySensitivity.NORMAL);
+        given(propertyDefinitionRepository.findForUpdate(99L)).willReturn(Optional.of(property));
 
         assertThatThrownBy(() -> objectTypeService.update(TYPE_ID, displayProperty(99L)))
                 .isInstanceOfSatisfying(
@@ -141,8 +145,8 @@ class ObjectTypeServiceTests {
     @Test
     void setsDisplayPropertyOfSameType() {
         givenObjectType(existing(null));
-        given(propertyDefinitionRepository.existsByIdAndObjectTypeId(21L, TYPE_ID))
-                .willReturn(true);
+        PropertyDefinition property = property(TYPE_ID, PropertySensitivity.NORMAL);
+        given(propertyDefinitionRepository.findForUpdate(21L)).willReturn(Optional.of(property));
 
         var response = objectTypeService.update(TYPE_ID, displayProperty(21L));
 
@@ -232,5 +236,12 @@ class ObjectTypeServiceTests {
         ObjectTypeUpdateRequest request = updateRequest(0L);
         request.setDisplayPropertyId(propertyId);
         return request;
+    }
+
+    private static PropertyDefinition property(long objectTypeId, PropertySensitivity sensitivity) {
+        PropertyDefinition property = mock(PropertyDefinition.class);
+        lenient().when(property.getObjectTypeId()).thenReturn(objectTypeId);
+        lenient().when(property.getSensitivity()).thenReturn(sensitivity);
+        return property;
     }
 }

@@ -19,7 +19,10 @@ public interface PropertyDefinitionRepository extends JpaRepository<PropertyDefi
 
     boolean existsByIdAndObjectTypeId(Long id, Long objectTypeId);
 
-    /** 삭제 전 참조 확인용. 객체 유형 삭제와 같은 이유로 행을 잠근다({@link ObjectTypeRepository#findForUpdate}). */
+    /**
+     * 삭제 전 참조 확인용. 객체 유형 삭제와 같은 이유로 행을 잠근다({@link ObjectTypeRepository#findForUpdate}). 대표 속성
+     * 지정(024)과 속성 수정(028)도 이 잠금으로 순서를 맞춘다.
+     */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from PropertyDefinition p where p.id = :id")
     Optional<PropertyDefinition> findForUpdate(@Param("id") Long id);

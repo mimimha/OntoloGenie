@@ -4,6 +4,8 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.ontology.domain.DefinitionSource;
 import com.axcore.platform.ontology.domain.ObjectType;
+import com.axcore.platform.ontology.domain.PropertyDefinition;
+import com.axcore.platform.ontology.domain.PropertySensitivity;
 import com.axcore.platform.ontology.dto.DefinitionReference;
 import com.axcore.platform.ontology.dto.ObjectTypeCreateRequest;
 import com.axcore.platform.ontology.dto.ObjectTypeResponse;
@@ -63,7 +65,10 @@ public class ObjectTypeService {
         return ObjectTypeResponse.from(objectTypeRepository.saveAndFlush(objectType));
     }
 
-    /** API 024. 대표 속성은 이 유형의 속성이어야 한다. */
+    /**
+     * API 024. 대표 속성은 이 유형의 속성이어야 한다. 민감(RESTRICTED) 속성은 대표로 쓸 수 없다. 대표 속성 값은 객체 표시 이름이 되어 민감 값을 볼
+     * 수 없는 사용자에게도 보이기 때문이다(S15P31C106-205 결정 D2).
+     */
     @Transactional
     public ObjectTypeResponse update(Long id, ObjectTypeUpdateRequest request) {
         ObjectType objectType = findObjectType(id);
@@ -80,12 +85,24 @@ public class ObjectTypeService {
                         ? request.getDisplayPropertyId()
                         : objectType.getDisplayPropertyId();
         if (displayPropertyId != null
-                && !displayPropertyId.equals(objectType.getDisplayPropertyId())
-                && !propertyDefinitionRepository.existsByIdAndObjectTypeId(displayPropertyId, id)) {
-            throw new BusinessException(
-                    CommonErrorCode.BUSINESS_RULE_VIOLATION,
-                    "대표 속성은 같은 객체 유형의 속성이어야 합니다.",
-                    Map.of("field", "displayPropertyId"));
+                && !displayPropertyId.equals(objectType.getDisplayPropertyId())) {
+            // 028(속성 수정)과 같은 속성 행 잠금을 잡는다. 대표 지정과 민감 전환이 동시에 와도 뒤의 요청이 최신 값을 보고 거절된다.
+            PropertyDefinition property =
+                    propertyDefinitionRepository
+                            .findForUpdate(displayPropertyId)
+                            .filter(found -> found.getObjectTypeId().equals(id))
+                            .orElseThrow(
+                                    () ->
+                                            new BusinessException(
+                                                    CommonErrorCode.BUSINESS_RULE_VIOLATION,
+                                                    "대표 속성은 같은 객체 유형의 속성이어야 합니다.",
+                                                    Map.of("field", "displayPropertyId")));
+            if (property.getSensitivity() == PropertySensitivity.RESTRICTED) {
+                throw new BusinessException(
+                        CommonErrorCode.BUSINESS_RULE_VIOLATION,
+                        "민감 속성은 대표 속성으로 지정할 수 없습니다.",
+                        Map.of("field", "displayPropertyId"));
+            }
         }
         objectType.update(
                 request.getName() == null ? objectType.getName() : request.getName(),
