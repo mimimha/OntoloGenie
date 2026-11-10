@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import ChatComposer from './ChatComposer'
@@ -14,6 +14,9 @@ import type {
 
 // 처리 중인 답변이 있으면 이 간격으로 084를 다시 읽는다(정책 문서 3.3).
 const POLL_INTERVAL_MS = 1500
+
+// 맨 아래에서 이만큼(px) 안에 있으면 맨 아래를 보고 있는 것으로 본다.
+const NEAR_BOTTOM_PX = 80
 
 function ConversationPanel({
   conversation,
@@ -35,6 +38,27 @@ function ConversationPanel({
   })
   const messages = messagesQuery.data ?? []
   const running = messages.some((message) => message.status === 'RUNNING')
+
+  // 대화 상자 높이는 고정하고 메시지 영역만 스크롤한다. 새 메시지가 오거나 처리 단계가 바뀌면 맨 아래로 내리되,
+  // 위로 올려 이전 내용을 읽는 중이면 끌어내리지 않는다. 처음 열 때와 질문을 보낼 때는 맨 아래로 간다.
+  const logRef = useRef<HTMLDivElement>(null)
+  const followBottomRef = useRef(true)
+  const last = messages.at(-1)
+  const lastChange = `${messages.length}:${last?.id}:${last?.status}:${last?.answerMeta.stage}:${last?.content.length}`
+  useEffect(() => {
+    const log = logRef.current
+    if (log && followBottomRef.current) {
+      log.scrollTop = log.scrollHeight
+    }
+  }, [lastChange])
+
+  function handleLogScroll() {
+    const log = logRef.current
+    if (log) {
+      followBottomRef.current =
+        log.scrollHeight - log.scrollTop - log.clientHeight <= NEAR_BOTTOM_PX
+    }
+  }
 
   // Explorer의 [질문하기]로 이 대화에 들어왔으면 그 객체를 첫 질문에만 함께 보낸다(152).
   // 다음 질문부터 같은 대상을 이어 쓰거나 다른 대상으로 바꾸는 일은 서버가 맡는다(147). 질문마다 보내면 다른 객체를 물어도
@@ -96,6 +120,8 @@ function ConversationPanel({
   })
 
   async function handleSend(content: string) {
+    // 직접 보낸 질문과 그 답은 이전 내용을 읽던 중이어도 보이게 맨 아래로 따라간다.
+    followBottomRef.current = true
     await sendMutation.mutateAsync(content, {
       // 첫 질문을 보냈으면 참고 객체와 미리 채운 질문을 주소 기록에서 지운다. 이 콜백은 화면이 그대로일 때만 실행되므로,
       // 보내는 사이 다른 대화로 옮겼다면 그 주소를 원래 대화로 덮어쓰지 않는다.
@@ -129,15 +155,24 @@ function ConversationPanel({
     ))
   }
 
+  // 대화 상자는 업무 데이터 화면과 비슷한 페이지 길이가 되도록 높이를 고정하고, 넘치는 메시지는 안에서 스크롤한다.
+  // 메시지 영역을 relative로 두어, 화면 읽기용 숨김 글자(sr-only, 절대 위치)가 스크롤 상자 밖으로 빠져 페이지를 늘리지 않게 한다.
   return (
     <section
       aria-label="현재 대화"
-      className="flex min-h-[32rem] flex-col rounded-xl border border-slate-200 bg-white"
+      className="flex h-[45rem] flex-col rounded-xl border border-slate-200 bg-white"
     >
       <h2 className="border-b border-slate-200 p-3 text-sm font-semibold text-slate-900">
         {conversation.title ?? NEW_CONVERSATION_TITLE}
       </h2>
-      <div aria-live="polite" className="flex-1 space-y-4 overflow-y-auto p-4">
+      <div
+        ref={logRef}
+        role="log"
+        aria-label="대화 내용"
+        aria-live="polite"
+        onScroll={handleLogScroll}
+        className="relative min-h-0 flex-1 space-y-4 overflow-y-auto p-4"
+      >
         {renderMessages()}
       </div>
       {sendMutation.isError && (

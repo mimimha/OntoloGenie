@@ -1,11 +1,21 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
+import type { ReactNode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, expect, onTestFinished, test } from 'vitest'
 import { resetAgentMocks } from '../../mocks/agentHandlers'
+import { demoAccount } from '../../mocks/auth'
 import { server } from '../../mocks/node'
+import { AuthContext } from '../auth/auth-context'
+import type { Account } from '../auth/types'
 import AgentPage from './AgentPage'
 import type { AgentAction } from './types'
 
@@ -15,18 +25,47 @@ beforeEach(() => {
   resetAgentMocks()
 })
 
-function renderAgentPage(path = '/agent') {
+// 이 역할로 로그인한 상태를 넣는다. 추천 질문이 역할에 따라 달라진다(150). 기본은 생산기획자(데모 계정).
+function SignedInAs({
+  roleCode,
+  children,
+}: {
+  roleCode: Account['roleCode']
+  children: ReactNode
+}) {
+  return (
+    <AuthContext.Provider
+      value={{
+        account: { ...demoAccount, roleCode },
+        pending: false,
+        error: null,
+        refresh: async () => ({ error: null }),
+        signIn: async () => {},
+        signOut: async () => {},
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+function renderAgentPage(
+  path = '/agent',
+  roleCode: Account['roleCode'] = 'PLANNER',
+) {
   render(
     <QueryClientProvider
       client={
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/agent" element={<AgentPage />} />
-        </Routes>
-      </MemoryRouter>
+      <SignedInAs roleCode={roleCode}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/agent" element={<AgentPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SignedInAs>
     </QueryClientProvider>,
   )
 }
@@ -148,28 +187,31 @@ function renderEnteredFromObject(
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   }),
+  roleCode: Account['roleCode'] = 'PLANNER',
 ) {
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter
-        initialEntries={[
-          {
-            pathname: '/agent',
-            search: `?conversation=${conversationId}`,
-            state: {
-              conversationId,
-              referenceObjectId: 301,
-              referenceObjectName: '프레스 3호기',
-              referenceObjectTypeName: '설비',
-              draft: '프레스 3호기에 연결된 업무 정보를 알려줘',
+      <SignedInAs roleCode={roleCode}>
+        <MemoryRouter
+          initialEntries={[
+            {
+              pathname: '/agent',
+              search: `?conversation=${conversationId}`,
+              state: {
+                conversationId,
+                referenceObjectId: 301,
+                referenceObjectName: '프레스 3호기',
+                referenceObjectTypeName: '설비',
+                draft: '프레스 3호기에 연결된 업무 정보를 알려줘',
+              },
             },
-          },
-        ]}
-      >
-        <Routes>
-          <Route path="/agent" element={<AgentPage />} />
-        </Routes>
-      </MemoryRouter>
+          ]}
+        >
+          <Routes>
+            <Route path="/agent" element={<AgentPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SignedInAs>
     </QueryClientProvider>,
   )
 }
@@ -213,9 +255,7 @@ test('참고 객체는 첫 질문에만 보내고, 다음 질문부터는 보내
   await waitFor(() => expect(input).toBeEnabled())
   // 미리 채운 질문을 다시 채우지 않고, 추천 질문도 기본 예시로 돌아간다.
   expect(input).toHaveValue('')
-  expect(
-    screen.getByRole('button', { name: '현재 정지 중인 설비를 알려줘' }),
-  ).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '정지 설비' })).toBeInTheDocument()
 
   await user.type(input, '06번의 실행 이력은?')
   await user.click(screen.getByRole('button', { name: '보내기 ↑' }))
@@ -244,7 +284,7 @@ test('추천 질문을 고르면 입력란에 채우고, 답변을 기다리는 
   expect(await screen.findByText(/^답변 준비 중/)).toBeInTheDocument()
   expect(
     within(suggestions).getByRole('button', {
-      name: '현재 정지 중인 설비를 알려줘',
+      name: '정지 설비',
     }),
   ).toBeDisabled()
 })
@@ -308,9 +348,7 @@ test('이미 질문이 있는 대화에 남은 기록으로 들어오면 참고 
   expect(await screen.findByText(SAMPLE_ANSWER)).toBeInTheDocument()
   const input = await screen.findByLabelText('업무 질문')
   expect(input).toHaveValue('')
-  expect(
-    screen.getByRole('button', { name: '현재 정지 중인 설비를 알려줘' }),
-  ).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '정지 설비' })).toBeInTheDocument()
 
   await user.type(input, '06번의 실행 이력은?')
   await user.click(screen.getByRole('button', { name: '보내기 ↑' }))
@@ -320,22 +358,90 @@ test('이미 질문이 있는 대화에 남은 기록으로 들어오면 참고 
   )
 })
 
-test('참고 객체 없이 시작하면 기본 추천 질문을 보여 준다', async () => {
+test('계획 권한이 없는 역할이면 설비에서 들어와도 재배정 계획을 추천하지 않는다', async () => {
+  renderEnteredFromObject(2, undefined, 'VIEWER')
+
+  const suggestions = await screen.findByRole('list', { name: '추천 질문' })
+  expect(
+    within(suggestions).getByRole('button', { name: '상태 확인' }),
+  ).toBeInTheDocument()
+  expect(
+    within(suggestions).queryByRole('button', { name: '재배정 계획' }),
+  ).not.toBeInTheDocument()
+})
+
+test('질문을 보내면 메시지 영역을 맨 아래로 내리고, 위로 올려 읽는 중이면 끌어내리지 않는다', async () => {
   const user = userEvent.setup()
+  renderAgentPage('/agent?conversation=1')
+  expect(await screen.findByText(SAMPLE_ANSWER)).toBeInTheDocument()
+
+  // 테스트 환경은 높이를 계산하지 않으므로, 내용 높이 1000·보이는 높이 300인 영역으로 둔다.
+  const log = screen.getByRole('log', { name: '대화 내용' })
+  let top = 0
+  const scrolledTo: number[] = []
+  Object.defineProperty(log, 'scrollHeight', { get: () => 1000 })
+  Object.defineProperty(log, 'clientHeight', { get: () => 300 })
+  Object.defineProperty(log, 'scrollTop', {
+    get: () => top,
+    set: (value: number) => {
+      top = value
+      scrolledTo.push(value)
+    },
+  })
+
+  const input = screen.getByLabelText('업무 질문')
+  await user.type(input, '06번의 실행 이력은?{Enter}')
+  await waitFor(() => expect(scrolledTo).toContain(1000))
+
+  // 답을 기다리는 동안 위로 올려 이전 내용을 읽으면, 답이 와도 맨 아래로 끌어내리지 않는다.
+  top = 0
+  fireEvent.scroll(log)
+  const before = scrolledTo.length
+  await waitFor(() => expect(input).toBeEnabled())
+  expect(scrolledTo.slice(before)).not.toContain(1000)
+})
+
+test('Enter로 질문을 보내고, Shift+Enter와 한글 조합 중 Enter로는 보내지 않는다', async () => {
+  const user = userEvent.setup()
+  const sent = recordQuestionBodies()
   renderAgentPage('/agent?conversation=2')
 
+  const input = await screen.findByLabelText('업무 질문')
+  await user.type(input, 'PR-03 상태{Shift>}{Enter}{/Shift}알려줘')
+  expect(input).toHaveValue('PR-03 상태\n알려줘')
+
+  // 한글을 조합하는 중에 누른 Enter는 글자를 끝내는 키라 보내지 않는다.
+  // 보내기는 비동기로 일어나므로 잠시 기다린 뒤 요청이 없었는지 본다.
+  fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  expect(sent).toEqual([])
+  expect(input).toHaveValue('PR-03 상태\n알려줘')
+
+  await user.keyboard('{Enter}')
+  await waitFor(() => expect(sent).toEqual([{ content: 'PR-03 상태\n알려줘' }]))
+})
+
+test('참고 객체 없이 시작하면 역할에 맞는 기본 추천 질문을 보여 준다', async () => {
+  const user = userEvent.setup()
+  // 조회 사용자는 086 예시 다섯 개를 보고, 계획 권한이 없으므로 재배정 계획 문장은 없다.
+  renderAgentPage('/agent?conversation=2', 'VIEWER')
+
   expect(
-    await screen.findByText('추천 질문 · 선택하면 질문 입력란에 채워집니다.'),
+    await screen.findByRole('list', { name: '추천 질문' }),
   ).toBeInTheDocument()
+  expect(
+    screen.queryByText('추천 질문 · 선택하면 질문 입력란에 채워집니다.'),
+  ).toBeNull()
   await user.click(
     await screen.findByRole('button', {
-      name: '최근 정합성 문제 현황을 보여줘',
+      name: '정합성 문제',
     }),
   )
 
   expect(screen.getByLabelText('업무 질문')).toHaveValue(
     '최근 정합성 문제 현황을 보여줘',
   )
+  expect(screen.queryByRole('button', { name: /재배정 계획/ })).toBeNull()
 })
 
 test('이름·유형이 없는 예전 기록으로 들어오면 참고 객체 없이 시작한다', async () => {
@@ -347,30 +453,32 @@ test('이름·유형이 없는 예전 기록으로 들어오면 참고 객체 �
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
-      <MemoryRouter
-        initialEntries={[
-          {
-            pathname: '/agent',
-            search: '?conversation=2',
-            // 150 이전에 만든 기록에는 이름·유형이 없다.
-            state: {
-              conversationId: 2,
-              referenceObjectId: 301,
-              draft: '프레스 3호기에 연결된 업무 정보를 알려줘',
+      <SignedInAs roleCode="PLANNER">
+        <MemoryRouter
+          initialEntries={[
+            {
+              pathname: '/agent',
+              search: '?conversation=2',
+              // 150 이전에 만든 기록에는 이름·유형이 없다.
+              state: {
+                conversationId: 2,
+                referenceObjectId: 301,
+                draft: '프레스 3호기에 연결된 업무 정보를 알려줘',
+              },
             },
-          },
-        ]}
-      >
-        <Routes>
-          <Route path="/agent" element={<AgentPage />} />
-        </Routes>
-      </MemoryRouter>
+          ]}
+        >
+          <Routes>
+            <Route path="/agent" element={<AgentPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SignedInAs>
     </QueryClientProvider>,
   )
 
   expect(
     await screen.findByRole('button', {
-      name: '현재 정지 중인 설비를 알려줘',
+      name: '정지 설비',
     }),
   ).toBeInTheDocument()
   expect(screen.queryByText(/undefined/)).not.toBeInTheDocument()
