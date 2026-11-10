@@ -2,6 +2,7 @@
 
 from app.analysis import engine
 from app.analysis.engine import analyze
+from app.analysis.runner import AnalysisRunner
 from app.dataset.build import generate
 from app.models.analysis import AnalysisStartRequest
 from app.proposers.api_format import fingerprint_payload
@@ -98,7 +99,9 @@ def request(kind, **extra):
     )
 
 
-def test_engine_uses_both_fields_when_backend_sends_them(tmp_path, monkeypatch):
+def test_result_callback_excludes_rejected_candidates_and_reports_changes(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(engine, "get_llm", lambda: None)
     monkeypatch.setattr(engine, "get_model_summary", lambda: (None, "내부 토큰 없음"))
     generate("t7", root=tmp_path)
@@ -108,9 +111,18 @@ def test_engine_uses_both_fields_when_backend_sends_them(tmp_path, monkeypatch):
 
     rule = next(p for p in first.proposals if p["itemKind"] == "LINK_RULE")
     others = [p for p in first.proposals if p is not rule]
-    again = analyze(
+    callbacks = []
+    runner = AnalysisRunner(lambda _run_id, body: callbacks.append(body))
+    runner.run(
         request(
             "REANALYSIS",
+            sources=[
+                {
+                    "dataSourceCode": "MES_MAIN",
+                    "sourceKind": "CSV",
+                    "path": str(mes["MES_MAIN"]),
+                }
+            ],
             pastDecisions=[
                 {
                     "candidateId": rule["evidence"]["candidateId"],
@@ -128,19 +140,66 @@ def test_engine_uses_both_fields_when_backend_sends_them(tmp_path, monkeypatch):
                 }
                 for p in others
             ],
-        ),
-        mes,
+        )
     )
-    # 거절된 규칙은 다시 나오지 않고, 나머지는 이전 후보와 같아 유지
-    assert again.summary["pastDecisionSkipped"]["REJECT"] == 1
-    assert again.summary["changeBasis"] == "PREVIOUS_PROPOSALS"
-    assert again.summary["changeCounts"] == {
+
+    running, succeeded = callbacks
+    assert running == {"status": "RUNNING"}
+    assert succeeded["status"] == "SUCCEEDED"
+    summary = succeeded["resultSummary"]
+    assert summary["pastDecisionSkipped"]["REJECT"] == 1
+    assert summary["changeBasis"] == "PREVIOUS_PROPOSALS"
+    assert summary["changeCounts"] == {
         "ADDED": 0,
         "CHANGED": 0,
         "UNCHANGED": len(others),
     }
     assert not [
         p
-        for p in again.proposals
+        for p in succeeded["proposals"]
         if p["evidence"]["candidateId"] == rule["evidence"]["candidateId"]
     ]
+
+
+def test_adding_due_date_marks_the_same_work_order_candidate_changed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(engine, "get_llm", lambda: None)
+    (tmp_path / "work_order.csv").write_text(
+        "wo_no,due_date\nWO-001,2026-11-01\nWO-002,2026-11-02\nWO-003,2026-11-03\n",
+        encoding="utf-8",
+    )
+    table = {
+        "sourceResourceId": 1,
+        "dataSourceCode": "MES_MAIN",
+        "resourceKey": "mes.work_order",
+    }
+    sources = {"MES_MAIN": tmp_path}
+    first = analyze(
+        request("INITIAL", targets=[{**table, "columns": ["wo_no"]}]),
+        sources,
+        model_summary={},
+    )
+    original = next(p for p in first.proposals if p["itemKind"] == "OBJECT_TYPE")
+    evidence = original["evidence"]
+
+    again = analyze(
+        request(
+            "REANALYSIS",
+            targets=[table],
+            previousProposals=[
+                {
+                    "candidateId": evidence["candidateId"],
+                    "fingerprint": evidence["fingerprint"],
+                }
+            ],
+        ),
+        sources,
+        model_summary={},
+    )
+
+    changed = next(p for p in again.proposals if p["itemKind"] == "OBJECT_TYPE")
+    assert changed["evidence"]["candidateId"] == evidence["candidateId"]
+    assert changed["evidence"]["fingerprint"] != evidence["fingerprint"]
+    assert changed["evidence"]["changeType"] == "CHANGED"
+    assert any(prop["code"] == "due_date" for prop in changed["payload"]["properties"])

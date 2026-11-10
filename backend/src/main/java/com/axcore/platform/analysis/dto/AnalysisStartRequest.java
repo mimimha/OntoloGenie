@@ -5,12 +5,28 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * FastAPI 분석 시작 알림 요청 본문(API 018 하단, POST /internal/v1/analysis-runs). 필수 필드만 보낸다.
+ * FastAPI 분석 시작 알림 요청 본문(API 018 하단, POST /internal/v1/analysis-runs). 재분석에만 이력을 보낸다.
  *
  * <p>{@code sources[].connection}에 원천 AI 계정 비밀번호가 들어 있다. 이 객체를 로그에 남기지 않고, 문자열로 바꿀 때도 접속 정보를 가린다.
  */
 public record AnalysisStartRequest(
-        long runId, String runKind, List<Target> targets, List<Source> sources) {
+        long runId,
+        String runKind,
+        List<Target> targets,
+        List<Source> sources,
+        @JsonInclude(JsonInclude.Include.NON_EMPTY) List<PastDecision> pastDecisions,
+        @JsonInclude(JsonInclude.Include.NON_EMPTY) List<PreviousProposal> previousProposals) {
+
+    public record PastDecision(
+            String candidateId,
+            String itemKind,
+            int revision,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String fingerprint,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Map<String, Object> payload,
+            String decision,
+            String reason) {}
+
+    public record PreviousProposal(String candidateId, String fingerprint) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Target(

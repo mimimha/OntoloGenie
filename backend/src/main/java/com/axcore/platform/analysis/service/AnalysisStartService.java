@@ -71,7 +71,16 @@ public class AnalysisStartService {
         for (var group : bySource.values()) {
             sources.add(source(group));
         }
-        return Optional.of(new AnalysisStartRequest(runId, run.get().runKind(), targets, sources));
+        String runKind = run.get().runKind();
+        boolean reanalysis = "REANALYSIS".equals(runKind);
+        return Optional.of(
+                new AnalysisStartRequest(
+                        runId,
+                        runKind,
+                        targets,
+                        sources,
+                        reanalysis ? repository.findPastDecisions(runId) : List.of(),
+                        reanalysis ? repository.findPreviousProposals(runId) : List.of()));
     }
 
     /** 아직 QUEUED일 때만 FAILED로 바꾼다. AI가 이미 105로 상태를 바꿨으면 그대로 둔다. */
