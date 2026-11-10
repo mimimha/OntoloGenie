@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * ERD의 온톨로지(V1)·운영(V2)·교차 FK(V3)·세션(V4)·CDC 수집(V5)·Spring Batch(V6)·전체 읽기 경계(V11)·CDC 소비 상태와 확인
- * 대기(V12) migration이 PostgreSQL 18에 그대로 적용되는지 확인한다.
+ * 대기(V12)·역할별 조회 범위 초기값(V13) migration이 PostgreSQL 18에 그대로 적용되는지 확인한다.
  */
 @SpringBootTest
 @ActiveProfiles("api")
@@ -45,7 +45,8 @@ class DatabaseMigrationTests {
                         .toArray(MigrationInfo[]::new);
 
         assertThat(Arrays.stream(applied).map(info -> info.getVersion().getVersion()))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
+                .containsExactly(
+                        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
         assertThat(applied).allMatch(info -> info.getState() == MigrationState.SUCCESS);
         assertThat(flyway.info().pending()).isEmpty();
     }
@@ -118,6 +119,28 @@ class DatabaseMigrationTests {
     void seedsFixedRoles() {
         assertThat(jdbcClient.sql("select code from role order by id").query(String.class).list())
                 .containsExactly("ADMIN", "PLANNER", "MAINTENANCE", "VIEWER");
+    }
+
+    @Test
+    void seedsRoleDataScopeForDecidedGroups() {
+        assertThat(
+                        jdbcClient
+                                .sql(
+                                        """
+                                        select r.code || ':' || s.access_group || ':' || s.can_view_restricted
+                                        from role_data_scope s join role r on r.id = s.role_id
+                                        where s.access_group in ('PRODUCTION', 'SALES_SUPPLY', 'FINANCE', 'HR')
+                                        order by r.code, s.access_group
+                                        """)
+                                .query(String.class)
+                                .list())
+                .containsExactly(
+                        "MAINTENANCE:PRODUCTION:false",
+                        "MAINTENANCE:SALES_SUPPLY:false",
+                        "PLANNER:PRODUCTION:true",
+                        "PLANNER:SALES_SUPPLY:false",
+                        "VIEWER:PRODUCTION:false",
+                        "VIEWER:SALES_SUPPLY:true");
     }
 
     @Test

@@ -20,16 +20,24 @@ public class QueuedJobRepository {
 
     /** 가장 먼저 들어온 QUEUED 행 하나를 RUNNING으로 바꿔 가져간다. 다른 배치 인스턴스가 잡고 있는 행은 기다리지 않고 건너뛴다(SKIP LOCKED). */
     public Optional<ClaimedJob> claimNext(QueuedJobType type, Instant startedAt) {
+        return claimNext(type, "true", startedAt);
+    }
+
+    /**
+     * {@link #claimNext(QueuedJobType, Instant)}와 같되 condition에 맞는 행만 가져간다. condition은 처리기가 코드에 적은
+     * 상수 식이다({@code QueuedJobHandler.claimCondition}).
+     */
+    public Optional<ClaimedJob> claimNext(QueuedJobType type, String condition, Instant startedAt) {
         return jdbcClient
                 .sql(
                         """
                         update %1$s set status = 'RUNNING', started_at = :startedAt
-                        where id = (select id from %1$s where status = 'QUEUED'
+                        where id = (select id from %1$s where status = 'QUEUED' and (%2$s)
                                     order by requested_at, id
                                     limit 1 for update skip locked)
                         returning id, requested_at
                         """
-                                .formatted(type.table()))
+                                .formatted(type.table(), condition))
                 .param("startedAt", toTimestamp(startedAt))
                 .query(
                         (rs, rowNum) ->

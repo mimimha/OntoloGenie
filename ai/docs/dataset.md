@@ -89,11 +89,39 @@
 | `planted_cases.json`, `manifest.json` | 일부러 넣은 사례 목록, 버전·건수 |
 
 읽는 법
+- 연결 규칙의 변환은 `reference_transforms`에 출발(`source_transforms`)과 도착(`target_transforms`)을 따로 적습니다. AI 후보의 연결 규칙도 같은 형식이라 바로 비교할 수 있습니다. 예: R-W `[{"op": "PAD_ZEROS", "arg": 4}, {"op": "ADD_PREFIX", "arg": "GP"}]` → `[]`
 - 위치는 `원천.표.컬럼`(예: `mes.work_order.so_ref`)으로 적습니다. `level: must`는 반드시 찾아야 하는 정답이고, 채점은 이름이 아니라 원천 위치로 합니다.
 - 관계는 `via.from → via.to`이고, 두 컬럼 이상이면 목록입니다.
 - `via.key`: 도착 컬럼이 기본키(`primary`), 다른 유일 키(`alternate`), 키 아님(`none`, 예: 라우팅 설비 종류 → 설비 종류)
 - `via.condition`: 그 값일 때만 성립 (예: 정비 대상 종류 = 설비 / 금형)
 - `via.through`: 다른 표를 거쳐 잇는 관계. 생산 실적·불량 기록·작업지시 공정별 배정의 작업지시 번호로 작업지시의 품목 코드를 찾고, 공정 순번과 함께 라우팅 한 줄을 가리킵니다.
+
+값 단위 정답 `id_links.json` (출발 값 하나에 한 줄, 304줄)
+
+```json
+{"rule_id": "R-W", "from_value": "57", "to_value": null, "status": "unmatched_error", "reason": "직원 표에 GP0057 없음", "row_keys": ["57"]}
+```
+
+| status | 뜻 | 수 |
+| --- | --- | --- |
+| `matched` | 이어짐 | 293 |
+| `unmatched_error` | 오류로 안 이어짐 (57 → GP0057 없음, 오타 `P2O1`, 없는 수주 번호 등) | 7 |
+| `unmatched_expected` | 원래 안 이어지는 값 (설비가 아닌 자산, 아직 검사 전인 로트) | 2 |
+| `missing` | 출발 값 없음 | 1 |
+| `ambiguous` | 후보 여럿 (메모의 "1호기" → P101·P201) | 1 |
+
+- 항목(`from_value` 원본 값, `to_value` 대응 대상, `reason` 실패 이유, `row_keys` 그 값이 나오는 행)이 시험 적용 판정 근거 화면의 항목과 같습니다.
+- `unmatched_error`·`ambiguous`인 값이 개별 보류 후보입니다. 연결률은 행 기준입니다(R-SO 136행 중 134행, 빈 값 3행 제외).
+
+정답을 정하며 확인한 관계 3건
+
+| 관계 | 확인 결과 |
+| --- | --- |
+| `routing.equipment_kind` → 설비 | 특정 설비가 아니라 설비 종류. 정답은 `equipment.kind` (키가 아니라 N:M) |
+| `work_order.die_drawing_code` → 금형 | `die_code`가 아니라 `drawing_code`와 같은 값 |
+| `inspection.lot_no` → 출하 | 출하 `lot_no`와 같은 값(161건). 검사 기록이 없는 출하 로트를 잡으려고 방향은 출하 → 검사 |
+
+AI 입력에는 표 정의(표·컬럼·자료형·기본키), 컬럼 주석, 값만 씁니다. 관계는 AI가 찾아야 하는 대상이라 컬럼 주석에 다른 표 이름을 적지 않았습니다.
 
 ## 5. 시나리오 기대 답
 
@@ -122,3 +150,19 @@
 ## 7. 다시 만들기
 
 `ai/` 폴더에서 `.\.venv\Scripts\python.exe -m app.dataset.build --version v1.0 --force`를 실행합니다. 같은 시드면 같은 파일이 나옵니다.
+
+## 8. 작업별로 볼 파일
+
+| 작업 | 볼 파일 |
+| --- | --- |
+| #19 연결 규칙 정답·검증 기준 | `data/gold-v1.0/mapping_rules.json` |
+| #127·128 시험 적용 판정·근거 | `data/gold-v1.0/id_links.json` |
+| #129·132 규칙 승인·개별 보류 | `data/gold-v1.0/id_links.json`, `scenario_answers.json` |
+| #134·135 정합성 검사·재검증 | `data/gold-v1.0/integrity_checks.json`·`integrity_issues.json`, `data/scenario-v1.0/s5_fix.sql` |
+| #223·123·124 분석 결과 저장·제안 목록 | `results/proposals-v1.0.api.json`, `docs/api-internal.md` |
+| #125 규칙 후보 직접 작성 | `app/rules/transforms.py` (허용 변환 10개) |
+| #224 개인정보 가림 | `data/gold-v1.0/ontology.json`의 `is_personal` (사람 이름 컬럼 4개) |
+
+- 허용 변환: `STRIP_PREFIX` · `ADD_PREFIX` · `PAD_ZEROS` · `UPPER` · `TRIM` · `EXTRACT_NUMBER` · `TO_INTEGER` · `TO_DECIMAL` · `TO_DATE` · `MAP_VALUE`
+- 개인정보 컬럼: `erp.employee.emp_name`, `mes.worker.name`, `erp.vendor.contact_name`(모두 가명), `mes.maintenance_order.technician`(대부분 부서 이름, 2건 직원 이름). 사업자번호는 뒷자리를 가린 값입니다.
+- `results/proposals-v1.0.api.json`은 `data-v1.0` 전체를 LLM 없이 분석한 105 요청 본문입니다. 화면 필드와의 대응은 `docs/api-internal.md`에 있습니다.

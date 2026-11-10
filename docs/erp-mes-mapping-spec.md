@@ -13,7 +13,7 @@ ERP·MES 간 연결 규칙을 AI가 발견·제안하는 범위와,
 
 기준 자료는 다음과 같다. 경로는 모두 `ai/` 기준이다.
 
-- `docs/for-yurim.md`: 작업 안내
+- `docs/dataset.md`: 데이터·정답 안내 (8절 작업별로 볼 파일)
 - `docs/api-internal.md`: 분석 연동 및 제안 형식
 - `data/gold-v1.0/mapping_rules.json`: 정답 규칙
 - `data/gold-v1.0/id_links.json`: 값 단위 기대 결과

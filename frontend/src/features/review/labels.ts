@@ -13,6 +13,20 @@ export const kindLabels: Record<string, string> = {
   LINK_RULE: '연결 규칙',
   DOCUMENT_LINK: '문서 연결',
 }
+// AI 제안은 표 하나(객체 유형)·관계 하나(연결 규칙)로 묶여 오고, 직접 추가는 연결 규칙만 된다.
+// 실제로 저장되는 종류만 필터에 둔다(속성·매핑만 고르면 늘 0건이 나왔다).
+export const filterKindLabels: Record<string, string> = {
+  OBJECT_TYPE: kindLabels.OBJECT_TYPE,
+  LINK_RULE: kindLabels.LINK_RULE,
+  LINK_TYPE: kindLabels.LINK_TYPE,
+  DOCUMENT_LINK: kindLabels.DOCUMENT_LINK,
+}
+// 재분석 비교(evidence.changeType)
+export const changeLabels: Record<string, string> = {
+  ADDED: '추가',
+  CHANGED: '변경',
+  UNCHANGED: '유지',
+}
 export const reviewLabels: Record<string, string> = {
   PENDING: '검토 대기',
   APPROVED: '승인',

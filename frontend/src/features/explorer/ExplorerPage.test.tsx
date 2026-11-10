@@ -580,7 +580,7 @@ function AgentEntryProbe() {
   return (
     <div>
       <p>{location.search}</p>
-      <p>{`${entry.referenceObjectId} · ${entry.draft}`}</p>
+      <p>{`${entry.referenceObjectId} · ${entry.referenceObjectName} · ${entry.referenceObjectTypeName} · ${entry.draft}`}</p>
     </div>
   )
 }
@@ -607,7 +607,9 @@ test('객체 상세의 질문하기는 새 대화를 만들어 그 객체로 질
 
   expect(await screen.findByText(/^\?conversation=\d+$/)).toBeInTheDocument()
   expect(
-    screen.getByText('301 · 프레스 3호기에 연결된 업무 정보를 알려줘'),
+    screen.getByText(
+      '301 · 프레스 3호기 · 설비 · 프레스 3호기에 연결된 업무 정보를 알려줘',
+    ),
   ).toBeInTheDocument()
 })
 

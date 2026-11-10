@@ -102,6 +102,28 @@ public class SourceTableReader {
         }
     }
 
+    /**
+     * 원천의 지금 {@code pg_current_snapshot()} xmax(다음에 발급될 트랜잭션 번호, xid8). CDC를 처음 소비할 때 epoch 복원
+     * 기준값이다(198-6). 번호를 발급하지 않는 함수라 원천에 쓰지 않는다.
+     */
+    public long currentXmax(SourceEndpoint endpoint, SourceAccount account) throws SQLException {
+        try (Connection connection =
+                        DriverManager.getConnection(endpoint.jdbcUrl(), properties(account));
+                Statement statement = connection.createStatement();
+                ResultSet rs =
+                        statement.executeQuery(
+                                "select pg_snapshot_xmax(pg_current_snapshot())::text")) {
+            rs.next();
+            return Long.parseLong(rs.getString(1));
+        }
+    }
+
+    /**
+     * 표 하나를 읽는다. 표·컬럼 이름은 SQL 문법상 바인딩 변수로 넘길 수 없어 문자열로 만든다. 사용자 입력은 들어가지 않는다: 표 이름은 원천이 {@code
+     * quote_ident}로 따옴표 처리한 값({@link #relation}, 카탈로그 키는 바인딩 변수로 넘김)이고, 컬럼 이름은 카탈로그 값을 {@link
+     * #quote}로 감싼 식별자다. 그래서 SonarQube java:S2077(동적 SQL)을 이 메서드에서만 끈다(Jira 332).
+     */
+    @SuppressWarnings("java:S2077")
     private List<SourceRow> readTable(Connection connection, Table table, int remaining)
             throws SQLException {
         String relation = relation(connection, table.resourceKey());

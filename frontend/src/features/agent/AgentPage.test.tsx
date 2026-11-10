@@ -3,12 +3,15 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { afterEach, expect, test } from 'vitest'
+import { beforeEach, expect, onTestFinished, test } from 'vitest'
 import { resetAgentMocks } from '../../mocks/agentHandlers'
 import { server } from '../../mocks/node'
 import AgentPage from './AgentPage'
+import type { AgentAction } from './types'
 
-afterEach(() => {
+// 테스트마다 시작 전에 가짜 대화를 되돌린다. 앞 테스트가 끝날 때 아직 처리 중이던 요청은 공통 설정(src/test/setup.ts)이 먼저 기다리므로,
+// 끝나서 되돌린 뒤에 늦은 요청이 대화를 다시 바꾸는 일이 없다.
+beforeEach(() => {
   resetAgentMocks()
 })
 
@@ -50,6 +53,12 @@ test('답변의 정보별 결과와 기준 시점을 구분해 보여 준다', a
   renderAgentPage('/agent?conversation=1')
 
   expect(await screen.findByText(SAMPLE_ANSWER)).toBeInTheDocument()
+  // 정보별 결과는 정보 하나가 한 줄인 표다(머리줄 + 4줄).
+  expect(
+    within(screen.getByRole('table', { name: '정보별 결과' })).getAllByRole(
+      'row',
+    ),
+  ).toHaveLength(5)
   expect(screen.getByText('확인됨')).toBeInTheDocument()
   expect(screen.getByText('확인됨 · 추정')).toBeInTheDocument()
   expect(screen.getByText('권한 없음')).toBeInTheDocument()
@@ -112,13 +121,13 @@ test('새 대화를 만들면 목록에 추가하고 그 대화를 연다', asyn
   ).toBeInTheDocument()
 })
 
-test('객체에서 들어오면 질문을 미리 채우고 첫 질문에 그 객체를 함께 보낸다', async () => {
-  const user = userEvent.setup()
+// 대화(기본 2)로 보낸 질문 본문을 모은다. 테스트가 끝나면(실패해도) 이 테스트의 리스너만 지운다.
+function recordQuestionBodies(conversationId = 2) {
   const bodies: unknown[] = []
   const recordBody = ({ request }: { request: Request }) => {
     if (
       request.method === 'POST' &&
-      request.url.endsWith('/agent/conversations/2/messages')
+      request.url.endsWith(`/agent/conversations/${conversationId}/messages`)
     ) {
       void request
         .clone()
@@ -127,6 +136,211 @@ test('객체에서 들어오면 질문을 미리 채우고 첫 질문에 그 객
     }
   }
   server.events.on('request:start', recordBody)
+  onTestFinished(() => {
+    server.events.removeListener('request:start', recordBody)
+  })
+  return bodies
+}
+
+// Explorer 객체 상세의 [질문하기]로 대화(기본 2)에 들어온 상태로 그린다(152·150).
+function renderEnteredFromObject(
+  conversationId = 2,
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  }),
+) {
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/agent',
+            search: `?conversation=${conversationId}`,
+            state: {
+              conversationId,
+              referenceObjectId: 301,
+              referenceObjectName: '프레스 3호기',
+              referenceObjectTypeName: '설비',
+              draft: '프레스 3호기에 연결된 업무 정보를 알려줘',
+            },
+          },
+        ]}
+      >
+        <Routes>
+          <Route path="/agent" element={<AgentPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+test('객체에서 들어오면 질문을 미리 채우고 첫 질문에 그 객체를 함께 보낸다', async () => {
+  const user = userEvent.setup()
+  const sent = recordQuestionBodies()
+  renderEnteredFromObject()
+
+  expect(await screen.findByLabelText('업무 질문')).toHaveValue(
+    '프레스 3호기에 연결된 업무 정보를 알려줘',
+  )
+  // 참고 객체는 따로 표시하지 않고 추천 질문을 그 객체에 맞춘다(150).
+  expect(
+    within(screen.getByRole('list', { name: '추천 질문' })).getByRole(
+      'button',
+      { name: '재배정 계획' },
+    ),
+  ).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '보내기 ↑' }))
+
+  await waitFor(() =>
+    expect(sent).toEqual([
+      {
+        content: '프레스 3호기에 연결된 업무 정보를 알려줘',
+        referenceObjectIds: [301],
+      },
+    ]),
+  )
+})
+
+test('참고 객체는 첫 질문에만 보내고, 다음 질문부터는 보내지 않는다', async () => {
+  const user = userEvent.setup()
+  const sent = recordQuestionBodies()
+  renderEnteredFromObject()
+
+  await user.click(await screen.findByRole('button', { name: '보내기 ↑' }))
+  // 첫 답변이 다 끝날 때까지 기다린다(보낸 직후 입력란이 잠깐 열리는 순간과 구분).
+  const input = screen.getByLabelText('업무 질문')
+  expect(await screen.findByText(SAMPLE_ANSWER)).toBeInTheDocument()
+  await waitFor(() => expect(input).toBeEnabled())
+  // 미리 채운 질문을 다시 채우지 않고, 추천 질문도 기본 예시로 돌아간다.
+  expect(input).toHaveValue('')
+  expect(
+    screen.getByRole('button', { name: '현재 정지 중인 설비를 알려줘' }),
+  ).toBeInTheDocument()
+
+  await user.type(input, '06번의 실행 이력은?')
+  await user.click(screen.getByRole('button', { name: '보내기 ↑' }))
+
+  // 다른 객체를 물어도 처음 객체(301)로 답하지 않게, 다음 질문에는 참고 객체를 붙이지 않는다.
+  await waitFor(() => expect(sent).toHaveLength(2))
+  expect(sent[1]).toEqual({ content: '06번의 실행 이력은?' })
+})
+
+test('추천 질문을 고르면 입력란에 채우고, 답변을 기다리는 동안에는 고를 수 없다', async () => {
+  const user = userEvent.setup()
+  renderEnteredFromObject()
+
+  const suggestions = await screen.findByRole('list', { name: '추천 질문' })
+  await user.click(
+    within(suggestions).getByRole('button', { name: '실행 이력' }),
+  )
+
+  const input = screen.getByLabelText('업무 질문')
+  expect(input).toHaveValue('프레스 3호기의 최근 실행 이력을 알려줘')
+  expect(input).toHaveFocus()
+
+  await user.click(screen.getByRole('button', { name: '보내기 ↑' }))
+  // 처리 중인 답변이 화면에 보이는 동안(RUNNING) 추천 질문을 누를 수 없다.
+  // 첫 질문을 보냈으므로 추천 질문은 기본 예시로 바뀌어 있다.
+  expect(await screen.findByText(/^답변 준비 중/)).toBeInTheDocument()
+  expect(
+    within(suggestions).getByRole('button', {
+      name: '현재 정지 중인 설비를 알려줘',
+    }),
+  ).toBeDisabled()
+})
+
+test('첫 질문을 보내는 사이 다른 대화로 옮기면, 답이 와도 원래 대화로 되돌아가지 않는다', async () => {
+  const user = userEvent.setup()
+  // 첫 질문 응답을 붙잡아 두었다가 풀어 준다. 아무것도 돌려주지 않으면 원래 가짜 처리기가 이어서 답한다.
+  let release = () => {}
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  server.use(
+    http.post('/api/v1/agent/conversations/2/messages', async () => {
+      await held
+    }),
+  )
+  // 중간에 실패해도 붙잡은 요청을 이 테스트 안에서 풀어, 공통 정리(afterEach)보다 늦게 끝나지 않게 한다.
+  try {
+    renderEnteredFromObject()
+
+    await user.click(await screen.findByRole('button', { name: '보내기 ↑' }))
+    const list = screen.getByRole('complementary', { name: '대화방 목록' })
+    await user.click(
+      within(list).getByRole('button', {
+        name: '설비 PR-03의 최근 비가동 이력과 장부가를 알려줘',
+      }),
+    )
+    expect(await screen.findByText(SAMPLE_ANSWER)).toBeInTheDocument()
+    release()
+    // 응답을 처리해 목록을 다시 읽으면 대화 2의 제목이 첫 질문으로 바뀐다. 이때는 보낸 뒤 처리가 다 끝나 있다.
+    expect(
+      await within(list).findByRole('button', {
+        name: '프레스 3호기에 연결된 업무 정보를 알려줘',
+      }),
+    ).toBeInTheDocument()
+
+    // 응답을 받은 뒤에도 옮겨 간 대화가 그대로 열려 있다.
+    expect(
+      within(list).getByRole('button', {
+        name: '설비 PR-03의 최근 비가동 이력과 장부가를 알려줘',
+        pressed: true,
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(SAMPLE_ANSWER)).toBeInTheDocument()
+  } finally {
+    release()
+  }
+})
+
+test('이미 질문이 있는 대화에 남은 기록으로 들어오면 참고 객체를 쓰지 않는다', async () => {
+  const user = userEvent.setup()
+  const sent = recordQuestionBodies(1)
+  // 첫 질문을 보내는 사이 다른 대화로 옮겼다가 뒤로 가기로 돌아온 경우처럼, 질문이 있는 대화 1에 참고 객체 기록이 남아 있다.
+  // 떠나기 전에 읽은 빈 목록도 캐시에 남아 있다. 이 낡은 목록이 아니라 새로 읽은 목록으로 판단해야 한다.
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  queryClient.setQueryData(['agent', 'messages', 1], [])
+  renderEnteredFromObject(1, queryClient)
+
+  expect(await screen.findByText(SAMPLE_ANSWER)).toBeInTheDocument()
+  const input = await screen.findByLabelText('업무 질문')
+  expect(input).toHaveValue('')
+  expect(
+    screen.getByRole('button', { name: '현재 정지 중인 설비를 알려줘' }),
+  ).toBeInTheDocument()
+
+  await user.type(input, '06번의 실행 이력은?')
+  await user.click(screen.getByRole('button', { name: '보내기 ↑' }))
+
+  await waitFor(() =>
+    expect(sent).toEqual([{ content: '06번의 실행 이력은?' }]),
+  )
+})
+
+test('참고 객체 없이 시작하면 기본 추천 질문을 보여 준다', async () => {
+  const user = userEvent.setup()
+  renderAgentPage('/agent?conversation=2')
+
+  expect(
+    await screen.findByText('추천 질문 · 선택하면 질문 입력란에 채워집니다.'),
+  ).toBeInTheDocument()
+  await user.click(
+    await screen.findByRole('button', {
+      name: '최근 정합성 문제 현황을 보여줘',
+    }),
+  )
+
+  expect(screen.getByLabelText('업무 질문')).toHaveValue(
+    '최근 정합성 문제 현황을 보여줘',
+  )
+})
+
+test('이름·유형이 없는 예전 기록으로 들어오면 참고 객체 없이 시작한다', async () => {
+  const user = userEvent.setup()
+  const sent = recordQuestionBodies()
   render(
     <QueryClientProvider
       client={
@@ -138,6 +352,7 @@ test('객체에서 들어오면 질문을 미리 채우고 첫 질문에 그 객
           {
             pathname: '/agent',
             search: '?conversation=2',
+            // 150 이전에 만든 기록에는 이름·유형이 없다.
             state: {
               conversationId: 2,
               referenceObjectId: 301,
@@ -153,20 +368,16 @@ test('객체에서 들어오면 질문을 미리 채우고 첫 질문에 그 객
     </QueryClientProvider>,
   )
 
-  expect(await screen.findByLabelText('업무 질문')).toHaveValue(
-    '프레스 3호기에 연결된 업무 정보를 알려줘',
-  )
-  await user.click(screen.getByRole('button', { name: '보내기 ↑' }))
+  expect(
+    await screen.findByRole('button', {
+      name: '현재 정지 중인 설비를 알려줘',
+    }),
+  ).toBeInTheDocument()
+  expect(screen.queryByText(/undefined/)).not.toBeInTheDocument()
 
-  await waitFor(() =>
-    expect(bodies).toEqual([
-      {
-        content: '프레스 3호기에 연결된 업무 정보를 알려줘',
-        referenceObjectIds: [301],
-      },
-    ]),
-  )
-  server.events.removeListener('request:start', recordBody)
+  await user.type(screen.getByLabelText('업무 질문'), '설비 상태 알려줘')
+  await user.click(screen.getByRole('button', { name: '보내기 ↑' }))
+  await waitFor(() => expect(sent).toEqual([{ content: '설비 상태 알려줘' }]))
 })
 
 test('답변의 정보별 결과에서 출처 객체와 실행 이력으로 이동할 수 있다', async () => {
@@ -227,4 +438,186 @@ test('실행 이력 도구가 아닌 결과에는 실행 이력 링크를 달지
   expect(
     screen.queryByRole('link', { name: '실행 이력 ↗' }),
   ).not.toBeInTheDocument()
+})
+
+// 대화 1에 Agent 답변 하나만 있고, 그 답변이 실행한 작업이 actions인 상태로 바꾼다(160).
+// failed면 Action을 실행한 뒤 답변을 끝내지 못한 경우다.
+function mockAnswerWithActions(actions: AgentAction[], failed = false) {
+  server.use(
+    http.get('/api/v1/agent/conversations/:id/messages', () =>
+      HttpResponse.json({
+        data: [
+          {
+            id: 901,
+            conversationId: 1,
+            sender: 'AGENT',
+            content: failed
+              ? '답변을 끝내지 못했습니다. 잠시 후 다시 질문해 주세요.'
+              : '재배정 계획 요청을 처리했습니다.',
+            context: {},
+            status: failed ? 'FAILED' : 'SUCCEEDED',
+            errorMessage: failed ? 'AI 응답 실패' : null,
+            answerMeta: { syncStatus: 'NONE', results: [], actions },
+            createdAt: '2026-11-09T01:00:00Z',
+          },
+        ],
+        meta: { page: 0, size: 100, totalElements: 1, hasNext: false },
+      }),
+    ),
+  )
+}
+
+test('재배정 계획을 만든 답변 안에서 계획을 펼치고 접는다', async () => {
+  const user = userEvent.setup()
+  mockAnswerWithActions([
+    {
+      code: 'CREATE_REASSIGNMENT_PLAN',
+      name: '재배정 계획 생성',
+      status: 'SUCCEEDED',
+      executionId: 512,
+      result: { planId: 3, itemCount: 1 },
+      blockedReason: null,
+    },
+  ])
+  renderAgentPage('/agent?conversation=1')
+
+  expect(
+    await screen.findByText('계획 #3 · 실제 MES 배정은 바뀌지 않아요'),
+  ).toBeInTheDocument()
+  // 펼치기 전에는 계획을 불러오지 않는다.
+  expect(
+    screen.queryByRole('region', { name: '재배정 계획 #3' }),
+  ).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '계획 펼치기' }))
+
+  const plan = await screen.findByRole('region', { name: '재배정 계획 #3' })
+  expect(await within(plan).findByText('WO-101')).toBeInTheDocument()
+  expect(within(plan).getByText('남은 공정 전체')).toBeInTheDocument()
+  expect(
+    within(plan).getByText('같은 프레스 공정이고 지금 가동 중인 설비'),
+  ).toBeInTheDocument()
+  expect(within(plan).getByRole('link', { name: '#302' })).toHaveAttribute(
+    'href',
+    '/explorer?object=302',
+  )
+
+  await user.click(screen.getByRole('button', { name: '계획 접기' }))
+  expect(
+    screen.queryByRole('region', { name: '재배정 계획 #3' }),
+  ).not.toBeInTheDocument()
+})
+
+test('막힌 작업은 이유를 보여 주고 계획 펼치기를 달지 않는다', async () => {
+  mockAnswerWithActions([
+    {
+      code: 'CREATE_REASSIGNMENT_PLAN',
+      name: '재배정 계획 생성',
+      status: 'BLOCKED',
+      executionId: 513,
+      result: {},
+      blockedReason: 'PLAN_CREATE 권한이 없습니다.',
+    },
+  ])
+  renderAgentPage('/agent?conversation=1')
+
+  expect(
+    await screen.findByText('PLAN_CREATE 권한이 없습니다.'),
+  ).toBeInTheDocument()
+  expect(screen.getByText('실행하지 않음')).toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: '계획 펼치기' }),
+  ).not.toBeInTheDocument()
+})
+
+test('답변이 실패해도 그 전에 만든 계획은 보여 준다', async () => {
+  mockAnswerWithActions(
+    [
+      {
+        code: 'CREATE_REASSIGNMENT_PLAN',
+        name: '재배정 계획 생성',
+        status: 'SUCCEEDED',
+        executionId: 512,
+        result: { planId: 3, itemCount: 1 },
+        blockedReason: null,
+      },
+    ],
+    true,
+  )
+  renderAgentPage('/agent?conversation=1')
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('AI 응답 실패')
+  // 계획은 이미 저장됐으므로 다시 요청하지 않도록 계획을 보여 준다.
+  expect(
+    screen.getByText('계획 #3 · 실제 MES 배정은 바뀌지 않아요'),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: '계획 펼치기' }),
+  ).toBeInTheDocument()
+})
+
+test('실패·실행하지 못함·확인 필요는 성공처럼 보이지 않는다', async () => {
+  mockAnswerWithActions([
+    {
+      code: 'CREATE_REASSIGNMENT_PLAN',
+      name: '재배정 계획 생성',
+      status: 'FAILED',
+      executionId: 514,
+      result: { errorMessage: '실행 중 오류가 발생했습니다.' },
+      blockedReason: null,
+    },
+    {
+      code: 'CREATE_REASSIGNMENT_PLAN',
+      name: '재배정 계획 생성',
+      status: 'NOT_RUN',
+      executionId: null,
+      result: {},
+      blockedReason: null,
+    },
+    {
+      code: 'CLOSE_ORDER',
+      name: '작업지시 종료',
+      status: 'CONFIRMATION_REQUIRED',
+      executionId: null,
+      result: {},
+      blockedReason: null,
+    },
+  ])
+  renderAgentPage('/agent?conversation=1')
+
+  const list = await screen.findByRole('list', { name: '실행한 작업' })
+  expect(within(list).getByText('실패')).toBeInTheDocument()
+  expect(
+    within(list).getByText('실행 중 오류가 발생했습니다.'),
+  ).toBeInTheDocument()
+  expect(within(list).getByText('실행하지 못함')).toBeInTheDocument()
+  expect(
+    within(list).getByText('확인이 필요해 실행하지 않음'),
+  ).toBeInTheDocument()
+  expect(within(list).queryByText('완료')).not.toBeInTheDocument()
+  expect(
+    within(list).queryByRole('button', { name: '계획 펼치기' }),
+  ).not.toBeInTheDocument()
+})
+
+test('계획을 불러오지 못하면 오류를 보여 준다', async () => {
+  const user = userEvent.setup()
+  mockAnswerWithActions([
+    {
+      code: 'CREATE_REASSIGNMENT_PLAN',
+      name: '재배정 계획 생성',
+      status: 'SUCCEEDED',
+      executionId: 515,
+      // 목 서버에 없는 계획 번호라 094가 404를 돌려준다.
+      result: { planId: 99, itemCount: 1 },
+      blockedReason: null,
+    },
+  ])
+  renderAgentPage('/agent?conversation=1')
+
+  await user.click(await screen.findByRole('button', { name: '계획 펼치기' }))
+
+  const plan = screen.getByRole('region', { name: '재배정 계획 #99' })
+  expect(
+    await within(plan).findByText('요청한 항목을 찾을 수 없습니다.'),
+  ).toBeInTheDocument()
 })

@@ -283,11 +283,24 @@ def test_llm_semantics_with_mock_merges_and_holds(data, result):
     assert report["interpreted"] == 2 and len(report["failed"]) == report["tables"] - 2
     worker = by_id["OT-mes.worker"]
     assert worker.method == "rule+llm" and worker.payload.name == "현장 작업자"
-    assert worker.llm_judgement and "master" in worker.llm_judgement
+    assert (
+        worker.llm_judgement and "기준 정보" in worker.llm_judgement
+    )  # 표 종류는 한글로
+    # LLM이 표 종류를 바꾸면 제안 이유의 표 종류도 바꾸고 규칙 판단은 괄호에 남긴다
+    defect, defect_rule = by_id["OT-mes.defect"], by_id_rule["OT-mes.defect"]
+    if defect_rule.payload.category != "transaction":
+        assert defect.payload.category == "transaction"
+        assert "표 종류는 거래 문서입니다(AI 판단. 규칙 판단은" in defect.reason
     # LLM 동의는 점수에 더하지 않는다
     assert worker.ai_confidence == by_id_rule["OT-mes.worker"].ai_confidence
-    agreed = by_id["LR-worker_id_to_employee"]
-    assert agreed.ai_confidence == by_id_rule["LR-worker_id_to_employee"].ai_confidence
+    # 보류 권고 규칙을 LLM이 맞다고 보면 보류는 그대로, 상한만 실측(22개 중 19개)대로 0.6
+    agreed, agreed_rule = (
+        by_id["LR-worker_id_to_employee"],
+        by_id_rule["LR-worker_id_to_employee"],
+    )
+    assert agreed_rule.review_status == "HELD" and agreed_rule.ai_confidence < 0.6
+    assert agreed.review_status == "HELD" and agreed.ai_confidence == 0.6
+    assert "LLM이 업무상 맞다고 봄" in agreed.confidence.cap_reason
     # 규칙이 이미 보류로 둔 관계를 LLM도 맞지 않다고 보면 관계 유형·규칙 모두 내보내지 않는다
     assert by_id_rule["LR-defect_op_seq_to_department"].review_status == "HELD"
     assert "LR-defect_op_seq_to_department" not in by_id

@@ -125,6 +125,53 @@ test('뒤로가기·앞으로가기 시 모든 필터와 조회 결과를 해당
   ).not.toBeInTheDocument()
 })
 
+test('종류 필터는 실제로 오는 종류만 두고 목록에 보류 권고·재분석 비교를 보인다', async () => {
+  const base = proposalFixtures[0]
+  server.use(
+    http.get('/api/v1/proposals', () =>
+      HttpResponse.json({
+        data: [
+          {
+            ...base,
+            id: 901,
+            payload: { ...base.payload, name: '보류 권고 규칙' },
+            evidence: { holdRecommended: true, changeType: 'CHANGED' },
+            reviewStatus: 'PENDING',
+          },
+          {
+            ...base,
+            id: 902,
+            payload: { ...base.payload, name: '이미 보류한 규칙' },
+            evidence: { holdRecommended: true },
+            reviewStatus: 'HELD',
+          },
+        ],
+        meta: { page: 0, size: 20, totalElements: 2, hasNext: false },
+      }),
+    ),
+  )
+  open()
+  const rows = await screen.findAllByRole('row')
+  const flagged = rows.find((row) => within(row).queryByText('보류 권고 규칙'))!
+  expect(within(flagged).getByText('보류 권고')).toBeInTheDocument()
+  expect(within(flagged).getByText('재분석 변경')).toBeInTheDocument()
+  // 이미 보류 결정한 제안에는 권고 표시를 다시 붙이지 않는다
+  const decided = rows.find((row) =>
+    within(row).queryByText('이미 보류한 규칙'),
+  )!
+  expect(within(decided).queryByText('보류 권고')).not.toBeInTheDocument()
+  const kinds = within(screen.getByLabelText('제안 종류'))
+    .getAllByRole('option')
+    .map((option) => option.textContent)
+  expect(kinds).toEqual([
+    '전체',
+    '객체 유형',
+    '연결 규칙',
+    '관계 유형',
+    '문서 연결',
+  ])
+})
+
 test('빈 결과와 로딩을 구별한다', async () => {
   server.use(
     http.get('/api/v1/proposals', async () => {

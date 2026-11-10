@@ -1,5 +1,6 @@
 import { EmptyState } from '../../components/Feedback'
 import { isRow, type Row } from './bundle'
+import { changeLabels } from './labels'
 
 // 재분석·과거 결정 대조와 내부 감사에 쓰는 값. 검토 화면에는 보여 주지 않는다.
 const INTERNAL_KEYS = [
@@ -142,7 +143,13 @@ export default function EvidenceView({ evidence }: { evidence: Row }) {
             {labels[key] ?? key}
           </dt>
           <dd className="min-w-0 whitespace-pre-wrap break-words">
-            <Value value={value} />
+            <Value
+              value={
+                key === 'changeType' && typeof value === 'string'
+                  ? (changeLabels[value] ?? value)
+                  : value
+              }
+            />
           </dd>
         </div>
       ))}

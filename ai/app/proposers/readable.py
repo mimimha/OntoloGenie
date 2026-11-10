@@ -6,29 +6,14 @@
 분석 범위 밖이라 이름을 모르는 객체는 코드를 그대로 쓴다.
 """
 
+import re
 
-def _final_consonant(word: str) -> int | None:
-    """마지막 글자의 받침 번호(0은 받침 없음). 한글이 아니면 숫자·영문 읽기로 어림한다."""
-    if not word:
-        return 0
-    ch = word[-1]
-    if "가" <= ch <= "힣":
-        return (ord(ch) - ord("가")) % 28
-    if ch.isdigit():
-        # 일·칠·팔은 ㄹ 받침(8), 영·삼·육은 다른 받침(1)
-        return 8 if ch in "178" else 1 if ch in "036" else 0
-    if ch.lower() in "lr":
-        return 8  # 엘·알
-    return 1 if ch.lower() in "mn" else 0
+from app.proposers.korean import josa, particle
 
 
-def josa(word: str, pair: str) -> str:
-    """word 뒤에 맞는 조사를 붙인다. pair: '이/가', '을/를', '은/는', '으로/로'."""
-    with_batchim, without = pair.split("/")
-    final = _final_consonant(word)
-    if pair == "으로/로":
-        return word + (without if final in (0, 8) else with_batchim)  # ㄹ 받침은 '로'
-    return word + (with_batchim if final else without)
+def _short(name: str) -> str:
+    short = " ".join(re.sub(r"\s*\([^)]*\)", "", name).split())
+    return short or name
 
 
 class Names:
@@ -54,10 +39,11 @@ class Names:
                     )
 
     def type(self, code: str | None) -> str:
-        return self.types.get(code or "", code or "")
+        """제목·설명용 이름. 표 주석의 괄호 설명('품목 마스터(원자재, 포장재)')은 빼서 짧게 쓴다."""
+        return _short(self.types.get(code or "", code or ""))
 
     def table(self, resource_key: str) -> str:
-        return self.tables.get(resource_key, resource_key.rsplit(".", 1)[-1])
+        return _short(self.tables.get(resource_key, resource_key.rsplit(".", 1)[-1]))
 
     def prop(self, ref: str | None) -> str:
         return self.props.get(ref or "", (ref or "").rsplit(".", 1)[-1])
@@ -107,9 +93,38 @@ def _link_rule_name(payload: dict, names: Names) -> tuple[str, str] | None:
     if not source or not target or not conditions:
         return None
     by = "·".join(names.prop(c.get("sourceProperty")) for c in conditions)
-    title = f"{source} → {target} ({josa(by, '으로/로')} 연결)"
+    title = f"{source} → {target} ({by})"
     lead = f"{source}의 {josa(by, '으로/로')} {josa(target, '을/를')} 찾습니다."
     return title, lead
+
+
+def _excerpt(evidence: dict, payload: dict, limit: int = 60) -> str:
+    """언급이 든 문장. 검토자가 메모를 열지 않고도 어떤 문맥인지 보게 한다.
+    줄·마침표에서 끊고(머리말 '[8/4 주간 → 야간 인수인계] 작성 52' 줄은 빠짐), 길면 언급 앞뒤만 남긴다."""
+    text = evidence.get("originalText") or ""
+    start, end = payload.get("spanStart"), payload.get("spanEnd")
+    if not text or not isinstance(start, int) or not isinstance(end, int):
+        return ""
+    left = max(text.rfind(ch, 0, start) for ch in "\n.!?") + 1
+    ends = [i for i in (text.find(ch, end) for ch in "\n.!?") if i != -1]
+    right = min(ends) + 1 if ends else len(text)
+    sentence = " ".join(text[left:right].split())
+    if len(sentence) <= limit:
+        return sentence
+    # 긴 문장은 언급 앞뒤를 띄어쓰기에서 자른다
+    at = sentence.find(payload.get("mentionText") or "")
+    a = max(0, at - limit // 3)
+    a = sentence.find(" ", a) + 1 if a > 0 else 0
+    b = (
+        sentence.rfind(" ", 0, min(len(sentence), a + limit))
+        if a + limit < len(sentence)
+        else len(sentence)
+    )
+    return (
+        ("…" if a > 0 else "")
+        + sentence[a:b].strip()
+        + ("…" if b < len(sentence) else "")
+    )
 
 
 def _document_name(
@@ -125,17 +140,31 @@ def _document_name(
     doc = names.table(doc_table) if doc_table else "문서"
     target = names.table(table)
     mention = payload.get("mentionText") or key
+    where = f"{doc} {payload.get('documentId', '')}".strip()
+    excerpt = _excerpt(evidence, payload)
+    quote = f": “{excerpt}”" if excerpt else "."
+    quoted = f"'{mention}'"
     if choices > 1:
         # 보류 권고(후보 설비가 여럿): 첫 후보로 단정하지 않는다
-        title = f"{doc} {payload.get('documentId', '')} → {target} 후보 {choices}개"
-        lead = f"글에 나온 '{mention}'에 맞는 {target}{'이' if _final_consonant(target) else '가'} {choices}개라 하나로 정하지 못했습니다."
-        return title.replace("  ", " "), lead
-    title = f"{doc} {payload.get('documentId', '')} → {target} {key}".replace("  ", " ")
-    lead = (
-        f"글에 나온 '{mention}'{'을' if _final_consonant(mention) else '를'} {target} {key}에 잇습니다. "
-        "원천 키나 설비 이름과 맞춘 결과입니다."
+        title = f"{where}의 {target} (후보 {choices}개)"
+        lead = f"{quoted}에 맞는 {josa(target, '이/가')} {choices}개라 하나로 정하지 못했습니다{quote}"
+        # 원래 이유의 첫 문장은 같은 말이라 빼고, 단서(작성자 배치 라인 등)만 잇는다
+        hint = evidence.get("reason") or ""
+        hint = hint[hint.find("작성자") :] if "작성자" in hint else ""
+        return title, f"{lead} {hint}".strip()
+    title = f"{where}의 {target} {key}"
+    alias = any(
+        "이름·별명" in (c.get("label") or "")
+        for c in evidence.get("confidenceItems") or []
     )
-    return title, lead
+    if mention.strip().upper() == key.strip().upper():
+        lead = f"글에 {quoted}{particle(mention, '이/가')} 적혀 있습니다"
+    elif alias:
+        lead = f"글의 {quoted}{particle(mention, '을/를')} {target} {key}의 이름·별명으로 봤습니다"
+    else:
+        # 로트 번호처럼 다른 컬럼 값으로 찾은 경우
+        lead = f"글에 적힌 {quoted}{particle(mention, '으로/로')} {target} {josa(key, '을/를')} 찾았습니다"
+    return title, lead + quote
 
 
 def readable(proposals: list[dict]) -> list[dict]:
@@ -150,7 +179,7 @@ def readable(proposals: list[dict]) -> list[dict]:
             p.get("payload") or {},
             p.get("evidence") or {},
         )
-        made, held_doc = None, False
+        made = None
         if kind == "LINK_RULE":
             if payload.get("linkType"):
                 _name_link_type(payload["linkType"], names)
@@ -172,16 +201,14 @@ def readable(proposals: list[dict]) -> list[dict]:
             if evidence.get("holdRecommended"):
                 choices = max(choices, 2)
             made = _document_name(payload, evidence, names, choices)
-            held_doc = choices > 1
         if made:
             title, lead = made
             payload["name"] = title
             evidence["title"] = title
-            # 확정 문서 연결은 예전 문장(코드·조사 오류)을 새 문장으로 바꾸고,
-            # 연결 규칙과 보류 문서 연결은 쉬운 요약을 앞에 붙인다(정하지 못한 이유·단서를 남긴다)
+            # 문서 연결은 새 문장으로 바꾸고(보류면 단서만 잇는다), 연결 규칙은 쉬운 요약을 앞에 붙인다
             evidence["reason"] = (
                 lead
-                if kind == "DOCUMENT_LINK" and not held_doc
+                if kind == "DOCUMENT_LINK"
                 else f"{lead} {evidence.get('reason') or ''}".strip()
             )
     return proposals

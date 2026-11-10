@@ -197,6 +197,26 @@ class ObjectTypeApiTests {
     }
 
     @Test
+    void rejectsRestrictedPropertyAsDisplayProperty() throws Exception {
+        LoginSession admin = loginAs("ADMIN");
+        long typeId = createObjectType(admin, uniqueCode());
+        long propertyId = insertProperty(typeId);
+        jdbcClient
+                .sql("update property_definition set sensitivity = 'RESTRICTED' where id = :id")
+                .param("id", propertyId)
+                .update();
+
+        send(
+                        admin,
+                        patch(BASE_PATH + "/" + typeId),
+                        "{\"displayPropertyId\": %d, \"rowVersion\": 0}".formatted(propertyId))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.error.code").value("BUSINESS_RULE_VIOLATION"))
+                .andExpect(jsonPath("$.error.message").value("민감 속성은 대표 속성으로 지정할 수 없습니다."))
+                .andExpect(jsonPath("$.error.details.field").value("displayPropertyId"));
+    }
+
+    @Test
     void deletesUnusedTypeButNotTypeInUse() throws Exception {
         LoginSession admin = loginAs("ADMIN");
         long unusedId = createObjectType(admin, uniqueCode());

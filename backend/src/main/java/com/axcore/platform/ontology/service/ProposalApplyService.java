@@ -28,7 +28,11 @@ public class ProposalApplyService {
         this(appliers.orderedStream().toList());
     }
 
-    ProposalApplyService(List<ProposalApplier> appliers) {
+    /**
+     * 반영기 목록으로 직접 만든다. 테스트는 실제 반영기 대신 probe 반영기만 쓰는 서비스를 {@code @Primary} 빈으로 두어 바꿔치기한다(probe를 반영기
+     * 빈으로 더하면 같은 종류의 실제 반영기와 겹쳐 컨텍스트가 뜨지 않는다).
+     */
+    public ProposalApplyService(List<ProposalApplier> appliers) {
         Map<ProposalItemKind, ProposalApplier> byKind = new EnumMap<>(ProposalItemKind.class);
         for (ProposalApplier applier : appliers) {
             if (byKind.putIfAbsent(applier.kind(), applier) != null) {

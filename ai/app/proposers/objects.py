@@ -185,6 +185,16 @@ def classify(
     )
 
 
+# 표 종류 이름 (models/candidate.py ObjectCategory)
+CATEGORY_TEXT = {
+    "master": "기준 정보",
+    "transaction": "거래 문서",
+    "detail": "문서 상세 줄",
+    "history": "발생 기록",
+    "snapshot": "현재 상태",
+}
+
+
 def propose_objects(
     root: Path, analysis: StructuredAnalysis | None = None
 ) -> list[Candidate]:
@@ -246,11 +256,12 @@ def _table_candidates(
                 description=f"원천 {key}의 한 행",
                 category=category,
             ),
-            reason=f"원천 표 {key}의 한 행을 객체 하나로 본다. 표 종류: {why}. "
+            reason=f"원천 표 {key}의 한 행을 객체 하나로 봅니다. "
+            f"표 종류는 {CATEGORY_TEXT.get(category, category)}입니다({why}). "
             + (
-                "이름은 표 주석에서 가져왔다."
+                "이름은 표 주석에서 가져왔습니다."
                 if schema.description
-                else "표 주석이 없어 표 이름을 그대로 썼다."
+                else "표 주석이 없어 표 이름을 그대로 썼습니다."
             ),
             evidence=[table_evidence],
             confidence=score.build(

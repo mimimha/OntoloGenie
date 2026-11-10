@@ -1,6 +1,6 @@
-"""독립 데이터(B·B2~B6) 관계 채점. 정답 형식은 gold-b*-v1/answer.json.
+"""독립 데이터(B·B2~B6) 관계 채점. 정답 형식은 data/eval/b*/answer.json.
 
-    .\\.venv\\Scripts\\python.exe -m app.validators.evaluate_relations results\\proposals-b6.json data\\gold-b6-v1\\answer.json
+    .\\.venv\\Scripts\\python.exe -m app.validators.evaluate_relations results\\proposals-b6.json data\\eval\\b6\\answer.json
 
 관계 찾음(대기·보류), 시스템 간 관계, 대기 오답, 보류 오답, 미끼에 걸린 후보, 검토 단위 수를 센다.
 정답의 복합키는 'sys.t.a+b'와 'sys.t.a+sys.t.b' 두 표기를 모두 받는다.
@@ -61,7 +61,7 @@ def evaluate(result: dict, answer: dict) -> dict:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="독립 데이터 관계 채점")
     parser.add_argument("result", type=Path, help="app.proposers.run 결과 JSON")
-    parser.add_argument("answer", type=Path, help="gold-b*-v1/answer.json")
+    parser.add_argument("answer", type=Path, help="data/eval/b*/answer.json")
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")

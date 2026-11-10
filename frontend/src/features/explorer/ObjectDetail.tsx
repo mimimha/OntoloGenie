@@ -62,6 +62,8 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
       const entry: AgentEntryState = {
         conversationId: created.id,
         referenceObjectId: target.id,
+        referenceObjectName: target.displayName,
+        referenceObjectTypeName: target.objectTypeName,
         draft: `${target.displayName}에 연결된 업무 정보를 알려줘`,
       }
       void navigate(`/agent?conversation=${created.id}`, { state: entry })

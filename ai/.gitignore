@@ -6,3 +6,7 @@
 # 평가 실행 결과는 로컬에만 둔다. API 105 형식 샘플만 Git에 올린다 (docs/evaluation.md)
 results/*.json
 !results/proposals-v1.0.api.json
+
+# 스트레스 데이터 C는 생성기로 다시 만든다(python -m app.dataset.stress). Git에 올리지 않는다
+data/data-*-stress/
+data/gold-*-stress/

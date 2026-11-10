@@ -393,6 +393,76 @@ class LinkRecomputeServiceTests {
     }
 
     @Test
+    void newRevisionOfCurrentOwnerKeepsOwnershipEvenWhenAnotherRuleHasLowerId() {
+        // 규칙 A(setUp의 rule) rev1이 연결의 근거. 규칙 B(alt_code)도 같은 쌍을 원하고 ID는 A rev2보다 작다.
+        long altCode = property(workOrderType, "alt_code");
+        secondRule(altCode);
+        long wo = workOrder("EQ-3");
+        setProperty(wo, "alt_code", "EQ-3");
+        equipment("EQ-3");
+        long linkId = recompute(wo).activatedLinkIds().getFirst();
+        assertThat(link(linkId)).containsEntry("link_mapping_id", rule);
+
+        long revision2 =
+                inTx(
+                        () -> {
+                            jdbc.sql(
+                                            "update link_mapping set status = 'RETIRED', retired_at = now() where id = :id")
+                                    .param("id", rule)
+                                    .update();
+                            return rule(linkType, ruleCode, 2, "{}");
+                        });
+        LinkRecomputeResult result = inTx(() -> service.recomputeRules(List.of(revision2)));
+
+        // 규칙 ID가 더 작은 B로 넘어가지 않고, 같은 코드 A의 새 개정본이 근거가 된다.
+        assertThat(result.updatedLinkIds()).containsExactly(linkId);
+        assertThat(link(linkId)).containsEntry("link_mapping_id", revision2);
+    }
+
+    @Test
+    void recomputeRulesRejectsMissingOrRetiredRevision() {
+        long retired =
+                inTx(
+                        () -> {
+                            jdbc.sql(
+                                            "update link_mapping set status = 'RETIRED', retired_at = now() where id = :id")
+                                    .param("id", rule)
+                                    .update();
+                            return rule;
+                        });
+
+        assertThatThrownBy(() -> inTx(() -> service.recomputeRules(List.of(retired))))
+                .isInstanceOf(LinkRecomputeService.LinkRuleNotComputableException.class);
+        assertThatThrownBy(() -> inTx(() -> service.recomputeRules(List.of(Long.MAX_VALUE))))
+                .isInstanceOf(LinkRecomputeService.LinkRuleNotComputableException.class);
+    }
+
+    @Test
+    void unlinkedSourcesListsWhyEachSourceIsNotLinked() {
+        long linked = workOrder("EQ-3");
+        long noTarget = workOrder(" eq-9 ");
+        long empty = workOrder(" ");
+        equipment("EQ-3");
+        inTx(() -> service.recomputeRules(List.of(rule)));
+
+        List<LinkRecomputeService.UnlinkedSource> unlinked =
+                inTx(() -> service.unlinkedSources(rule));
+
+        assertThat(unlinked)
+                .extracting(LinkRecomputeService.UnlinkedSource::sourceObjectId)
+                .contains(noTarget)
+                .doesNotContain(linked, empty);
+        LinkRecomputeService.UnlinkedSource item =
+                unlinked.stream()
+                        .filter(u -> u.sourceObjectId() == noTarget)
+                        .findFirst()
+                        .orElseThrow();
+        assertThat(item.rawValue()).isEqualTo(" eq-9 ");
+        assertThat(item.transformedValue()).isEqualTo("EQ-9");
+        assertThat(item.reason()).isEqualTo("비교값이 같은 도착 객체가 없음");
+    }
+
+    @Test
     void refusesToRunOutsideCallerTransaction() {
         assertThatThrownBy(() -> service.recomputeObjects(List.of(1L)))
                 .isInstanceOf(IllegalTransactionStateException.class);

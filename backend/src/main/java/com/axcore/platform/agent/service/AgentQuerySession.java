@@ -11,7 +11,10 @@ import java.util.Map;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 
-/** 답변 하나를 만드는 동안의 조회 도구 호출 모음. 호출마다 순번을 매겨 기록하고, 결과를 answerMeta.results로 모은다. 답변 하나에만 쓰고 버린다. */
+/**
+ * 답변 하나를 만드는 동안의 도구 호출 모음. 조회 도구는 호출마다 순번을 매겨 기록하고 결과를 answerMeta.results로 모은다. Action 도구의 결과는
+ * answerMeta.actions로 모은다(160). 답변 하나에만 쓰고 버린다.
+ */
 @Slf4j
 public class AgentQuerySession {
     static final String QUERY_FAILED = "조회하지 못했습니다.";
@@ -21,6 +24,7 @@ public class AgentQuerySession {
     private final AgentQueryRecorder recorder;
     private final Clock clock;
     private final List<AgentQueryResult> results = new ArrayList<>();
+    private final List<AgentActionOutcome> actions = new ArrayList<>();
     private boolean unrecorded;
 
     public AgentQuerySession(
@@ -75,6 +79,9 @@ public class AgentQuerySession {
                             null);
             reply.put("resultCategory", outcome.category().name());
             reply.put("data", outcome.data());
+            // AI가 계획의 기준 시점(dataAsOf)을 조회한 데이터의 시점으로 채울 수 있게 함께 알려 준다. 모르면 null이다(160).
+            reply.put(
+                    "dataAsOf", outcome.dataAsOf() == null ? null : outcome.dataAsOf().toString());
         } catch (RuntimeException ex) {
             log.error("Agent 조회 도구 {} 실패 question={}", toolCode, questionId, ex);
             result =
@@ -107,7 +114,21 @@ public class AgentQuerySession {
         }
     }
 
+    /** 모든 조회 기록을 남겼는가. 실패 답변에 조회 결과를 남길지 정할 때 쓴다(160). */
+    public synchronized boolean allRecorded() {
+        return !unrecorded;
+    }
+
     public synchronized List<AgentQueryResult> results() {
         return List.copyOf(results);
+    }
+
+    /** Action 도구 결과를 모은다. 실행 기록은 실행기가 이미 남겼으므로 여기에는 답변에 보여 줄 값만 둔다. */
+    public synchronized void addAction(AgentActionOutcome action) {
+        actions.add(action);
+    }
+
+    public synchronized List<AgentActionOutcome> actions() {
+        return List.copyOf(actions);
     }
 }

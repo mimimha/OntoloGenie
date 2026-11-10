@@ -12,8 +12,12 @@ import com.axcore.platform.mapping.service.PropertyMappingService;
 import com.axcore.platform.ontology.domain.DefinitionSource;
 import com.axcore.platform.ontology.domain.ObjectType;
 import com.axcore.platform.ontology.domain.PropertyDefinition;
+import com.axcore.platform.ontology.dto.LinkTypeCreateRequest;
+import com.axcore.platform.ontology.dto.LinkTypeResponse;
 import com.axcore.platform.ontology.dto.PropertyCreateRequest;
 import com.axcore.platform.ontology.dto.PropertyResponse;
+import com.axcore.platform.ontology.repository.LinkTypeRepository;
+import com.axcore.platform.ontology.service.LinkTypeService;
 import com.axcore.platform.ontology.service.PropertyService;
 import com.axcore.platform.source.domain.SourceColumn;
 import java.util.LinkedHashMap;
@@ -34,6 +38,8 @@ class ApplyWriter {
     private final PropertyService propertyService;
     private final ObjectMappingService objectMappingService;
     private final PropertyMappingService propertyMappingService;
+    private final LinkTypeService linkTypeService;
+    private final LinkTypeRepository linkTypes;
 
     /** 속성 하나. payload 칸은 API 027과 같고 이름만 후보 형식(isRequired 생략 = false)이다. */
     Written property(
@@ -135,6 +141,44 @@ class ApplyWriter {
                 created.id(),
                 resource.id(),
                 ChangeEntry.insert("property_source_mapping", Map.of("id", created.id()), after));
+    }
+
+    /**
+     * 관계 유형 하나. 양 끝 유형은 {@code sourceTypeCode}·{@code targetTypeCode}로 가리킨다. 관계 유형 설명은 DB가 필수로
+     * 요구하는데 AI 후보는 빈 설명을 보낼 수 있어, 비어 있으면 이름을 설명으로 쓴다.
+     */
+    Written linkType(Map<String, Object> payload, String field, DefinitionSource source) {
+        String code = support.text(payload, "code", field);
+        if (linkTypes.existsByCode(code)) {
+            throw ApplySupport.exists(field + ".code", code);
+        }
+        String name = support.text(payload, "name", field);
+        ObjectType sourceType =
+                support.objectType(
+                        support.text(payload, "sourceTypeCode", field), field + ".sourceTypeCode");
+        ObjectType targetType =
+                support.objectType(
+                        support.text(payload, "targetTypeCode", field), field + ".targetTypeCode");
+        String description = support.optionalText(payload, "description", field);
+        LinkTypeCreateRequest request =
+                support.valid(
+                        new LinkTypeCreateRequest(
+                                code,
+                                name,
+                                sourceType.getId(),
+                                targetType.getId(),
+                                support.text(payload, "cardinality", field),
+                                description == null || description.isBlank() ? name : description),
+                        field);
+        LinkTypeResponse created =
+                support.call(field, () -> linkTypeService.create(request, source));
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("code", code);
+        after.put("sourceTypeId", sourceType.getId());
+        after.put("targetTypeId", targetType.getId());
+        after.put("cardinality", request.cardinality());
+        return new Written(
+                created.id(), ChangeEntry.insert("link_type", Map.of("id", created.id()), after));
     }
 
     record Written(long id, ChangeEntry change) {}

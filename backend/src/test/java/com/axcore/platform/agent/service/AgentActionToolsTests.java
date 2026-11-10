@@ -8,6 +8,7 @@ import com.axcore.platform.action.service.ActionCatalogService;
 import com.axcore.platform.action.service.ActionExecutionService;
 import com.axcore.platform.action.service.ExecutableAction;
 import com.axcore.platform.global.security.LoginAccount;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,8 @@ class AgentActionToolsTests {
     private static final LoginAccount ASKER = new LoginAccount(7L, "planner", "PLANNER", false);
 
     private final ActionCatalogService catalog = mock(ActionCatalogService.class);
+    private final AgentQuerySession session =
+            new AgentQuerySession(ASKER, 11L, mock(AgentQueryRecorder.class), Clock.systemUTC());
     private final AgentActionTools tools =
             new AgentActionTools(
                     catalog, mock(ActionExecutionService.class), JsonMapper.builder().build());
@@ -34,7 +37,7 @@ class AgentActionToolsTests {
                                         false),
                                 new ExecutableAction("재배정 계획", "이름 규칙 위반", null, Map.of(), false)));
 
-        assertThat(tools.forAnswer(ASKER, 11L))
+        assertThat(tools.forAnswer(session))
                 .extracting(callback -> callback.getToolDefinition().name())
                 .containsExactly("CREATE_REASSIGNMENT_PLAN");
     }
@@ -43,6 +46,6 @@ class AgentActionToolsTests {
     void givesNoActionToolWithoutPermission() {
         when(catalog.executableFor(ASKER)).thenReturn(List.of());
 
-        assertThat(tools.forAnswer(ASKER, 11L)).isEmpty();
+        assertThat(tools.forAnswer(session)).isEmpty();
     }
 }

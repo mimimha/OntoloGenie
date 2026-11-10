@@ -492,14 +492,14 @@ def to_candidates(doc: Document, extraction: DocumentExtraction) -> list[Candida
         ambiguous = len(refs) > 1
         hint = ""
         if ambiguous and doc.author:
-            hint = f" 작성자 {doc.author}의 배치 라인이 단서가 될 수 있다."
+            hint = f" 작성자 {doc.author}의 배치 라인이 단서가 될 수 있습니다."
         out.append(
             Candidate(
                 candidate_id=f"DL-{doc.doc_id}-{e.id}",
                 title=f"{doc.doc_id} '{e.text}' → {refs[0] if not ambiguous else '후보 ' + str(len(refs)) + '개'}",
                 payload=payload(refs[0]),
                 reason=(
-                    f"'{e.text}'는 설비 {len(refs)}대와 맞아 하나로 정할 수 없다.{hint}"
+                    f"'{e.text}'는 설비 {len(refs)}대와 맞아 하나로 정할 수 없습니다.{hint}"
                     if ambiguous
                     else f"'{e.text}'를 원천 키 또는 설비 이름과 맞춰 {refs[0]}에 잇는다."
                 ),
@@ -515,7 +515,12 @@ def to_candidates(doc: Document, extraction: DocumentExtraction) -> list[Candida
                 confidence=confidence(
                     [("근거", "후보 설비가 여럿", 0.3)]
                     if ambiguous
-                    else document_link(e.text.upper() == refs[0].split(":")[1].upper()),
+                    # 작업지시·정비·로트 번호는 원천 값이 글에 그대로 적힌 것이다(로트는 출하의 로트 번호로 찾음).
+                    # 설비만 이름·별명('3호기')으로 맞춘다
+                    else document_link(
+                        e.type != EntityType.EQUIPMENT
+                        or e.text.upper() == refs[0].split(":")[1].upper()
+                    ),
                     hold="후보 설비가 여럿" if ambiguous else None,
                 ),
                 review_status="HELD" if ambiguous else "PENDING",

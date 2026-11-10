@@ -89,7 +89,9 @@ public class PropertyService {
         if (request.hasCode()) {
             throw BusinessException.invalidField("code", "속성 코드는 바꿀 수 없습니다. 새 속성을 등록하세요.");
         }
-        PropertyDefinition property = findProperty(id);
+        // 024(대표 속성 지정)와 같은 행 잠금을 잡는다. 대표 지정과 민감 전환이 동시에 와도 뒤의 요청이 최신 값을 보고 거절된다.
+        PropertyDefinition property =
+                propertyDefinitionRepository.findForUpdate(id).orElseThrow(() -> notFound(id));
         if (request.getRowVersion() != property.getRowVersion()) {
             throw new BusinessException(
                     CommonErrorCode.VERSION_CONFLICT,
@@ -109,6 +111,11 @@ public class PropertyService {
                         : new LinkedHashMap<>(request.getConstraints());
         validateDefinition(dataType, temporalRole, constraints);
         checkExistingValues(property, dataType, request.getIsRequired(), constraints);
+        PropertySensitivity sensitivity =
+                request.getSensitivity() == null
+                        ? property.getSensitivity()
+                        : PropertySensitivity.valueOf(request.getSensitivity());
+        rejectRestrictedDisplayProperty(property, sensitivity);
 
         property.update(
                 request.getName(),
@@ -120,9 +127,7 @@ public class PropertyService {
                 request.getIsRequired(),
                 request.hasUnit() ? request.getUnit() : property.getUnit(),
                 constraints,
-                request.getSensitivity() == null
-                        ? property.getSensitivity()
-                        : PropertySensitivity.valueOf(request.getSensitivity()),
+                sensitivity,
                 temporalRole);
         // 응답의 rowVersion·수정 시각이 이번 변경을 반영하도록 먼저 DB에 쓴다.
         propertyDefinitionRepository.flush();
@@ -204,16 +209,32 @@ public class PropertyService {
         }
     }
 
+    /** 대표 속성 값은 객체 표시 이름이 되므로 민감 속성이 될 수 없다(024와 같은 규칙, S15P31C106-205 결정 D2). */
+    private void rejectRestrictedDisplayProperty(
+            PropertyDefinition property, PropertySensitivity sensitivity) {
+        if (sensitivity != PropertySensitivity.RESTRICTED
+                || property.getSensitivity() == PropertySensitivity.RESTRICTED) {
+            return;
+        }
+        boolean display =
+                objectTypeRepository
+                        .findById(property.getObjectTypeId())
+                        .map(type -> property.getId().equals(type.getDisplayPropertyId()))
+                        .orElse(false);
+        if (display) {
+            throw new BusinessException(
+                    CommonErrorCode.BUSINESS_RULE_VIOLATION,
+                    "대표 속성은 민감 속성으로 바꿀 수 없습니다. 대표 속성을 먼저 바꾸세요.",
+                    Map.of("field", "sensitivity"));
+        }
+    }
+
     private void requireObjectType(Long objectTypeId) {
         if (!objectTypeRepository.existsById(objectTypeId)) {
             throw new BusinessException(
                     CommonErrorCode.RESOURCE_NOT_FOUND,
                     Map.of("resource", "object_type", "id", objectTypeId));
         }
-    }
-
-    private PropertyDefinition findProperty(Long id) {
-        return propertyDefinitionRepository.findById(id).orElseThrow(() -> notFound(id));
     }
 
     private static BusinessException notFound(Long id) {

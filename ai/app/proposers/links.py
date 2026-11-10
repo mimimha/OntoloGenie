@@ -44,13 +44,19 @@ from app.models.candidate import (
     SourceFilter,
 )
 from app.proposers import confidence as score
+from app.proposers.korean import josa, particle
 from app.proposers.objects import (
     TIME_TYPES,
     key_like_columns,
     observed_pair_key,
     to_code,
 )
-from app.rules.transforms import TransformStep, describe_steps
+from app.rules.transforms import (
+    TransformError,
+    TransformStep,
+    apply_steps,
+    describe_steps,
+)
 from app.sources.csv_reader import CsvSourceReader
 
 MIN_ROWS_FOR_SMALL = 20  # 값 종류가 적어도 이만큼 행이 모두 이어지면 보류 후보로 낸다
@@ -186,12 +192,24 @@ def target_keys(tables: Tables) -> list[tuple[Column, str]]:
                 and (
                     not col.values.str.fullmatch(r"[\d.\-]+").any()
                     or _hyphen_number_code(col.values)
+                    or _fixed_digit_code(col)
                 )
             ):
                 out.append((col, "alternate"))
             elif not pk and col.analysis.is_key_candidate:
                 out.append((col, "primary"))
     return out
+
+
+def _fixed_digit_code(col: Column) -> bool:
+    """바코드(EAN-13 8801234484770)처럼 글자형으로 선언된 고정 길이 숫자 코드. 수량·금액은 길이가 제각각이다."""
+    values = col.values
+    return bool(
+        col.declared.startswith(("char", "varchar", "text", "character"))
+        and values.str.fullmatch(r"\d+").all()
+        and values.str.len().nunique() == 1
+        and values.str.len().iloc[0] >= 8
+    )
 
 
 def _hyphen_number_code(values: pd.Series) -> bool:
@@ -684,13 +702,27 @@ def _compare(source: Column, target: Column, key: str) -> Relation | None:
         digits = any(s["op"] == "EXTRACT_NUMBER" for s in link.source_transforms)
         numeric_source = source.values.str.fullmatch(r"\d+").all()
         no_raw_overlap = not (set(source.values) & targets)
+        target_letters = {_letters(t) for t in targets}
+        other_letters = [
+            v
+            for v in set(source.values)
+            if _letters(v) and _letters(v) not in target_letters
+        ]
         if digits and no_raw_overlap:
             rel.hold = "원래 값이 하나도 같지 않고 숫자만 남겼을 때 같아짐. 업무 의미 확인 필요"
+        elif digits and len(other_letters) > 0.1 * len(set(source.values)):
+            # 불량 코드 S001·P001·C001 ↔ 거래처 C001: 글자가 같은 일부만 원래 값이 같고 나머지는 숫자만 같다(B8)
+            sample = min(other_letters)
+            rel.hold = (
+                f"글자가 다른 값까지 숫자만 남겨 같아짐(예: {sample}). "
+                "글자가 같은 값만 우연히 겹쳤을 수 있어 업무 의미 확인 필요"
+            )
         elif link.rule_type == "transform" and numeric_source and no_raw_overlap:
             rel.hold = "숫자뿐인 값에 0 채우기·접두어를 붙여야 같아짐. 번호가 우연히 같을 수 있어 업무 의미 확인 필요"
         elif (swap := _prefix_swap(link.source_transforms)) and no_raw_overlap:
             # 글자가 다른 번호끼리(거래처 C001 ↔ 설비 EQ-001)는 일련번호만 같은 다른 대상일 때가 많다
-            rel.hold = f"접두어 '{swap[0]}'를 '{swap[1]}'로 바꿔야 같아짐. 일련번호만 우연히 같을 수 있어 업무 의미 확인 필요"
+            old, new = particle(swap[0], "을/를"), particle(swap[1], "으로/로")
+            rel.hold = f"접두어 '{swap[0]}'{old} '{swap[1]}'{new} 바꿔야 같아짐. 일련번호만 우연히 같을 수 있어 업무 의미 확인 필요"
         elif (
             no_raw_overlap
             and any(s["op"] == "STRIP_PREFIX" for s in link.source_transforms)
@@ -729,8 +761,6 @@ def _compare(source: Column, target: Column, key: str) -> Relation | None:
 
 
 def _row_coverage(values: pd.Series, targets: pd.Series, steps, target_steps) -> float:
-    from app.rules.transforms import TransformError, apply_steps
-
     t_steps = [TransformStep.model_validate(s) for s in target_steps]
 
     def conv(st, v):
@@ -918,8 +948,6 @@ def _best_composites(found: list[Relation]) -> list[Relation]:
 
 def _value_map(rel: Relation) -> Callable[[str], str | None]:
     """관계의 변환으로 출발 값 → 도착 원래 값. 안 이어지면 None."""
-    from app.rules.transforms import TransformError, apply_steps
-
     s_steps = [TransformStep.model_validate(x) for x in rel.source_steps]
     t_steps = [TransformStep.model_validate(x) for x in rel.target_steps]
     index = {}
@@ -1219,17 +1247,17 @@ def _how_text(rel: Relation, steps_by_column: list[tuple[list, list]]) -> str:
     """제안 이유의 '어떻게 비교하는지' 부분(FN-AIP-05). 검토자가 변환 이름(EXTRACT_NUMBER 등)을
     몰라도 읽을 수 있게 컬럼마다 사람이 읽는 말로 쓰고, 실제로 이어진 값 한 쌍을 예로 붙인다."""
     if rel.rule_type == "same_value":
-        return "값을 그대로 비교"
+        return "비교 방법: 값을 그대로 비교"
     parts = []
     for (s, t), (s_steps, t_steps) in zip(zip(rel.source, rel.target), steps_by_column):
         sides = [
-            f"{col.name}은(는) {describe_steps([TransformStep.model_validate(x) for x in steps])}"
+            f"{josa(col.name, '은/는')} {describe_steps([TransformStep.model_validate(x) for x in steps])}"
             for col, steps in ((s, s_steps), (t, t_steps))
             if steps
         ]
         if sides:
             parts.append(", ".join(sides))
-    how = "비교 전에 " + " / ".join(parts) if parts else "값을 그대로 비교"
+    how = "비교 방법: " + " / ".join(parts) if parts else "비교 방법: 값을 그대로 비교"
     example = next((m for m in rel.matched if m[0] != m[1]), None)
     if example:
         how += f" (예: '{example[0]}' → '{example[1]}')"
@@ -1282,10 +1310,11 @@ def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
             "none": "종류 값(키 아님)",
         }[rel.target_key]
         how = _how_text(rel, steps_by_column)
+        target_cols = " + ".join(c.name for c in rel.target)
         reason = (
             f"{' + '.join(c.ref for c in rel.source)}의 값이 {t_table}의 {key_text} "
-            f"{' + '.join(c.name for c in rel.target)}로 이어진다{cond_text}. {how}. "
-            f"서로 다른 값 기준 {rel.distinct_coverage:.0%}, 행 기준 {rel.row_coverage:.0%} 이어짐."
+            f"{josa(target_cols, '으로/로')} 이어집니다{cond_text}. {how}. "
+            f"서로 다른 값 기준 {rel.distinct_coverage:.0%}, 행 기준 {rel.row_coverage:.0%}가 이어집니다."
             + (f" 안 이어지는 값 예: {rel.unmatched}." if rel.unmatched else "")
         )
         single = len(rel.source) == 1
