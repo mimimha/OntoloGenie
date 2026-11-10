@@ -1,10 +1,11 @@
 package com.axcore.platform.action.repository;
 
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-/** Action 정의·실행이 가리키는 다른 표(permission, role_permission, agent_message)를 확인한다. */
+/** Action 정의·실행이 가리키는 다른 표(permission, role_permission, agent_message, object_instance)를 확인한다. */
 @Repository
 @RequiredArgsConstructor
 public class ActionReferenceRepository {
@@ -31,6 +32,14 @@ public class ActionReferenceRepository {
                 .param("permissionCode", permissionCode)
                 .query(Boolean.class)
                 .single();
+    }
+
+    /** 실행 대상 객체의 유형. 없는 객체면 비어 있다. 대상 객체 조회 범위 검사(S15P31C106-205)에 쓴다. */
+    public Optional<Long> findObjectTypeId(long objectId) {
+        return jdbc.sql("select object_type_id from object_instance where id = :id")
+                .param("id", objectId)
+                .query(Long.class)
+                .optional();
     }
 
     /** Agent 실행의 agentMessageId가 실행자 본인 대화의 질문(USER) 메시지인가. */

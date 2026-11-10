@@ -19,6 +19,7 @@ import com.axcore.platform.audit.domain.ExecutionStatus;
 import com.axcore.platform.audit.repository.ActionExecutionRepository;
 import com.axcore.platform.audit.service.AuditRecorder;
 import com.axcore.platform.audit.service.AuditSanitizer;
+import com.axcore.platform.auth.service.DataAccessPolicy;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import java.util.LinkedHashMap;
@@ -38,7 +39,7 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <ol>
  *   <li>같은 requestId의 기록이 있으면 새로 실행하지 않는다. 같은 요청이면 그 기록을 돌려주고, 다른 요청이면 409다.
- *   <li>관리 Action·비활성·Handler 구현 전·권한·입력 형식(inputSchema)·확인을 검사한다. 막히면 BLOCKED를 따로 기록하고 200으로
+ *   <li>관리 Action·비활성·Handler 구현 전·권한·입력 형식(inputSchema)·대상 범위·확인을 검사한다. 막히면 BLOCKED를 따로 기록하고 200으로
  *       돌려준다(D1).
  *   <li>Handler가 업무 조건을 검사하고 저장을 준비한다. 막히면 BLOCKED다. 통과하면 실행 기록(SUCCEEDED)과 Handler의 저장을 한 트랜잭션에
  *       커밋한다.
@@ -56,6 +57,7 @@ public class ActionExecutionService {
     static final String FAILED_MESSAGE = "Action을 실행하지 못했습니다. 관리자에게 문의해 주세요.";
     static final String HANDLER_NOT_READY_MESSAGE =
             "Handler 구현 전인 Action입니다. 개발자가 Handler를 배포한 뒤 실행할 수 있습니다.";
+    static final String TARGET_NOT_FOUND_MESSAGE = "대상 객체(id=%d)를 찾을 수 없습니다.";
 
     private final ActionDefinitionRepository definitions;
     private final ActionReferenceRepository references;
@@ -63,6 +65,7 @@ public class ActionExecutionService {
     private final InputSchemaValidator inputSchemas;
     private final ActionExecutionRepository executions;
     private final AuditRecorder audits;
+    private final DataAccessPolicy dataAccessPolicy;
     private final JsonMapper json;
     private final TransactionTemplate transactionTemplate;
 
@@ -73,6 +76,7 @@ public class ActionExecutionService {
             InputSchemaValidator inputSchemas,
             ActionExecutionRepository executions,
             AuditRecorder audits,
+            DataAccessPolicy dataAccessPolicy,
             JsonMapper json,
             PlatformTransactionManager transactionManager) {
         this.definitions = definitions;
@@ -81,6 +85,7 @@ public class ActionExecutionService {
         this.inputSchemas = inputSchemas;
         this.executions = executions;
         this.audits = audits;
+        this.dataAccessPolicy = dataAccessPolicy;
         this.json = json;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
@@ -113,7 +118,7 @@ public class ActionExecutionService {
             return replay(previous.get(), definition, command, target);
         }
 
-        Optional<String> gate = gateReason(definition, handler, command);
+        Optional<String> gate = gateReason(definition, handler, command, target);
         if (gate.isPresent()) {
             return recordSeparately(
                     definition, command, target, ExecutionStatus.BLOCKED, gate.get());
@@ -193,11 +198,14 @@ public class ActionExecutionService {
     }
 
     /**
-     * 실행하기 전에 막는 조건. 091의 검사 순서(관리 Action → 비활성 → Handler 구현 전 → 권한 → 입력 형식 → 확인)대로 검사해 첫 이유를 돌려준다.
-     * Handler 구현 전은 권한보다 먼저 본다. 실행할 수 없는 Action에 권한 차단 사유를 보여 주지 않기 위해서다.
+     * 실행하기 전에 막는 조건. 091의 검사 순서(관리 Action → 비활성 → Handler 구현 전 → 권한 → 입력 형식 → 대상 범위 → 확인)대로 검사해 첫
+     * 이유를 돌려준다. Handler 구현 전은 권한보다 먼저 본다. 실행할 수 없는 Action에 권한 차단 사유를 보여 주지 않기 위해서다.
      */
     private Optional<String> gateReason(
-            ActionDefinition definition, ActionHandler handler, ActionExecutionCommand command) {
+            ActionDefinition definition,
+            ActionHandler handler,
+            ActionExecutionCommand command,
+            ActionTarget target) {
         if (definition.getActionMode() == ActionMode.RECORD) {
             return Optional.of("직접 실행할 수 없는 Action입니다. 해당 관리 화면에서 실행해 주세요.");
         }
@@ -218,10 +226,25 @@ public class ActionExecutionService {
         if (inputViolation.isPresent()) {
             return inputViolation;
         }
+        if (target != null
+                && ActionTarget.OBJECT_INSTANCE.equals(target.type())
+                && !canSee(command, target.id())) {
+            return Optional.of(TARGET_NOT_FOUND_MESSAGE.formatted(target.id()));
+        }
         if (definition.isRequiresConfirmation() && !command.confirmed()) {
             return Optional.of("실행 전에 확인이 필요한 Action입니다. 확인한 뒤 다시 요청해 주세요.");
         }
         return Optional.empty();
+    }
+
+    /**
+     * 실행자가 대상 객체를 볼 수 있는가(S15P31C106-205 결정 D4). 없는 객체와 볼 수 없는 객체는 같은 사유로 막아, 객체가 있다는 사실을 알리지 않는다.
+     */
+    private boolean canSee(ActionExecutionCommand command, long objectId) {
+        return references
+                .findObjectTypeId(objectId)
+                .filter(typeId -> dataAccessPolicy.of(command.actor()).canView(typeId))
+                .isPresent();
     }
 
     /**
