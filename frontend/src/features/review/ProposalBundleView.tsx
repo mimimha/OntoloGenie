@@ -1,5 +1,11 @@
 import DataTable from '../../components/DataTable'
-import { isBundle, isRow, type Row } from './bundle'
+import {
+  conditionText,
+  isBundle,
+  isRow,
+  transformText as steps,
+  type Row,
+} from './bundle'
 import type { Proposal } from './types'
 
 function text(value: unknown) {
@@ -27,6 +33,17 @@ function verified(part: Row | undefined) {
   return items.every((item) => item.verified === true) ? '확인' : '미확인'
 }
 
+const dataTypeLabels: Record<string, string> = {
+  STRING: '문자',
+  INTEGER: '정수',
+  DECIMAL: '소수',
+  DATE: '날짜',
+  TIME: '시각',
+  DATETIME: '일시',
+  BOOLEAN: '예/아니요',
+  JSON: 'JSON',
+}
+
 const sensitivityLabels: Record<string, string> = {
   NORMAL: '일반',
   RESTRICTED: '제한',
@@ -37,15 +54,6 @@ const cardinalityLabels: Record<string, string> = {
   ONE_TO_MANY: '1:N',
   MANY_TO_ONE: 'N:1',
   MANY_TO_MANY: 'N:N',
-}
-
-function steps(value: unknown) {
-  const list = rows(value).map((step) =>
-    step.arg === null || step.arg === undefined
-      ? text(step.op)
-      : `${text(step.op)}(${JSON.stringify(step.arg)})`,
-  )
-  return list.length ? ` → ${list.join(' → ')}` : ''
 }
 
 function ObjectBundle({ proposal }: { proposal: Proposal }) {
@@ -112,7 +120,10 @@ function ObjectBundle({ proposal }: { proposal: Proposal }) {
                     {text(property.code)}
                   </td>
                   <td className="px-3 py-2">{text(property.name)}</td>
-                  <td className="px-3 py-2">{text(property.dataType)}</td>
+                  <td className="px-3 py-2">
+                    {dataTypeLabels[String(property.dataType)] ??
+                      text(property.dataType)}
+                  </td>
                   <td className="px-3 py-2">
                     {property.isIdentifier === true ? '예' : '-'}
                   </td>
@@ -153,7 +164,10 @@ function LinkBundle({ proposal }: { proposal: Proposal }) {
       <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-[120px_1fr]">
         <dt className="font-medium text-slate-600">관계</dt>
         <dd>
-          {text(linkType.sourceTypeCode)} → {text(linkType.targetTypeCode)}
+          {/* AI가 붙인 이름('출하 실적 → 품질 검사 기록'), 없으면 코드 */}
+          {typeof linkType.name === 'string' && linkType.name.trim()
+            ? linkType.name
+            : `${text(linkType.sourceTypeCode)} → ${text(linkType.targetTypeCode)}`}
         </dd>
         <dt className="font-medium text-slate-600">개수 관계</dt>
         <dd>
@@ -166,12 +180,7 @@ function LinkBundle({ proposal }: { proposal: Proposal }) {
         <dd>
           <ul className="space-y-1 font-mono text-xs">
             {conditions.map((condition, index) => (
-              <li key={index}>
-                {text(condition.sourceProperty)}
-                {steps(condition.sourceTransforms)} ={' '}
-                {text(condition.targetProperty)}
-                {steps(condition.targetTransforms)}
-              </li>
+              <li key={index}>{conditionText(condition)}</li>
             ))}
           </ul>
         </dd>

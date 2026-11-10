@@ -148,6 +148,7 @@ test('객체 후보는 속성과 원천 컬럼을 표로 보여 주고 같은 �
   const rows = within(table).getAllByRole('row')
   expect(rows).toHaveLength(3) // 머리글 + 속성 2개
   expect(rows[1]).toHaveTextContent('wo_no')
+  expect(rows[1]).toHaveTextContent('문자') // 자료형 STRING을 우리말로
   expect(rows[1]).toHaveTextContent('mes.work_order.wo_no')
   expect(rows[1]).toHaveTextContent('확인')
   expect(rows[2]).toHaveTextContent('제한')
