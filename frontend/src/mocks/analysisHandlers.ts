@@ -118,7 +118,9 @@ export const analysisHandlers = [
         targets
           .map((target) => ({
             sourceResourceId: target.sourceResourceId,
-            columns: target.columns ? [...target.columns].sort() : undefined,
+            columns: target.columns
+              ? [...target.columns].sort((a, b) => a.localeCompare(b))
+              : undefined,
           }))
           .sort((a, b) => a.sourceResourceId - b.sourceResourceId),
       )
