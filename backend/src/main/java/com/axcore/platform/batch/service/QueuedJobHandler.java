@@ -20,6 +20,14 @@ public interface QueuedJobHandler<R> {
 
     QueuedJobType type();
 
+    /**
+     * 이 처리기가 가져갈 QUEUED 행을 더 좁히는 조건. 작업 표 칸에 대한 SQL 식이며 코드에 적은 상수만 쓴다(요청 값을 넣지 않는다). 한 작업 표를 종류별로
+     * 다른 처리기가 맡을 때 쓴다(예: check_run의 후보 시험은 검사 실행기가 가져가지 않는다). 기본은 모든 행이다.
+     */
+    default String claimCondition() {
+        return "true";
+    }
+
     R run(long jobId);
 
     void complete(long jobId, R result);

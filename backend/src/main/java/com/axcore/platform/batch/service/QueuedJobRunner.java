@@ -56,7 +56,10 @@ public class QueuedJobRunner {
         Optional<ClaimedJob> claimed =
                 transactionTemplate.execute(
                         status ->
-                                queuedJobRepository.claimNext(handler.type(), Instant.now(clock)));
+                                queuedJobRepository.claimNext(
+                                        handler.type(),
+                                        handler.claimCondition(),
+                                        Instant.now(clock)));
         if (claimed == null || claimed.isEmpty()) {
             return false;
         }
