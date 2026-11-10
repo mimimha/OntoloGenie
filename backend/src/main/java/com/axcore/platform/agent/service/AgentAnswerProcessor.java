@@ -2,6 +2,7 @@ package com.axcore.platform.agent.service;
 
 import com.axcore.platform.agent.domain.AnswerStage;
 import java.time.Clock;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -70,11 +71,10 @@ public class AgentAnswerProcessor {
                             AgentAnswerService.FAILED_CONTENT,
                             AgentAnswerService.FAILED_REASON);
                 } else {
+                    // 조회 기록을 남기지 못했으면 그 조회 결과는 보여 주지 않는다. 실행한 Action은 실행기가 따로 기록했으므로 남긴다.
                     answers.failWithResults(
                             answerId,
-                            AgentAnswerService.FAILED_CONTENT,
-                            AgentAnswerService.FAILED_REASON,
-                            session.results(),
+                            session.allRecorded() ? session.results() : List.of(),
                             session.actions());
                 }
             } catch (RuntimeException saveEx) {

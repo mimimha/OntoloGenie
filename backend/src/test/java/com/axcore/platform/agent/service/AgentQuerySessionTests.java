@@ -113,4 +113,48 @@ class AgentQuerySessionTests {
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(session::requireRecorded).isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    void tellsAiTheDataAsOfOfEachResult() {
+        Map<String, Object> reply =
+                session.run(
+                        "OBJECT_DETAIL",
+                        "설비 상세",
+                        Map.of("objectId", 301L),
+                        "object_instance",
+                        301L,
+                        () ->
+                                new AgentQuerySession.Outcome(
+                                        Map.of("code", "PR-03"),
+                                        AgentResultCategory.FOUND,
+                                        List.of(Map.of("objectId", 301L)),
+                                        Instant.parse("2026-11-09T00:40:00Z")));
+
+        // 재배정 계획의 기준 시점을 조회한 데이터의 시점으로 채울 수 있게 AI에게도 알려 준다(160).
+        assertThat(reply).containsEntry("dataAsOf", "2026-11-09T00:40:00Z");
+    }
+
+    @Test
+    void reportsWhetherEveryQueryWasRecorded() {
+        doThrow(new IllegalStateException("기록 실패"))
+                .when(recorder)
+                .record(any(), anyLong(), anyInt(), anyMap(), any(), any(), any(), any());
+
+        assertThat(session.allRecorded()).isTrue();
+        assertThatThrownBy(
+                () ->
+                        session.run(
+                                "OBJECT_EXECUTIONS",
+                                "실행 이력",
+                                Map.of("objectId", 301L),
+                                "object_instance",
+                                301L,
+                                () ->
+                                        new AgentQuerySession.Outcome(
+                                                List.of(),
+                                                AgentResultCategory.NO_DATA,
+                                                List.of(),
+                                                null)));
+        assertThat(session.allRecorded()).isFalse();
+    }
 }

@@ -1,14 +1,18 @@
 package com.axcore.platform.agent.service;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.axcore.platform.audit.domain.AgentResultCategory;
 import com.axcore.platform.global.security.LoginAccount;
 import java.time.Clock;
 import java.util.List;
@@ -34,20 +38,19 @@ class AgentAnswerProcessorTests {
     private final AgentAnswerService answers = mock(AgentAnswerService.class);
     private final QuestionInterpreter interpreter = mock(QuestionInterpreter.class);
     private final AgentResponder responder = mock(AgentResponder.class);
+    private final AgentQueryRecorder recorder = mock(AgentQueryRecorder.class);
     private final AgentAnswerProcessor processor =
             new AgentAnswerProcessor(
                     answers,
                     interpreter,
                     responder,
-                    mock(AgentQueryRecorder.class),
+                    recorder,
                     Clock.systemUTC(),
                     new SyncTaskExecutor());
 
     @Test
     void keepsActionAlreadyRunWhenAiFailsAfterward() {
-        when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(EVENT.question(), EVENT.context(), null))
-                .thenReturn(INTERPRETATION);
+        interpretAs(INTERPRETATION);
         // AI가 계획을 만든 뒤 답변 문장을 쓰다가 실패한 경우
         doAnswer(
                         invocation -> {
@@ -60,14 +63,41 @@ class AgentAnswerProcessorTests {
 
         processor.onRequested(EVENT);
 
-        verify(answers)
-                .failWithResults(
-                        900L,
-                        AgentAnswerService.FAILED_CONTENT,
-                        AgentAnswerService.FAILED_REASON,
-                        List.of(),
-                        List.of(PLAN_CREATED));
+        verify(answers).failWithResults(900L, List.of(), List.of(PLAN_CREATED));
         verify(answers, never()).fail(anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    void dropsQueryResultsThatWereNotRecorded() {
+        interpretAs(INTERPRETATION);
+        doThrow(new IllegalStateException("기록 실패"))
+                .when(recorder)
+                .record(any(), anyLong(), anyInt(), anyMap(), any(), any(), any(), any());
+        // 계획을 만든 뒤 조회했는데 그 조회 기록을 남기지 못한 경우
+        doAnswer(
+                        invocation -> {
+                            AgentQuerySession session = invocation.getArgument(2);
+                            session.addAction(PLAN_CREATED);
+                            return session.run(
+                                    "OBJECT_EXECUTIONS",
+                                    "실행 이력",
+                                    Map.of("objectId", 301L),
+                                    "object_instance",
+                                    301L,
+                                    () ->
+                                            new AgentQuerySession.Outcome(
+                                                    List.of(),
+                                                    AgentResultCategory.NO_DATA,
+                                                    List.of(),
+                                                    null));
+                        })
+                .when(responder)
+                .answer(any(), any(), any());
+
+        processor.onRequested(EVENT);
+
+        // 기록 없는 조회 결과는 보여 주지 않고, 실행기가 따로 기록한 Action만 남긴다(160).
+        verify(answers).failWithResults(900L, List.of(), List.of(PLAN_CREATED));
     }
 
     @Test
@@ -80,6 +110,12 @@ class AgentAnswerProcessorTests {
 
         verify(answers)
                 .fail(900L, AgentAnswerService.FAILED_CONTENT, AgentAnswerService.FAILED_REASON);
-        verify(answers, never()).failWithResults(anyLong(), any(), any(), any(), any());
+        verify(answers, never()).failWithResults(anyLong(), any(), any());
+    }
+
+    private void interpretAs(QuestionInterpretation interpretation) {
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(interpreter.interpret(EVENT.question(), EVENT.context(), null))
+                .thenReturn(interpretation);
     }
 }
