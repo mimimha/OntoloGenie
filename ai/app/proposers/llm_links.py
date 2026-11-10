@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.analyzers.structured import analyze_sources
 from app.llm.client import LLMClient, LLMError, token_credits
-from app.llm.privacy import mask_text
+from app.llm.privacy import mask_value
 from app.models.candidate import Candidate
 from app.proposers.links import (
     ROW_COVERAGE,
@@ -219,8 +219,8 @@ def target_list(tables: Tables, system: str) -> list[dict]:
     return out[:MAX_TARGETS]
 
 
-def _samples(values) -> list[str]:
-    return [mask_text(v).text for v in sorted(set(values))[:SAMPLES]]
+def _samples(values, column: str = "") -> list[str]:
+    return [mask_value(v, column) for v in sorted(set(values))[:SAMPLES]]
 
 
 def build_prompt(tables: Tables, columns: list[Column], targets: list[dict]) -> str:
@@ -235,7 +235,7 @@ def build_prompt(tables: Tables, columns: list[Column], targets: list[dict]) -> 
             "column": c.name,
             "comment": comments.get(c.ref, ""),
             "type": c.declared,
-            "values": _samples(c.values),
+            "values": _samples(c.values, f"{c.name} {comments.get(c.ref, '')}"),
         }
         for c in columns
     ]
@@ -251,7 +251,10 @@ def build_prompt(tables: Tables, columns: list[Column], targets: list[dict]) -> 
                     comments.get(f"{t['table']}.{c}", "") for c in t["columns"]
                 ],
                 "values": [
-                    mask_text("|".join(row)).text
+                    "|".join(
+                        mask_value(str(cell), col)
+                        for cell, col in zip(row, t["columns"])
+                    )
                     for row in df.head(SAMPLES).values.tolist()
                 ],
             }

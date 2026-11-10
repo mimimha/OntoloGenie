@@ -23,7 +23,7 @@ from app.analyzers.structured import (
     StructuredAnalysis,
     analyze_sources,
 )
-from app.llm.privacy import SURNAMES
+from app.llm.privacy import SURNAMES, mask_value
 from app.models.candidate import (
     Candidate,
     DataType,
@@ -298,13 +298,19 @@ def _table_candidates(
         col_values = values[col.name]
         personal = stats.is_personal or looks_like_person_names(col_values)
         dtype = data_type(stats, col_values)
-        shown = [MASK] if personal else stats.sample_values[:3]
+        # 부서 칸에 섞인 사람 이름('홍보람')처럼 이름 모양 값은 근거·LLM 질문에 그대로 쓰지 않는다
+        hint = f"{col.name} {col.comment or ''}"
+        examples = [
+            mask_value(v, hint) if isinstance(v, str) else v
+            for v in stats.sample_values[:3]
+        ]
+        shown = [MASK] if personal else examples
         ref = f"{key}.{col.name}"
         evidence = Evidence(
             source_id=source,
             locator=ref,
             snippet=f"값 {stats.row_count - stats.null_count}/{stats.row_count}, 서로 다른 값 {stats.distinct_count}, 예 {shown}",
-            values=[] if personal else stats.sample_values[:3],
+            values=[] if personal else [v for v in examples if v != MASK],
         )
         why_personal = (
             "이름·주석이 개인정보를 가리킴"

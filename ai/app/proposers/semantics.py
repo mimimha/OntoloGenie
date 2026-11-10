@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.analyzers.structured import value_pattern
 from app.llm.client import LLMClient, LLMError, token_credits
-from app.llm.privacy import MASK, mask_text
+from app.llm.privacy import MASK, mask_value
 from app.models.candidate import Candidate, DataType, ItemKind, Sensitivity
 from app.proposers.confidence import CAP, LLM_AGREE_HELD
 from app.proposers.objects import CATEGORY_TEXT
@@ -162,7 +162,7 @@ def sample(df: pd.DataFrame, personal: set[str]) -> list[dict]:
     for name in picked.columns:
         if name not in personal:
             picked[name] = picked[name].map(
-                lambda v: mask_text(v).text if isinstance(v, str) else v
+                lambda v, name=name: mask_value(v, name) if isinstance(v, str) else v
             )
     return json.loads(picked.to_json(orient="records", force_ascii=False))
 

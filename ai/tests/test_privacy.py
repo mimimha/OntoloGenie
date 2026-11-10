@@ -25,3 +25,15 @@ def test_korean_particles_right_after_numbers_and_emails():
     )
     assert "1234" not in masked.text and "example" not in masked.text
     assert sorted(masked.kinds) == ["EMAIL", "PHONE", "RRN"]
+
+
+def test_name_in_assignee_column_is_masked_but_codes_and_words_are_not():
+    # 담당 부서 칸에 섞인 사람 이름(데이터 v1.0 정비 지시 technician '홍보람')은 LLM 질문·근거에 그대로 쓰지 않는다
+    from app.llm.privacy import mask_value
+
+    assert mask_value("홍보람", "technician 담당 부서") == "***"
+    assert mask_value("보전팀", "technician 담당 부서") == "보전팀"
+    # 사람 칸이 아니면 상태·지역·상호는 그대로(LLM이 표 종류를 판단하는 데 필요)
+    assert mask_value("진행", "status") == "진행"
+    assert mask_value("서울", "region") == "서울"
+    assert mask_value("백두상사", "supplierName") == "백두상사"
