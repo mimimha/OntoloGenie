@@ -13,13 +13,81 @@ import collect
 
 def container(**overrides):
     row = dict(id="abc123", name="/backend", project="axcore", service="backend",
-               status="exited", restarts=3, oneoff="False", nano_cpus=0,
+               status="exited", health="none", restarts=3, oneoff="False", nano_cpus=0,
                cpu_quota=0, cpu_period=0, cpuset="")
     row.update(overrides)
     return row
 
 
 class CollectorTests(unittest.TestCase):
+    def test_service_presence_distinguishes_stopped_missing_and_recreated(self):
+        output = collect.render([
+            container(status="exited"),
+            container(id="ai-new", service="ai", name="/ai", status="running"),
+            container(id="ai-old", service="ai", name="/ai-old", status="exited"),
+        ], "axcore", 100)
+        metrics = [line for line in output.splitlines()
+                   if line.startswith("axcore_docker_service_present{")]
+        self.assertEqual(len(metrics), 5)
+        self.assertIn('axcore_docker_service_present{project="axcore",service="backend"} 1', metrics)
+        self.assertIn('axcore_docker_service_present{project="axcore",service="ai"} 1', metrics)
+        self.assertIn('axcore_docker_service_present{project="axcore",service="frontend"} 0', metrics)
+        self.assertTrue(all("container_id" not in line for line in metrics))
+
+    def test_successful_empty_snapshot_reports_all_services_missing(self):
+        output = collect.render([], "axcore", 100)
+        metrics = [line for line in output.splitlines()
+                   if line.startswith("axcore_docker_service_present{")]
+        self.assertEqual(len(metrics), 5)
+        self.assertTrue(all(line.endswith(" 0") for line in metrics))
+        self.assertIn("axcore_docker_state_collection_success 1", output)
+
+    def test_oneoff_or_foreign_container_does_not_satisfy_presence(self):
+        output = collect.render([
+            container(oneoff="True"), container(project="foreign"),
+        ], "axcore", 100)
+        self.assertIn('axcore_docker_service_present{project="axcore",service="backend"} 0', output)
+
+    def test_empty_docker_list_is_not_an_inspection_failure(self):
+        with patch.object(collect, "docker", return_value="") as docker:
+            self.assertEqual(collect.collect("axcore"), [])
+        self.assertEqual(docker.call_count, 1)
+
+    def test_incomplete_inspect_result_is_not_reported_as_missing(self):
+        with patch.object(collect, "docker", side_effect=["abc123\n", ""]):
+            with self.assertRaises(ValueError):
+                collect.collect("axcore")
+
+    def test_each_health_status_emits_one_active_series(self):
+        for health in ("none", "starting", "healthy", "unhealthy"):
+            with self.subTest(health=health):
+                output = collect.render([container(status="running", health=health)], "axcore", 100)
+                metrics = [line for line in output.splitlines()
+                           if line.startswith("axcore_docker_container_health{")]
+                self.assertEqual(len(metrics), 4)
+                self.assertEqual(sum(int(line.rsplit(" ", 1)[1]) for line in metrics), 1)
+                self.assertTrue(any(f'health="{health}"}} 1' in line for line in metrics))
+                self.assertTrue(all('service="backend"' in line for line in metrics))
+                if health == "none":
+                    self.assertTrue(any('health="unhealthy"} 0' in line for line in metrics))
+
+    def test_missing_or_unknown_health_fails_collection_without_stale_metrics(self):
+        for health in ("unknown", None):
+            with self.subTest(health=health), tempfile.TemporaryDirectory() as directory:
+                row = container(health=health)
+                if health is None:
+                    del row["health"]
+                output = Path(directory) / "docker-state.prom"
+                output.write_text(collect.render([container()], "axcore", 100), encoding="utf-8")
+                with patch("sys.argv", ["collect.py", "--project", "axcore", "--output", str(output)]), \
+                        patch.object(collect, "collect", return_value=[row]), \
+                        redirect_stderr(io.StringIO()):
+                    self.assertEqual(collect.main(), 1)
+                content = output.read_text(encoding="utf-8")
+                self.assertIn("collection_success 0", content)
+                self.assertNotIn("axcore_docker_container_health", content)
+                self.assertNotIn("axcore_docker_container_state", content)
+
     def test_cpu_caps_and_unlimited(self):
         self.assertEqual(collect.cpu_limit(container()), 0)
         self.assertEqual(collect.cpu_limit(container(nano_cpus=1_500_000_000)), 1.5)
@@ -62,7 +130,7 @@ class CollectorTests(unittest.TestCase):
 
     def test_label_escaping_and_invalid_snapshot(self):
         self.assertEqual(collect.label('a"b\\c\nd'), 'a\\"b\\\\c\\nd')
-        for rows in ([], [container(status="unknown")], [container(restarts=-1)]):
+        for rows in ([container(status="unknown")], [container(restarts=-1)]):
             with self.subTest(rows=rows), self.assertRaises(ValueError):
                 collect.render(rows, "axcore", 100)
 
@@ -76,6 +144,7 @@ class CollectorTests(unittest.TestCase):
                 self.assertEqual(collect.main(), 1)
             self.assertIn("collection_success 0", output.read_text(encoding="utf-8"))
             self.assertNotIn("container_state", output.read_text(encoding="utf-8"))
+            self.assertNotIn("service_present", output.read_text(encoding="utf-8"))
             self.assertEqual(list(Path(directory).glob("*.tmp")), [])
 
     def test_success_replaces_existing_snapshot(self):

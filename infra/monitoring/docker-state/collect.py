@@ -11,6 +11,8 @@ import time
 
 
 STATES = ("created", "running", "paused", "restarting", "removing", "exited", "dead")
+HEALTH_STATES = ("none", "starting", "healthy", "unhealthy")
+EXPECTED_APP_SERVICES = ("backend", "ai", "frontend", "batch", "nginx")
 # 전체 inspect 응답(환경변수 포함)을 읽거나 파일에 남기지 않는다.
 INSPECT_FORMAT = (
     '{"id":{{json .Id}},"name":{{json .Name}},'
@@ -18,6 +20,7 @@ INSPECT_FORMAT = (
     '"service":{{json (index .Config.Labels "com.docker.compose.service")}},'
     '"oneoff":{{json (index .Config.Labels "com.docker.compose.oneoff")}},'
     '"status":{{json .State.Status}},"restarts":{{json .RestartCount}},'
+    '"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}"none"{{end}},'
     '"nano_cpus":{{json .HostConfig.NanoCpus}},'
     '"cpu_quota":{{json .HostConfig.CpuQuota}},'
     '"cpu_period":{{json .HostConfig.CpuPeriod}},'
@@ -41,10 +44,12 @@ def collect(project: str) -> list[dict]:
     ids = docker("ps", "--all", "--quiet", "--no-trunc", "--filter",
                  f"label=com.docker.compose.project={project}").split()
     if not ids:
-        raise ValueError("대상 Compose 컨테이너가 없습니다")
+        return []
     # 한 번에 조회하며 중간에 삭제된 컨테이너가 있으면 전체 수집을 실패 처리한다.
     rows = [json.loads(line) for line in
             docker("inspect", "--format", INSPECT_FORMAT, *ids).splitlines() if line]
+    if len(rows) != len(ids):
+        raise ValueError("컨테이너 조회 결과가 불완전합니다")
     return rows
 
 
@@ -111,10 +116,14 @@ def render(rows: list[dict], project: str, now: float) -> str:
         "# TYPE axcore_docker_container_restart_count gauge",
         "# HELP axcore_docker_container_state Current Docker state; one active state per container.",
         "# TYPE axcore_docker_container_state gauge",
+        "# HELP axcore_docker_container_health Current Docker health status; one active status per container.",
+        "# TYPE axcore_docker_container_health gauge",
         "# HELP axcore_docker_container_cpu_limit_cores Explicit Docker CPU cap; zero means unlimited.",
         "# TYPE axcore_docker_container_cpu_limit_cores gauge",
+        "# HELP axcore_docker_service_present Whether an expected app service has a container, including stopped containers.",
+        "# TYPE axcore_docker_service_present gauge",
     ]
-    count = 0
+    present_services = set()
     for row in rows:
         if row["project"] != project or str(row.get("oneoff", "")).lower() == "true":
             continue
@@ -134,9 +143,20 @@ def render(rows: list[dict], project: str, now: float) -> str:
         for state in STATES:
             lines.append(f'axcore_docker_container_state{{{labels},state="{state}"}} '
                          f'{int(row["status"] == state)}')
-        count += 1
-    if count == 0:
-        raise ValueError("수집 대상이 없습니다")
+        health = row["health"]
+        if health not in HEALTH_STATES:
+            raise ValueError("알 수 없는 컨테이너 건강 상태입니다")
+        for health_state in HEALTH_STATES:
+            lines.append(
+                f'axcore_docker_container_health{{{labels},health="{health_state}"}} '
+                f'{int(health == health_state)}'
+            )
+        present_services.add(row["service"])
+    for service in EXPECTED_APP_SERVICES:
+        labels = f'project="{label(project)}",service="{label(service)}"'
+        lines.append(
+            f'axcore_docker_service_present{{{labels}}} {int(service in present_services)}'
+        )
     return "\n".join(lines) + "\n"
 
 
