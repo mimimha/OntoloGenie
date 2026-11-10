@@ -282,7 +282,8 @@ public class CheckRunRequestService {
         return new BusinessException(CommonErrorCode.BUSINESS_RULE_VIOLATION, reason, details);
     }
 
-    private static String sha256(String text) {
+    /** work_key의 해시. 수집 뒤 검사(SyncCheckRequester)도 같은 방식으로 만든다. */
+    static String sha256(String text) {
         try {
             return HexFormat.of()
                     .formatHex(

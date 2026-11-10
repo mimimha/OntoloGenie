@@ -50,7 +50,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li>규칙마다 190 변환기로 판정 엔진 입력을 만들고, 출발·도착 유형의 활성 객체를 읽어 행 조건을 적용한 뒤 판정한다. 검사는 원천이 아니라 수집한 객체를
  *       본다(9.1). 엔진은 조건의 속성 이름({@code 유형코드.속성코드})으로 값을 찾으므로 그 이름으로 넣는다.
  *   <li>규칙 하나를 판정할 수 없으면(반영 중이 아님, 조건·변환·행 조건을 읽을 수 없음, 데이터 기준에 자원이 빠짐, 도착 값 변환 실패) 그 규칙만 건너뛰고 감사
- *       결과에 이유를 남긴다. 모든 규칙을 건너뛰면 검사는 FAILED다.
+ *       결과에 이유를 남긴다. 모든 규칙을 건너뛰면 검사는 FAILED다. 단 SYNC는 결과 없는 성공으로 끝낸다(주기마다 실패가 쌓이지 않게).
  * </ol>
  *
  * <p><b>complete</b>(한 트랜잭션): 검사 행을 잠가 RUNNING인지 보고, 판정한 규칙마다 {@code check_result} 한 행(건수, 같은 규칙
@@ -168,7 +168,9 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                 skipped.add(new SkippedRule(linkMappingId, reason));
             }
         }
-        if (evaluated.isEmpty()) {
+        // 수집 뒤 검사(SYNC)는 적재·복구 중이면 모든 규칙을 건너뛸 수 있다. 실패로 두면 다시 쓰이지 않아 주기마다 쌓이므로 결과 없는 성공으로
+        // 끝내고 이유는 감사 결과에 남긴다. 데이터 기준이 바뀌면(적재·복구가 끝나면) 새 SYNC가 들어온다. 사람이 요청한 검사는 실패로 알린다.
+        if (evaluated.isEmpty() && !"SYNC".equals(run.triggerKind())) {
             throw new QueuedJobFailure(
                     "검사할 수 있는 규칙이 없습니다. 건너뛴 규칙: "
                             + skipped.stream()
