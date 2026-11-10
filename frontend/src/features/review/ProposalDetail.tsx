@@ -4,10 +4,14 @@ import { Link, useParams, useLocation } from 'react-router'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import StatusBadge from '../../components/StatusBadge'
 import DocumentLinkView from '../analysis/DocumentLinkView'
+import { expressionLabels } from '../analysis/documentLink'
+import { cardinalityLabels } from '../explorer/labels'
 import {
   BUNDLE_EVIDENCE_KEYS,
   BUNDLE_PAYLOAD_KEYS,
+  conditionText,
   isBundle,
+  isRow,
   withoutBundleKeys,
 } from './bundle'
 import { CHECK_POLL_MS, shouldPoll } from './checkPolling'
@@ -27,38 +31,89 @@ import {
   reviewLabels,
 } from './labels'
 
+// 문서 연결은 위의 "정보 추출 결과"가 원문·언급 위치·관찰 표현을 보여 주므로 아래에서 다시 늘어놓지 않는다
+const DOCUMENT_SHOWN_PAYLOAD = ['spanStart', 'spanEnd']
+const DOCUMENT_SHOWN_EVIDENCE = ['originalText', 'observations', 'times']
+
+const recordKeyLabels: Record<string, string> = {
+  reason: '제안 이유',
+  name: '이름',
+  code: '코드',
+  description: '설명',
+  originalText: '원문',
+  sourceText: '원문',
+  excerpt: '원문 발췌',
+  sourceResourceId: '원천 리소스 ID',
+  linkTypeId: '관계 유형 ID',
+  conditions: '연결 조건',
+  note: '메모',
+  category: '표 종류',
+  synonyms: '다른 이름',
+  sourceTypeCode: '출발 객체 유형',
+  targetTypeCode: '대상 객체 유형',
+  cardinality: '개수 관계',
+  linkTypeCode: '관계 유형 코드',
+  documentId: '문서 번호',
+  mentionText: '언급한 글자',
+  targetObjectRef: '연결 대상',
+  expressionKind: '표현',
+  pattern: '비교 방식',
+  sourceFilter: '적용 조건',
+}
+
+// 원본 값 그대로면 알아보기 어려운 코드 값
+const recordValueLabels: Record<string, Record<string, string>> = {
+  pattern: { same_value: '값 그대로 비교', transform: '변환 후 비교' },
+  category: {
+    master: '기준 정보',
+    transaction: '거래 문서',
+    detail: '문서 상세 줄',
+    history: '발생 기록',
+    snapshot: '현재 상태',
+  },
+  cardinality: cardinalityLabels,
+  expressionKind: expressionLabels,
+}
+
+function isEmptyEntry(entry: unknown) {
+  return (
+    entry === null ||
+    entry === undefined ||
+    entry === '' ||
+    (Array.isArray(entry) && entry.length === 0)
+  )
+}
+
 function RecordView({ value }: { value: Record<string, unknown> }) {
-  if (!Object.keys(value).length)
+  // 빈 칸(메모 없음·다른 이름 없음)은 보여 주지 않는다
+  const entries = Object.entries(value).filter(
+    ([, entry]) => !isEmptyEntry(entry),
+  )
+  if (!entries.length)
     return <EmptyState message="정보가 제공되지 않았습니다." />
   return (
     <dl className="divide-y divide-slate-100">
-      {Object.entries(value).map(([key, entry]) => (
+      {entries.map(([key, entry]) => (
         <div key={key} className="grid gap-2 py-3 sm:grid-cols-[160px_1fr]">
           <dt className="break-words font-medium text-slate-600">
-            {(
-              {
-                reason: '제안 이유',
-                name: '이름',
-                code: '코드',
-                description: '설명',
-                originalText: '원문',
-                sourceText: '원문',
-                excerpt: '원문 발췌',
-                sourceResourceId: '원천 리소스 ID',
-                linkTypeId: '관계 유형 ID',
-                conditions: '연결 조건',
-              } as Record<string, string>
-            )[key] ?? key}
+            {recordKeyLabels[key] ?? key}
           </dt>
           <dd className="min-w-0 whitespace-pre-wrap break-words">
-            {entry === null ? (
-              '제공되지 않음'
+            {key === 'conditions' && Array.isArray(entry) ? (
+              <ul className="space-y-1 font-mono text-xs">
+                {entry.filter(isRow).map((condition, index) => (
+                  <li key={index}>{conditionText(condition)}</li>
+                ))}
+              </ul>
+            ) : Array.isArray(entry) &&
+              entry.every((item) => typeof item === 'string') ? (
+              entry.join(', ')
             ) : typeof entry === 'object' ? (
               <pre className="overflow-x-auto rounded bg-slate-50 p-3 text-xs">
                 {JSON.stringify(entry, null, 2)}
               </pre>
             ) : (
-              String(entry)
+              (recordValueLabels[key]?.[String(entry)] ?? String(entry))
             )}
           </dd>
         </div>
@@ -210,7 +265,9 @@ export default function ProposalDetail() {
             value={
               isBundle(item)
                 ? withoutBundleKeys(item.payload, BUNDLE_PAYLOAD_KEYS)
-                : item.payload
+                : item.itemKind === 'DOCUMENT_LINK'
+                  ? withoutBundleKeys(item.payload, DOCUMENT_SHOWN_PAYLOAD)
+                  : item.payload
             }
           />
         </section>
@@ -220,7 +277,9 @@ export default function ProposalDetail() {
             evidence={
               isBundle(item)
                 ? withoutBundleKeys(item.evidence, BUNDLE_EVIDENCE_KEYS)
-                : item.evidence
+                : item.itemKind === 'DOCUMENT_LINK'
+                  ? withoutBundleKeys(item.evidence, DOCUMENT_SHOWN_EVIDENCE)
+                  : item.evidence
             }
           />
         </section>

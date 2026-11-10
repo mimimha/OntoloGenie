@@ -145,3 +145,84 @@ test('보류 권고만 있는 근거도 보류 이유를 보여 주고 모양이
   ).not.toBeInTheDocument()
   expect(screen.getByText(/"verdict": "unclear"/)).toBeInTheDocument()
 })
+
+test('제안 내용은 칸 이름·코드 값을 우리말로 보여 주고 빈 칸은 숨긴다', async () => {
+  waiting.payload = {
+    code: 'WORKER',
+    name: '현장 작업자',
+    note: null,
+    category: 'master',
+    synonyms: [],
+    description: '현장 작업자별 번호와 이름을 관리하는 기준 정보입니다.',
+  }
+  open()
+
+  const content = (await screen.findByText('제안 내용')).closest('section')!
+  expect(within(content).getByText('표 종류')).toBeInTheDocument()
+  expect(within(content).getByText('기준 정보')).toBeInTheDocument()
+  expect(within(content).queryByText('category')).not.toBeInTheDocument()
+  expect(within(content).queryByText('master')).not.toBeInTheDocument()
+  expect(within(content).queryByText('메모')).not.toBeInTheDocument()
+  expect(within(content).queryByText('다른 이름')).not.toBeInTheDocument()
+  expect(content).not.toHaveTextContent('제공되지 않음')
+})
+
+test('문서 연결은 원문·언급 위치·관찰 표현을 정보 추출 결과에만 보여 주고 아래에서 다시 늘어놓지 않는다', async () => {
+  waiting.itemKind = 'DOCUMENT_LINK'
+  waiting.payload = {
+    name: 'HN-260804-D → 설비 P201',
+    documentId: 'HN-260804-D',
+    spanStart: 7,
+    spanEnd: 11,
+    mentionText: 'P201',
+    targetObjectRef: 'mes.equipment:P201',
+  }
+  waiting.evidence = {
+    reason: "본문 기재 'P201'",
+    originalText: '오후 3시쯤 P201 진동이 평소보다 커서 점검 요청함.',
+    observations: [
+      {
+        text: '진동이 평소보다 커서',
+        spanStart: 12,
+        spanEnd: 23,
+        assertion: 'AFFIRMED',
+      },
+    ],
+  }
+  open()
+
+  const content = (await screen.findByText('제안 내용')).closest('section')!
+  expect(within(content).getByText('언급한 글자')).toBeInTheDocument()
+  expect(within(content).queryByText('spanStart')).not.toBeInTheDocument()
+  const evidence = screen.getByText('제안 근거').closest('section')!
+  expect(within(evidence).queryByText('관찰 표현')).not.toBeInTheDocument()
+  expect(evidence).not.toHaveTextContent('"assertion"')
+  expect(evidence).not.toHaveTextContent('오후 3시쯤')
+})
+
+test('연결 조건은 JSON 대신 한 줄 비교식으로 보여 준다', async () => {
+  waiting.itemKind = 'LINK_RULE'
+  waiting.payload = {
+    code: 'WO_EQUIPMENT_CODE',
+    linkTypeId: 2,
+    conditions: [
+      {
+        sourceProperty: 'WORK_ORDER.equipment_code',
+        targetProperty: 'EQUIPMENT.code',
+        operator: 'EQ',
+        sourceTransforms: [{ op: 'UPPER', arg: null }],
+        targetTransforms: [],
+      },
+    ],
+  }
+  waiting.evidence = { reason: '대상 키: 설비 code (기본키) · 일치율 100%' }
+  open()
+
+  const content = (await screen.findByText('제안 내용')).closest('section')!
+  expect(
+    within(content).getByText(
+      'WORK_ORDER.equipment_code → UPPER = EQUIPMENT.code',
+    ),
+  ).toBeInTheDocument()
+  expect(content).not.toHaveTextContent('"sourceProperty"')
+})
