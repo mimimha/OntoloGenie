@@ -93,16 +93,35 @@ class ProposalDecisionServiceTests {
 
         @Bean
         @Primary
+        ProposalApplyService probeApplyService(RecordingApplier probe) {
+            return new ProposalApplyService(
+                    List.of(
+                            new ProposalApplier() {
+                                @Override
+                                public ProposalItemKind kind() {
+                                    return probe.kind();
+                                }
+
+                                @Override
+                                public ApplyResult apply(ApplyCommand command) {
+                                    return probe.apply(command);
+                                }
+                            }));
+        }
+
+        @Bean
+        @Primary
         Clock decisionClock() {
             return Clock.fixed(NOW, ZoneOffset.UTC);
         }
     }
 
     /**
-     * Only a transaction probe on a kind without a production applier yet (DOCUMENT_LINK, Jira
-     * 329).
+     * Only a transaction probe; this is not the production OBJECT_TYPE implementation. It is not
+     * registered as a ProposalApplier bean (it would clash with the real applier of the same kind);
+     * the @Primary ProposalApplyService below uses only this probe.
      */
-    static class RecordingApplier implements ProposalApplier {
+    static class RecordingApplier {
         private final JdbcClient jdbc;
         final AtomicInteger calls = new AtomicInteger();
         volatile ApplyCommand command;
@@ -118,13 +137,11 @@ class ProposalDecisionServiceTests {
             this.jdbc = jdbc;
         }
 
-        @Override
-        public ProposalItemKind kind() {
-            return ProposalItemKind.DOCUMENT_LINK;
+        ProposalItemKind kind() {
+            return ProposalItemKind.OBJECT_TYPE;
         }
 
-        @Override
-        public ApplyResult apply(ApplyCommand input) {
+        ApplyResult apply(ApplyCommand input) {
             calls.incrementAndGet();
             command = input;
             long id =
@@ -185,7 +202,7 @@ class ProposalDecisionServiceTests {
         data = new DecisionHistoryFixtures(jdbc);
         account = data.account();
         proposal = data.proposal(account, "{\"code\":\"IMMUTABLE\",\"optional\":null}");
-        jdbc.sql("update proposal_item set item_kind='DOCUMENT_LINK' where id=:id")
+        jdbc.sql("update proposal_item set item_kind='OBJECT_TYPE' where id=:id")
                 .param("id", proposal)
                 .update();
         basisCheckRunId = data.successfulCheck(proposal, 1, account);
@@ -230,7 +247,7 @@ class ProposalDecisionServiceTests {
         var result = service.decide(proposal, request(option), login());
 
         assertThat(applier.command.proposalItemId()).isEqualTo(proposal);
-        assertThat(applier.command.itemKind()).isEqualTo(ProposalItemKind.DOCUMENT_LINK);
+        assertThat(applier.command.itemKind()).isEqualTo(ProposalItemKind.OBJECT_TYPE);
         assertThat(applier.command.origin()).isEqualTo(ProposalOrigin.valueOf(origin));
         assertThat(applier.command.decidedBy()).isEqualTo(account);
         assertThat(applier.command.payload())
@@ -381,7 +398,7 @@ class ProposalDecisionServiceTests {
                                 applyService.apply(
                                         new ApplyCommand(
                                                 proposal,
-                                                ProposalItemKind.DOCUMENT_LINK,
+                                                ProposalItemKind.OBJECT_TYPE,
                                                 ProposalOrigin.MANUAL,
                                                 Map.of(),
                                                 account)))

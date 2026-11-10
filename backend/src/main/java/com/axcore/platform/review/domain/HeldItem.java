@@ -57,4 +57,36 @@ public class HeldItem {
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
+
+    /** 승인한 관계 규칙에 맞지 않는 개별 건(189 규칙 반영). 처리 전 상태(HELD)로 만든다. */
+    public static HeldItem held(
+            long proposalItemId,
+            long linkMappingId,
+            long linkTypeId,
+            long sourceObjectId,
+            String rawValue,
+            String transformedValue,
+            String holdReason,
+            Instant now) {
+        HeldItem item = new HeldItem();
+        item.proposalItemId = proposalItemId;
+        item.linkMappingId = linkMappingId;
+        item.linkTypeId = linkTypeId;
+        item.sourceObjectId = sourceObjectId;
+        item.rawValue = rawValue;
+        item.transformedValue = transformedValue;
+        item.holdReason = holdReason;
+        item.status = "HELD";
+        item.createdAt = now;
+        return item;
+    }
+
+    /** 새 규칙 개정본 승인으로 출발 객체가 규칙 연결로 이어졌다(189). 그 연결을 근거로 남기고 승인자가 닫은 것으로 기록한다. */
+    public void approveByRule(long linkId, long approvedBy, String note, Instant now) {
+        this.status = "APPROVED";
+        this.resolvedLinkId = linkId;
+        this.resolvedBy = approvedBy;
+        this.resolvedAt = now;
+        this.resolutionNote = note;
+    }
 }

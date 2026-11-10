@@ -48,8 +48,8 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>관계 유형 잠금을 잡는다(트랜잭션 끝까지, 관계 유형 ID 순서). ERP·MES 소비자와 규칙 승인이 같은 관계 유형을 동시에 계산하지 않게 한다.
  *   <li>잠근 <b>뒤에</b> 그 관계 유형의 ACTIVE 규칙과 객체를 읽는다. 기다리는 사이 커밋된 객체·새 개정본을 보고 계산한다. 그래서 부르는 쪽 트랜잭션은
  *       READ COMMITTED(기본값)여야 한다. 그보다 높으면 잠금 뒤에도 남의 커밋이 보이지 않는다.
- *   <li>규칙마다 출발·도착 유형의 활성 객체 전부로 비교값 묶음을 만들고 성립하는 쌍을 구해 합친다(같은 쌍이면 규칙 ID가 작은 쪽이 근거). 합친 쌍에도 관계 수
- *       제약을 다시 적용한다.
+ *   <li>규칙마다 출발·도착 유형의 활성 객체 전부로 비교값 묶음을 만들고 성립하는 쌍을 구해 합친다(같은 쌍이면 지금 그 연결의 근거인 규칙 코드가 여전히 원할 때 그
+ *       코드, 아니면 규칙 ID가 작은 쪽이 근거). 합친 쌍에도 관계 수 제약을 다시 적용한다.
  *   <li>그 관계 유형의 기존 연결 전부와 맞춘다. 합친 쌍에 없는 RULE 연결은 INACTIVE, 있는 쌍은 만들거나 되살린다.
  * </ol>
  *
@@ -122,10 +122,90 @@ public class LinkRecomputeService {
     @Transactional(propagation = Propagation.MANDATORY)
     public LinkRecomputeResult recomputeRules(Collection<Long> linkMappingIds) {
         Objects.requireNonNull(linkMappingIds, "linkMappingIds");
-        List<LinkMapping> requested = rules.findAllById(new LinkedHashSet<>(linkMappingIds));
+        Set<Long> ids = new LinkedHashSet<>(linkMappingIds);
+        List<LinkMapping> requested = rules.findAllById(ids);
+        // 없는 ID나 이미 폐기한 개정본을 넘기면 아무것도 계산하지 않고 지나가므로, 승인 경로에서는 실수로 보고 막는다.
+        Set<Long> activeIds =
+                requested.stream()
+                        .filter(rule -> rule.getStatus() == LinkMappingStatus.ACTIVE)
+                        .map(LinkMapping::getId)
+                        .collect(Collectors.toSet());
+        for (Long id : ids) {
+            if (!activeIds.contains(id)) {
+                throw LinkRuleNotComputableException.notActive(id);
+            }
+        }
         return run(
                 requested.stream().map(LinkMapping::getLinkTypeId).collect(Collectors.toSet()),
                 requested.stream().map(LinkMapping::getId).collect(Collectors.toSet()));
+    }
+
+    /**
+     * 승인한 규칙 개정본으로 연결되지 않은 출발 객체(보류 건 후보, 189). {@link #recomputeRules}를 부른 같은 트랜잭션에서 그 뒤에 부른다(관계
+     * 유형 잠금이 아직 잡혀 있다). 그 관계 유형의 활성 연결(규칙·수동·문서)이 이미 있는 출발은 빼고, 비교값이 비어 있는 출발도 뺀다.
+     *
+     * @throws LinkRuleNotComputableException 개정본이 없거나 ACTIVE가 아니거나 조건을 읽지 못함
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<UnlinkedSource> unlinkedSources(long linkMappingId) {
+        LinkMapping rule =
+                rules.findById(linkMappingId)
+                        .filter(found -> found.getStatus() == LinkMappingStatus.ACTIVE)
+                        .orElseThrow(() -> LinkRuleNotComputableException.notActive(linkMappingId));
+        LinkType linkType = linkTypes.findById(rule.getLinkTypeId()).orElseThrow();
+        List<LinkMappingCondition> ruleConditions =
+                conditions.findByLinkMappingIdInOrderByLinkMappingIdAscSequenceNoAsc(
+                        List.of(linkMappingId));
+        Map<Long, String> propertyCodes =
+                properties
+                        .findAllById(
+                                ruleConditions.stream()
+                                        .flatMap(
+                                                c ->
+                                                        Stream.of(
+                                                                c.getSourcePropertyId(),
+                                                                c.getTargetPropertyId()))
+                                        .collect(Collectors.toSet()))
+                        .stream()
+                        .collect(
+                                Collectors.toMap(
+                                        PropertyDefinition::getId, PropertyDefinition::getCode));
+        Map<Long, String> typeCodes =
+                objectTypes
+                        // 자기 관계면 출발·도착 유형이 같다(Set.of는 중복을 거부한다).
+                        .findAllById(
+                                Stream.of(linkType.getSourceTypeId(), linkType.getTargetTypeId())
+                                        .collect(Collectors.toSet()))
+                        .stream()
+                        .collect(Collectors.toMap(ObjectType::getId, ObjectType::getCode));
+        RulePlan plan = RulePlan.of(rule, linkType, ruleConditions, propertyCodes, typeCodes);
+        if (plan == null) {
+            throw new LinkRuleNotComputableException(rule.getId(), rule.getCode());
+        }
+        List<LinkableObject> sources = ruleLinks.activeObjects(linkType.getSourceTypeId());
+        List<LinkableObject> targets =
+                linkType.getTargetTypeId().equals(linkType.getSourceTypeId())
+                        ? sources
+                        : ruleLinks.activeObjects(linkType.getTargetTypeId());
+        Set<Long> linkedSources =
+                ruleLinks.linksOf(linkType.getId()).stream()
+                        .filter(StoredLink::active)
+                        .map(StoredLink::sourceObjectId)
+                        .collect(Collectors.toSet());
+        // 재계산 뒤 이 관계 유형의 활성 연결이 없는 출발만 남긴다. 이 규칙으로는 이을 수 있었는데 안 이어진 출발(같은 관계 유형의 다른 규칙과 결과가
+        // 달라 둘 다 빠짐, 같은 쌍의 비활성 수동 연결 등)도 보류 건이 되게 이유를 붙인다.
+        return plan.unlinked(sources, targets, transformer).stream()
+                .filter(source -> !linkedSources.contains(source.sourceObjectId()))
+                .map(
+                        source ->
+                                source.reason() != null
+                                        ? source
+                                        : new UnlinkedSource(
+                                                source.sourceObjectId(),
+                                                source.rawValue(),
+                                                source.transformedValue(),
+                                                "이 규칙으로는 이어지지만 같은 관계 유형의 다른 규칙·연결과 맞지 않아 잇지 않음"))
+                .toList();
     }
 
     /**
@@ -233,21 +313,41 @@ public class LinkRecomputeService {
                         ? sources
                         : ruleLinks.activeObjects(linkType.getTargetTypeId());
 
-        Map<Pair, Desired> desired = new LinkedHashMap<>();
+        Map<Pair, List<Desired>> wants = new LinkedHashMap<>();
         for (RulePlan plan : plans) {
             plan.pairs(sources, targets, transformer)
                     .forEach(
                             (pair, evidence) ->
-                                    desired.putIfAbsent(
-                                            pair, new Desired(plan.ruleId(), evidence)));
+                                    wants.computeIfAbsent(pair, p -> new ArrayList<>())
+                                            .add(
+                                                    new Desired(
+                                                            plan.ruleId(),
+                                                            plan.rule().getCode(),
+                                                            evidence)));
         }
-        dropAmbiguous(desired, linkType.getCardinality());
+        dropAmbiguous(wants, linkType.getCardinality());
 
         List<StoredLink> existing = ruleLinks.linksOf(linkType.getId());
         Map<Long, String> ruleCodeOfLink = ruleCodes(existing);
         Map<Pair, StoredLink> byPair = new HashMap<>();
         for (StoredLink link : existing) {
             byPair.put(new Pair(link.sourceObjectId(), link.targetObjectId()), link);
+        }
+        // 같은 쌍을 여러 규칙이 원하면, 지금 그 연결의 근거인 규칙 코드가 여전히 원할 때 그 코드를 근거로 둔다. 없으면 규칙 ID가 작은 쪽.
+        // 다른 규칙의 새 개정본을 승인했다고 근거가 엉뚱한 코드로 넘어가지 않게 한다(181 리뷰).
+        Map<Pair, Desired> desired = new LinkedHashMap<>();
+        for (Map.Entry<Pair, List<Desired>> entry : wants.entrySet()) {
+            StoredLink current = byPair.get(entry.getKey());
+            String currentCode =
+                    current == null || current.linkMappingId() == null
+                            ? null
+                            : ruleCodeOfLink.get(current.linkMappingId());
+            desired.put(
+                    entry.getKey(),
+                    entry.getValue().stream()
+                            .filter(want -> want.ruleCode().equals(currentCode))
+                            .findFirst()
+                            .orElse(entry.getValue().getFirst()));
         }
 
         List<Long> toInactivate = new ArrayList<>();
@@ -299,7 +399,7 @@ public class LinkRecomputeService {
      * 규칙마다 관계 수 제약을 지켜도, 같은 관계 유형의 규칙이 둘 이상이면 합친 결과가 어길 수 있다(규칙 A는 WO1→EQ1, 규칙 B는 WO1→EQ2). 합친 쌍에서
      * 어느 쌍인지 정할 수 없는 출발·도착은 모두 뺀다.
      */
-    private static void dropAmbiguous(Map<Pair, Desired> desired, LinkCardinality cardinality) {
+    private static void dropAmbiguous(Map<Pair, ?> desired, LinkCardinality cardinality) {
         boolean destinationIsOne =
                 cardinality == LinkCardinality.ONE_TO_ONE
                         || cardinality == LinkCardinality.MANY_TO_ONE;
@@ -338,11 +438,30 @@ public class LinkRecomputeService {
         public LinkRuleNotComputableException(long linkMappingId, String code) {
             super("연결 규칙 " + code + "(개정본 ID " + linkMappingId + ")의 조건을 읽지 못해 연결을 계산할 수 없습니다.");
         }
+
+        private LinkRuleNotComputableException(String message) {
+            super(message);
+        }
+
+        static LinkRuleNotComputableException notActive(long linkMappingId) {
+            return new LinkRuleNotComputableException(
+                    "연결 규칙 개정본 ID " + linkMappingId + "은(는) 없거나 ACTIVE가 아니라 연결을 계산할 수 없습니다.");
+        }
     }
+
+    /**
+     * 승인한 규칙으로 연결되지 않은 출발 객체 하나(보류 건 후보, 189). 비교값이 비어 있는 객체는 넣지 않는다(이을 값이 없으므로 SYNC 검사가 다룬다).
+     *
+     * @param rawValue 조건별 원래 값을 " / "로 이은 것
+     * @param transformedValue 조건별 변환 뒤 값을 " / "로 이은 것. 변환에 실패했으면 null
+     * @param reason 연결되지 않은 이유
+     */
+    public record UnlinkedSource(
+            long sourceObjectId, String rawValue, String transformedValue, String reason) {}
 
     private record Pair(long source, long target) {}
 
-    private record Desired(long ruleId, Map<String, Object> evidence) {}
+    private record Desired(long ruleId, String ruleCode, Map<String, Object> evidence) {}
 
     /** 관계 유형마다 연결 하나를 한 번만 다루므로 같은 연결이 두 목록에 들어가지 않는다. */
     private static final class Accumulator {
@@ -465,20 +584,28 @@ public class LinkRecomputeService {
                     || linkType.getCardinality() == LinkCardinality.ONE_TO_MANY;
         }
 
-        // 검사 엔진(RuleEvaluationEngine)과 같은 기준: 빈 값·단일 값이 아님·변환 실패면 비교값이 없다.
         private List<String> key(
+                LinkableObject object, ValueTransformer transformer, boolean source) {
+            return evaluate(object, transformer, source).key();
+        }
+
+        // 검사 엔진(RuleEvaluationEngine)과 같은 기준: 빈 값·단일 값이 아님·변환 실패면 비교값이 없다.
+        private KeyResult evaluate(
                 LinkableObject object, ValueTransformer transformer, boolean source) {
             Map<String, Object> values =
                     object.properties() == null ? Map.of() : object.properties();
+            List<String> raws = new ArrayList<>(conditions.size());
             List<String> key = new ArrayList<>(conditions.size());
             for (Condition condition : conditions) {
                 Object raw = values.get(source ? condition.sourceCode() : condition.targetCode());
                 if (raw == null || raw instanceof String text && text.isBlank()) {
-                    return null;
+                    return KeyResult.missing();
                 }
                 if (!(raw instanceof String || raw instanceof Number || raw instanceof Boolean)) {
-                    return null;
+                    raws.add(String.valueOf(raw));
+                    return KeyResult.failed(raws, "비교할 값이 단일 값이 아님");
                 }
+                raws.add(String.valueOf(raw));
                 String value;
                 try {
                     value =
@@ -486,14 +613,56 @@ public class LinkRecomputeService {
                                     String.valueOf(raw),
                                     source ? condition.sourceSteps() : condition.targetSteps());
                 } catch (ValueTransformer.TransformException e) {
-                    return null;
+                    return KeyResult.failed(raws, "조건 " + condition.sequenceNo() + " 변환 실패");
                 }
                 if (value == null || value.isBlank()) {
-                    return null;
+                    return KeyResult.missing();
                 }
                 key.add(value);
             }
-            return List.copyOf(key);
+            return new KeyResult(List.copyOf(key), List.copyOf(raws), null);
+        }
+
+        /**
+         * 이 규칙으로 연결되지 않는 출발 객체와 그 이유(보류 건 후보). 출발 조건(filter)에 맞지 않거나 비교값이 비어 있는 객체는 넣지 않는다. 연결 여부는
+         * 이 규칙만 본다. 다른 규칙·수동 연결로 이미 이어진 출발은 부르는 쪽이 뺀다.
+         */
+        List<UnlinkedSource> unlinked(
+                List<LinkableObject> sources,
+                List<LinkableObject> targets,
+                ValueTransformer transformer) {
+            Map<List<String>, List<Long>> targetsByKey = group(targets, transformer, false);
+            Map<List<String>, List<Long>> sourcesByKey = group(sources, transformer, true);
+            List<UnlinkedSource> unlinked = new ArrayList<>();
+            for (LinkableObject object : sources) {
+                if (!sourceFilter.matches(object)) {
+                    continue;
+                }
+                KeyResult result = evaluate(object, transformer, true);
+                if (result.isMissing()) {
+                    continue;
+                }
+                String raw = String.join(" / ", result.raws());
+                if (result.failure() != null) {
+                    unlinked.add(new UnlinkedSource(object.id(), raw, null, result.failure()));
+                    continue;
+                }
+                String transformed = String.join(" / ", result.key());
+                List<Long> targetIds = targetsByKey.getOrDefault(result.key(), List.of());
+                String reason = null;
+                // 자기 관계에서 자기 자신만 같은 값이면 이을 도착이 없다(pairs도 자기 자신 쌍은 만들지 않는다).
+                if (targetIds.isEmpty() || targetIds.equals(List.of(object.id()))) {
+                    reason = "비교값이 같은 도착 객체가 없음";
+                } else if (destinationIsOne() && targetIds.size() > 1) {
+                    reason = "비교값이 같은 도착 객체가 둘 이상";
+                } else if (sourceIsOne() && sourcesByKey.get(result.key()).size() > 1) {
+                    reason = "같은 도착을 가리키는 출발 객체가 둘 이상";
+                }
+                // 이 규칙으로는 이을 수 있는 출발도 넣는다(이유 null). 다른 규칙과 합쳐 모호해졌거나 비활성 수동 연결과 겹쳐 실제로는 안 이어졌을 수
+                // 있다.
+                unlinked.add(new UnlinkedSource(object.id(), raw, transformed, reason));
+            }
+            return unlinked;
         }
 
         private Map<String, Object> evidence(List<String> key) {
@@ -524,6 +693,22 @@ public class LinkRecomputeService {
                 return null;
             }
             return List.copyOf(steps);
+        }
+    }
+
+    /** 객체 하나의 비교값 계산 결과. 값이 비었으면 key·failure 모두 없고, 실패면 failure에 이유가 있다. */
+    private record KeyResult(List<String> key, List<String> raws, String failure) {
+
+        static KeyResult missing() {
+            return new KeyResult(null, List.of(), null);
+        }
+
+        static KeyResult failed(List<String> raws, String failure) {
+            return new KeyResult(null, List.copyOf(raws), failure);
+        }
+
+        boolean isMissing() {
+            return key == null && failure == null;
         }
     }
 

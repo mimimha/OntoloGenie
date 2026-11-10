@@ -137,10 +137,15 @@ class ApplySupport {
 
     /** 변환 단계 목록. 단계마다 {@code op}가 문자열이어야 한다(인자 검사는 매핑 등록 서비스가 한다). */
     List<Map<String, Object>> transformSteps(Map<String, Object> payload, String field) {
-        List<Map<String, Object>> steps = optionalObjects(payload, "transformSteps", field);
+        return steps(payload, "transformSteps", field);
+    }
+
+    /** 이름이 {@code key}인 변환 단계 목록(규칙 조건의 sourceTransforms·targetTransforms 등). */
+    List<Map<String, Object>> steps(Map<String, Object> payload, String key, String field) {
+        List<Map<String, Object>> steps = optionalObjects(payload, key, field);
         for (int i = 0; i < steps.size(); i++) {
             if (!(steps.get(i).get("op") instanceof String op) || op.isBlank()) {
-                throw invalid(field + ".transformSteps[" + i + "].op", "변환 종류는 문자열이어야 합니다.");
+                throw invalid(field + "." + key + "[" + i + "].op", "변환 종류는 문자열이어야 합니다.");
             }
         }
         return steps;
