@@ -2,13 +2,15 @@
 
 ## 최종 설정
 
-Grafana UI에서 생성한 규칙을 `infra/monitoring/grafana/provisioning/alerting/infra-1m.yaml`로 내보내 보관했다. 세 규칙은 1분마다 평가하며 활성 상태다.
+Grafana UI에서 생성한 규칙을 `infra/monitoring/grafana/provisioning/alerting/infra-1m.yaml`로 내보내 보관했다. 최종 다섯 규칙은 1분마다 평가하며 활성 상태다.
 
 | 규칙 | 조건 | 지속 시간 |
 | --- | --- | --- |
 | axcore-main-disk-usage-high | 루트 디스크 사용률 > 85% | 5분 |
 | axcore-container-memory-usage-high | 컨테이너 working set / 설정 메모리 한도 > 90% | 5분 |
 | axcore-app-container-not-running | backend·ai·frontend·batch·nginx의 running 상태 값 < 1 | 2분 |
+| axcore-app-container-unhealthy | 앱 컨테이너의 unhealthy 상태 값 > 0 | 2분 |
+| axcore-app-container-missing | 기대 앱 서비스의 컨테이너 존재 값 < 1 | 2분 |
 
 수신처 `axcore-mattermost`는 Slack 호환 Incoming Webhook으로 요청자가 단독 참여하는 Mattermost 비공개 채널에 연결했다. URL·토큰은 저장소에 포함하지 않는다. Summary·Description과 기본 값/라벨을 통해 서버·서비스·현재 값을 확인한다.
 
@@ -33,7 +35,7 @@ Grafana UI에서 생성한 규칙을 `infra/monitoring/grafana/provisioning/aler
 
 ## 남은 범위
 
-- 초기 UI 규칙은 unhealthy·삭제된 컨테이너를 감지하지 않는다. 아래 수집기 확장의 서버 반영과 새 지표 기반 Grafana 규칙 설정이 남아 있다.
+- 초기 세 규칙에 건강 상태·누락 알림 두 규칙을 추가했다. 아래 최종 사용자 검증 기록을 따른다.
 - 상태 수집 실패·90초 이상 지연은 쿼리에서 제외되며 각 서비스 누락까지 이 규칙이 보장하지 않는다.
 - 실제 중지·unhealthy·삭제 유발 검사, 파일 재적용 검사, 메모리 개별 수신 검증은 수행하지 않았다.
 - 현재 비교는 Jira 문구의 '이상'과 달리 엄밀히 '초과'다(디스크 >85, 메모리 >90).
@@ -54,3 +56,13 @@ Grafana UI에서 생성한 규칙을 `infra/monitoring/grafana/provisioning/aler
 - INSPECT_FORMAT의 직접 접근을 `with index .State "Health"`로 바꿨다. 키가 없으면 JSON 문자열 none을 반환하고, 있으면 Status만 읽는다.
 - 사용자 서버 실행: 수정한 건강 상태 템플릿으로 backend·ai·frontend는 healthy, batch·nginx는 none으로 조회됐다. 조회 명령만 실행했으며 컨테이너 상태를 변경하지 않았다.
 - 기존 Python 테스트는 Docker CLI를 가짜 데이터로 대체해 이 Go-template 실행 오류를 잡지 못했다. 이번 수정 이후 전체 inspect JSON·타이머 지표·Prometheus 전달 복구는 재배포 후 사용자 확인이 필요하다. 작성 세션은 이번 수정의 테스트를 실행하지 않았다.
+
+## 최종 서버 복구·추가 알림 확인
+
+- 사용자 배포 완료 보고와 서버 출력: collection_success=1, 마지막 수집 후 약 6.318초를 확인했다. backend·ai·frontend healthy, batch·nginx none, 기대 앱 서비스 다섯 개의 present=1이었다.
+- 사용자 Grafana Explore 첨부 화면: 앱 다섯 개의 unhealthy=0을 확인해 Prometheus 전달을 확인했다.
+- 사용자 확인: unhealthy 규칙의 임계값을 일시적으로 >-1로 바꿔 수신하고 >0으로 복구 후 Normal을 확인했다.
+- 사용자 확인: 누락 규칙의 임계값을 일시적으로 <2로 바꿔 수신하고 <1로 복구 후 Normal을 확인했다.
+- 최종 내보내기 파일에서 다섯 규칙의 조건 >85/>90/<1/>0/<1과 지속 시간 5m/5m/2m/2m/2m, 활성 상태·수신처·테스트 문구 제거를 확인했다. YAML 파싱으로 내용을 읽었으며 Grafana 파일 재적용은 하지 않았다.
+- 추가 캡처는 사용자 요청에 따라 요구하지 않는다. 위 수신·복구 결과는 사용자 보고로 기록하며 실제 운영 컨테이너의 중지·unhealthy·삭제를 유발한 검증은 아니다.
+- 새 YAML은 UI의 최종 설정 보관용이다. 수신처 비밀값과 파일 프로비저닝 마운트는 포함하지 않는다. 이 파일 갱신도 기존 배포 규칙에 따라 Grafana 재생성을 유발할 수 있어 병합·배포 시 일시 중단과 복구 확인이 필요하다.
