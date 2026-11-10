@@ -80,6 +80,10 @@ class ActionExecutionApiTests {
     @BeforeEach
     void createS4Objects() {
         s4 = new S4(UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        // 실행 대상 객체는 실행자가 볼 수 있어야 한다(S15P31C106-205 결정 D4). 계획자는 생산 쪽 유형을 모두 본다(D1).
+        for (String type : List.of("Equipment", "WorkOrder", "WorkOrderOperation", "Routing")) {
+            allowPlannerToSeeType(type);
+        }
     }
 
     // ---------------------------------------------------------------- 성공
@@ -610,6 +614,35 @@ class ActionExecutionApiTests {
                 .andExpect(jsonPath("$.data.status").value("BLOCKED"))
                 .andExpect(jsonPath("$.data.actorRoleCode").value("VIEWER"))
                 .andExpect(jsonPath("$.data.blockedReason").value("PLAN_CREATE 권한이 없습니다."));
+    }
+
+    @Test
+    void blocksTargetOutsideRoleScopeLikeMissingObjectAndRecordsIt() throws Exception {
+        LoginSession planner = login(createAccount("PLANNER"));
+        long hidden = ungroupedObject();
+        long missing = Long.MAX_VALUE - 1;
+
+        for (long target : new long[] {hidden, missing}) {
+            long before = plansFrom(target);
+            execute(PLAN, planner, singleItem(UUID.randomUUID(), target, "20", s4.p101))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.status").value("BLOCKED"))
+                    .andExpect(jsonPath("$.data.targetId").value(target))
+                    .andExpect(
+                            jsonPath("$.data.blockedReason")
+                                    .value("대상 객체(id=%d)를 찾을 수 없습니다.".formatted(target)));
+            assertThat(plansFrom(target)).isEqualTo(before);
+        }
+
+        // ADMIN은 모든 유형을 보므로 범위 검사를 지나 Handler의 업무 조건에서 막힌다.
+        execute(
+                        PLAN,
+                        login(createAccount("ADMIN")),
+                        singleItem(UUID.randomUUID(), hidden, "20", s4.p101))
+                .andExpect(jsonPath("$.data.status").value("BLOCKED"))
+                .andExpect(
+                        jsonPath("$.data.blockedReason")
+                                .value("정지 설비(id=%d)를 찾을 수 없거나 설비 객체가 아닙니다.".formatted(hidden)));
     }
 
     @Test
@@ -1219,6 +1252,23 @@ class ActionExecutionApiTests {
         return jdbcClient
                 .sql("select count(*) from action_execution where actor_id = :id")
                 .param("id", actorId)
+                .query(Long.class)
+                .single();
+    }
+
+    /** 접근 그룹이 없어 ADMIN만 보는 유형의 객체. */
+    private long ungroupedObject() {
+        long typeId =
+                jdbcClient
+                        .sql(
+                                "insert into object_type (code, name) values (:code, '숨은 유형') returning id")
+                        .param("code", "HIDDEN_" + UUID.randomUUID().toString().substring(0, 8))
+                        .query(Long.class)
+                        .single();
+        return jdbcClient
+                .sql(
+                        "insert into object_instance (object_type_id, display_name) values (:type, '숨은 설비') returning id")
+                .param("type", typeId)
                 .query(Long.class)
                 .single();
     }
