@@ -20,7 +20,7 @@ INSPECT_FORMAT = (
     '"service":{{json (index .Config.Labels "com.docker.compose.service")}},'
     '"oneoff":{{json (index .Config.Labels "com.docker.compose.oneoff")}},'
     '"status":{{json .State.Status}},"restarts":{{json .RestartCount}},'
-    '"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}"none"{{end}},'
+    '"health":{{with index .State "Health"}}{{json .Status}}{{else}}"none"{{end}},'
     '"nano_cpus":{{json .HostConfig.NanoCpus}},'
     '"cpu_quota":{{json .HostConfig.CpuQuota}},'
     '"cpu_period":{{json .HostConfig.CpuPeriod}},'

@@ -47,3 +47,10 @@ Grafana UI에서 생성한 규칙을 `infra/monitoring/grafana/provisioning/aler
 - 사용자 보고: 로컬 unittest 15개 모두 통과. 이 추가 변경의 최종 테스트 실행은 사용자가 담당했고 작성 세션은 재실행하지 않았다. 실제 unhealthy·삭제 상황은 로컬 가짜 데이터로 검증한 범위이며 운영 장애를 유발하지 않았다.
 - 사용자 서버 출력 확인: axcore-docker-state.timer가 enabled·active이고 약 30초 간격으로 실행된다. 수집기 파일은 배포 허용 목록에 있어 MR 병합 후 Jenkins가 동기화하면 다음 타이머 실행에서 읽는다. 이번 변경은 타이머 재설치·앱 컨테이너 재시작을 요구하지 않는다.
 - 서버의 새 지표 출력, Prometheus 전달, Grafana 알림과 수신은 배포 후 사용자 확인이 필요하다.
+
+## Health 키가 없는 컨테이너 조회 오류 수정
+
+- 최초 배포 뒤 사용자 출력에서 collection_success=0을 확인했다. 실제 Docker stderr는 `.State.Health: map has no entry for key "Health"`였다. 헬스체크가 없는 컨테이너에서 직접 필드 접근이 실패해 프로젝트 전체 스냅샷 수집이 중단됐다.
+- INSPECT_FORMAT의 직접 접근을 `with index .State "Health"`로 바꿨다. 키가 없으면 JSON 문자열 none을 반환하고, 있으면 Status만 읽는다.
+- 사용자 서버 실행: 수정한 건강 상태 템플릿으로 backend·ai·frontend는 healthy, batch·nginx는 none으로 조회됐다. 조회 명령만 실행했으며 컨테이너 상태를 변경하지 않았다.
+- 기존 Python 테스트는 Docker CLI를 가짜 데이터로 대체해 이 Go-template 실행 오류를 잡지 못했다. 이번 수정 이후 전체 inspect JSON·타이머 지표·Prometheus 전달 복구는 재배포 후 사용자 확인이 필요하다. 작성 세션은 이번 수정의 테스트를 실행하지 않았다.
