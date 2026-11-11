@@ -77,11 +77,36 @@ class AgentResponderTests {
         assertThat(((OpenAiChatOptions) prompt.getOptions()).getReasoningEffort()).isNull();
     }
 
+    @Test
+    void readsReplyToClarificationAsChoiceNotAsNewQuestion() {
+        Prompt prompt = ask("두 번째 거", "'06번'에 해당하는 대상이 여러 개입니다: CNC 6호기(설비), 프레스 6호기(설비).", "none");
+
+        // "두 번째 거"를 이력의 두 번째로 읽지 않게 되물은 내용과 사용자의 답을 나눠 알려 준다(147 로컬 확인).
+        assertThat(prompt.getUserMessage().getText())
+                .contains("되물은 내용: '06번'에 해당하는 대상이 여러 개입니다")
+                .contains("사용자의 답: 두 번째 거")
+                .doesNotContain("질문: ");
+        assertThat(prompt.getSystemMessage().getText()).contains("\"두 번째 거\"는 되물은 후보 중 두 번째를 고른 말");
+    }
+
+    @Test
+    void writesQuestionAsIsWhenNotReplyingToClarification() {
+        Prompt prompt = askAboutPr03();
+
+        assertThat(prompt.getUserMessage().getText())
+                .contains("질문: PR-03의 상태를 알려줘")
+                .doesNotContain("되물은 내용");
+    }
+
     private Prompt askAboutPr03() {
         return askAboutPr03("none");
     }
 
     private Prompt askAboutPr03(String reasoningEffort) {
+        return ask("PR-03의 상태를 알려줘", null, reasoningEffort);
+    }
+
+    private Prompt ask(String question, String askedClarification, String reasoningEffort) {
         when(chatModel.getOptions())
                 .thenReturn(OpenAiChatOptions.builder().model("gpt-5.6-sol").build());
         when(chatModel.call(any(Prompt.class)))
@@ -102,10 +127,11 @@ class AgentResponderTests {
 
         answer =
                 responder.answer(
-                        "PR-03의 상태를 알려줘",
+                        question,
                         new QuestionInterpretation(
                                 "상태", List.of("PR-03"), null, null, List.of(), null),
-                        new AgentQuerySession(ASKER, 11L, mock(AgentQueryRecorder.class), CLOCK));
+                        new AgentQuerySession(ASKER, 11L, mock(AgentQueryRecorder.class), CLOCK),
+                        askedClarification);
 
         ArgumentCaptor<Prompt> prompt = ArgumentCaptor.forClass(Prompt.class);
         verify(chatModel).call(prompt.capture());

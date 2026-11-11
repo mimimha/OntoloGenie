@@ -34,12 +34,16 @@ springdoc:
     enabled: true
   paths-to-exclude: /error
 
-# 내부 API(/api/v1/internal/**)를 부르는 FastAPI와 나눠 가진 공유 비밀(X-Internal-Token). 값은 환경변수로만 넣는다.
-# 비어 있으면 내부 API를 모두 막는다. AI 쪽 AI_ONTOLOGY_INTERNAL_TOKEN과 같은 값이어야 한다.
 axcore:
   # Agent 답변(도구 사용) 요청의 추론 강도. 도구 호출이 되는 위 모델들은 none으로 확인했다. 비우면 옵션을 보내지 않는다.
   agent:
     reasoning-effort: ${AXCORE_AGENT_LLM_REASONING_EFFORT:none}
+    # 질문 해석에 넘길 최근 대화 원문(147). 턴 수와 토큰 상한을 함께 지키고, 토큰은 글자 수로 어림한다. 턴 수는 334 비교 실험으로 확정한다.
+    history:
+      max-turns: ${AXCORE_AGENT_HISTORY_MAX_TURNS:4}
+      max-tokens: ${AXCORE_AGENT_HISTORY_MAX_TOKENS:2000}
+  # 내부 API(/api/v1/internal/**)를 부르는 FastAPI와 나눠 가진 공유 비밀(X-Internal-Token). 값은 환경변수로만 넣는다.
+  # 비어 있으면 내부 API를 모두 막는다. AI 쪽 AI_ONTOLOGY_INTERNAL_TOKEN과 같은 값이어야 한다.
   internal-api:
     token: ${AXCORE_INTERNAL_API_TOKEN:}
   # FastAPI 분석 서비스. 018로 새 실행을 만들면 커밋 뒤 시작을 알린다(API 018 하단). 서버 값은 http://ai:8000(compose).

@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -67,7 +68,7 @@ class AgentAnswerProcessorTests {
                             throw new IllegalStateException("AI 응답 시간 초과");
                         })
                 .when(responder)
-                .answer(any(), any(), any());
+                .answer(any(), any(), any(), any());
 
         processor.onRequested(EVENT);
 
@@ -100,7 +101,7 @@ class AgentAnswerProcessorTests {
                                                     null));
                         })
                 .when(responder)
-                .answer(any(), any(), any());
+                .answer(any(), any(), any(), any());
 
         processor.onRequested(EVENT);
 
@@ -111,7 +112,7 @@ class AgentAnswerProcessorTests {
     @Test
     void failsWithoutResultsWhenQuestionCannotBeInterpreted() {
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(any(), any(), any(), any()))
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
                 .thenThrow(new IllegalStateException("AI 응답 시간 초과"));
 
         processor.onRequested(EVENT);
@@ -125,7 +126,7 @@ class AgentAnswerProcessorTests {
     void continuesPreviousTargetWhenOnlyPeriodChanges() {
         AgentAnswerRequested followUp = followUp("그럼 지난달은?");
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(any(), any(), any(), any()))
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 null,
@@ -134,7 +135,7 @@ class AgentAnswerProcessorTests {
                                 LocalDate.parse("2026-09-30"),
                                 List.of(),
                                 null));
-        when(responder.answer(any(), any(), any())).thenReturn("9월 비가동은 1건입니다.");
+        when(responder.answer(any(), any(), any(), any())).thenReturn("9월 비가동은 1건입니다.");
 
         processor.onRequested(followUp);
 
@@ -146,20 +147,22 @@ class AgentAnswerProcessorTests {
         assertThat(used.referenceObjectIds()).containsExactly(301L);
         assertThat(used.from()).isEqualTo(LocalDate.parse("2026-09-01"));
         assertThat(used.to()).isEqualTo(LocalDate.parse("2026-09-30"));
+        // 되묻기에 대한 답이 아니므로 되물은 내용은 넘기지 않는다.
+        verify(responder).answer(eq("그럼 지난달은?"), any(), any(), isNull());
     }
 
     @Test
     void switchesToNewTargetInsteadOfPreviousObject() {
         AgentAnswerRequested followUp = followUp("06번의 실행 이력은?");
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(any(), any(), any(), any()))
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "실행 이력", List.of("06번"), null, null, List.of(), null));
         AgentReferenceObject pr06 = new AgentReferenceObject(306L, "PR-06", "설비");
         when(targetResolver.resolve(eq(List.of("06번")), any(), any()))
                 .thenReturn(new AgentTargetResolver.Resolution(List.of(pr06), List.of()));
-        when(responder.answer(any(), any(), any())).thenReturn("PR-06 실행 이력은 없습니다.");
+        when(responder.answer(any(), any(), any(), any())).thenReturn("PR-06 실행 이력은 없습니다.");
 
         processor.onRequested(followUp);
 
@@ -173,7 +176,7 @@ class AgentAnswerProcessorTests {
     void letsToolsQueryOnlyObjectsThisAnswerTargets() {
         when(interpreter.isConfigured()).thenReturn(true);
         // "현재 진행 중인 작업지시를 보여줘"처럼 종류 전체를 물어 대상 객체가 없는 질문
-        when(interpreter.interpret(any(), any(), any(), any()))
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "진행 중인 작업지시",
@@ -201,7 +204,7 @@ class AgentAnswerProcessorTests {
                             return "작업지시 목록은 아직 조회할 수 없습니다.";
                         })
                 .when(responder)
-                .answer(any(), any(), any());
+                .answer(any(), any(), any(), any());
 
         processor.onRequested(EVENT);
 
@@ -213,7 +216,7 @@ class AgentAnswerProcessorTests {
     @Test
     void asksBackWhenTargetMatchesSeveralObjects() {
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(any(), any(), any(), any()))
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "실행 이력", List.of("06번"), null, null, List.of(), null));
@@ -230,7 +233,7 @@ class AgentAnswerProcessorTests {
         processor.onRequested(EVENT);
 
         verify(answers).answerClarification(eq(900L), any(), eq(issues), any());
-        verify(responder, never()).answer(any(), any(), any());
+        verify(responder, never()).answer(any(), any(), any(), any());
     }
 
     @Test
@@ -246,13 +249,13 @@ class AgentAnswerProcessorTests {
                         List.of("06번"),
                         List.of(pr06));
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(any(), any(), any(), any()))
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 null, List.of("PR-06"), null, null, List.of(), null));
         when(targetResolver.resolve(eq(List.of("PR-06")), any(), any()))
                 .thenReturn(new AgentTargetResolver.Resolution(List.of(pr06), List.of()));
-        when(responder.answer(any(), any(), any())).thenReturn("비교 답변");
+        when(responder.answer(any(), any(), any(), any())).thenReturn("비교 답변");
 
         processor.onRequested(
                 new AgentAnswerRequested(900L, 899L, ASKER, "PR-06", Map.of(), pending, null));
@@ -261,6 +264,8 @@ class AgentAnswerProcessorTests {
         assertThat(used.targets()).containsExactly("PR-03", "PR-06");
         assertThat(used.referenceObjects()).containsExactly(pr03, pr06);
         assertThat(used.purpose()).isEqualTo("비교");
+        // 답변 AI가 "PR-06"을 새 질문이 아니라 되물은 것에 대한 답으로 읽게 되물은 내용을 함께 넘긴다.
+        verify(responder).answer(eq("PR-06"), any(), any(), eq("'06번'에 해당하는 대상이 여러 개입니다."));
     }
 
     @Test
@@ -274,7 +279,7 @@ class AgentAnswerProcessorTests {
                         List.of("06번"),
                         List.of());
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(any(), any(), any(), any()))
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 null,
@@ -297,13 +302,13 @@ class AgentAnswerProcessorTests {
         verify(answers).answerClarification(eq(900L), asked.capture(), eq(stillOpen), any());
         assertThat(asked.getValue().referenceObjects()).containsExactly(pr03);
         assertThat(asked.getValue().hasPeriod()).isTrue();
-        verify(responder, never()).answer(any(), any(), any());
+        verify(responder, never()).answer(any(), any(), any(), any());
     }
 
     @Test
     void keepsScreenObjectForNextReplyWhenFirstQuestionTargetIsUnsettled() {
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(any(), any(), any(), any()))
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "작업 내용",
@@ -349,7 +354,7 @@ class AgentAnswerProcessorTests {
     @Test
     void treatsNewQuestionAfterClarificationAsNewQuestion() {
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(any(), any(), any(), any()))
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "진행 중인 작업지시",
@@ -359,7 +364,7 @@ class AgentAnswerProcessorTests {
                                 List.of(),
                                 null,
                                 List.of("작업지시")));
-        when(responder.answer(any(), any(), any())).thenReturn("진행 중인 작업지시 답변");
+        when(responder.answer(any(), any(), any(), any())).thenReturn("진행 중인 작업지시 답변");
 
         // 되묻기 전에 끝까지 답한 답변(10월 PR-03 비가동 이력)도 있다.
         processor.onRequested(
@@ -380,6 +385,8 @@ class AgentAnswerProcessorTests {
         assertThat(used.targets()).isEmpty();
         assertThat(used.vaguePeriod()).isNull();
         assertThat(used.hasPeriod()).isFalse();
+        // 새 질문이므로 답변 AI에 되물은 내용을 넘기지 않는다. 넘기면 새 질문을 되묻기에 대한 답으로 읽는다.
+        verify(responder).answer(eq("현재 진행 중인 작업지시를 보여줘"), any(), any(), isNull());
     }
 
     @Test
@@ -405,14 +412,14 @@ class AgentAnswerProcessorTests {
                         List.of(new AgentReferenceObject(303L, "PR-01", "설비")),
                         null);
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(any(), any(), any(), any()))
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "비가동 이력", List.of("PR-03"), null, null, List.of(), null));
         AgentReferenceObject pr03 = new AgentReferenceObject(301L, "PR-03", "설비");
         when(targetResolver.resolve(eq(List.of("PR-03")), any(), any()))
                 .thenReturn(new AgentTargetResolver.Resolution(List.of(pr03), List.of()));
-        when(responder.answer(any(), any(), any())).thenReturn("PR-03 10월 비가동 이력 답변");
+        when(responder.answer(any(), any(), any(), any())).thenReturn("PR-03 10월 비가동 이력 답변");
 
         processor.onRequested(
                 new AgentAnswerRequested(
@@ -440,13 +447,13 @@ class AgentAnswerProcessorTests {
                         List.of(pr06));
         when(interpreter.isConfigured()).thenReturn(true);
         // 사용자가 목적까지 다시 말해 답했다: "PR-06 비가동 이력 보여줘"
-        when(interpreter.interpret(any(), any(), any(), any()))
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "최근 비가동 이력", List.of("PR-06"), null, null, List.of(), null));
         when(targetResolver.resolve(eq(List.of("PR-06")), any(), any()))
                 .thenReturn(new AgentTargetResolver.Resolution(List.of(pr06), List.of()));
-        when(responder.answer(any(), any(), any())).thenReturn("비교 답변");
+        when(responder.answer(any(), any(), any(), any())).thenReturn("비교 답변");
 
         processor.onRequested(
                 new AgentAnswerRequested(
@@ -462,7 +469,7 @@ class AgentAnswerProcessorTests {
     void answersWithWholeKindWhenReplyNamesKindInsteadOfTarget() {
         when(interpreter.isConfigured()).thenReturn(true);
         // "그냥 전체 설비로 보여줘, 10월" — 목적은 말하지 않았으므로 되묻기에 대한 답이다.
-        when(interpreter.interpret(any(), any(), any(), any()))
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 null,
@@ -472,7 +479,7 @@ class AgentAnswerProcessorTests {
                                 List.of(),
                                 null,
                                 List.of("설비")));
-        when(responder.answer(any(), any(), any())).thenReturn("전체 설비 답변");
+        when(responder.answer(any(), any(), any(), any())).thenReturn("전체 설비 답변");
 
         processor.onRequested(
                 new AgentAnswerRequested(
@@ -484,6 +491,38 @@ class AgentAnswerProcessorTests {
         assertThat(used.targets()).isEmpty();
         assertThat(used.kinds()).containsExactly("설비");
         assertThat(used.hasPeriod()).isTrue();
+    }
+
+    @Test
+    void passesRecentTurnsToQuestionInterpreter() {
+        List<ConversationTurn> turns =
+                List.of(new ConversationTurn("PR-03 실행 이력 알려줘", "PR-03 실행 이력은 3건입니다."));
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                null,
+                                List.of(),
+                                LocalDate.parse("2026-10-01"),
+                                LocalDate.parse("2026-10-31"),
+                                List.of(),
+                                null));
+        when(responder.answer(any(), any(), any(), any())).thenReturn("10월 실행 이력 답변");
+        AgentAnswerRequested followUp = followUp("그럼 10월 것만");
+
+        processor.onRequested(
+                new AgentAnswerRequested(
+                        900L,
+                        899L,
+                        ASKER,
+                        followUp.question(),
+                        Map.of(),
+                        null,
+                        followUp.previous(),
+                        turns));
+
+        // 해석 AI는 받은 최근 대화 원문을 그대로 받는다(147).
+        verify(interpreter).interpret(any(), any(), any(), any(), eq(turns));
     }
 
     /** 직전 답변에서 PR-03(객체 301)의 10월 비가동 이력을 답한 대화의 후속 질문. */
@@ -502,14 +541,14 @@ class AgentAnswerProcessorTests {
     private QuestionInterpretation answeredWith() {
         ArgumentCaptor<QuestionInterpretation> used =
                 ArgumentCaptor.forClass(QuestionInterpretation.class);
-        verify(responder).answer(any(), used.capture(), any());
+        verify(responder).answer(any(), used.capture(), any(), any());
         verify(answers).answerWithResults(eq(900L), any(), eq(used.getValue()), any(), any());
         return used.getValue();
     }
 
     private void interpretAs(QuestionInterpretation interpretation) {
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(EVENT.question(), EVENT.context(), null, null))
+        when(interpreter.interpret(EVENT.question(), EVENT.context(), null, null, List.of()))
                 .thenReturn(interpretation);
         when(targetResolver.resolve(any(), any(), any()))
                 .thenReturn(

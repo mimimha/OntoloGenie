@@ -18,6 +18,9 @@ public interface AgentMessageRepository extends JpaRepository<AgentMessage, Long
 
     Page<AgentMessage> findByConversationId(Long conversationId, Pageable pageable);
 
+    /** 대화의 최근 메시지를 최신 순으로 읽는다. 질문 해석에 넘길 최근 대화 원문을 고를 때 쓴다(147). */
+    List<AgentMessage> findByConversationIdOrderByIdDesc(Long conversationId, Pageable pageable);
+
     boolean existsByConversationIdAndStatus(Long conversationId, MessageStatus status);
 
     /**

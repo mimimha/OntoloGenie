@@ -15,11 +15,14 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +39,7 @@ public class AgentMessageService {
     private final AgentConversationRepository conversations;
     private final AgentMessageRepository messages;
     private final ApplicationEventPublisher events;
+    private final RecentTurns recentTurns;
     private final Clock clock;
 
     /** 084. 시간순으로 돌려준다. 그 전에 멈춘 답변을 실패로 정리한다. */
@@ -60,6 +64,7 @@ public class AgentMessageService {
         }
         PendingClarification pending = pendingClarification(conversationId);
         QuestionInterpretation previous = previousConditions(conversationId);
+        List<ConversationTurn> turns = recentTurns(conversationId);
         Instant now = Instant.now(clock).truncatedTo(ChronoUnit.MICROS);
         AgentMessage question =
                 messages.save(
@@ -75,8 +80,25 @@ public class AgentMessageService {
                         request.content(),
                         request.messageContext(),
                         pending,
-                        previous));
+                        previous,
+                        turns));
         return List.of(AgentMessageResponse.from(question), AgentMessageResponse.from(answer));
+    }
+
+    /**
+     * 이번 질문 앞의 최근 대화 원문(147). 이 대화의 메시지만 읽으므로 다른 사용자·다른 대화 내용은 섞이지 않는다. 이번 질문을 저장하기 전에 읽어 이번 질문은
+     * 들어가지 않는다. 설정으로 껐으면 읽지 않는다.
+     */
+    private List<ConversationTurn> recentTurns(long conversationId) {
+        if (!recentTurns.enabled()) {
+            return List.of();
+        }
+        List<AgentMessage> newestFirst =
+                messages.findByConversationIdOrderByIdDesc(
+                        conversationId, PageRequest.of(0, recentTurns.messagesToRead()));
+        List<AgentMessage> oldestFirst = new ArrayList<>(newestFirst);
+        Collections.reverse(oldestFirst);
+        return recentTurns.pick(oldestFirst);
     }
 
     /** 마지막 답변이 되묻기였으면 이번 질문을 그 답으로 본다(143). 아니면 null. */
