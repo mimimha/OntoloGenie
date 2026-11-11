@@ -24,7 +24,9 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class AgentTargetResolver {
-    static final String OBJECT_SEARCH = "OBJECT_SEARCH";
+    /** AI의 객체 검색 도구(OBJECT_SEARCH)와 실행 이력에서 구별하는 조회 코드(326). */
+    static final String TARGET_SEARCH = "TARGET_SEARCH";
+
     static final String LABEL = "대상 찾기";
 
     /** 되물을 때 보여 줄 후보 수. */
@@ -167,7 +169,7 @@ public class AgentTargetResolver {
     private List<ObjectSearchResponse> search(String query, AgentQuerySession session) {
         List<ObjectSearchResponse> rows = new ArrayList<>();
         session.lookup(
-                OBJECT_SEARCH,
+                TARGET_SEARCH,
                 LABEL,
                 Map.of("q", query),
                 () -> {

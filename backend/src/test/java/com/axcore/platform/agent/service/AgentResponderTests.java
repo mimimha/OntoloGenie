@@ -8,6 +8,9 @@ import static org.mockito.Mockito.when;
 
 import com.axcore.platform.audit.service.AuditExecutionQueryService;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.ontology.service.ObjectDetailQuery;
+import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
+import com.axcore.platform.ontology.service.ObjectSearchQuery;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -29,6 +32,7 @@ class AgentResponderTests {
             Clock.fixed(Instant.parse("2026-11-09T05:40:12Z"), ZoneOffset.UTC);
 
     private final ChatModel chatModel = mock(ChatModel.class);
+    private final StaticListableBeanFactory beans = new StaticListableBeanFactory();
     private String answer;
 
     @Test
@@ -56,10 +60,14 @@ class AgentResponderTests {
         // 계획의 기준 시점은 현재 시각보다 조회한 데이터의 시점을 먼저 쓰게 한다(160).
         assertThat(prompt.getSystemMessage().getText())
                 .contains("기준 시점(dataAsOf)은 계획에 쓴 조회 결과의 기준 시점 중 가장 이른 값");
-        // 조회할 도구가 없는 정보를 다른 도구 결과로 "없다"고 답하지 않게 한다(147).
+        // 조회할 도구가 없는 정보를 다른 도구 결과로 "없다"고 답하지 않게 한다(147). 객체 ID는 참고 객체나 이번 답변의 조회 결과에서만
+        // 쓰고, 종류 전체 질문에는 객체 하나를 조회하는 도구를 부르지 않는다(326).
         assertThat(prompt.getSystemMessage().getText())
-                .contains("\"참고 객체 ID\"가 비어 있으면 객체 하나를 조회하는 도구는 부르지 않는다")
-                .contains("\"아직 조회할 수 없다\"고 말한다");
+                .contains("\"참고 객체 ID\"나 이번 답변의 조회 도구 결과에 나온 값만 쓴다")
+                .contains("\"종류 전체\"가 비어 있지 않으면 객체 하나를 조회하는 도구는 부르지 않는다")
+                .contains("\"아직 조회할 수 없다\"고 말한다")
+                // 위 예시 때문에 관계로 찾을 수 있는 작업지시도 "조회할 수 없다"고 답했다(326 GMS 확인).
+                .contains("관계 조회로 찾을 수 있으면 \"아직 조회할 수 없다\"고 말하지 않는다");
     }
 
     @Test
@@ -98,6 +106,38 @@ class AgentResponderTests {
                 .doesNotContain("되물은 내용");
     }
 
+    @Test
+    void hidesDetailAndEvidenceToolsUntilTheirQueriesExist() {
+        Prompt prompt = askAboutPr03();
+
+        assertThat(toolNames(prompt))
+                .containsExactlyInAnyOrder(
+                        AgentQueryTools.OBJECT_EXECUTIONS, AgentQueryTools.OBJECT_SEARCH);
+    }
+
+    @Test
+    void givesDetailAndEvidenceToolsWhenTheirQueriesExist() {
+        beans.addBean("objectDetailQuery", mock(ObjectDetailQuery.class));
+        beans.addBean("objectEvidenceQuery", mock(ObjectEvidenceQuery.class));
+
+        Prompt prompt = askAboutPr03();
+
+        assertThat(toolNames(prompt))
+                .containsExactlyInAnyOrder(
+                        AgentQueryTools.OBJECT_EXECUTIONS,
+                        AgentQueryTools.OBJECT_SEARCH,
+                        AgentObjectDetailTools.OBJECT_DETAIL,
+                        AgentObjectDetailTools.OBJECT_LINKS,
+                        AgentObjectEvidenceTools.OBJECT_LINK_EVIDENCE);
+    }
+
+    private static List<String> toolNames(Prompt prompt) {
+        return ((ToolCallingChatOptions) prompt.getOptions())
+                .getToolCallbacks().stream()
+                        .map(callback -> callback.getToolDefinition().name())
+                        .toList();
+    }
+
     private Prompt askAboutPr03() {
         return askAboutPr03("none");
     }
@@ -115,12 +155,14 @@ class AgentResponderTests {
                                 List.of(new Generation(new AssistantMessage("실행 이력이 없습니다.")))));
         AgentActionTools actionTools = mock(AgentActionTools.class);
         when(actionTools.forAnswer(any(AgentQuerySession.class))).thenReturn(List.of());
-        StaticListableBeanFactory beans = new StaticListableBeanFactory();
         beans.addBean("chatModel", chatModel);
         AgentResponder responder =
                 new AgentResponder(
                         beans.getBeanProvider(ChatModel.class),
                         mock(AuditExecutionQueryService.class),
+                        mock(ObjectSearchQuery.class),
+                        beans.getBeanProvider(ObjectDetailQuery.class),
+                        beans.getBeanProvider(ObjectEvidenceQuery.class),
                         actionTools,
                         CLOCK,
                         reasoningEffort);
