@@ -31,9 +31,25 @@ def camel_keys(value):
     return value
 
 
+# 화면에 보이는 이름·설명. LLM이 실행마다 다르게 써서 지문에서 뺀다(같은 원천이면 '유지')
+WORDING_KEYS = {"name", "description", "synonyms"}
+
+
+def _without_wording(value):
+    if isinstance(value, dict):
+        return {
+            k: v if k in DATA_KEYS else _without_wording(v)
+            for k, v in value.items()
+            if k not in WORDING_KEYS
+        }
+    if isinstance(value, list):
+        return [_without_wording(v) for v in value]
+    return value
+
+
 def fingerprint_payload(api_payload: dict) -> str:
-    """연동 형식(camelCase) payload의 지문. 키 순서와 무관하다. 재분석 비교·과거 결정 대조에 쓴다."""
-    text = json.dumps(api_payload, ensure_ascii=False, sort_keys=True)
+    """연동 형식(camelCase) payload의 지문. 키 순서와 이름·설명 문구와 무관하다. 재분석 비교·과거 결정 대조에 쓴다."""
+    text = json.dumps(_without_wording(api_payload), ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
