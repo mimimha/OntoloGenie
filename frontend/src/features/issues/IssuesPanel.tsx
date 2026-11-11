@@ -91,7 +91,10 @@ function IssueDetail({ id, onClose }: { id: number; onClose: () => void }) {
               ))}
             </dl>
             <IssueStatusForm issue={issue} statusLabels={statusLabels} />
-            <IssueReverification issue={issue} />
+            <IssueReverification
+              key={`reverification:${issue.id}`}
+              issue={issue}
+            />
             <IssueTracking
               key={issue.id}
               issue={issue}

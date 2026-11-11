@@ -253,6 +253,15 @@ batch의 `@Scheduled`(247)가 `axcore.check.sync.interval`(기본 5분)마다 SY
 
 DB 스키마·의존성 변경은 없다(확인 대기 표는 V12에 있다. Entity `LinkCheckPending`을 새로 둔다). 공용 코드 변경: 작업 표 처리기 `claimCondition`(기본은 모든 행이라 기존 처리기는 그대로), 정유림님 `CheckResult` 엔티티에 생성 메서드 `of`, `CheckResultRepository`에 직전 결과 조회.
 
+## 프론트 재검증 연동 (122)
+
+- 적용 후 문제 상세에서 `FIXED_PENDING_REVERIFY` 상태의 반영 규칙 문제를 060으로 접수한다. `triggerKind=REVERIFY`, `scope.kind=ISSUES`, 선택한 문제 ID 하나와 발견 당시 `detectedCheckRunId`를 `comparedToRunId`로 보낸다. 원천 수집을 자동 실행하거나 문제 상태를 자동 변경하지 않는다.
+- 202 신규·합류(`joined`)와 200 완료 결과 재사용(`reused`)을 구분한다. 진행 중에는 중복 클릭을 막고, 061을 2초 간격으로 조회한다. 종료·조회 실패 시 주기 조회를 멈추며 조회 재시도는 GET만 수행한다. 통신 실패로 접수 여부를 모르면 실행 이력 확인을 안내하고 POST를 자동 재전송하지 않는다.
+- 선택한 문제와 실행 ID는 URL의 `reverifyIssue`·`reverifyRun`에 함께 보관해 새로고침 후 상태 조회를 이어간다. 응답의 실행 종류·대상 문제·비교 기준을 검사해 다른 실행을 표시하지 않는다. 종료 후 목록·상세·상태 이력을 다시 조회한다.
+- 발견 당시 결과는 기존 규칙 ID로, 이번 성공 재검증의 062 결과는 061 `scope.linkMappingIds`의 실제 검사 개정본 ID로 조회한다. 060 접수 기준과 061 완료 후 실제 사용한 `dataBasis`가 다를 수 있어 완료 조회 값을 표시한다. 검사 성공과 규칙 단위 건수만으로 개별 문제의 통과·해결을 판정하지 않는다.
+- **070 대기:** 2026-11-12 기준 Notion [070 문제 재검증 이력](https://app.notion.com/p/405bdf14d2d881609c88ddd0dfcabd27)은 `GET /api/v1/issues/{id}/verifications`, 개발 상태 미확인·명세 초안이다. 기준 develop `8afa5dc`에는 해당 조회 Controller가 없다. 135의 문제별 판정 기록과 070이 제공되면 개별 `PASSED`·`FAILED` 근거 및 해결·잔존·신규 비교를 연결해야 한다. `NOT_EVALUATED`의 기록·조회 방식은 135 정책 확인이 필요하다. 현재 범위는 060·061·062이며 FN-CHK-06의 전체 완료를 뜻하지 않는다.
+- 검증은 MSW 기반 화면·계약 테스트다. 운영 Swagger는 인증으로 열지 못했으며, 운영 재검증 실행·저장·배치·서버 권한·DB 동시성은 검증하지 않았다. 운영 기록 변경 보류 요청에 따라 실제 POST는 수행하지 않는다.
+
 ## 기준
 
 - Notion API 059·060·061. 로컬 사본: 문서 저장소 `erd/ontology-mvp-v2/notion/api_fixed_266/059.md`~`061.md`(V5 반영본).

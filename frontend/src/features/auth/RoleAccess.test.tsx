@@ -95,7 +95,7 @@ test.each(
 )
 
 test.each(nonAdminRoles)(
-  '%s는 문제 상세 직접 진입 시 전달 기록·상태 이력 API를 호출하지 않는다',
+  '%s는 문제 상세 직접 진입 시 전달·이력·재검증 API를 호출하지 않는다',
   async (role) => {
     const issue = vi.fn(() => HttpResponse.json({ data: [] }))
     server.use(
@@ -103,8 +103,13 @@ test.each(nonAdminRoles)(
       http.get('/api/v1/issues/:id', issue),
       http.get('/api/v1/issues/:id/history', issue),
       http.post('/api/v1/issues/:id/forward', issue),
+      http.post('/api/v1/checks/runs', issue),
+      http.get('/api/v1/checks/runs/:id', issue),
     )
-    openAt('/admin/rules?view=issues&issue=1', role)
+    openAt(
+      '/admin/rules?view=issues&issue=1&reverifyIssue=1&reverifyRun=20',
+      role,
+    )
     await screen.findByRole('heading', { name: '접근 권한이 없습니다.' })
     expect(issue).not.toHaveBeenCalled()
   },
