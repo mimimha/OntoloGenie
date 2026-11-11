@@ -409,6 +409,65 @@ class ObjectSearchApiTests {
     }
 
     @Test
+    void linkGroupsCountEveryVisibleTypeAndDirectionLikeLinks() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long type = type(tag, tag);
+        long other = type(tag + "-other", tag);
+        long hiddenType = type(tag + "-hidden", null);
+        allowViewer(tag);
+        long anchor = object(type, "Anchor", "{}");
+        long incoming = object(type, "Incoming", "{}");
+        long outgoing = object(type, "Outgoing", "{}");
+        long hidden = object(hiddenType, "Hidden", "{}");
+        long toOther = linkType(tag + "-to-other", type, other);
+        long same = linkType(tag + "-same", type, type);
+        long toHidden = linkType(tag + "-to-hidden", type, hiddenType);
+        for (int i = 0; i < 3; i++) {
+            link(toOther, anchor, object(other, "Other " + i, "{}"), "ACTIVE");
+        }
+        link(toOther, anchor, object(other, "Inactive", "{}"), "INACTIVE");
+        link(same, anchor, outgoing, "ACTIVE");
+        link(same, incoming, anchor, "ACTIVE");
+        link(toHidden, anchor, hidden, "ACTIVE");
+
+        mvc.perform(get(PATH + "/{id}/link-groups", anchor).with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta").doesNotExist())
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[0].linkTypeId").value((int) toOther))
+                .andExpect(jsonPath("$.data[0].linkTypeName").value("Related"))
+                .andExpect(jsonPath("$.data[0].direction").value("OUT"))
+                .andExpect(jsonPath("$.data[0].relatedObjectTypeId").value((int) other))
+                .andExpect(jsonPath("$.data[0].relatedObjectTypeName").value(tag + "-other"))
+                .andExpect(jsonPath("$.data[0].linkCount").value(3))
+                .andExpect(jsonPath("$.data[1].linkTypeId").value((int) same))
+                .andExpect(jsonPath("$.data[1].direction").value("OUT"))
+                .andExpect(jsonPath("$.data[1].linkCount").value(1))
+                .andExpect(jsonPath("$.data[2].linkTypeId").value((int) same))
+                .andExpect(jsonPath("$.data[2].direction").value("IN"))
+                .andExpect(jsonPath("$.data[2].relatedObjectTypeName").value(tag))
+                .andExpect(jsonPath("$.data[2].linkCount").value(1));
+
+        mvc.perform(
+                        get(PATH + "/{id}/links", anchor)
+                                .param("linkTypeId", Long.toString(toOther))
+                                .param("direction", "OUT")
+                                .param("size", "2")
+                                .with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.meta.totalElements").value(3))
+                .andExpect(jsonPath("$.meta.hasNext").value(true));
+
+        mvc.perform(get(PATH + "/{id}/link-groups", hidden).with(actor("VIEWER")))
+                .andExpect(status().isNotFound());
+        mvc.perform(get(PATH + "/{id}/link-groups", outgoing).with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].direction").value("IN"));
+    }
+
+    @Test
     void documentEvidenceOnlyShowsTextToActorsWithRestrictedAccess() throws Exception {
         String tag = UUID.randomUUID().toString();
         long type = type(tag, tag);
@@ -583,7 +642,8 @@ class ObjectSearchApiTests {
         long mapping = restrictedKeyMapping(type, serial, tag);
         long deleted = sourceObject(type, mapping, "deleted", "DELETED_AT_SOURCE");
 
-        for (String path : new String[] {PATH + "/{id}", PATH + "/{id}/links"}) {
+        for (String path :
+                new String[] {PATH + "/{id}", PATH + "/{id}/links", PATH + "/{id}/link-groups"}) {
             mvc.perform(get(path, visible)).andExpect(status().isUnauthorized());
             mvc.perform(get(path, 0).with(actor("VIEWER"))).andExpect(status().isBadRequest());
             for (long id : new long[] {hidden, deleted, Long.MAX_VALUE}) {

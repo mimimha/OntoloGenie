@@ -68,6 +68,18 @@ export type ObjectLink = {
   confirmedBy?: number | null
 }
 
+export type LinkDirection = 'OUT' | 'IN'
+
+// 객체의 활성 관계를 관계 유형·방향별로 묶은 건수 (link-groups 응답 한 줄)
+export type ObjectLinkGroup = {
+  linkTypeId: number
+  linkTypeName: string
+  direction: LinkDirection
+  relatedObjectTypeId: number
+  relatedObjectTypeName: string
+  linkCount: number
+}
+
 export type Cardinality =
   'ONE_TO_ONE' | 'ONE_TO_MANY' | 'MANY_TO_ONE' | 'MANY_TO_MANY'
 

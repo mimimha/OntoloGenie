@@ -9,6 +9,7 @@ import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.ontology.dto.ObjectDetailResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkEvidenceResponse;
+import com.axcore.platform.ontology.dto.ObjectLinkGroupResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkSearchRequest;
 import com.axcore.platform.ontology.dto.ObjectLinkSearchRequest.Direction;
@@ -132,6 +133,16 @@ public class ObjectQueryService
                 request.linkTypeId(),
                 direction,
                 page);
+    }
+
+    @Override
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public List<ObjectLinkGroupResponse> linkGroups(LoginAccount actor, long objectId) {
+        Set<Long> visibleTypeIds = dataAccessPolicy.of(actor).visibleObjectTypeIds();
+        if (visibleTypeIds.isEmpty() || !objects.existsActive(objectId, visibleTypeIds)) {
+            throw notFound(objectId);
+        }
+        return objects.linkGroups(objectId, visibleTypeIds);
     }
 
     @Override

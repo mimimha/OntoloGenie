@@ -1,6 +1,7 @@
 package com.axcore.platform.ontology.repository;
 
 import com.axcore.platform.ontology.dto.ObjectLinkEvidenceResponse;
+import com.axcore.platform.ontology.dto.ObjectLinkGroupResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkResponse.ExpressionKind;
 import com.axcore.platform.ontology.dto.ObjectLinkResponse.Origin;
@@ -351,6 +352,43 @@ public class ObjectQueryRepository {
                         .query(Long.class)
                         .single();
         return new PageImpl<>(rows, page, total);
+    }
+
+    // 078과 같은 조건으로 세어, 묶음 건수가 같은 linkTypeId·direction으로 부른 078의 totalElements와 맞게 한다.
+    public List<ObjectLinkGroupResponse> linkGroups(long id, Collection<Long> visibleTypeIds) {
+        return linkQuery(
+                        """
+                        select l.link_type_id, lt.name as link_type_name,
+                               case when l.source_object_id = :id then 'OUT' else 'IN' end as direction,
+                               related_type.id as related_type_id, related_type.name as related_type_name,
+                               count(*) as link_count
+                        """
+                                + LINK_OBJECTS
+                                + """
+                                join link_type lt on lt.id = l.link_type_id
+                                join object_type related_type
+                                  on related_type.id = case when l.source_object_id = :id
+                                                            then lt.target_type_id else lt.source_type_id end
+                                """
+                                + LINK_FILTERS
+                                + """
+                                group by l.link_type_id, lt.name, direction, related_type.id, related_type.name
+                                order by link_count desc, l.link_type_id, direction desc
+                                """,
+                        id,
+                        visibleTypeIds,
+                        null,
+                        Direction.BOTH)
+                .query(
+                        (rs, rowNum) ->
+                                new ObjectLinkGroupResponse(
+                                        rs.getLong("link_type_id"),
+                                        rs.getString("link_type_name"),
+                                        Direction.valueOf(rs.getString("direction")),
+                                        rs.getLong("related_type_id"),
+                                        rs.getString("related_type_name"),
+                                        rs.getLong("link_count")))
+                .list();
     }
 
     public Optional<ObjectLinkEvidenceResponse> findLinkEvidence(

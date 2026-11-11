@@ -1,70 +1,63 @@
 import { expect, test } from 'vitest'
 import {
   arrowLine,
-  groupLinks,
   labelStyle,
   placeGroups,
+  toLinkGroups,
   type LinkGroup,
 } from './graphLayout'
-import type { ObjectLink } from './types'
+import type { LinkDirection, ObjectLinkGroup } from './types'
 
-function link(
-  id: number,
+function linkGroup(
   linkTypeId: number,
-  sourceObjectId: number,
-  targetObjectId: number,
-) {
+  direction: LinkDirection,
+  linkCount: number,
+): ObjectLinkGroup {
   return {
-    id,
     linkTypeId,
     linkTypeName: `관계 ${linkTypeId}`,
-    sourceObjectId,
-    targetObjectId,
-    relatedObject: {
-      id: sourceObjectId === 1 ? targetObjectId : sourceObjectId,
-      displayName: `객체 ${id}`,
-      objectTypeId: linkTypeId,
-      objectTypeName: `유형 ${linkTypeId}`,
-    },
-  } as ObjectLink
+    direction,
+    relatedObjectTypeId: linkTypeId,
+    relatedObjectTypeName: `유형 ${linkTypeId}`,
+    linkCount,
+  }
 }
 
 function group(key: string, outgoing = true) {
-  return { key, outgoing, links: [] } as unknown as LinkGroup
+  return { key, outgoing } as unknown as LinkGroup
 }
 
 test('연결이 없으면 묶음도 카드 자리도 없다', () => {
-  expect(groupLinks([], 1)).toEqual([])
+  expect(toLinkGroups([])).toEqual([])
   expect(placeGroups([])).toEqual([])
 })
 
-test('같은 관계 유형·같은 방향의 연결은 한 묶음으로 모은다', () => {
-  const groups = groupLinks(
-    [link(1, 7, 2, 1), link(2, 7, 3, 1), link(3, 7, 4, 1)],
-    1,
-  )
-
-  expect(groups).toHaveLength(1)
-  expect(groups[0]).toMatchObject({
-    key: '7:in',
-    linkTypeName: '관계 7',
-    relatedTypeName: '유형 7',
-    outgoing: false,
-  })
-  expect(groups[0].links.map(({ id }) => id)).toEqual([1, 2, 3])
+test('관계 유형·방향별 건수를 카드 하나의 묶음으로 바꾼다', () => {
+  expect(toLinkGroups([linkGroup(7, 'IN', 230)])).toEqual([
+    {
+      key: '7:in',
+      linkTypeId: 7,
+      linkTypeName: '관계 7',
+      relatedTypeName: '유형 7',
+      direction: 'IN',
+      outgoing: false,
+      linkCount: 230,
+    },
+  ])
 })
 
 test('관계 유형이 같아도 방향이 다르면 다른 묶음이다', () => {
-  const groups = groupLinks([link(1, 7, 1, 2), link(2, 7, 3, 1)], 1)
+  const groups = toLinkGroups([linkGroup(7, 'OUT', 1), linkGroup(7, 'IN', 1)])
 
   expect(groups.map(({ key }) => key)).toEqual(['7:out', '7:in'])
 })
 
 test('연결이 많은 묶음부터 놓고, 건수가 같으면 받은 순서를 지킨다', () => {
-  const groups = groupLinks(
-    [link(1, 5, 1, 2), link(2, 6, 1, 3), link(3, 7, 1, 4), link(4, 7, 1, 5)],
-    1,
-  )
+  const groups = toLinkGroups([
+    linkGroup(5, 'OUT', 1),
+    linkGroup(6, 'OUT', 1),
+    linkGroup(7, 'OUT', 2),
+  ])
 
   expect(groups.map(({ key }) => key)).toEqual(['7:out', '5:out', '6:out'])
 })

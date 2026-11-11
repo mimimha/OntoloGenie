@@ -4,6 +4,7 @@ import com.axcore.platform.global.response.ApiResponse;
 import com.axcore.platform.global.response.PageMeta;
 import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.ontology.dto.ObjectDetailResponse;
+import com.axcore.platform.ontology.dto.ObjectLinkGroupResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkSearchRequest;
 import com.axcore.platform.ontology.dto.ObjectSearchRequest;
@@ -24,7 +25,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
-/** API 076 객체 검색, 077 상세, 078 활성 관계 조회, 검색 조건 유형 선택지(347). */
+/** API 076 객체 검색, 077 상세, 078 활성 관계 조회, 검색 조건 유형 선택지(347), 관계 유형별 묶음 건수(351). */
 @RestController
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @RequiredArgsConstructor
@@ -60,6 +61,13 @@ public class ObjectSearchController {
             @Valid @ModelAttribute ObjectLinkSearchRequest request,
             @AuthenticationPrincipal LoginAccount actor) {
         return paged(details.links(actor, id, request));
+    }
+
+    /** 관계도가 첫 화면에 모든 관계 유형 묶음을 그리도록 묶음별 건수만 모두 돌려준다(페이지 없음). */
+    @GetMapping("/api/v1/objects/{id}/link-groups")
+    public ApiResponse<List<ObjectLinkGroupResponse>> linkGroups(
+            @PathVariable @Positive long id, @AuthenticationPrincipal LoginAccount actor) {
+        return ApiResponse.of(details.linkGroups(actor, id));
     }
 
     private static <T> ApiResponse<List<T>> paged(Page<T> page) {
