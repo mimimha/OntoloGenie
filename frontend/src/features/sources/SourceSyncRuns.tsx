@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
+import { ApiError } from '../../api/errors'
 import Button from '../../components/Button'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import Pagination from '../../components/Pagination'
@@ -31,7 +32,15 @@ const active = (status?: string) => status === 'QUEUED' || status === 'RUNNING'
 const time = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString('ko-KR') : '—'
 
-function RunDetail({ id, api }: { id: number; api: SourceSyncApi }) {
+function RunDetail({
+  id,
+  api,
+  resourceLabel,
+}: {
+  id: number
+  api: SourceSyncApi
+  resourceLabel: (id: number) => string
+}) {
   const query = useQuery({
     queryKey: ['source-sync-run', id],
     queryFn: () => api.detail(id),
@@ -86,7 +95,8 @@ function RunDetail({ id, api }: { id: number; api: SourceSyncApi }) {
             className="rounded bg-slate-50 p-3"
           >
             <p>
-              테이블 #{resource.sourceResourceId} · {resource.syncStrategy} ·{' '}
+              {resourceLabel(resource.sourceResourceId)} ·{' '}
+              {resource.syncStrategy} ·{' '}
               {resource.mode === 'FULL' ? '전체 읽기' : '변경분 반영'} ·{' '}
               {statuses[resource.status]}
             </p>
@@ -170,6 +180,19 @@ export default function SourceSyncRuns({
     all ||
     (ids.length > 0 &&
       ids.every((id) => selectable.some((resource) => resource.id === id)))
+  const requestError = request.error instanceof ApiError ? request.error : null
+  const affectedIds = Array.isArray(requestError?.details.ids)
+    ? requestError.details.ids.filter(
+        (id): id is number => Number.isSafeInteger(id) && id > 0,
+      )
+    : []
+
+  function resourceLabel(id: number) {
+    return (
+      resources.data?.find((resource) => resource.id === id)?.resourceKey ??
+      `테이블 #${id}`
+    )
+  }
 
   function submit() {
     if (!api || inFlight.current || !validSelection) return
@@ -250,7 +273,27 @@ export default function SourceSyncRuns({
         {request.isError && (
           <>
             <ErrorState error={request.error} />
-            <p>접수 여부가 불확실하면 실행 이력을 새로고침해 확인해 주세요.</p>
+            {affectedIds.length > 0 && (
+              <p>
+                확인이 필요한 테이블:{' '}
+                {affectedIds.map(resourceLabel).join(', ')}
+              </p>
+            )}
+            {requestError?.status === 409 &&
+              requestError.details.recoveryReason === 'SOURCE_CHANGED' && (
+                <p>
+                  원천 접속 정보가 변경되었습니다. CDC 재연결 후 다시 시도해
+                  주세요.
+                </p>
+              )}
+            {(!requestError ||
+              ['network', 'server', 'invalid-response'].includes(
+                requestError.kind,
+              )) && (
+              <p>
+                접수 여부가 불확실하면 실행 이력을 새로고침해 확인해 주세요.
+              </p>
+            )}
           </>
         )}
         {accepted && (
@@ -265,7 +308,7 @@ export default function SourceSyncRuns({
             )}
             {accepted.resources.map((resource) => (
               <p key={resource.sourceResourceId}>
-                테이블 #{resource.sourceResourceId} ·{' '}
+                {resourceLabel(resource.sourceResourceId)} ·{' '}
                 {resource.joined ? '기존 실행 합류' : '새 실행'} ·{' '}
                 <button
                   type="button"
@@ -385,6 +428,10 @@ export default function SourceSyncRuns({
               <p>
                 CDC 마지막 반영: {time(history.data.meta?.cdcLastAppliedAt)}
               </p>
+              <p className="text-slate-500">
+                마지막으로 반영한 원천 트랜잭션의 커밋 시각입니다. 원천에 변경이
+                없으면 이전 시각이 유지될 수 있습니다.
+              </p>
               {history.data.data.length ? (
                 <ul className="space-y-2">
                   {history.data.data.map((run) => (
@@ -443,7 +490,12 @@ export default function SourceSyncRuns({
           ))}
       </section>
       {api && selected !== undefined && (
-        <RunDetail key={selected} id={selected} api={api} />
+        <RunDetail
+          key={selected}
+          id={selected}
+          api={api}
+          resourceLabel={resourceLabel}
+        />
       )}
     </div>
   )

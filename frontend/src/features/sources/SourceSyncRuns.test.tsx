@@ -179,10 +179,12 @@ test('선택 요청은 필수 선택을 검사하고 테이블별 기존 실행 
 })
 
 test.each([
+  [400, 'VALIDATION_FAILED'],
+  [401, 'UNAUTHENTICATED'],
   [403, 'FORBIDDEN'],
   [409, 'CONFLICT'],
-  [422, 'VALIDATION_ERROR'],
-  [404, 'NOT_FOUND'],
+  [422, 'BUSINESS_RULE_VIOLATION'],
+  [404, 'RESOURCE_NOT_FOUND'],
 ])(
   '요청 실패 %s는 오류를 알리고 자동으로 재접수하지 않는다',
   async (status, code) => {
@@ -210,6 +212,163 @@ test.each([
     ).not.toBeInTheDocument()
   },
 )
+
+test.each([400, 422, 409])(
+  '%s 오류의 테이블 이름·없는 ID를 표시하고 CDC 재연결 사유를 안내한다',
+  async (status) => {
+    const user = userEvent.setup()
+    open()
+    await screen.findByRole('button', { name: '수집 실행 #21' })
+    server.use(
+      http.post('/api/v1/sources/1/sync-runs', () =>
+        HttpResponse.json(
+          {
+            error: {
+              code:
+                status === 422
+                  ? 'BUSINESS_RULE_VIOLATION'
+                  : status === 409
+                    ? 'CONFLICT'
+                    : 'VALIDATION_FAILED',
+              message: '요청 대상 테이블을 확인해 주세요.',
+              details: {
+                field: 'sourceResourceIds',
+                reason:
+                  status === 422
+                    ? '켜진 매핑이 없는 테이블은 수집할 수 없습니다.'
+                    : '수집 대상 확인이 필요합니다.',
+                ids: [10, 999],
+                ...(status === 409 ? { recoveryReason: 'SOURCE_CHANGED' } : {}),
+              },
+            },
+          },
+          { status },
+        ),
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: '수동 수집 요청' }))
+    await screen.findByText('확인이 필요한 테이블: public.orders, 테이블 #999')
+    if (status === 409) {
+      expect(
+        screen.getByText(
+          '원천 접속 정보가 변경되었습니다. CDC 재연결 후 다시 시도해 주세요.',
+        ),
+      ).toBeInTheDocument()
+    } else {
+      expect(
+        screen.queryByText(/CDC 재연결 후 다시 시도/),
+      ).not.toBeInTheDocument()
+    }
+    expect(screen.queryByText(/접수 여부가 불확실하면/)).not.toBeInTheDocument()
+  },
+)
+
+test('일부 테이블은 새 실행으로 접수하고 나머지는 기존 실행 상세로 연결한다', async () => {
+  const user = userEvent.setup()
+  open()
+  server.use(
+    http.post('/api/v1/sources/1/sync-runs', () =>
+      HttpResponse.json(
+        {
+          data: accepted({
+            joinedExisting: true,
+            resources: [
+              { ...resource, joined: false },
+              {
+                ...resource,
+                sourceResourceId: 11,
+                syncRunId: 31,
+                status: 'QUEUED',
+                joined: true,
+              },
+            ],
+          }),
+        },
+        { status: 202 },
+      ),
+    ),
+  )
+  await user.click(screen.getByRole('button', { name: '수동 수집 요청' }))
+  await screen.findByText('수집 실행 #21을 접수했습니다.')
+  expect(
+    screen.getByText(
+      '일부 또는 모든 테이블은 기존 실행 결과를 함께 확인합니다.',
+    ),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: '실행 #21 보기' }),
+  ).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '실행 #31 보기' }))
+  await screen.findByRole('region', { name: '수집 실행 #31 상세' })
+})
+
+test('전체 합류한 실행의 테이블이 QUEUED여도 실행 상태로 진행·완료를 판단한다', async () => {
+  const user = userEvent.setup()
+  open()
+  let calls = 0
+  server.use(
+    http.post('/api/v1/sources/1/sync-runs', () =>
+      HttpResponse.json(
+        {
+          data: accepted({
+            syncRunId: null,
+            status: null,
+            joinedExisting: true,
+            resources: [
+              { ...resource, syncRunId: 31, status: 'QUEUED', joined: true },
+            ],
+          }),
+        },
+        { status: 202 },
+      ),
+    ),
+    http.get('/api/v1/sync-runs/31', () =>
+      HttpResponse.json({
+        data: run({
+          id: 31,
+          syncRunId: 31,
+          status: ++calls === 1 ? 'RUNNING' : 'SUCCEEDED',
+          resources: [
+            {
+              ...resource,
+              syncRunId: 31,
+              status: calls === 1 ? 'QUEUED' : 'SUCCEEDED',
+            },
+          ],
+        }),
+      }),
+    ),
+  )
+  await user.click(screen.getByRole('button', { name: '수동 수집 요청' }))
+  await screen.findByText('새 실행 없이 기존 수집에 합류했습니다.')
+  await screen.findByRole('heading', { name: '수집 실행 #31 · 실행 중' })
+  await screen.findByRole('heading', { name: '수집 실행 #31 · 완료' })
+  expect(calls).toBe(2)
+})
+
+test('네트워크 실패는 재접수하지 않고 이력 확인을 안내하며 null 접수 응답도 오류로 처리한다', async () => {
+  const user = userEvent.setup()
+  open()
+  const post = vi.fn(() => HttpResponse.error())
+  server.use(http.post('/api/v1/sources/1/sync-runs', post))
+  await user.click(screen.getByRole('button', { name: '수동 수집 요청' }))
+  await screen.findByText(
+    '접수 여부가 불확실하면 실행 이력을 새로고침해 확인해 주세요.',
+  )
+  expect(post).toHaveBeenCalledTimes(1)
+  server.use(
+    http.post('/api/v1/sources/1/sync-runs', () =>
+      HttpResponse.json({ data: null }, { status: 202 }),
+    ),
+  )
+  await user.click(screen.getByRole('button', { name: '수동 수집 요청' }))
+  await screen.findByText(
+    '수집 접수 결과를 확인할 수 없습니다. 이력을 확인해 주세요.',
+  )
+  expect(
+    screen.queryByText('수집 실행 #21을 접수했습니다.'),
+  ).not.toBeInTheDocument()
+})
 
 test('상태·CDC·기간 필터와 페이지 조건을 서버로 보내고 잘못된 기간은 막는다', async () => {
   const user = userEvent.setup()

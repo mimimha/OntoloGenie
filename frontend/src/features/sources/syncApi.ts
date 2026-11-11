@@ -56,14 +56,14 @@ export type SyncPage = {
   meta?: PageMeta & { cdcLastAppliedAt?: string | null }
 }
 
-// 073~075: Notion 계약에 따른 연결 함수. 백엔드 제공 후 화면에 주입한다.
+// 073~075: 수동 다시 읽기 접수·수집 이력·실행 상세.
 export const sourceSyncApi = {
   async request(sourceId: number, sourceResourceIds?: number[]) {
     const body = await apiPost<SyncAccepted>(
       `/sources/${sourceId}/sync-runs`,
       sourceResourceIds ? { sourceResourceIds } : {},
     )
-    if (!body)
+    if (!body?.data)
       throw new ApiError(
         '수집 접수 결과를 확인할 수 없습니다. 이력을 확인해 주세요.',
         { kind: 'invalid-response' },

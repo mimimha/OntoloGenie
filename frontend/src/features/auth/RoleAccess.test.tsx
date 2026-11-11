@@ -106,6 +106,24 @@ test.each(adminPages)(
   },
 )
 
+test.each(nonAdminRoles)(
+  '%s는 수집 이력 탭 직접 진입 시 073~075를 호출하지 않는다',
+  async (role) => {
+    const sync = vi.fn(() => HttpResponse.json({ data: [] }))
+    server.use(
+      http.get('/api/v1/sources/:id/sync-runs', sync),
+      http.post('/api/v1/sources/:id/sync-runs', sync),
+      http.get('/api/v1/sync-runs/:id', sync),
+    )
+    openAt('/admin/sources?tab=sync', role)
+    await screen.findByRole('heading', { name: '접근 권한이 없습니다.' })
+    expect(
+      screen.queryByRole('button', { name: '수동 수집 요청' }),
+    ).not.toBeInTheDocument()
+    expect(sync).not.toHaveBeenCalled()
+  },
+)
+
 test('역할을 새로 조회해 ADMIN에서 VIEWER로 바뀌면 관리 화면·메뉴·이전 캐시를 제거한다', async () => {
   const historyRequest = vi.fn(() =>
     HttpResponse.json({
