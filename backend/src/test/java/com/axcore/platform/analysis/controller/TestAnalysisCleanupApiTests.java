@@ -64,7 +64,7 @@ class TestAnalysisCleanupApiTests {
     }
 
     @Test
-    void deletesAllFinishedTestAnalysesAndSkipsUsedOrRunningOnes() throws Exception {
+    void deletesUnusedProposalsAndKeepsUsedOrRunningOnes() throws Exception {
         long free = succeededRun();
         // 거절 결정만 있고 반영되지 않은 테스트 제안은 결정과 함께 지운다
         long decided = succeededRun();
@@ -76,6 +76,9 @@ class TestAnalysisCleanupApiTests {
                 .param("account", accountId)
                 .param("run", decided)
                 .update();
+        long empty = created();
+        notify(empty, "{\"status\":\"RUNNING\"}").andExpect(status().isOk());
+        notify(empty, "{\"status\":\"SUCCEEDED\",\"proposals\":[]}").andExpect(status().isOk());
         long queued = created();
         long used = succeededRun();
         long proposal =
@@ -116,6 +119,7 @@ class TestAnalysisCleanupApiTests {
                                         + ")"))
                 .isZero();
         assertThat(count("analysis_run where id=" + decided)).isZero();
+        assertThat(count("analysis_run where id=" + empty)).isZero(); // 제안 없는 분석도 지운다
         assertThat(data.path("skippedRuns").toString())
                 .contains(String.valueOf(used))
                 .contains(String.valueOf(running));
@@ -124,10 +128,13 @@ class TestAnalysisCleanupApiTests {
         assertThat(count("proposal_item where analysis_run_id=" + free)).isZero();
         assertThat(candidateChecks(free)).isZero();
         assertThat(count("analysis_run_target where analysis_run_id=" + free)).isZero();
-        // 끝나지 않은 분석, 쓰인 제안이 있는 분석, 검사가 실행 중인 분석은 그대로
+        // 끝나지 않은 분석은 그대로. 쓰인 제안·검사가 실행 중인 제안만 남기고 나머지 제안은 지운다
         assertThat(count("analysis_run where id=" + queued)).isEqualTo(1);
-        assertThat(count("proposal_item where analysis_run_id=" + used)).isEqualTo(2);
-        assertThat(count("proposal_item where analysis_run_id=" + running)).isEqualTo(2);
+        assertThat(count("proposal_item where analysis_run_id=" + used)).isEqualTo(1);
+        assertThat(count("proposal_item where id=" + proposal)).isEqualTo(1);
+        assertThat(count("proposal_item where analysis_run_id=" + running)).isEqualTo(1);
+        assertThat(candidateChecks(running)).isEqualTo(1);
+        assertThat(data.path("keptProposals").asInt()).isGreaterThanOrEqualTo(2);
         // 개정본 수정·삭제 금지 트리거는 다시 켜져 있다
         assertThat(
                         jdbc.sql(
