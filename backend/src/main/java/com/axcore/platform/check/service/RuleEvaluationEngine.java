@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import org.springframework.stereotype.Component;
 
 /**
@@ -50,6 +52,8 @@ public class RuleEvaluationEngine {
 
         // 도착 행을 비교값별로 묶어 출발 행마다 전체 도착 목록을 순회하지 않는다.
         Map<List<String>, TargetGroup> targetIndex = new HashMap<>();
+        // 미연결 사유를 나눌 때만 쓰는 조건별 색인(348). 미연결 행이 나올 때 한 번 만든다.
+        PartialMatchIndex partialIndex = new PartialMatchIndex(excludesSelf);
 
         for (CheckRow target : input.targetRows()) {
             var prepared = prepare(target, conditions, false);
@@ -58,6 +62,7 @@ public class RuleEvaluationEngine {
             if (prepared.reason() != null) {
                 throw new IllegalArgumentException("도착 행을 비교값으로 변환할 수 없습니다. " + prepared.reason());
             }
+            partialIndex.collect(identity(target, excludesSelf), prepared.values());
 
             if (prepared.key() != null) {
                 targetIndex
@@ -120,7 +125,7 @@ public class RuleEvaluationEngine {
                 reason = "출발이 ONE인 관계에서 같은 도착에 복수 출발이 대응합니다.";
             } else if (matches.targetCount(sourceId) == 0) {
                 outcome = CheckOutcome.UNMATCHED;
-                reason = "모든 비교 조건을 충족하는 도착 대상이 없습니다.";
+                reason = unmatchedReason(source, sourceId, targets, conditions, partialIndex);
             } else {
                 outcome = CheckOutcome.MATCHED;
                 reason = null;
@@ -137,6 +142,66 @@ public class RuleEvaluationEngine {
         }
 
         return new CheckEvaluation(input.rule(), results);
+    }
+
+    /**
+     * 미연결 사유를 원인별로 나눈다(S15P31C106-348). 분류(UNMATCHED)·우선순위·문제 중복 키는 바꾸지 않고 문장만 다르다. 원천 값은 넣지 않고 조건
+     * 번호와 출발 속성 코드만 쓴다.
+     *
+     * <ol>
+     *   <li>출발 비교값이 비어 키를 만들지 않았다 → 어느 조건이 비었는지.
+     *   <li>같은 키의 도착은 자기 자신뿐이다(자기 연결 제외).
+     *   <li>조건이 둘 이상이고 일부 조건만 같은 도착이 있다 → 가장 많이 맞는 도착(같으면 먼저 읽은 도착) 기준으로 같은 조건과 다른 조건.
+     *   <li>어떤 조건도 같은 도착이 없다 → 상대 없음.
+     * </ol>
+     */
+    private String unmatchedReason(
+            PreparedRow source,
+            Object sourceId,
+            TargetGroup sameKeyTargets,
+            List<CheckCondition> conditions,
+            PartialMatchIndex partialIndex) {
+        if (source.key() == null) {
+            List<String> blank =
+                    conditions.stream()
+                            .filter(
+                                    condition -> {
+                                        String value = source.values().get(condition.sequenceNo());
+                                        return value == null || value.isBlank();
+                                    })
+                            .map(RuleEvaluationEngine::label)
+                            .toList();
+            return "출발 비교값이 비어 있어 비교할 수 없습니다: " + String.join(", ", blank) + ".";
+        }
+        if (!sameKeyTargets.positions.isEmpty()) {
+            return "자기 자신 말고는 모든 비교 조건을 충족하는 도착 대상이 없습니다.";
+        }
+        if (conditions.size() > 1) {
+            Set<Integer> same = partialIndex.bestMatchedConditions(source.values(), sourceId);
+            if (!same.isEmpty()) {
+                List<String> matched = new ArrayList<>();
+                List<String> differs = new ArrayList<>();
+                for (CheckCondition condition : conditions) {
+                    (same.contains(condition.sequenceNo()) ? matched : differs)
+                            .add(label(condition));
+                }
+                return "일부 조건만 같은 도착 대상이 있습니다. 같음: "
+                        + String.join(", ", matched)
+                        + ", 다름: "
+                        + String.join(", ", differs)
+                        + ".";
+            }
+        }
+        return NO_TARGET;
+    }
+
+    static final String NO_TARGET = "모든 비교 조건을 충족하는 도착 대상이 없습니다.";
+
+    /** "조건 2(so_ref)". 속성은 {@code 유형코드.속성코드}일 수 있어 마지막 부분만 쓴다. */
+    private static String label(CheckCondition condition) {
+        String property = condition.sourceProperty();
+        int dot = property.lastIndexOf('.');
+        return "조건 " + condition.sequenceNo() + "(" + property.substring(dot + 1) + ")";
     }
 
     private PreparedRow prepare(CheckRow row, List<CheckCondition> conditions, boolean source) {
@@ -224,6 +289,64 @@ public class RuleEvaluationEngine {
 
         private void freeze() {
             rows = List.copyOf(rows);
+        }
+    }
+
+    /** 조건 하나씩의 도착 비교값 색인. 도착을 읽을 때는 값만 모아 두고, 미연결 행이 처음 나올 때 색인을 만든다(미연결이 없으면 만들지 않는다). */
+    private static final class PartialMatchIndex {
+        private final boolean excludesSelf;
+        private final List<Object> ids = new ArrayList<>();
+        private final List<Map<Integer, String>> values = new ArrayList<>();
+        private Map<Integer, Map<String, List<Integer>>> byCondition;
+
+        private PartialMatchIndex(boolean excludesSelf) {
+            this.excludesSelf = excludesSelf;
+        }
+
+        private void collect(Object id, Map<Integer, String> targetValues) {
+            ids.add(id);
+            values.add(targetValues);
+        }
+
+        /** 가장 많은 조건이 같은 도착 하나의 같은 조건 번호. 같은 조건이 하나도 없으면 비어 있다. */
+        private Set<Integer> bestMatchedConditions(
+                Map<Integer, String> sourceValues, Object sourceId) {
+            if (byCondition == null) {
+                byCondition = new HashMap<>();
+                for (int position = 0; position < values.size(); position++) {
+                    for (Map.Entry<Integer, String> entry : values.get(position).entrySet()) {
+                        if (entry.getValue() != null && !entry.getValue().isBlank()) {
+                            byCondition
+                                    .computeIfAbsent(entry.getKey(), key -> new HashMap<>())
+                                    .computeIfAbsent(entry.getValue(), key -> new ArrayList<>())
+                                    .add(position);
+                        }
+                    }
+                }
+            }
+            // 도착 위치(읽은 순서) → 같은 조건 번호. 같은 개수면 먼저 읽은 도착을 고른다.
+            Map<Integer, Set<Integer>> matchedByTarget = new TreeMap<>();
+            for (Map.Entry<Integer, String> entry : sourceValues.entrySet()) {
+                List<Integer> positions =
+                        byCondition
+                                .getOrDefault(entry.getKey(), Map.of())
+                                .getOrDefault(entry.getValue(), List.of());
+                for (int position : positions) {
+                    if (excludesSelf && ids.get(position).equals(sourceId)) {
+                        continue;
+                    }
+                    matchedByTarget
+                            .computeIfAbsent(position, key -> new TreeSet<>())
+                            .add(entry.getKey());
+                }
+            }
+            Set<Integer> best = Set.of();
+            for (Set<Integer> matched : matchedByTarget.values()) {
+                if (matched.size() > best.size()) {
+                    best = matched;
+                }
+            }
+            return best;
         }
     }
 

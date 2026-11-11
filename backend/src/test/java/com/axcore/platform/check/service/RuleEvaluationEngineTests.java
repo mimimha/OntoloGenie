@@ -224,6 +224,87 @@ class RuleEvaluationEngineTests {
                 .containsExactly(CheckOutcome.DUPLICATE, CheckOutcome.DUPLICATE);
     }
 
+    @Test
+    void explainsUnmatchedByCauseWithoutChangingTheOutcome() {
+        var conditions = List.of(eq(1, "code"), eq(2, "kind"));
+        var blankKind = row(11L, 1, Map.of("SOURCE.code", "1002", "SOURCE.kind", " "));
+        var kindDiffers = row(11L, 2, Map.of("SOURCE.code", "1002", "SOURCE.kind", "P-100"));
+        var nothing = row(11L, 3, Map.of("SOURCE.code", "1009", "SOURCE.kind", "P-900"));
+        var sameCode = row(12L, 10, Map.of("TARGET.code", "1002", "TARGET.kind", "P-200"));
+        var sameKind = row(12L, 11, Map.of("TARGET.code", "7777", "TARGET.kind", "P-100"));
+
+        var result =
+                evaluate(
+                        LinkCardinality.MANY_TO_ONE,
+                        conditions,
+                        List.of(blankKind, kindDiffers, nothing),
+                        List.of(sameCode, sameKind));
+
+        assertThat(result.rows())
+                .extracting(row -> row.outcome())
+                .containsOnly(CheckOutcome.UNMATCHED);
+        assertThat(result.unmatchedCount()).isEqualTo(3);
+        // 원천 값은 사유에 넣지 않는다.
+        assertThat(result.rows().get(0).reason())
+                .isEqualTo("출발 비교값이 비어 있어 비교할 수 없습니다: 조건 2(kind).");
+        // 한 조건씩 맞는 도착이 둘이면 먼저 읽은 도착 기준이다.
+        assertThat(result.rows().get(1).reason())
+                .isEqualTo("일부 조건만 같은 도착 대상이 있습니다. 같음: 조건 1(code), 다름: 조건 2(kind).")
+                .doesNotContain("1002", "P-100", "P-200");
+        assertThat(result.rows().get(2).reason()).isEqualTo(RuleEvaluationEngine.NO_TARGET);
+    }
+
+    @Test
+    void picksTheTargetMatchingMostConditionsForThePartialReason() {
+        var conditions = List.of(eq(1, "code"), eq(2, "kind"), eq(3, "line"));
+        var source =
+                row(11L, 1, Map.of("SOURCE.code", "A", "SOURCE.kind", "K", "SOURCE.line", "L1"));
+        var oneSame =
+                row(12L, 10, Map.of("TARGET.code", "A", "TARGET.kind", "X", "TARGET.line", "Y"));
+        var twoSame =
+                row(12L, 11, Map.of("TARGET.code", "Z", "TARGET.kind", "K", "TARGET.line", "L1"));
+
+        var result =
+                evaluate(
+                        LinkCardinality.MANY_TO_ONE,
+                        conditions,
+                        List.of(source),
+                        List.of(oneSame, twoSame));
+
+        assertThat(result.rows().getFirst().reason())
+                .isEqualTo("일부 조건만 같은 도착 대상이 있습니다. 같음: 조건 2(kind), 조건 3(line), 다름: 조건 1(code).");
+    }
+
+    @Test
+    void separatesSelfOnlyMatchFromMissingTarget() {
+        CheckRow only = sameTypeRow(1);
+
+        var result =
+                evaluate(
+                        LinkCardinality.MANY_TO_ONE,
+                        List.of(condition(List.of())),
+                        List.of(only),
+                        List.of(only),
+                        true);
+
+        assertThat(result.rows().getFirst().outcome()).isEqualTo(CheckOutcome.UNMATCHED);
+        assertThat(result.rows().getFirst().reason())
+                .isEqualTo("자기 자신 말고는 모든 비교 조건을 충족하는 도착 대상이 없습니다.");
+
+        var single =
+                evaluate(
+                        LinkCardinality.MANY_TO_ONE,
+                        List.of(condition(List.of())),
+                        List.of(source(1, "A")),
+                        List.of(target(2, "B")));
+        assertThat(single.rows().getFirst().reason()).isEqualTo(RuleEvaluationEngine.NO_TARGET);
+    }
+
+    private CheckCondition eq(int sequence, String property) {
+        return new CheckCondition(
+                sequence, "SOURCE." + property, "TARGET." + property, "EQ", List.of(), List.of());
+    }
+
     private CheckEvaluation evaluate(
             LinkCardinality cardinality,
             List<CheckCondition> conditions,
