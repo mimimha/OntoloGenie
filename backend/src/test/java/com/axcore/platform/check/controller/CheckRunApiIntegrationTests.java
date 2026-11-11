@@ -369,6 +369,46 @@ class CheckRunApiIntegrationTests {
     }
 
     @Test
+    void joinsAndReusesReverificationUntilNewDataIsCollected() throws Exception {
+        long ruleId = rule();
+        long detected = fixtures.insertRun("MANUAL", "SUCCEEDED", accountId, key());
+        long issueId = issue(detected, ruleId);
+        String body = reverify(detected, "{\"kind\":\"ISSUES\",\"issueIds\":[" + issueId + "]}");
+
+        long first = id(request(body).andExpect(status().isAccepted()));
+        request(body)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.id").value(first))
+                .andExpect(jsonPath("$.data.joined").value(true));
+
+        fixtures.setStatus(first, "SUCCEEDED");
+        request(body)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(first))
+                .andExpect(jsonPath("$.data.reused").value(true))
+                .andExpect(
+                        jsonPath("$.data.dataBasis.resources[0].lastSyncRunId")
+                                .value(lastWorkerSync));
+
+        long sync =
+                fixtures.insertSync(
+                        dataSource,
+                        workerTable,
+                        accountId,
+                        "SUCCEEDED",
+                        SYNCED_AT.plusSeconds(120));
+        long next =
+                id(
+                        request(body)
+                                .andExpect(status().isAccepted())
+                                .andExpect(jsonPath("$.data.reused").value(false))
+                                .andExpect(
+                                        jsonPath("$.data.dataBasis.resources[0].lastSyncRunId")
+                                                .value(sync)));
+        assertThat(next).isNotEqualTo(first);
+    }
+
+    @Test
     void keepsManualAndReverificationApart() throws Exception {
         rule();
         long previous = fixtures.insertRun("MANUAL", "SUCCEEDED", accountId, key());

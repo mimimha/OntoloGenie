@@ -13,6 +13,7 @@ import com.axcore.platform.check.dto.CheckRunCreateRequest.Scope;
 import com.axcore.platform.check.dto.CheckRunRequestResponse;
 import com.axcore.platform.check.repository.CheckRunRepository;
 import com.axcore.platform.check.repository.CheckRunRepository.NewRun;
+import com.axcore.platform.check.repository.CheckRunRepository.ReverificationScope;
 import com.axcore.platform.check.repository.CheckRunRepository.RunState;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
@@ -75,6 +76,12 @@ public class CheckRunRequestService {
         }
 
         Map<String, Object> storedScope = resolveScope(scope);
+        String scopeJson = json.writeValueAsString(storedScope);
+        ReverificationScope reverificationScope = null;
+        if ("REVERIFY".equals(triggerKind)) {
+            reverificationScope = new ReverificationScope(scopeJson, request.comparedToRunId());
+            checkRunRepository.lockReverificationScope(reverificationScope);
+        }
         @SuppressWarnings("unchecked")
         List<Long> ruleIds = (List<Long>) storedScope.get("linkMappingIds");
 
@@ -99,14 +106,8 @@ public class CheckRunRequestService {
             }
         }
 
-        String scopeJson = json.writeValueAsString(storedScope);
         String basisJson = json.writeValueAsString(basis);
-        String workKey =
-                triggerKind
-                        + ":"
-                        + (request.comparedToRunId() == null ? "-" : request.comparedToRunId())
-                        + ":"
-                        + sha256(scopeJson + "|" + basisJson);
+        String workKey = workKey(triggerKind, request.comparedToRunId(), scopeJson, basisJson);
         NewRun run =
                 new NewRun(
                         triggerKind,
@@ -117,7 +118,7 @@ public class CheckRunRequestService {
                         account.id(),
                         Instant.now(clock));
 
-        CheckRunRequestResponse response = accept(workKey, run);
+        CheckRunRequestResponse response = accept(run, reverificationScope);
         audits.record(
                 AuditEntry.builder()
                         .eventKind(EventKind.CHECK_RUN)
@@ -143,22 +144,29 @@ public class CheckRunRequestService {
     }
 
     // 같은 작업이 그 사이 끝나거나 롤백되면 다시 본다.
-    private CheckRunRequestResponse accept(String workKey, NewRun run) {
+    private CheckRunRequestResponse accept(NewRun run, ReverificationScope reverificationScope) {
         for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-            Optional<Long> succeeded = checkRunRepository.findSucceeded(workKey);
+            Optional<Long> succeeded = checkRunRepository.findSucceeded(run.workKey());
             if (succeeded.isPresent()) {
                 return response(succeeded.get(), false, true);
+            }
+            if (reverificationScope != null) {
+                Optional<Long> active =
+                        checkRunRepository.findActiveReverification(reverificationScope);
+                if (active.isPresent()) {
+                    return response(active.get(), true, false);
+                }
             }
             Optional<Long> inserted = checkRunRepository.insertQueued(run);
             if (inserted.isPresent()) {
                 return response(inserted.get(), false, false);
             }
-            Optional<Long> active = checkRunRepository.findActive(workKey);
+            Optional<Long> active = checkRunRepository.findActive(run.workKey());
             if (active.isPresent()) {
                 return response(active.get(), true, false);
             }
         }
-        throw new IllegalStateException("검사 요청을 접수하지 못했습니다: " + workKey);
+        throw new IllegalStateException("검사 요청을 접수하지 못했습니다: " + run.workKey());
     }
 
     /** 접수 줄의 입력. ID 목록 대신 개수만 남긴다. */
@@ -390,6 +398,15 @@ public class CheckRunRequestService {
     }
 
     /** work_key의 해시. 수집 뒤 검사(SyncCheckRequester)도 같은 방식으로 만든다. */
+    static String workKey(
+            String triggerKind, Long comparedToRunId, String scopeJson, String basisJson) {
+        return triggerKind
+                + ":"
+                + (comparedToRunId == null ? "-" : comparedToRunId)
+                + ":"
+                + sha256(scopeJson + "|" + basisJson);
+    }
+
     static String sha256(String text) {
         try {
             return HexFormat.of()

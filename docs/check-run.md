@@ -26,7 +26,7 @@ FN-CHK-01·02의 검사 실행 목록·상태 조회, 수동 검사·재검증 �
 
 출발과 도착의 객체 유형이 같으면 자기 자신을 잇는 쌍을 먼저 제외한 뒤 관계 수를 센다. 자기 자신만 일치하면 미연결로 기록하고, 다른 객체도 하나 일치하면 그 객체만 관계 수에 반영한다. 후보 시험, 승인 반영, SYNC에 같은 기준을 적용한다.
 
-**아직 없는 것:** 재검증의 문제별 검증 기록(`issue_verification`)·이전 결과 비교(134·135). 문제별 판정은 실행기가 만들어 확장 지점(`IssueReverificationRecorder`)에 넘긴다(아래 "문제별 재검증 판정").
+**135 후속 작업:** 재검증의 문제별 검증 기록(`issue_verification`)과 이전 결과 비교. 문제별 판정은 실행기가 만들어 확장 지점(`IssueReverificationRecorder`)에 넘긴다(아래 "문제별 재검증 판정").
 
 **수동 검사의 역할(2026-11-06 합의):** 평소 판정은 수집 뒤 배치가 주기적으로 넣는 SYNC가 한다. 수동 검사(MANUAL)는 실패한 후보 시험을 다시 돌리거나, 장애 복구 뒤·문제가 의심될 때 고른 규칙을 다시 점검하는 데 쓴다. issue는 SYNC·MANUAL 판정에서 만들고, 원천 사이 규칙의 미연결은 확인 대기(`link_check_pending`)를 거친다(191-3).
 
@@ -52,20 +52,21 @@ FN-CHK-01·02의 검사 실행 목록·상태 조회, 수동 검사·재검증 �
 
 - `check_run.scope`에는 요청한 `kind`와 함께 **접수 시점에 정한 규칙 개정본 목록**(`linkMappingIds`, ID 오름차순·중복 제거)을 넣는다. ISSUES면 `issueIds`도 넣는다. 실행기는 이 목록만 검사한다. ALL로 요청해도 그 뒤 반영된 규칙은 들어가지 않는다.
 - `check_run.data_basis`는 검사할 규칙들이 읽는 원천 자원(출발·도착 객체 유형에 활성 매핑된 자원)마다 마지막으로 성공한 수집 실행이다. 후보 검사(CANDIDATE)와 같은 형식(`CheckDataBasis`)이다.
+- 재검증은 접수 시점의 수집 기준을 먼저 기록한다. 배치가 재검증을 시작할 때 같은 읽기 스냅샷에서 자원별 마지막 성공 수집 ID와 객체를 읽는다. 성공 완료 후 061의 `dataBasis`는 실제 검사에 사용한 기준이다.
 - 응답의 `dataBasis.resources[]`는 `sourceResourceId`, `lastSyncRunId`다. V5(266) 반영본 명세의 이름을 따랐다. 저장 칸 이름은 `lastSuccessfulSyncRunId`라서 응답으로 바꿀 때 이름을 바꾼다. Notion `api_fixed` 사본의 `lastAppliedChangeSeq`는 V5 전 이름이다.
 
 ### 같은 검사 판단
 
-`work_key` = `종류:비교대상(없으면 -):SHA-256(저장 범위 + 데이터 기준)`. 같은 키면 같은 검사다.
+`work_key` = `종류:비교대상(없으면 -):SHA-256(저장 범위 + 데이터 기준)`.
 
 1. 같은 키로 성공한 검사가 있으면 그 검사를 돌려준다. HTTP 200, `reused=true`.
-2. 없으면 QUEUED로 넣는다. HTTP 202, `joined=false`.
-3. 같은 키로 대기·실행 중인 검사가 이미 있으면(`uq_check_run_active`) 넣지 않고 그 검사를 돌려준다. HTTP 202, `joined=true`.
+2. 재사용할 결과가 없으면 대기·실행 중인 검사에 합류한다. MANUAL은 같은 키, REVERIFY는 수집 기준과 관계없이 같은 저장 범위·비교 실행을 찾는다. HTTP 202, `joined=true`. 실행 중인 재검증은 배치가 이미 읽기 시작한 스냅샷으로 끝난다.
+3. 합류할 검사가 없으면 QUEUED로 넣는다. HTTP 202, `joined=false`.
 
 - 실패한 검사는 다시 쓰지 않는다. 같은 요청이면 새로 넣는다.
-- 새 수집이 성공하면 데이터 기준이 바뀌어 새 검사가 된다.
+- 완료 결과보다 새 수집이 반영된 뒤 같은 요청을 하면 새 수집 기준의 작업을 접수하거나 진행 중인 작업에 합류한다.
 - MANUAL과 REVERIFY는 규칙과 기준이 같아도 다른 검사다.
-- 동시에 같은 요청이 와도 부분 유일 인덱스와 `on conflict do nothing`으로 하나만 남는다. 그 사이 상대 검사가 끝나면 최대 3번 다시 본다.
+- 부분 유일 인덱스와 `on conflict do nothing`으로 같은 키의 작업은 하나만 남긴다. REVERIFY는 동일 범위·비교 실행의 접수와 완료를 DB 트랜잭션 잠금으로 직렬화해, 수집 기준이 다른 요청이 동시에 들어와도 진행 중인 작업에 합류한다.
 
 **감사 기록(접수 줄):** 새로 넣었든 합류했든 결과를 다시 썼든 요청마다 한 줄을 남긴다(개발 가이드 14.2). 요청자(USER)·WEB·`SUCCEEDED`·`event_kind=CHECK_RUN`, `target_type=check_run`·`target_id`=검사 ID. 입력은 `triggerKind`·`scopeKind`·`linkMappingCount`(재검증이면 `issueCount`·`comparedToRunId`), 결과는 `joined`·`reused`·`status`다. ID 목록은 넣지 않는다. 결과 줄은 배치 실행 틀이 남기고 같은 검사 ID로 묶인다.
 
@@ -83,7 +84,7 @@ FN-CHK-01·02의 검사 실행 목록·상태 조회, 수동 검사·재검증 �
 
 거절된 요청은 검사를 만들지 않는다.
 
-**확인하지 않는 것:** REVERIFY는 "수정 자료 수집 완료 후 실행"이 명세 조건이지만, 원천을 고친 뒤 수집이 끝났는지는 서버가 알 수 없어 보지 않는다. 재검증이 고친 자료를 읽었는지는 067 해결 조건(조치완료 표시 뒤에 시작한 재검증)이 막는다. 비교 대상 검사가 같은 규칙을 검사했는지도 보지 않는다.
+REVERIFY 요청은 수정 자료의 수집 완료를 확인한 뒤 보낸다. 067은 조치완료 표시 뒤에 시작한 재검증의 통과 기록을 해결 조건으로 사용한다. 비교 대상 실행은 규칙 일치 여부와 관계없이, 존재하는 MANUAL·SYNC·REVERIFY 실행이며 상태가 SUCCEEDED이면 유효하다.
 
 ## 059 목록 조건
 
@@ -106,6 +107,7 @@ batch 프로필의 작업 표 처리기(`QueuedJobHandler`, `CHECK_RUN`)다. `tr
 **run**: 읽기 전용 REPEATABLE READ 트랜잭션 하나에서 규칙·객체를 한 스냅샷으로 읽는다. 쓰지 않으므로 끝나면 되돌린다.
 
 1. 접수 때 저장한 `scope.linkMappingIds`와 `data_basis`를 읽는다.
+   - 재검증(REVERIFY, 134)은 같은 읽기 스냅샷에서 `data_basis`의 자원별 마지막 성공 수집 ID를 다시 읽고 이 기준으로 검사한다.
 2. 규칙마다 190 변환기로 엔진 입력을 만든다.
 3. 출발·도착 유형의 객체를 읽는다. 대상은 `status = ACTIVE`이고 활성 매핑(`object_source_mapping.is_active`)으로 규칙의 원천 자원에서 수집한 객체다. 원천에서 지운 객체, 플랫폼에서 만든 객체(원천 키 없음), 비활성 매핑에서 온 객체는 빠진다.
 4. 행 조건(`source_filter`·`target_filter`)을 객체 속성에 적용한다(`ObjectRowFilter`). 연결 재계산(181)과 같은 두 형식(`{}`, `{"property", "equals"}`)만 읽는다.
@@ -119,6 +121,8 @@ batch 프로필의 작업 표 처리기(`QueuedJobHandler`, `CHECK_RUN`)다. `tr
 - 도착 값 변환 실패(엔진이 거절)
 
 **complete**: 검사 행을 잠가(`for update`) RUNNING인지 본 뒤, 판정한 규칙마다 `check_result` 한 행을 JPA로 저장하고(`CheckResult.of`) SUCCEEDED로 바꾼다.
+
+재검증은 완료 트랜잭션에서 실제 사용한 수집 기준과 이에 해당하는 `work_key`를 결과와 함께 저장한다. 같은 실행 ID로 061 상태와 062 결과를 계속 조회할 수 있다.
 
 | 칸 | 값 |
 | --- | --- |
