@@ -46,7 +46,9 @@ class AgentObjectDetailToolsTests {
 
         Map<String, Object> reply = tools.objectDetail(301L);
 
-        assertThat(reply).containsEntry("resultCategory", "FOUND").containsEntry("data", detail);
+        assertThat(reply)
+                .containsEntry("resultCategory", "FOUND")
+                .containsEntry("data", AgentObjectDetailTools.ObjectDetail.from(detail));
         AgentQueryResult result = session.results().getFirst();
         assertThat(result.toolCode()).isEqualTo(AgentObjectDetailTools.OBJECT_DETAIL);
         assertThat(result.sources()).containsExactly(Map.of("objectId", 301L));

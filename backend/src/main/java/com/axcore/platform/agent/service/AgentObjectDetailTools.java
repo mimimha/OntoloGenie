@@ -4,6 +4,7 @@ import com.axcore.platform.audit.domain.AgentResultCategory;
 import com.axcore.platform.ontology.dto.ObjectDetailResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkSearchRequest;
+import com.axcore.platform.ontology.dto.ObjectSearchRequest;
 import com.axcore.platform.ontology.service.ObjectDetailQuery;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -17,7 +18,7 @@ import org.springframework.data.domain.Page;
 
 /**
  * 객체 상세(077)와 활성 관계(078) 조회 도구(326). {@link ObjectDetailQuery} 구현(S15P31C106-137)이 있을 때만 AI에게 준다.
- * 권한·민감 속성 처리는 조회 서비스가 하고, 여기서는 질문한 사용자로 부르기만 한다. 기준 시점(테이블 확인 시각)은 S15P31C106-145에서 채운다.
+ * 권한·민감 속성 처리는 조회 서비스가 하고, 여기서는 질문한 사용자로 부르기만 한다. 기준 시점(테이블 확인 시각)은 결과에 나온 객체들의 원천 표 기준이다(145).
  */
 public class AgentObjectDetailTools {
     static final String OBJECT_DETAIL = "OBJECT_DETAIL";
@@ -25,6 +26,47 @@ public class AgentObjectDetailTools {
 
     private final AgentQuerySession session;
     private final ObjectDetailQuery objects;
+
+    /**
+     * AI에게 넘기는 객체 상세. 077 응답과 같고 시각만 한국 시간 오프셋으로 적는다. dataAsOf는 객체 값의 업무 기준일이라 UTC로 넘기면 날짜가 하루 틀어질
+     * 수 있다(145). 077 API 응답은 바꾸지 않는다.
+     */
+    public record ObjectDetail(
+            long id,
+            long objectTypeId,
+            String objectTypeName,
+            String displayName,
+            Map<String, Object> properties,
+            Map<String, String> propertyNames,
+            List<String> restrictedPropertyCodes,
+            ObjectSearchRequest.Status status,
+            Long sourceMappingId,
+            String sourceSystemName,
+            String sourceResourceKey,
+            Map<String, Object> sourceKey,
+            String firstCollectedAt,
+            String lastSyncedAt,
+            String dataAsOf) {
+
+        static ObjectDetail from(ObjectDetailResponse response) {
+            return new ObjectDetail(
+                    response.id(),
+                    response.objectTypeId(),
+                    response.objectTypeName(),
+                    response.displayName(),
+                    response.properties(),
+                    response.propertyNames(),
+                    response.restrictedPropertyCodes(),
+                    response.status(),
+                    response.sourceMappingId(),
+                    response.sourceSystemName(),
+                    response.sourceResourceKey(),
+                    response.sourceKey(),
+                    AgentQuerySession.inUserZone(response.firstCollectedAt()),
+                    AgentQuerySession.inUserZone(response.lastSyncedAt()),
+                    AgentQuerySession.inUserZone(response.dataAsOf()));
+        }
+    }
 
     public AgentObjectDetailTools(AgentQuerySession session, ObjectDetailQuery objects) {
         this.session = session;
@@ -48,10 +90,10 @@ public class AgentObjectDetailTools {
                                     ObjectDetailResponse detail =
                                             objects.detail(session.asker(), id);
                                     return new AgentQuerySession.Outcome(
-                                            detail,
+                                            ObjectDetail.from(detail),
                                             AgentResultCategory.FOUND,
                                             List.of(Map.of("objectId", id)),
-                                            null);
+                                            session.dataAsOfObjects(List.of(id)));
                                 }));
     }
 
@@ -99,25 +141,31 @@ public class AgentObjectDetailTools {
                                     Map<String, Object> data = new LinkedHashMap<>();
                                     data.put("total", page.getTotalElements());
                                     data.put("links", page.getContent());
+                                    // 연결이 없으면(UNLINKED) 기준 객체의 표만, 있으면 상대 객체의 표까지 본다.
+                                    Set<Long> linked = objectIds(id, page.getContent());
                                     return new AgentQuerySession.Outcome(
                                             data,
                                             page.isEmpty()
                                                     ? AgentResultCategory.UNLINKED
                                                     : AgentResultCategory.FOUND,
-                                            sources(id, page.getContent()),
-                                            null);
+                                            linked.stream()
+                                                    .map(
+                                                            found ->
+                                                                    Map.<String, Object>of(
+                                                                            "objectId", found))
+                                                    .toList(),
+                                            session.dataAsOfObjects(linked));
                                 }));
     }
 
-    /** 기준 객체와 연결 상대 객체. 화면이 답변에서 각 객체를 열 수 있게 한다. */
-    private static List<Map<String, Object>> sources(
-            long objectId, List<ObjectLinkResponse> links) {
+    /** 기준 객체와 연결 상대 객체. 화면이 답변에서 각 객체를 열 수 있게 출처로 남기고, 기준 시점도 이 객체들의 표로 구한다. */
+    private static Set<Long> objectIds(long objectId, List<ObjectLinkResponse> links) {
         Set<Long> ids = new LinkedHashSet<>();
         ids.add(objectId);
         links.stream()
                 .map(ObjectLinkResponse::relatedObject)
                 .filter(Objects::nonNull)
                 .forEach(related -> ids.add(related.id()));
-        return ids.stream().map(id -> Map.<String, Object>of("objectId", id)).toList();
+        return ids;
     }
 }

@@ -29,6 +29,8 @@ public class AgentAnswerProcessor {
     private final AgentTargetResolver targetResolver;
     private final Clock clock;
     private final TaskExecutor applicationTaskExecutor;
+    // 조회 결과의 기준 시점을 구한다(145).
+    private final DataAsOfResolver dataAsOfResolver;
 
     @TransactionalEventListener
     public void onRequested(AgentAnswerRequested event) {
@@ -67,7 +69,9 @@ public class AgentAnswerProcessor {
                     newQuestionAfterClarification
                             ? asked
                             : continued(asked, pending, event.previous());
-            session = new AgentQuerySession(event.asker(), event.questionId(), recorder, clock);
+            session =
+                    new AgentQuerySession(
+                            event.asker(), event.questionId(), recorder, clock, dataAsOfResolver);
             List<AgentReferenceObject> known = known(event);
             List<AgentTargetResolver.TargetIssue> targetIssues = List.of();
             // "전체 설비로"처럼 종류 전체로 답하면 정하지 못한 대상은 다시 찾지 않는다.
