@@ -537,6 +537,81 @@ test('답변의 정보별 결과에서 출처 객체와 실행 이력으로 이�
   ).toBeInTheDocument()
 })
 
+test('Agent 답변의 마크다운은 그려 보이고, 사용자 질문은 글자 그대로 보인다', async () => {
+  server.use(
+    http.get('/api/v1/agent/conversations/:id/messages', () =>
+      HttpResponse.json({
+        data: [
+          {
+            id: 899,
+            conversationId: 1,
+            sender: 'USER',
+            content: '**굵게** 써도 되나요?',
+            context: {},
+            status: null,
+            errorMessage: null,
+            answerMeta: {},
+            createdAt: '2026-11-11T01:00:00Z',
+          },
+          {
+            id: 900,
+            conversationId: 1,
+            sender: 'AGENT',
+            content: [
+              '프레스 6호기의 **최근 이력**입니다.',
+              '- 11-09 실패\n- 11-03 성공',
+              '| 날짜 | 결과 |\n|:---|:---:|\n| 11-09 | 실패 |',
+              '![추적 이미지](https://example.com/a.png?d=PR-06)',
+              '기간 11/03~11/09에 3~5건 실패',
+              '[객체 보기](/explorer?object=301) [외부 상세](https://example.com/?d=PR-06)',
+              '<b>태그</b>',
+            ].join('\n\n'),
+            context: {},
+            status: 'SUCCEEDED',
+            errorMessage: null,
+            answerMeta: { syncStatus: 'NONE', results: [] },
+            createdAt: '2026-11-11T01:00:01Z',
+          },
+        ],
+        meta: { page: 0, size: 100, totalElements: 2, hasNext: false },
+      }),
+    ),
+  )
+  renderAgentPage('/agent?conversation=1')
+
+  const answer = await screen.findByRole('article', { name: 'Agent 답변' })
+  // 별표 대신 굵은 글씨로, "- " 줄은 목록으로 그린다.
+  expect(within(answer).getByText('최근 이력').tagName).toBe('STRONG')
+  expect(answer).not.toHaveTextContent('**')
+  expect(
+    within(within(answer).getByRole('list')).getAllByRole('listitem'),
+  ).toHaveLength(2)
+  // 표는 표로 그리고, 열 정렬(:---:)을 지킨다.
+  const table = within(answer).getByRole('table')
+  expect(within(table).getAllByRole('columnheader')[1]).toHaveStyle({
+    textAlign: 'center',
+  })
+  // 이미지는 그리지 않아 외부 주소로 요청이 나가지 않고, 대체 글자만 보인다.
+  expect(answer.querySelector('img')).toBeNull()
+  expect(answer).toHaveTextContent('추적 이미지')
+  // 물결표 하나로 쓴 범위는 취소선으로 긋지 않는다.
+  expect(answer.querySelector('del')).toBeNull()
+  expect(answer).toHaveTextContent('기간 11/03~11/09에 3~5건 실패')
+  // 앱 안 주소만 링크로 만들고, 외부 주소는 글자만 보인다.
+  expect(
+    within(answer).getByRole('link', { name: '객체 보기' }),
+  ).toHaveAttribute('href', '/explorer?object=301')
+  expect(
+    within(answer).queryByRole('link', { name: '외부 상세' }),
+  ).not.toBeInTheDocument()
+  expect(answer).toHaveTextContent('외부 상세')
+  // AI가 보낸 HTML 태그는 요소로 만들지 않고 글자로 보인다.
+  expect(answer.querySelector('b')).toBeNull()
+  expect(answer).toHaveTextContent('<b>태그</b>')
+  // 사용자가 쓴 별표는 꾸미지 않고 그대로 보여 준다.
+  expect(screen.getByText(/\*\*굵게\*\* 써도 되나요\?/)).toBeInTheDocument()
+})
+
 test('실행 이력 도구가 아닌 결과에는 실행 이력 링크를 달지 않는다', async () => {
   renderAgentPage('/agent?conversation=1')
 
