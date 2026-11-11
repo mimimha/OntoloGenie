@@ -73,7 +73,8 @@ axcore:
     max-rows: ${AXCORE_SOURCE_LOAD_MAX_ROWS:200000}
     zone-id: ${AXCORE_SOURCE_LOAD_ZONE_ID:Asia/Seoul}
     # 다시 읽기 표시(loaded_lsn = NULL)가 붙은 CDC 테이블을 찾아 전체 읽기를 넣는 감시 작업(batch, S15P31C106-330).
-    # 실패한 테이블은 retry-delay 동안 넣지 않고, 마지막 성공 이후 max-failures번 연속 실패하면 자동으로는 멈춘다(관리자가 073으로 넣는다).
+    # 실패한 테이블은 retry-delay 동안 넣지 않고, 마지막 성공 이후 감시 작업 실행(RECOVERY)이 max-failures번 연속 실패하면 자동으로는 멈춘다(관리자가 073으로 넣는다).
+    # 073 수동 실행의 실패는 retry-delay에만 쓰고 멈춤 횟수에는 넣지 않는다.
     reload-watch:
       delay: 10s
       retry-delay: 5m

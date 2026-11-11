@@ -133,8 +133,9 @@ public class SyncRunRequestRepository {
     public List<ResourceRun> findResourceRuns(Map<Long, Long> runByResource) {
         return jdbc.sql(
                         """
-                        select r.sync_run_id, r.data_source_id, r.source_resource_id, r.mode, r.status,
-                               r.from_lsn, r.to_lsn, r.rows_read, r.rows_upserted, r.rows_deleted,
+                        select r.sync_run_id, r.data_source_id, r.source_resource_id, sr.sync_strategy,
+                               r.mode, r.status, r.from_lsn, r.to_lsn, r.rows_read, r.rows_upserted,
+                               r.rows_deleted,
                                coalesce(r.started_at, s.started_at) as started_at, r.finished_at,
                                r.error_message
                         from unnest(cast(:resources as bigint[]), cast(:runs as bigint[]))
@@ -142,6 +143,7 @@ public class SyncRunRequestRepository {
                         join sync_run_resource r
                           on r.source_resource_id = t.resource_id and r.sync_run_id = t.run_id
                         join sync_run s on s.id = r.sync_run_id
+                        join source_resource sr on sr.id = r.source_resource_id
                         order by r.source_resource_id
                         """)
                 .param("resources", runByResource.keySet().toArray(Long[]::new))
@@ -155,6 +157,7 @@ public class SyncRunRequestRepository {
                 rs.getLong("sync_run_id"),
                 rs.getLong("data_source_id"),
                 rs.getLong("source_resource_id"),
+                rs.getString("sync_strategy"),
                 rs.getString("mode"),
                 rs.getString("status"),
                 rs.getObject("from_lsn", Long.class),
@@ -187,6 +190,7 @@ public class SyncRunRequestRepository {
             long syncRunId,
             long dataSourceId,
             long sourceResourceId,
+            String syncStrategy,
             String mode,
             String status,
             Long fromLsn,

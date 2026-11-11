@@ -23,7 +23,8 @@ public class CdcReloadRepository {
     /**
      * 다시 읽기를 넣을 CDC 테이블. 켜진 매핑이 있고 loaded_lsn이 비었으며, 대기·실행 중인 전체 읽기가 없고, 원천 접속 정보가 바뀌어 커넥터를 맞추는
      * 중(SOURCE_CHANGED)이 아닌 테이블이다. 마지막 성공 이후의 FULL 실패(제외 문구에 맞는 실패는 빼고)가 maxFailures번 이상이거나 마지막 실패가
-     * retryAfter보다 뒤면 뺀다.
+     * retryAfter보다 뒤면 뺀다. 멈춤 횟수는 감시 작업이 넣은 실행(RECOVERY)의 실패만 센다. 관리자 수동 실행(073)은 여러 테이블을 한 실행에 묶어
+     * 다른 테이블 때문에 함께 실패할 수 있어서다. 수동 실행의 실패도 다시 넣기를 미루는 데는 쓴다.
      *
      * @param excludedFailurePattern 실패로 세지 않을 error_message의 LIKE 패턴(escape 문자는 백슬래시)
      */
@@ -41,8 +42,10 @@ public class CdcReloadRepository {
                                end as reason
                         from source_resource r
                         cross join lateral (
-                            select count(*) as failures, max(f.finished_at) as last_failed_at
+                            select count(*) filter (where fr.trigger_kind = 'RECOVERY') as failures,
+                                   max(f.finished_at) as last_failed_at
                             from sync_run_resource f
+                            join sync_run fr on fr.id = f.sync_run_id
                             where f.source_resource_id = r.id and f.mode = 'FULL' and f.status = 'FAILED'
                               and f.error_message not like :excluded escape '\\'
                               and f.finished_at > coalesce(

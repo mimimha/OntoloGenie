@@ -212,11 +212,50 @@ class CdcReloadServiceTests {
         assertThat(activeRuns(table)).isZero();
 
         // 관리자가 073으로 넣은 실행이 성공하면 횟수가 다시 시작된다. 성공 뒤 매핑이 바뀌어 다시 표시가 붙었다.
-        succeededRun(table, "8 minutes");
+        succeededManualRun(table, "8 minutes");
         failedRun(table, "7 minutes", "원천에 접속하지 못했습니다.");
 
         service.queueDueReloads();
         assertThat(activeRuns(table)).isOne();
+    }
+
+    /** 관리자 수동 실행은 여러 테이블을 묶어 다른 테이블 때문에 함께 실패할 수 있어 멈춤 횟수에 넣지 않는다. 다시 넣기를 미루는 데는 쓴다. */
+    @Test
+    void manualFailuresDelayRetryButDoNotStopAutoReload() {
+        long table = cdcTable("erp.work_order");
+        mapping(table, true);
+        for (int i = 0; i < 3; i++) {
+            failedManualRun(table, (10 + i) + " minutes", "원천에 접속하지 못했습니다.");
+        }
+
+        service.queueDueReloads();
+        assertThat(activeRuns(table)).isOne();
+
+        long recent = cdcTable("erp.equipment");
+        mapping(recent, true);
+        failedManualRun(recent, "1 minute", "원천에 접속하지 못했습니다.");
+
+        service.queueDueReloads();
+        assertThat(activeRuns(recent)).isZero();
+    }
+
+    /** 감시 작업 실패와 수동 실패가 섞이면 감시 작업 실패만 세어 멈춘다. */
+    @Test
+    void countsOnlyWatcherFailuresWhenMixedWithManualFailures() {
+        long table = cdcTable("erp.work_order");
+        mapping(table, true);
+        failedRun(table, "14 minutes", "원천에 접속하지 못했습니다.");
+        failedManualRun(table, "13 minutes", "원천에 접속하지 못했습니다.");
+        failedRun(table, "12 minutes", "원천에 접속하지 못했습니다.");
+
+        service.queueDueReloads();
+        assertThat(activeRuns(table)).isOne();
+
+        removeQueuedRuns();
+        failedRun(table, "11 minutes", "원천에 접속하지 못했습니다.");
+
+        service.queueDueReloads();
+        assertThat(activeRuns(table)).isZero();
     }
 
     @Test
@@ -311,25 +350,51 @@ class CdcReloadServiceTests {
     }
 
     private void failedRun(long resourceId, String ago, String message) {
-        finishedRun(resourceId, ago, "FAILED", message);
+        finishedRun(resourceId, ago, "FAILED", message, null);
+    }
+
+    /** 관리자가 073으로 넣었다가 실패한 실행. */
+    private void failedManualRun(long resourceId, String ago, String message) {
+        finishedRun(resourceId, ago, "FAILED", message, admin());
+    }
+
+    /** 관리자가 073으로 넣어 성공한 실행. */
+    private void succeededManualRun(long resourceId, String ago) {
+        finishedRun(resourceId, ago, "SUCCEEDED", null, admin());
+    }
+
+    private long admin() {
+        return jdbc.sql(
+                        """
+                        insert into account (login_id, display_name, password_hash, role_id,
+                                             must_change_password)
+                        values ('reload-' || gen_random_uuid(), '감시 시험 관리자', 'x',
+                                (select id from role where code = 'ADMIN'), false)
+                        returning id
+                        """)
+                .query(Long.class)
+                .single();
     }
 
     private long succeededRun(long resourceId, String ago) {
-        return finishedRun(resourceId, ago, "SUCCEEDED", null);
+        return finishedRun(resourceId, ago, "SUCCEEDED", null, null);
     }
 
-    private long finishedRun(long resourceId, String ago, String status, String message) {
+    /** requestedBy가 있으면 관리자 수동 실행(MANUAL), 없으면 감시 작업 실행(RECOVERY)이다. */
+    private long finishedRun(
+            long resourceId, String ago, String status, String message, Long requestedBy) {
         long runId =
                 jdbc.sql(
                                 """
                                 insert into sync_run (data_source_id, trigger_kind, status, requested_at,
-                                                      started_at, finished_at, error_message)
-                                values (:s, 'RECOVERY', :status, now() - cast(:ago as interval),
+                                                      started_at, finished_at, error_message, requested_by)
+                                values (:s, case when cast(:by as bigint) is null then 'RECOVERY' else 'MANUAL' end, :status,
                                         now() - cast(:ago as interval), now() - cast(:ago as interval),
-                                        :message)
+                                        now() - cast(:ago as interval), :message, cast(:by as bigint))
                                 returning id
                                 """)
                         .param("s", sourceId)
+                        .param("by", requestedBy)
                         .param("status", status)
                         .param("ago", ago)
                         .param("message", message)
