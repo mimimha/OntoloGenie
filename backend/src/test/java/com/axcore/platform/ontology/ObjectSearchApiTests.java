@@ -420,6 +420,7 @@ class ObjectSearchApiTests {
                     .andExpect(
                             jsonPath("$.data[0].evidence.transformedValue").value("private-label"))
                     .andExpect(jsonPath("$.data[0].evidence.rawValue").doesNotHaveJsonPath())
+                    .andExpect(jsonPath("$.data[0].evidence.comparisons").doesNotHaveJsonPath())
                     .andExpect(jsonPath("$.meta.totalElements").value(1));
         }
 
@@ -450,7 +451,8 @@ class ObjectSearchApiTests {
         long sourceSerial = property(sourceType, "serial", "STRING", "NORMAL", null);
         long targetSerial = property(targetType, "serial", "STRING", "RESTRICTED", null);
         long source = object(sourceType, "Source", "{}");
-        long target = object(targetType, "Target", "{}");
+        long targetMapping = restrictedKeyMapping(targetType, targetProperty, tag);
+        long target = sourceObject(targetType, targetMapping, "target-serial", "ACTIVE");
         long link = link(linkType(tag, sourceType, targetType), source, target, "ACTIVE");
         condition(link, sourceProperty, targetProperty, 1);
         condition(link, sourceSerial, targetSerial, 2);
@@ -459,6 +461,7 @@ class ObjectSearchApiTests {
                         update object_link
                         set evidence = '{
                             "rawValues":{"1":"old raw","2":"private serial"},
+                            "targetRawValues":{"2":"target serial"},
                             "matchedValues":{"1":"CODE","2":"PRIVATE SERIAL"}
                         }'::jsonb
                         where id = :id
@@ -471,6 +474,24 @@ class ObjectSearchApiTests {
                 .andExpect(jsonPath("$.data[0].evidence.rawValue['1']").value("old raw"))
                 .andExpect(jsonPath("$.data[0].evidence.rawValue['2']").value("private serial"))
                 .andExpect(jsonPath("$.data[0].evidence.transformedValue['1']").value("CODE"))
+                .andExpect(
+                        jsonPath("$.data[0].evidence.comparisons[0].sourceProperty").value("code"))
+                .andExpect(
+                        jsonPath("$.data[0].evidence.comparisons[0].sourceColumn")
+                                .doesNotHaveJsonPath())
+                .andExpect(
+                        jsonPath("$.data[0].evidence.comparisons[0].sourceValue").value("old raw"))
+                .andExpect(
+                        jsonPath("$.data[0].evidence.comparisons[0].targetProperty").value("code"))
+                .andExpect(
+                        jsonPath("$.data[0].evidence.comparisons[0].targetColumn").value("serial"))
+                .andExpect(jsonPath("$.data[0].evidence.comparisons[0].targetValue").value("CODE"))
+                .andExpect(
+                        jsonPath("$.data[0].evidence.comparisons[1].sourceProperty")
+                                .value("serial"))
+                .andExpect(
+                        jsonPath("$.data[0].evidence.comparisons[1].targetValue")
+                                .value("target serial"))
                 .andExpect(
                         jsonPath("$.data[0].evidence.transformedValue['2']")
                                 .value("PRIVATE SERIAL"));

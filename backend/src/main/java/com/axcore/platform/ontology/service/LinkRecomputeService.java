@@ -313,6 +313,8 @@ public class LinkRecomputeService {
                         : ruleLinks.activeObjects(linkType.getTargetTypeId());
         Map<Long, LinkableObject> sourcesById =
                 sources.stream().collect(Collectors.toMap(LinkableObject::id, Function.identity()));
+        Map<Long, LinkableObject> targetsById =
+                targets.stream().collect(Collectors.toMap(LinkableObject::id, Function.identity()));
 
         Map<Pair, List<Desired>> wants = new LinkedHashMap<>();
         for (RulePlan plan : plans) {
@@ -381,6 +383,12 @@ public class LinkRecomputeService {
             }
             Map<String, Object> evidence =
                     want.plan().withRawValues(want.evidence(), sourcesById.get(pair.source()));
+            if (sameActiveRule && Objects.equals(link.evidence(), evidence)) {
+                continue;
+            }
+            evidence.put(
+                    "targetRawValues",
+                    want.plan().rawValues(targetsById.get(pair.target()), false));
             if (link == null) {
                 result.activated.add(
                         ruleLinks.insertRuleLink(
@@ -677,15 +685,24 @@ public class LinkRecomputeService {
 
         private Map<String, Object> withRawValues(
                 Map<String, Object> matchedEvidence, LinkableObject source) {
+            Map<String, Object> evidence = new LinkedHashMap<>(matchedEvidence);
+            evidence.put("rawValues", rawValues(source, true));
+            return evidence;
+        }
+
+        private Map<String, String> rawValues(LinkableObject object, boolean source) {
             Map<String, String> rawValues = new LinkedHashMap<>();
             for (Condition condition : conditions) {
                 rawValues.put(
                         String.valueOf(condition.sequenceNo()),
-                        String.valueOf(source.properties().get(condition.sourceCode())));
+                        String.valueOf(
+                                object.properties()
+                                        .get(
+                                                source
+                                                        ? condition.sourceCode()
+                                                        : condition.targetCode())));
             }
-            Map<String, Object> evidence = new LinkedHashMap<>(matchedEvidence);
-            evidence.put("rawValues", rawValues);
-            return evidence;
+            return rawValues;
         }
 
         private static List<TransformStep> steps(List<Map<String, Object>> stored) {

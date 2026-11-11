@@ -236,7 +236,7 @@ test('근거 보기를 누르면 원천 위치와 연결 근거를 팝업으로 
   expect(dialog.getByText('equipment_code: PR-03')).toBeInTheDocument()
   expect(await dialog.findByText('현재 배정 설비')).toBeInTheDocument()
   expect(dialog.getAllByText('들어오는 연결')).toHaveLength(2)
-  expect(dialog.getByText('값 PR03 → PR-03')).toBeInTheDocument()
+  expect(dialog.getByText('비교 값 PR-03 일치')).toBeInTheDocument()
   expect(
     dialog.getByText('원문: “야간에 3호기 진동이 커졌다.”'),
   ).toBeInTheDocument()
@@ -254,6 +254,113 @@ test('관리자가 직접 만든 연결은 만든 방법을 보여준다', async
   expect(await dialog.findByText('대체 가능 설비')).toBeInTheDocument()
   expect(dialog.getAllByText('나가는 연결')).toHaveLength(3)
   expect(dialog.getByText('관리자가 직접 연결')).toBeInTheDocument()
+})
+
+function mockRuleEvidence(evidence: Record<string, unknown>) {
+  server.use(
+    http.get('/api/v1/objects/:id/links', () =>
+      HttpResponse.json({
+        data: [
+          {
+            id: 21,
+            linkTypeId: 2,
+            linkTypeName: '현재 배정 설비',
+            sourceObjectId: 1101,
+            targetObjectId: 301,
+            relatedObject: {
+              id: 1101,
+              displayName: '프레스 작업',
+              objectTypeId: 11,
+              objectTypeName: '작업지시',
+            },
+            origin: 'RULE',
+            status: 'ACTIVE',
+            linkMappingId: 610,
+            evidence,
+            expressionKind: null,
+            confirmedBy: null,
+          },
+        ],
+        meta: { page: 0, size: 20, totalElements: 1, hasNext: false },
+      }),
+    ),
+  )
+}
+
+test('변환 전 값이 없는 예전 관계는 목록에 표시하고 변환 결과는 생략한다', async () => {
+  mockRuleEvidence({
+    sourceKey: { work_order_no: 'WO-101' },
+    transformedValue: 'LEGACY-CODE',
+  })
+  const user = await openEvidenceDialog(/프레스 3호기/)
+  const dialog = within(screen.getByRole('dialog'))
+
+  expect(await dialog.findByText('현재 배정 설비')).toBeInTheDocument()
+  expect(dialog.getByText('프레스 작업')).toBeInTheDocument()
+  expect(dialog.queryAllByText(/LEGACY-CODE/)).toHaveLength(0)
+  await user.click(dialog.getByText('상세 근거'))
+  expect(dialog.getByText('work_order_no: WO-101')).toBeVisible()
+  expect(
+    dialog.queryByRole('table', { name: '비교 조건' }),
+  ).not.toBeInTheDocument()
+})
+
+test('들어오는 관계에서도 여러 조건의 출발과 도착 값을 같은 방향으로 보여준다', async () => {
+  mockRuleEvidence({
+    rawValue: { 1: 'pr03', 2: 'Plant A' },
+    transformedValue: { 1: 'PR-03', 2: 'PLANT-A' },
+    comparisons: [
+      {
+        sequenceNo: 1,
+        sourceProperty: 'assigned_equipment',
+        sourceColumn: 'equipment_id',
+        sourceValue: 'pr03',
+        targetProperty: 'equipment_code',
+        targetValue: 'PR-03',
+        matchedValue: 'PR-03',
+      },
+      {
+        sequenceNo: 2,
+        sourceProperty: 'plant_id',
+        sourceValue: 'Plant A',
+        targetProperty: 'plant_code',
+        targetValue: 'PLANT-A',
+        matchedValue: 'PLANT-A',
+      },
+    ],
+  })
+  const user = await openEvidenceDialog(/프레스 3호기/)
+  const dialog = within(screen.getByRole('dialog'))
+  await dialog.findByText('현재 배정 설비')
+  await user.click(dialog.getByText('상세 근거'))
+
+  const comparisons = within(dialog.getByRole('table', { name: '비교 조건' }))
+  expect(
+    comparisons.getByRole('columnheader', { name: '출발 원본' }),
+  ).toBeInTheDocument()
+  expect(
+    comparisons.getByRole('columnheader', { name: '비교 대상' }),
+  ).toBeInTheDocument()
+  const rows = comparisons.getAllByRole('row')
+  const firstCondition = within(rows[1])
+  expect(firstCondition.getByText('assigned_equipment = pr03')).toBeVisible()
+  expect(firstCondition.getByText('현재 원천 컬럼 equipment_id')).toBeVisible()
+  expect(firstCondition.getByText('equipment_code = PR-03')).toBeVisible()
+  expect(
+    within(rows[2])
+      .getAllByRole('cell')
+      .map((cell) => cell.textContent),
+  ).toEqual(['plant_id = Plant A', 'plant_code = PLANT-A'])
+  expect(dialog.queryByText(/\[object Object\]/)).not.toBeInTheDocument()
+})
+
+test('권한으로 근거가 비어 있는 관계는 빈 상세 근거를 만들지 않는다', async () => {
+  mockRuleEvidence({})
+  await openEvidenceDialog(/프레스 3호기/)
+  const dialog = within(screen.getByRole('dialog'))
+
+  expect(await dialog.findByText('현재 배정 설비')).toBeInTheDocument()
+  expect(dialog.queryByText('상세 근거')).not.toBeInTheDocument()
 })
 
 test('연결이 없으면 안내 문구를 보여준다', async () => {

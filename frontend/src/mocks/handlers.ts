@@ -191,6 +191,16 @@ const links: Omit<ObjectLink, 'relatedObject'>[] = [
       sourceKey: { work_order_no: 'WO-101' },
       rawValue: 'PR03',
       transformedValue: 'PR-03',
+      comparisons: [
+        {
+          sequenceNo: 1,
+          sourceProperty: 'equipment_id',
+          sourceValue: 'PR03',
+          targetProperty: 'equipment_code',
+          targetValue: 'PR-03',
+          matchedValue: 'PR-03',
+        },
+      ],
     },
     expressionKind: null,
     confirmedBy: null,
@@ -208,6 +218,16 @@ const links: Omit<ObjectLink, 'relatedObject'>[] = [
       sourceKey: { work_order_no: 'WO-101' },
       rawValue: 'SO-101',
       transformedValue: 'SO-101',
+      comparisons: [
+        {
+          sequenceNo: 1,
+          sourceProperty: 'sales_order_id',
+          sourceValue: 'SO-101',
+          targetProperty: 'sales_order_id',
+          targetValue: 'SO-101',
+          matchedValue: 'SO-101',
+        },
+      ],
     },
     expressionKind: null,
     confirmedBy: null,
