@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router'
+import { NavLink, Outlet, useLocation } from 'react-router'
 import AccountMenu from '../features/auth/AccountMenu'
 import { useAuth } from '../features/auth/auth-context'
 import { canAccess } from '../features/auth/access'
@@ -36,15 +36,38 @@ function headerLinkClassName({ isActive }: { isActive: boolean }) {
 }
 
 function AppLayout() {
+  const rulesWorkspace = useLocation().pathname.startsWith('/admin/rules')
   const { account } = useAuth()
   const workspaceAllowed = canAccess(account, 'workspace')
   const administrationAllowed = canAccess(account, 'administration')
   return (
-    <div className="min-h-screen bg-slate-100 p-4">
-      <div className="mx-auto max-w-7xl overflow-clip rounded-lg border border-slate-300 bg-white">
-        <header className="flex items-center justify-between border-b border-slate-300 px-5 py-4">
-          <span className="font-semibold tracking-tight text-slate-900">
-            OntoloGenie
+    <div
+      className={
+        rulesWorkspace ? 'rules-shell' : 'min-h-screen bg-slate-100 p-4'
+      }
+    >
+      <div
+        className={
+          rulesWorkspace
+            ? 'rules-frame'
+            : 'mx-auto max-w-7xl overflow-clip rounded-lg border border-slate-300 bg-white'
+        }
+      >
+        <header className="app-header flex items-center justify-between border-b border-slate-300 px-5 py-4">
+          <span
+            className="app-brand font-semibold tracking-tight text-slate-900"
+            aria-label="OntoloGenie"
+          >
+            {rulesWorkspace ? (
+              <img
+                src="/ontologenie-logo.svg"
+                alt="OntoloGenie"
+                width="250"
+                height="34"
+              />
+            ) : (
+              'OntoloGenie'
+            )}
           </span>
           <div className="flex flex-wrap items-center justify-end gap-3">
             <nav aria-label="계정 메뉴" className="flex flex-wrap gap-1">
@@ -64,13 +87,13 @@ function AppLayout() {
                   </NavLink>
                 ))}
             </nav>
-            <AccountMenu />
+            <AccountMenu compact={rulesWorkspace} />
           </div>
         </header>
 
         <nav
           aria-label="주 메뉴"
-          className="flex items-center border-b border-slate-300 px-5"
+          className="main-nav flex items-center border-b border-slate-300 px-5"
         >
           {workspaceAllowed &&
             userMenus.map((menu) => (
@@ -87,7 +110,7 @@ function AppLayout() {
             ))}
         </nav>
 
-        <main className="p-5">
+        <main className="workspace-main p-5">
           <Outlet />
         </main>
       </div>

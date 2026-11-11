@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, expect, test, vi } from 'vitest'
 import { resetAnalysisMocks } from '../../mocks/analysisHandlers'
 import { server } from '../../mocks/node'
@@ -16,6 +16,11 @@ afterEach(() => {
   resetProposalMocks()
 })
 
+function LocationProbe() {
+  const { search } = useLocation()
+  return <output aria-label="조회 주소">{search}</output>
+}
+
 function renderRules(path = '/admin/rules') {
   render(
     <QueryClientProvider
@@ -24,6 +29,7 @@ function renderRules(path = '/admin/rules') {
       }
     >
       <MemoryRouter initialEntries={[path]}>
+        <LocationProbe />
         <Routes>
           <Route path="/admin/rules" element={<ProposalsPage />} />
         </Routes>
@@ -44,6 +50,7 @@ async function startFromRules(user: ReturnType<typeof userEvent.setup>) {
 }
 
 async function chooseReanalysis(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByText('분석 관리', { selector: 'summary' }))
   await user.click(screen.getByRole('button', { name: '변경 데이터 재분석' }))
   const dialog = within(
     screen.getByRole('dialog', { name: '변경 데이터 재분석' }),
@@ -62,6 +69,93 @@ async function chooseReanalysis(user: ReturnType<typeof userEvent.setup>) {
   return dialog
 }
 
+test.each([
+  { label: '직접 추가 출처', search: 'origin=MANUAL', joined: false },
+  { label: '반영 완료 상태', search: 'applyStatus=APPLIED', joined: false },
+  {
+    label: '적용 후 문제 보기',
+    search: 'view=issues&issueStatus=NEW&issueKind=UNMATCHED&issuePage=2',
+    joined: false,
+  },
+  {
+    label: '모든 기존 조건과 실행 합류',
+    search:
+      'analysis=50&origin=MANUAL&applyStatus=APPLIED&reviewStatus=REJECTED&itemKind=OBJECT_TYPE&group=objects&q=old&page=4&candidate=301&view=issues&issueStatus=NEW&issueKind=UNMATCHED&issuePage=2',
+    joined: true,
+  },
+])(
+  '새 분석 접수 후 $label 조건을 초기화하고 AI 후보를 보여준다',
+  async ({ search, joined }) => {
+    server.use(
+      http.post('/api/v1/analyses', () =>
+        HttpResponse.json(
+          {
+            data: {
+              id: 51,
+              runKind: 'INITIAL',
+              status: 'QUEUED',
+              targets: [{ sourceResourceId: 11 }],
+              requestedAt: '2026-11-11T01:00:00Z',
+              joined,
+            },
+          },
+          { status: 202 },
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    renderRules(`/admin/rules?${search}`)
+    await startFromRules(user)
+    await waitFor(() =>
+      expect(screen.getByLabelText('조회 주소').textContent).toBe(
+        joined ? '?analysis=51&joined=1' : '?analysis=51',
+      ),
+    )
+    const list = within(
+      await screen.findByRole('complementary', { name: '검토 목록' }),
+    )
+    expect(
+      await list.findByRole('button', { name: /작업지시 설비 코드 연결/ }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('table', { name: '정합성 문제 목록' }),
+    ).not.toBeInTheDocument()
+    if (joined)
+      expect(
+        await screen.findByText(
+          '같은 대상의 분석이 이미 진행 중이라 그 분석에 합류했습니다.',
+        ),
+      ).toBeInTheDocument()
+  },
+)
+
+test('새 분석 접수 실패 시 기존 조회 조건과 문제 보기를 유지한다', async () => {
+  server.use(
+    http.post('/api/v1/analyses', () =>
+      HttpResponse.json(
+        {
+          error: {
+            code: 'TEST_ERROR',
+            message: '분석 요청 실패',
+            details: {},
+            requestId: 'test-346',
+          },
+        },
+        { status: 422 },
+      ),
+    ),
+  )
+  const search =
+    '?origin=MANUAL&applyStatus=APPLIED&view=issues&issueStatus=NEW'
+  const user = userEvent.setup()
+  renderRules(`/admin/rules${search}`)
+  await startFromRules(user)
+  expect(
+    await within(screen.getByRole('dialog')).findByText('분석 요청 실패'),
+  ).toBeInTheDocument()
+  expect(screen.getByLabelText('조회 주소').textContent).toBe(search)
+})
+
 test('선택 범위를 확인해 REANALYSIS로 접수하고 진행·결과와 실제 컬럼 범위를 표시한다', async () => {
   const user = userEvent.setup()
   renderRules()
@@ -79,6 +173,12 @@ test('선택 범위를 확인해 REANALYSIS로 접수하고 진행·결과와 �
   expect(
     screen.getByRole('button', { name: '변경 데이터 재분석' }),
   ).toBeEnabled()
+  if (
+    !screen
+      .getByText('분석 관리', { selector: 'summary' })
+      .parentElement?.hasAttribute('open')
+  )
+    await user.click(screen.getByText('분석 관리', { selector: 'summary' }))
   await user.click(screen.getByRole('button', { name: '최근 분석 보기' }))
   expect(
     await screen.findByText('재분석', { selector: 'td' }),
@@ -177,16 +277,20 @@ test('분석을 맡기면 진행 상태를 다시 조회하고 끝나면 이번 
   expect(
     screen.getByRole('button', { name: 'AI 관계 제안 받기' }),
   ).toBeEnabled()
-  const table = await screen.findByRole('table', { name: '검토 제안 목록' })
-  expect(within(table).getAllByRole('row')).toHaveLength(2)
+  const table = await screen.findByRole('complementary', { name: '검토 목록' })
+  expect(
+    within(table).getAllByRole('button', { name: /검토 상태:/ }),
+  ).toHaveLength(1)
 }, 15000)
 
 test('전체 후보 보기를 누르면 분석 조건 없이 모든 제안을 보여준다', async () => {
   const user = userEvent.setup()
   renderRules('/admin/rules?analysis=50')
 
-  const table = await screen.findByRole('table', { name: '검토 제안 목록' })
-  expect(within(table).getAllByRole('row')).toHaveLength(2)
+  const table = await screen.findByRole('complementary', { name: '검토 목록' })
+  expect(
+    within(table).getAllByRole('button', { name: /검토 상태:/ }),
+  ).toHaveLength(1)
 
   await user.click(screen.getByRole('button', { name: '전체 후보 보기' }))
 
@@ -197,9 +301,9 @@ test('전체 후보 보기를 누르면 분석 조건 없이 모든 제안을 �
   await waitFor(() =>
     expect(
       within(
-        screen.getByRole('table', { name: '검토 제안 목록' }),
-      ).getAllByRole('row'),
-    ).toHaveLength(4),
+        screen.getByRole('complementary', { name: '검토 목록' }),
+      ).getAllByRole('button', { name: /검토 상태:/ }),
+    ).toHaveLength(3),
   )
 })
 
@@ -213,7 +317,9 @@ test('실패한 분석은 실패 사유를 보여준다', async () => {
   // 실패 사유(alert)가 먼저 뜨고 상태 문구는 그 뒤에 바뀔 수 있어 기다려서 본다
   await waitFor(() => expect(current).toHaveTextContent('분석에 실패했습니다'))
   expect(
-    await screen.findByText('조건에 맞는 제안이 없습니다.'),
+    await screen.findByText(
+      '선택한 상태·유형·검색어에 해당하는 후보가 없습니다.',
+    ),
   ).toBeInTheDocument()
 })
 
@@ -225,14 +331,20 @@ test('같은 대상의 분석에 합류했으면 알려준다', async () => {
       '같은 대상의 분석이 이미 진행 중이라 그 분석에 합류했습니다.',
     ),
   ).toBeInTheDocument()
-  await screen.findByRole('table', { name: '검토 제안 목록' })
+  await screen.findByRole('complementary', { name: '검토 목록' })
 })
 
 test('최근 분석 목록에서 과거 실행을 골라 그 후보를 본다', async () => {
   const user = userEvent.setup()
   renderRules()
-  await screen.findByRole('table', { name: '검토 제안 목록' })
+  await screen.findByRole('complementary', { name: '검토 목록' })
 
+  if (
+    !screen
+      .getByText('분석 관리', { selector: 'summary' })
+      .parentElement?.hasAttribute('open')
+  )
+    await user.click(screen.getByText('분석 관리', { selector: 'summary' }))
   await user.click(screen.getByRole('button', { name: '최근 분석 보기' }))
   const recent = await screen.findByRole(
     'table',
@@ -304,7 +416,7 @@ test('고른 범위와 다르게 분석한 부분은 안내로 보여준다', as
     'mes.sensor_reading: 행이 많아 앞에서 100,000행만 분석했습니다.',
   )
   expect(current).toHaveTextContent('문서 연결 2건')
-  await screen.findByText('조건에 맞는 제안이 없습니다.')
+  await screen.findByText('선택한 상태·유형·검색어에 해당하는 후보가 없습니다.')
 })
 
 test('안내할 것이 없으면 안내 목록을 그리지 않는다', async () => {
@@ -315,5 +427,5 @@ test('안내할 것이 없으면 안내 목록을 그리지 않는다', async ()
   expect(
     within(current).queryByRole('list', { name: '분석 범위 안내' }),
   ).not.toBeInTheDocument()
-  await screen.findByRole('table', { name: '검토 제안 목록' })
+  await screen.findByRole('complementary', { name: '검토 목록' })
 })

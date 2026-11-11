@@ -229,10 +229,17 @@ type Props = {
   joined: boolean
   onSelect: (id?: number) => void
   onStarted: (run: AnalysisRun) => void
+  compact?: boolean
 }
 
 // 연결 규칙의 AI 분석 실행·진행·최근 이력
-function AnalysisPanel({ currentId, joined, onSelect, onStarted }: Props) {
+function AnalysisPanel({
+  currentId,
+  joined,
+  onSelect,
+  onStarted,
+  compact = false,
+}: Props) {
   const navigate = useNavigate()
   const [choosing, setChoosing] = useState(false)
   const [runKind, setRunKind] = useState<AnalysisKind>('INITIAL')
@@ -250,18 +257,18 @@ function AnalysisPanel({ currentId, joined, onSelect, onStarted }: Props) {
     isAnalysisRunning(current.data.status)
 
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 p-5">
+    <section
+      className={
+        compact
+          ? 'rules-analysis-compact'
+          : 'space-y-4 rounded-xl border border-slate-200 p-5'
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold">AI 분석</h2>
+        {!compact && <h2 className="text-lg font-semibold">AI 분석</h2>}
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            variant="secondary"
-            aria-expanded={showRecent}
-            onClick={() => setShowRecent(!showRecent)}
-          >
-            {showRecent ? '최근 분석 닫기' : '최근 분석 보기'}
-          </Button>
-          <Button
+            variant={compact ? 'secondary' : 'primary'}
             disabled={running}
             onClick={() => {
               setRunKind('INITIAL')
@@ -270,18 +277,30 @@ function AnalysisPanel({ currentId, joined, onSelect, onStarted }: Props) {
           >
             AI 관계 제안 받기
           </Button>
-          <Button
-            variant="secondary"
-            disabled={running}
-            onClick={() => {
-              setRunKind('REANALYSIS')
-              setChoosing(true)
-            }}
-          >
-            변경 데이터 재분석
-          </Button>
-          {/* 임시(S15P31C106-307): 시연 전 이 줄과 import를 지운다 */}
-          <TestAnalysisDelete onDeleted={() => onSelect(undefined)} />
+          <details className="analysis-tools" open={compact ? undefined : true}>
+            <summary>분석 관리</summary>
+            <div className="analysis-tools-content flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                aria-expanded={showRecent}
+                onClick={() => setShowRecent(!showRecent)}
+              >
+                {showRecent ? '최근 분석 닫기' : '최근 분석 보기'}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={running}
+                onClick={() => {
+                  setRunKind('REANALYSIS')
+                  setChoosing(true)
+                }}
+              >
+                변경 데이터 재분석
+              </Button>
+              {/* 임시(S15P31C106-307): 시연 전 이 줄과 import를 지운다 */}
+              <TestAnalysisDelete onDeleted={() => onSelect(undefined)} />
+            </div>
+          </details>
         </div>
       </div>
       {running && (

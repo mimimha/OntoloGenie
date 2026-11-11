@@ -20,6 +20,7 @@ import ProposalBundleView from './ProposalBundleView'
 import ProposalComparison from './ProposalComparison'
 import CheckResults from './CheckResults'
 import ProposalDecision from './ProposalDecision'
+import RuleContent from './RuleContent'
 import { fetchProposal } from './api'
 import type { ProposalOption } from './types'
 import {
@@ -122,12 +123,17 @@ function RecordView({ value }: { value: Record<string, unknown> }) {
   )
 }
 
-export default function ProposalDetail() {
+export default function ProposalDetail({
+  embeddedId,
+}: { embeddedId?: number } = {}) {
   const { id } = useParams()
   const { search } = useLocation()
-  const proposalId = Number(id)
+  const proposalId = embeddedId ?? Number(id)
   const validId =
-    /^\d+$/.test(id ?? '') && Number.isSafeInteger(proposalId) && proposalId > 0
+    (embeddedId !== undefined || /^\d+$/.test(id ?? '')) &&
+    Number.isSafeInteger(proposalId) &&
+    proposalId > 0
+  const [detailTab, setDetailTab] = useState('rule')
   const [refreshing, setRefreshing] = useState(false)
   const [selection, setSelection] = useState<{
     key: string
@@ -194,20 +200,28 @@ export default function ProposalDetail() {
     const heldParams = new URLSearchParams(search)
     heldParams.set('view', 'held')
     content = (
-      <article className="space-y-6">
-        <header className="space-y-3">
+      <article
+        className={embeddedId ? 'candidate-detail space-y-6' : 'space-y-6'}
+      >
+        <header className="candidate-heading space-y-3">
           <p className="text-sm text-slate-500">
-            제안 #{item.id} · 개정 {item.revision}
+            {String(item.payload.code ?? `#${item.id}`)}
           </p>
           <h2 className="text-xl font-semibold">{proposalTitle(item)}</h2>
+          <p>개정 {item.revision}</p>
+          <p className="text-sm">
+            검토 상태: {reviewLabels[item.reviewStatus] ?? item.reviewStatus} ·
+            적용 여부: {applyLabels[item.applyStatus] ?? item.applyStatus}
+          </p>
           <div className="flex flex-wrap items-center gap-3">
             <Link
-              className="inline-block text-sm text-violet-700 underline"
+              className="candidate-history inline-block text-sm text-violet-700 underline"
               to={`${historyUrl}${search}`}
             >
               이력
             </Link>
-            {item.itemKind === 'LINK_RULE' &&
+            {!embeddedId &&
+              item.itemKind === 'LINK_RULE' &&
               ['PENDING', 'HELD'].includes(item.reviewStatus) && (
                 <Link
                   className="inline-block text-sm text-violet-700 underline"
@@ -217,7 +231,7 @@ export default function ProposalDetail() {
                 </Link>
               )}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className={embeddedId ? 'sr-only' : 'flex flex-wrap gap-2'}>
             <StatusBadge>
               {kindLabels[item.itemKind] ?? item.itemKind}
             </StatusBadge>
@@ -234,64 +248,128 @@ export default function ProposalDetail() {
             </StatusBadge>
           </div>
         </header>
-        <ProposalComparison
-          proposal={item}
-          onSelect={
-            unavailable
-              ? undefined
-              : (option) => setSelection({ key: selectionKey, option })
-          }
-        />
-        <section className="rounded-xl border border-slate-200 p-5">
-          <h3 className="font-semibold">AI 신뢰도</h3>
-          <p className="mt-2 text-2xl font-semibold text-violet-700">
-            {confidence(item.aiConfidence)}
-          </p>
-          <p className="mt-2 text-sm text-slate-500">
-            AI가 제안한 신뢰도이며, 정합성 검사 통과나 승인 여부를 뜻하지
-            않습니다.
-          </p>
-          {item.analysisRunId !== null && (
-            <p className="mt-2 text-sm">분석 실행 #{item.analysisRunId}</p>
-          )}
-        </section>
-        {item.itemKind === 'DOCUMENT_LINK' && (
-          <DocumentLinkView proposal={item} />
+        {embeddedId && (
+          <>
+            <strong className="candidate-confidence">
+              신뢰도: {confidence(item.aiConfidence)}
+            </strong>
+            <p className="candidate-apply-note">
+              {item.applyStatus === 'APPLIED'
+                ? '승인된 개정본이 적용되었습니다.'
+                : item.applyStatus === 'FAILED'
+                  ? '적용에 실패했습니다. 아래 실패 사유를 확인해 주세요.'
+                  : '아직 적용된 개정본이 없습니다. 승인 후 적용됩니다.'}
+            </p>
+            <p className="candidate-check-summary">
+              {item.checkRequired === false
+                ? '검사 대상이 아닌 후보입니다.'
+                : item.latestCheck?.status === 'SUCCEEDED' &&
+                    item.latestCheck.totalCount !== null &&
+                    item.latestCheck.matchedCount !== null
+                  ? `검사 요약: 전체 ${item.latestCheck.totalCount}행 · 성공 ${item.latestCheck.matchedCount}행 · 실패 ${item.latestCheck.totalCount - item.latestCheck.matchedCount}행`
+                  : '검사 요약: 완료된 검사 결과가 없습니다.'}
+            </p>
+            <div
+              className="rules-tabs detail-tabs"
+              role="group"
+              aria-label="후보 상세 보기"
+            >
+              {[
+                ['rule', '규칙 내용'],
+                ['check', '검사 결과'],
+                ['evidence', '제안 이유·원본'],
+              ].map(([key, label]) => (
+                <button
+                  type="button"
+                  key={key}
+                  aria-pressed={detailTab === key}
+                  onClick={() => setDetailTab(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </>
         )}
-        <ProposalBundleView proposal={item} />
-        <section className="rounded-xl border border-slate-200 p-5">
-          <h3 className="font-semibold">제안 내용</h3>
-          <RecordView
-            value={
-              isBundle(item)
-                ? withoutBundleKeys(item.payload, BUNDLE_PAYLOAD_KEYS)
-                : item.itemKind === 'DOCUMENT_LINK'
-                  ? withoutBundleKeys(item.payload, DOCUMENT_SHOWN_PAYLOAD)
-                  : item.payload
-            }
+        <div
+          hidden={!!embeddedId && detailTab !== 'rule'}
+          className="space-y-6"
+        >
+          {embeddedId && <RuleContent proposal={item} />}
+          <details open={!embeddedId} className="candidate-definition">
+            <summary>
+              {embeddedId ? '후보 상세 정의·대안 보기' : '상세 정의'}
+            </summary>
+            <ProposalComparison
+              proposal={item}
+              onSelect={
+                unavailable
+                  ? undefined
+                  : (option) => setSelection({ key: selectionKey, option })
+              }
+            />
+            <section
+              className={
+                embeddedId
+                  ? 'sr-only'
+                  : 'rounded-xl border border-slate-200 p-5'
+              }
+            >
+              <h3 className="font-semibold">AI 신뢰도</h3>
+              <p className="mt-2 text-2xl font-semibold text-violet-700">
+                {confidence(item.aiConfidence)}
+              </p>
+              <p className="mt-2 text-sm text-slate-500">
+                AI가 제안한 신뢰도이며, 정합성 검사 통과나 승인 여부를 뜻하지
+                않습니다.
+              </p>
+              {item.analysisRunId !== null && (
+                <p className="mt-2 text-sm">분석 실행 #{item.analysisRunId}</p>
+              )}
+            </section>
+            {item.itemKind === 'DOCUMENT_LINK' && (
+              <DocumentLinkView proposal={item} />
+            )}
+            <ProposalBundleView proposal={item} />
+            <section className="rounded-xl border border-slate-200 p-5">
+              <h3 className="font-semibold">제안 내용</h3>
+              <RecordView
+                value={
+                  isBundle(item)
+                    ? withoutBundleKeys(item.payload, BUNDLE_PAYLOAD_KEYS)
+                    : item.itemKind === 'DOCUMENT_LINK'
+                      ? withoutBundleKeys(item.payload, DOCUMENT_SHOWN_PAYLOAD)
+                      : item.payload
+                }
+              />
+            </section>
+          </details>
+        </div>
+        <div hidden={!!embeddedId && detailTab !== 'evidence'}>
+          <section className="rounded-xl border border-slate-200 p-5">
+            <h3 className="font-semibold">제안 근거</h3>
+            <EvidenceView
+              evidence={
+                isBundle(item)
+                  ? withoutBundleKeys(item.evidence, BUNDLE_EVIDENCE_KEYS)
+                  : item.itemKind === 'DOCUMENT_LINK'
+                    ? withoutBundleKeys(item.evidence, DOCUMENT_SHOWN_EVIDENCE)
+                    : item.evidence
+              }
+            />
+          </section>
+        </div>
+        <div hidden={!!embeddedId && detailTab !== 'check'}>
+          <CheckResults
+            proposal={item}
+            refreshing={refreshing}
+            polling={polling}
+            refreshError={query.error}
+            onRefresh={() => {
+              void refreshProposal()
+            }}
           />
-        </section>
-        <section className="rounded-xl border border-slate-200 p-5">
-          <h3 className="font-semibold">제안 근거</h3>
-          <EvidenceView
-            evidence={
-              isBundle(item)
-                ? withoutBundleKeys(item.evidence, BUNDLE_EVIDENCE_KEYS)
-                : item.itemKind === 'DOCUMENT_LINK'
-                  ? withoutBundleKeys(item.evidence, DOCUMENT_SHOWN_EVIDENCE)
-                  : item.evidence
-            }
-          />
-        </section>
-        <CheckResults
-          proposal={item}
-          refreshing={refreshing}
-          polling={polling}
-          refreshError={query.error}
-          onRefresh={() => {
-            void refreshProposal()
-          }}
-        />
+        </div>
         <ProposalDecision
           key={item.id}
           proposal={item}
@@ -312,6 +390,8 @@ export default function ProposalDetail() {
       </article>
     )
   }
+  if (embeddedId)
+    return <section aria-label="후보 검토 상세">{content}</section>
   return (
     <div className="space-y-5">
       <Link
