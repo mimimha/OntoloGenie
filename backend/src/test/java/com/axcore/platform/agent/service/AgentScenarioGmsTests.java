@@ -199,7 +199,7 @@ class AgentScenarioGmsTests {
                         Clock.systemUTC(),
                         dataAsOfResolver);
         QuestionInterpretation asked =
-                interpreter.interpret(question, Map.of(), pending, null, recent);
+                interpreter.interpret(question, Map.of(), pending, null, recent, null);
         boolean newQuestion =
                 pending != null && !AgentAnswerProcessor.repliesToClarification(asked, pending);
         PendingClarification kept = newQuestion ? null : pending;
