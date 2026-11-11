@@ -12,7 +12,8 @@ def mark_changes(proposals: list[dict], previous: list[dict]) -> dict:
     for p in proposals:
         evidence = p["evidence"]
         if evidence.get("candidateId") not in before:
-            kind = "ADDED"
+            # 직전 분석에서 이미 확정된 모델이라 걸러졌던 후보(새 속성이 붙은 객체 등)는 모델 비교의 CHANGED를 둔다
+            kind = "CHANGED" if evidence.get("changeType") == "CHANGED" else "ADDED"
         elif before[evidence["candidateId"]] == evidence["fingerprint"]:
             kind = "UNCHANGED"
         else:

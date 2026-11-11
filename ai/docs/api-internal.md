@@ -149,6 +149,7 @@ DOCUMENT_LINK `payload`는 `name`, `linkTypeCode`, `documentId`, `spanStart`·`s
 | AI 계정이 고른 표를 못 읽음 | `AI 계정이 이 테이블을 읽을 수 없습니다: mes.employee` (명세 018 E3) |
 | 원천 접속 실패 | `원천에 접속하지 못했습니다 (erp)` · `원천 계정 인증에 실패했습니다 (erp)` 등. SSL 없이 붙어 거절된 경우도 인증 실패. 접속 정보는 넣지 않음 |
 | CSV 폴더·파일 없음 | `CSV 원천 폴더를 읽을 수 없습니다 (erp)` · `CSV 원천에서 이 테이블을 찾을 수 없습니다: erp.item` |
+| AI 재시작(재배포 SIGTERM) 때 진행 중이던 실행 | `AI 서비스가 다시 시작되어 분석이 중단되었습니다. 다시 분석해 주세요` (종료 직전에 보냄) |
 | 그 밖 | `분석 중 오류가 났습니다` (FastAPI 로그에는 오류 종류만 남김) |
 
 LLM 설정이 없거나 LLM 호출이 실패해도 실행은 실패로 끝내지 않고 코드 분석 후보만 `SUCCEEDED`로 보냅니다. `resultSummary`에 아래 값이 함께 갑니다.
