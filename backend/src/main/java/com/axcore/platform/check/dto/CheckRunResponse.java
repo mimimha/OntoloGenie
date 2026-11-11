@@ -25,7 +25,7 @@ public record CheckRunResponse(
     public record DataBasis(List<Resource> resources) {}
 
     /**
-     * @param lastSyncRunId 요청 시점에 이 자원의 마지막 성공 수집 실행. 아직 없으면 null
+     * @param lastSyncRunId 이 자원의 마지막 성공 수집 실행. 성공한 재검증은 실제 검사 시점 기준이며, 수집 이력이 없으면 null
      */
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Resource(long sourceResourceId, Long lastSyncRunId) {}

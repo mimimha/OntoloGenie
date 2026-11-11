@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -156,6 +157,35 @@ public class CheckRunRepository {
                 .optional();
     }
 
+    /** 동일 재검증 범위의 접수와 완료를 직렬화한다. 배치의 데이터 조회 중에는 잠그지 않는다. */
+    public void lockReverificationScope(ReverificationScope scope) {
+        jdbc.sql(
+                        """
+                        select pg_advisory_xact_lock(hashtextextended(
+                            'CHECK_REVERIFY:' || cast(:comparedTo as text) || ':'
+                            || cast(cast(:scope as jsonb) as text), 0))
+                        """)
+                .param("comparedTo", scope.comparedToRunId())
+                .param("scope", scope.scopeJson())
+                .query()
+                .singleRow();
+    }
+
+    /** 재검증은 같은 범위와 비교 실행으로 진행 중인 작업에 합류한다. */
+    public Optional<Long> findActiveReverification(ReverificationScope scope) {
+        return jdbc.sql(
+                        """
+                        select id from check_run
+                        where trigger_kind = 'REVERIFY' and status in ('QUEUED', 'RUNNING')
+                          and compared_to_run_id = :comparedTo and scope = cast(:scope as jsonb)
+                        order by id limit 1
+                        """)
+                .param("comparedTo", scope.comparedToRunId())
+                .param("scope", scope.scopeJson())
+                .query(Long.class)
+                .optional();
+    }
+
     /** 대기 중 검사를 넣는다. 같은 기준의 대기·실행 중 검사가 이미 있으면 넣지 않고 빈 값을 돌려준다. */
     public Optional<Long> insertQueued(NewRun run) {
         return jdbc.sql(
@@ -185,18 +215,39 @@ public class CheckRunRepository {
     /** 실행기(191-2)가 돌릴 검사: 종류, 접수 때 정한 규칙 개정본 목록, 데이터 기준. */
     public Optional<RunToExecute> findToExecute(long id) {
         return jdbc.sql(
-                        "select trigger_kind, scope::text as scope, data_basis::text as data_basis"
+                        "select trigger_kind, scope::text as scope, data_basis::text as data_basis,"
+                                + " compared_to_run_id"
                                 + " from check_run where id = :id")
                 .param("id", id)
-                .query(
-                        (rs, rowNum) ->
-                                new RunToExecute(
-                                        id,
-                                        rs.getString("trigger_kind"),
-                                        ids(rs.getString("scope"), "linkMappingIds"),
-                                        ids(rs.getString("scope"), "issueIds"),
-                                        basis(rs.getString("data_basis"))))
+                .query((rs, rowNum) -> toRunToExecute(id, rs))
                 .optional();
+    }
+
+    private RunToExecute toRunToExecute(long id, ResultSet rs) throws SQLException {
+        String triggerKind = rs.getString("trigger_kind");
+        Map<String, Object> scope = json.readValue(rs.getString("scope"), OBJECT);
+        List<Long> linkMappingIds = ids(scope, "linkMappingIds");
+        List<Long> issueIds = ids(scope, "issueIds");
+        ReverificationScope reverificationScope = null;
+        if ("REVERIFY".equals(triggerKind)) {
+            // jsonb는 키 순서를 바꾼다. 접수 때와 같은 순서로 직렬화해 동일한 work_key를 만든다.
+            Map<String, Object> ordered = new LinkedHashMap<>();
+            ordered.put("kind", scope.get("kind"));
+            ordered.put("linkMappingIds", linkMappingIds);
+            if (scope.containsKey("issueIds")) {
+                ordered.put("issueIds", issueIds);
+            }
+            reverificationScope =
+                    new ReverificationScope(
+                            json.writeValueAsString(ordered), rs.getLong("compared_to_run_id"));
+        }
+        return new RunToExecute(
+                id,
+                triggerKind,
+                linkMappingIds,
+                issueIds,
+                basis(rs.getString("data_basis")),
+                reverificationScope);
     }
 
     /** 검사 행을 잠그고 아직 RUNNING인지 본다. 결과를 저장하는 동안 실패 처리와 겹치지 않게 한다. */
@@ -219,9 +270,25 @@ public class CheckRunRepository {
                 .update();
     }
 
+    public void markReverificationSucceeded(
+            long id, Instant finishedAt, String workKey, String basisJson) {
+        jdbc.sql(
+                        """
+                        update check_run
+                        set status = 'SUCCEEDED', finished_at = :finishedAt,
+                            work_key = :key, data_basis = cast(:basis as jsonb)
+                        where id = :id and status = 'RUNNING'
+                        """)
+                .param("finishedAt", Timestamp.from(finishedAt))
+                .param("key", workKey)
+                .param("basis", basisJson)
+                .param("id", id)
+                .update();
+    }
+
     /** 저장 범위의 ID 목록({@code linkMappingIds}·{@code issueIds}). 없으면 빈 목록. */
-    private List<Long> ids(String scope, String key) {
-        Object ids = json.readValue(scope, OBJECT).get(key);
+    private List<Long> ids(Map<String, Object> scope, String key) {
+        Object ids = scope.get(key);
         List<Long> converted = new ArrayList<>();
         if (ids instanceof List<?> list) {
             for (Object item : list) {
@@ -295,6 +362,8 @@ public class CheckRunRepository {
 
     public record RunState(String triggerKind, String status) {}
 
+    public record ReverificationScope(String scopeJson, long comparedToRunId) {}
+
     /**
      * @param issueIds 재검증할 문제(범위 ISSUES). 다른 범위면 비어 있다
      */
@@ -303,7 +372,8 @@ public class CheckRunRepository {
             String triggerKind,
             List<Long> linkMappingIds,
             List<Long> issueIds,
-            CheckDataBasis dataBasis) {}
+            CheckDataBasis dataBasis,
+            ReverificationScope reverificationScope) {}
 
     public record NewRun(
             String triggerKind,

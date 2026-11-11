@@ -2,8 +2,10 @@ package com.axcore.platform.check.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -14,15 +16,25 @@ import com.axcore.platform.check.CheckRunTestFixtures;
 import com.axcore.platform.check.domain.CheckResult;
 import com.axcore.platform.check.domain.IssueReverification;
 import com.axcore.platform.check.domain.IssueReverification.Verdict;
+import com.axcore.platform.check.dto.CheckRunCreateRequest;
+import com.axcore.platform.check.dto.CheckRunCreateRequest.Scope;
+import com.axcore.platform.check.dto.CheckRunRequestResponse;
+import com.axcore.platform.check.dto.CheckRunResponse;
+import com.axcore.platform.check.dto.CheckRunResponse.Resource;
 import com.axcore.platform.check.repository.CheckResultRepository;
+import com.axcore.platform.check.repository.CheckRunRepository;
 import com.axcore.platform.check.service.CheckRunJob.Outcome;
 import com.axcore.platform.check.service.CheckRunJob.SkippedRule;
+import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.issue.IssueTestFixtures;
 import com.axcore.platform.source.service.CdcReloadJob;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -57,16 +69,21 @@ class CheckRunJobTests {
 
     @Autowired QueuedJobRunner runner;
     @Autowired CheckRunJob job;
+    @Autowired CheckRunRequestService requests;
+    @Autowired CheckRunRepository runs;
     @Autowired CheckResultRepository results;
     @Autowired JdbcClient jdbc;
     @Autowired PlatformTransactionManager transactionManager;
 
     private CheckRunTestFixtures fixtures;
     private long accountId;
+    private long dataSource;
     private long woType;
     private long eqType;
     private long woResource;
     private long eqResource;
+    private long woSync;
+    private long eqSync;
     private long woMapping;
     private long eqMapping;
     private long woEqCode;
@@ -91,15 +108,15 @@ class CheckRunJobTests {
         woEqCode = fixtures.insertProperty(woType, "eq_code");
         fixtures.insertProperty(woType, "status");
         eqCode = fixtures.insertProperty(eqType, "code");
-        long dataSource = fixtures.insertDataSource();
+        dataSource = fixtures.insertDataSource();
         woResource = fixtures.insertResource(dataSource, "mes.work_order");
         eqResource = fixtures.insertResource(dataSource, "mes.equipment");
         woMapping = fixtures.insertObjectMapping(woResource, woType, true);
         eqMapping = fixtures.insertObjectMapping(eqResource, eqType, true);
         linkType = fixtures.insertLinkType(woType, eqType, "MANY_TO_ONE");
         // 수동 검사는 판정(191-3)을 거친다. FULL_COMPARE 표가 한 번은 수집되어 있어야 건너뛰지 않는다.
-        fixtures.insertSync(dataSource, woResource, accountId, "SUCCEEDED", Instant.now());
-        fixtures.insertSync(dataSource, eqResource, accountId, "SUCCEEDED", Instant.now());
+        woSync = fixtures.insertSync(dataSource, woResource, accountId, "SUCCEEDED", Instant.now());
+        eqSync = fixtures.insertSync(dataSource, eqResource, accountId, "SUCCEEDED", Instant.now());
 
         fixtures.insertObject(
                 woMapping, woType, "WO1", "{\"eq_code\": \"E1\", \"status\": \"OPEN\"}", "ACTIVE");
@@ -245,6 +262,164 @@ class CheckRunJobTests {
     }
 
     @Test
+    void joinsQueuedReverificationAndUsesTheLatestCollectedRows() {
+        long previousRule = rule("{}");
+        long detected = queue("MANUAL", previousRule);
+        assertThat(runner.runNext(job)).isTrue();
+        CheckResult original = resultsOf(detected).getFirst();
+        assertThat(original.getMatchedCount()).isEqualTo(1);
+        assertThat(original.getUnmatchedCount()).isEqualTo(1);
+        long issue = issueOn(new IssueTestFixtures(jdbc), detected, previousRule, woObject("WO2"));
+        long activeRule = revise(previousRule);
+        CheckRunCreateRequest request =
+                new CheckRunCreateRequest(
+                        "REVERIFY", new Scope("ISSUES", null, List.of(issue)), detected);
+        LoginAccount admin = new LoginAccount(accountId, "admin", "ADMIN", false);
+
+        CheckRunResponse queued = requests.request(request, admin).run();
+        assertThat(queued.dataBasis().resources()).contains(new Resource(eqResource, eqSync));
+
+        long updatedSync =
+                new TransactionTemplate(transactionManager)
+                        .execute(
+                                tx -> {
+                                    fixtures.insertObject(
+                                            eqMapping,
+                                            eqType,
+                                            "EQ2",
+                                            "{\"code\": \"E2\"}",
+                                            "ACTIVE");
+                                    return fixtures.insertSync(
+                                            dataSource,
+                                            eqResource,
+                                            accountId,
+                                            "SUCCEEDED",
+                                            Instant.now());
+                                });
+
+        CheckRunRequestResponse joined = requests.request(request, admin);
+        assertThat(joined.joined()).isTrue();
+        assertThat(joined.run().id()).isEqualTo(queued.id());
+        assertThat(runner.runNext(job)).isTrue();
+        assertThat(status(queued.id())).isEqualTo("SUCCEEDED");
+        assertThat(resultsOf(queued.id()))
+                .singleElement()
+                .satisfies(
+                        result -> {
+                            assertThat(result.getLinkMappingId()).isEqualTo(activeRule);
+                            assertThat(result.getTotalCount()).isEqualTo(3);
+                            assertThat(result.getMatchedCount()).isEqualTo(2);
+                            assertThat(result.getUnmatchedCount()).isZero();
+                            assertThat(result.getDuplicateCount()).isEqualTo(1);
+                        });
+        ArgumentCaptor<List<IssueReverification>> captured = ArgumentCaptor.captor();
+        verify(reverificationRecorder).record(eq(queued.id()), captured.capture(), any());
+        assertThat(captured.getValue())
+                .extracting(IssueReverification::issueId, IssueReverification::verdict)
+                .containsExactly(tuple(issue, Verdict.PASSED));
+        CheckRunRequestResponse reused = requests.request(request, admin);
+        assertThat(reused.reused()).isTrue();
+        assertThat(reused.run().id()).isEqualTo(queued.id());
+        assertThat(reused.run().dataBasis().resources())
+                .contains(new Resource(eqResource, updatedSync));
+        assertThat(runner.runNext(job)).isFalse();
+    }
+
+    @Test
+    void reusesLatestResultWhenRequestWaitsForCompletion() throws Exception {
+        long rule = rule("{}");
+        long detected =
+                fixtures.insertRun(
+                        "MANUAL", "SUCCEEDED", accountId, "detected-" + UUID.randomUUID());
+        CheckRunCreateRequest request =
+                new CheckRunCreateRequest(
+                        "REVERIFY", new Scope("LINK_MAPPINGS", List.of(rule), null), detected);
+        LoginAccount admin = new LoginAccount(accountId, "admin", "ADMIN", false);
+        long runId = requests.request(request, admin).run().id();
+        markRunning(runId);
+
+        CompletableFuture<CheckRunRequestResponse> waiting =
+                new TransactionTemplate(transactionManager)
+                        .execute(
+                                tx -> {
+                                    runs.lockReverificationScope(
+                                            runs.findToExecute(runId)
+                                                    .orElseThrow()
+                                                    .reverificationScope());
+                                    var response =
+                                            CompletableFuture.supplyAsync(
+                                                    () -> requests.request(request, admin));
+                                    await().pollInSameThread()
+                                            .atMost(Duration.ofSeconds(10))
+                                            .until(
+                                                    () ->
+                                                            jdbc.sql(
+                                                                            """
+                                                    select exists (
+                                                        select 1 from pg_locks
+                                                        where locktype = 'advisory' and not granted
+                                                          and pg_backend_pid() = any(pg_blocking_pids(pid))
+                                                    )
+                                                    """)
+                                                                    .query(Boolean.class)
+                                                                    .single());
+                                    Outcome outcome =
+                                            CompletableFuture.supplyAsync(
+                                                            () -> {
+                                                                fixtures.insertSync(
+                                                                        dataSource,
+                                                                        eqResource,
+                                                                        accountId,
+                                                                        "SUCCEEDED",
+                                                                        Instant.now());
+                                                                return job.run(runId);
+                                                            })
+                                                    .orTimeout(10, TimeUnit.SECONDS)
+                                                    .join();
+                                    job.complete(runId, outcome);
+                                    return response;
+                                });
+
+        CheckRunRequestResponse reused = waiting.get(10, TimeUnit.SECONDS);
+        assertThat(reused.reused()).isTrue();
+        assertThat(reused.run().id()).isEqualTo(runId);
+        assertThat(reused.run().status()).isEqualTo("SUCCEEDED");
+        assertThat(runner.runNext(job)).isFalse();
+    }
+
+    @Test
+    void rollsBackRuleResultsWhenReverificationRecorderFails() {
+        long rule = rule("{}");
+        long detected =
+                fixtures.insertRun(
+                        "MANUAL", "SUCCEEDED", accountId, "detected-" + UUID.randomUUID());
+        long issue = issueOn(new IssueTestFixtures(jdbc), detected, rule, woObject("WO2"));
+        CheckRunCreateRequest request =
+                new CheckRunCreateRequest(
+                        "REVERIFY", new Scope("ISSUES", null, List.of(issue)), detected);
+        LoginAccount admin = new LoginAccount(accountId, "admin", "ADMIN", false);
+        CheckRunResponse queued = requests.request(request, admin).run();
+        doAnswer(
+                        invocation -> {
+                            results.flush();
+                            assertThat(resultsOf(queued.id())).hasSize(1);
+                            throw new IllegalStateException("시험용 재검증 기록 실패");
+                        })
+                .when(reverificationRecorder)
+                .record(eq(queued.id()), any(), any());
+
+        assertThat(runner.runNext(job)).isTrue();
+
+        verify(reverificationRecorder).record(eq(queued.id()), any(), any());
+        assertThat(status(queued.id())).isEqualTo("FAILED");
+        assertThat(resultsOf(queued.id())).isEmpty();
+        CheckRunResponse retry = requests.request(request, admin).run();
+        assertThat(retry.id()).isNotEqualTo(queued.id());
+        assertThat(retry.status()).isEqualTo("QUEUED");
+        assertThat(retry.dataBasis()).isEqualTo(queued.dataBasis());
+    }
+
+    @Test
     void reverificationOfRulesOnlyDoesNotCallTheRecorder() {
         long rule = rule("{}");
         long runId = queue("REVERIFY", rule);
@@ -326,19 +501,17 @@ class CheckRunJobTests {
                         .reduce((a, b) -> a + "," + b)
                         .orElse("");
         String scope = "{\"kind\": \"LINK_MAPPINGS\", \"linkMappingIds\": [" + ids + "]}";
-        String basis =
-                "{\"resources\": [{\"sourceResourceId\": %d, \"lastSuccessfulSyncRunId\": null},"
-                                .formatted(woResource)
-                        + " {\"sourceResourceId\": %d, \"lastSuccessfulSyncRunId\": null}]}"
-                                .formatted(eqResource);
-        return fixtures.insertQueuedRun(triggerKind, scope, basis, accountId);
+        return fixtures.insertQueuedRun(triggerKind, scope, basis(), accountId);
     }
 
     private String basis() {
-        return "{\"resources\": [{\"sourceResourceId\": %d, \"lastSuccessfulSyncRunId\": null},"
-                        .formatted(woResource)
-                + " {\"sourceResourceId\": %d, \"lastSuccessfulSyncRunId\": null}]}"
-                        .formatted(eqResource);
+        return """
+                {"resources": [
+                    {"sourceResourceId": %d, "lastSuccessfulSyncRunId": %d},
+                    {"sourceResourceId": %d, "lastSuccessfulSyncRunId": %d}
+                ]}
+                """
+                .formatted(woResource, woSync, eqResource, eqSync);
     }
 
     /** 같은 코드로 다음 개정본을 만들고 앞 개정본을 폐기한다. 비교 조건은 개정본을 만든 트랜잭션에서 넣는다. */

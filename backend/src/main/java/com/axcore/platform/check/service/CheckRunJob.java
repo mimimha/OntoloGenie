@@ -4,6 +4,8 @@ import com.axcore.platform.batch.domain.QueuedJobType;
 import com.axcore.platform.batch.service.QueuedJobFailure;
 import com.axcore.platform.batch.service.QueuedJobHandler;
 import com.axcore.platform.check.domain.CheckCondition;
+import com.axcore.platform.check.domain.CheckDataBasis;
+import com.axcore.platform.check.domain.CheckDataBasis.ResourceCheckpoint;
 import com.axcore.platform.check.domain.CheckEvaluation;
 import com.axcore.platform.check.domain.CheckEvaluation.MatchedTarget;
 import com.axcore.platform.check.domain.CheckEvaluation.RowResult;
@@ -20,6 +22,7 @@ import com.axcore.platform.check.repository.CheckObjectReader;
 import com.axcore.platform.check.repository.CheckObjectReader.CheckObject;
 import com.axcore.platform.check.repository.CheckResultRepository;
 import com.axcore.platform.check.repository.CheckRunRepository;
+import com.axcore.platform.check.repository.CheckRunRepository.ReverificationScope;
 import com.axcore.platform.check.repository.CheckRunRepository.RunToExecute;
 import com.axcore.platform.check.service.CheckIssueJudge.RulePlan;
 import com.axcore.platform.check.service.CheckIssueJudge.Totals;
@@ -46,6 +49,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * 검사 실행(check_run)을 배치에서 돌린다(S15P31C106-191, FN-CHK-01·02). 수동 검사(MANUAL)·재검증(REVERIFY)·수집 뒤
@@ -93,6 +97,7 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
     private final ObjectProvider<IssueReverificationRecorder> reverificationRecorders;
     private final TransactionTemplate snapshot;
     private final Clock clock;
+    private final JsonMapper json;
 
     public CheckRunJob(
             CheckRunRepository runs,
@@ -105,7 +110,8 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
             IssueRepository issues,
             ObjectProvider<IssueReverificationRecorder> reverificationRecorders,
             PlatformTransactionManager transactionManager,
-            Clock clock) {
+            Clock clock,
+            JsonMapper json) {
         this.runs = runs;
         this.results = results;
         this.linkMappings = linkMappings;
@@ -119,6 +125,7 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         this.snapshot.setReadOnly(true);
         this.snapshot.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
         this.clock = clock;
+        this.json = json;
     }
 
     @Override
@@ -152,6 +159,8 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         if (run.linkMappingIds().isEmpty()) {
             throw new QueuedJobFailure("검사할 규칙이 없습니다.");
         }
+        boolean reverification = "REVERIFY".equals(run.triggerKind());
+        CheckDataBasis basis = reverification ? latestDataBasis(run.dataBasis()) : run.dataBasis();
         Map<Long, LinkMapping> active =
                 linkMappings
                         .findByIdInAndStatus(run.linkMappingIds(), LinkMappingStatus.ACTIVE)
@@ -167,7 +176,7 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                 continue;
             }
             try {
-                LinkMappingRule rule = ruleLoader.load(linkMappingId, run.dataBasis());
+                LinkMappingRule rule = ruleLoader.load(linkMappingId, basis);
                 RulePlan plan = judges ? judge.plan(rule, active.get(linkMappingId)) : null;
                 if (plan != null && plan.skipReason() != null) {
                     skipped.add(new SkippedRule(linkMappingId, plan.skipReason()));
@@ -196,7 +205,7 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                                     .collect(Collectors.joining(", ")));
         }
         List<IssueReverification> reverifications =
-                "REVERIFY".equals(run.triggerKind()) && !run.issueIds().isEmpty()
+                reverification && !run.issueIds().isEmpty()
                         ? reverify(run.issueIds(), active, evaluated)
                         : List.of();
         return new Outcome(
@@ -204,7 +213,17 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                 List.copyOf(evaluated),
                 List.copyOf(skipped),
                 new Totals(),
-                reverifications);
+                reverifications,
+                run.reverificationScope(),
+                basis);
+    }
+
+    private CheckDataBasis latestDataBasis(CheckDataBasis requestedBasis) {
+        List<Long> resourceIds =
+                requestedBasis.resources().stream()
+                        .map(ResourceCheckpoint::sourceResourceId)
+                        .toList();
+        return new CheckDataBasis(runs.loadCheckpoints(resourceIds));
     }
 
     /**
@@ -352,6 +371,10 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
 
     @Override
     public void complete(long jobId, Outcome outcome) {
+        ReverificationScope scope = outcome.reverificationScope();
+        if (scope != null) {
+            runs.lockReverificationScope(scope);
+        }
         if (!runs.lockIfRunning(jobId)) {
             throw new QueuedJobFailure("검사 실행이 이미 끝났거나 정리되어 결과를 저장하지 않았습니다.");
         }
@@ -375,7 +398,18 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                     .orderedStream()
                     .forEach(recorder -> recorder.record(jobId, outcome.reverifications(), now));
         }
-        runs.markSucceeded(jobId, now);
+        if (scope == null) {
+            runs.markSucceeded(jobId, now);
+        } else {
+            String basisJson = json.writeValueAsString(outcome.dataBasis());
+            String workKey =
+                    CheckRunRequestService.workKey(
+                            outcome.triggerKind(),
+                            scope.comparedToRunId(),
+                            scope.scopeJson(),
+                            basisJson);
+            runs.markReverificationSucceeded(jobId, now, workKey, basisJson);
+        }
     }
 
     @Override
@@ -418,7 +452,9 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
             List<RuleEvaluated> evaluated,
             List<SkippedRule> skipped,
             Totals judgment,
-            List<IssueReverification> reverifications) {}
+            List<IssueReverification> reverifications,
+            ReverificationScope reverificationScope,
+            CheckDataBasis dataBasis) {}
 
     /** 규칙 하나의 판정과 저장할 표본. plan은 issue를 만드는 검사(SYNC·MANUAL)에만 있다. */
     public record RuleEvaluated(
