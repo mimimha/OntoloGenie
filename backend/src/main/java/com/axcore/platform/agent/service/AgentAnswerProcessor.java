@@ -31,13 +31,31 @@ public class AgentAnswerProcessor {
     private final TaskExecutor applicationTaskExecutor;
     // 조회 결과의 기준 시점을 구한다(145).
     private final DataAsOfResolver dataAsOfResolver;
+    // 답변이 끝난 뒤 오래된 대화 요약을 갱신한다(333).
+    private final ConversationSummaries summaries;
 
     @TransactionalEventListener
     public void onRequested(AgentAnswerRequested event) {
         try {
-            applicationTaskExecutor.execute(() -> answer(event));
+            applicationTaskExecutor.execute(
+                    () -> {
+                        answer(event);
+                        refreshSummaryLater(event.answerId());
+                    });
         } catch (RuntimeException ex) {
             log.error("Agent 답변 {}을 처리 대기열에 넣지 못했습니다. 처리 중으로 남습니다.", event.answerId(), ex);
+        }
+    }
+
+    /**
+     * 답변을 저장한 뒤 오래된 대화 요약을 따로 대기열에 넣는다(333). 같은 작업에서 이어 하면 요약의 AI 호출 동안 실행기 스레드를 붙잡아, 동시 질문이 많을 때
+     * 뒤에 들어온 다른 답변이 기다린다. 요약을 못 만들어도 답변에는 영향이 없다.
+     */
+    private void refreshSummaryLater(long answerId) {
+        try {
+            applicationTaskExecutor.execute(() -> summaries.refreshAfter(answerId));
+        } catch (RuntimeException ex) {
+            log.warn("답변 {} 뒤 오래된 대화 요약을 대기열에 넣지 못했습니다. 다음 답변 뒤에 다시 만듭니다.", answerId, ex);
         }
     }
 
@@ -59,7 +77,8 @@ public class AgentAnswerProcessor {
                             event.context(),
                             event.pending(),
                             event.previous(),
-                            event.recentTurns());
+                            event.recentTurns(),
+                            summaries.enabled() ? event.olderSummary() : null);
             boolean newQuestionAfterClarification =
                     event.pending() != null && !repliesToClarification(asked, event.pending());
             PendingClarification pending = newQuestionAfterClarification ? null : event.pending();

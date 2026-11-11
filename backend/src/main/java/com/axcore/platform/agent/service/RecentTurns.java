@@ -50,12 +50,33 @@ public class RecentTurns {
 
     /** 대화 메시지를 오래된 것부터 받아 넘길 턴을 오래된 것부터 돌려준다. 처리 중인 답변은 넣지 않는다. */
     public List<ConversationTurn> pick(List<AgentMessage> oldestFirst) {
-        List<ConversationTurn> turns = toTurns(oldestFirst);
-        List<ConversationTurn> picked = new ArrayList<>();
+        return picked(oldestFirst).stream().map(StartedTurn::turn).toList();
+    }
+
+    /**
+     * pick이 원문으로 넘길 턴 중 가장 오래된 턴의 질문 메시지 ID. 오래된 대화 요약은 이 앞의 메시지만 다뤄 원문과 요약 사이에 빠지는 턴이 없게 한다(333).
+     * 원문으로 넘길 턴이 없으면 null이다.
+     */
+    public Long firstPickedMessageId(List<AgentMessage> oldestFirst) {
+        List<StartedTurn> picked = picked(oldestFirst);
+        return picked.isEmpty() ? null : picked.getFirst().questionId();
+    }
+
+    /** 메시지를 턴으로 묶는다. 처리 중인 답변은 넣지 않고, 실패한 답변은 질문만 넣는다. 오래된 대화 요약도 같은 턴을 쓴다(333). */
+    static List<ConversationTurn> turnsOf(List<AgentMessage> oldestFirst) {
+        return toTurns(oldestFirst).stream().map(StartedTurn::turn).toList();
+    }
+
+    /** 턴과 그 턴을 시작한 질문 메시지 ID. */
+    private record StartedTurn(Long questionId, ConversationTurn turn) {}
+
+    private List<StartedTurn> picked(List<AgentMessage> oldestFirst) {
+        List<StartedTurn> turns = toTurns(oldestFirst);
+        List<StartedTurn> picked = new ArrayList<>();
         int used = 0;
         for (int i = turns.size() - 1; i >= 0 && picked.size() < maxTurns; i--) {
-            ConversationTurn turn = turns.get(i);
-            int size = tokens(turn);
+            StartedTurn turn = turns.get(i);
+            int size = tokens(turn.turn());
             if (used + size <= maxTokens) {
                 picked.add(turn);
                 used += size;
@@ -63,9 +84,9 @@ public class RecentTurns {
             }
             if (picked.isEmpty()) {
                 // 가장 최근 턴만으로도 상한을 넘으면 잘라서라도 넣는다. 질문은 최대한 남기고 답변부터 자른다.
-                ConversationTurn cut = cut(turn, maxTokens);
+                ConversationTurn cut = cut(turn.turn(), maxTokens);
                 if (cut != null) {
-                    picked.add(cut);
+                    picked.add(new StartedTurn(turn.questionId(), cut));
                 }
             }
             break;
@@ -74,15 +95,15 @@ public class RecentTurns {
         return picked;
     }
 
-    private static List<ConversationTurn> toTurns(List<AgentMessage> oldestFirst) {
-        List<ConversationTurn> turns = new ArrayList<>();
-        String question = null;
+    private static List<StartedTurn> toTurns(List<AgentMessage> oldestFirst) {
+        List<StartedTurn> turns = new ArrayList<>();
+        AgentMessage question = null;
         for (AgentMessage message : oldestFirst) {
             if (message.getSender() == MessageSender.USER) {
                 if (question != null) {
-                    turns.add(new ConversationTurn(question, null));
+                    turns.add(questionOnly(question));
                 }
-                question = message.getContent();
+                question = message;
                 continue;
             }
             if (question == null || message.getStatus() == MessageStatus.RUNNING) {
@@ -91,13 +112,19 @@ public class RecentTurns {
             // 실패한 답변은 안내 문구뿐이라 질문만 넣는다.
             String answer =
                     message.getStatus() == MessageStatus.SUCCEEDED ? message.getContent() : null;
-            turns.add(new ConversationTurn(question, answer));
+            turns.add(
+                    new StartedTurn(
+                            question.getId(), new ConversationTurn(question.getContent(), answer)));
             question = null;
         }
         if (question != null) {
-            turns.add(new ConversationTurn(question, null));
+            turns.add(questionOnly(question));
         }
         return turns;
+    }
+
+    private static StartedTurn questionOnly(AgentMessage question) {
+        return new StartedTurn(question.getId(), new ConversationTurn(question.getContent(), null));
     }
 
     static int tokens(ConversationTurn turn) {
