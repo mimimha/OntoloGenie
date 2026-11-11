@@ -44,5 +44,3 @@ export const actionStatusLabels: Record<AgentActionStatus, string> = {
 }
 
 export const MES_UNCHANGED_NOTICE = '실제 MES 배정은 바뀌지 않아요'
-
-export const SUGGESTION_HINT = '추천 질문 · 선택하면 질문 입력란에 채워집니다.'

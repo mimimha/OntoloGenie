@@ -1,4 +1,3 @@
-import { SUGGESTION_HINT } from './labels'
 import type { SuggestedQuestion } from './suggestions'
 
 type SuggestedQuestionsProps = {
@@ -15,8 +14,7 @@ function SuggestedQuestions({
 }: SuggestedQuestionsProps) {
   return (
     <div className="mb-2">
-      <p className="text-xs text-slate-500">{SUGGESTION_HINT}</p>
-      <ul aria-label="추천 질문" className="mt-1 flex flex-wrap gap-2">
+      <ul aria-label="추천 질문" className="flex gap-2 overflow-x-auto">
         {questions.map((question) => (
           <li key={question.label}>
             <button
@@ -24,7 +22,7 @@ function SuggestedQuestions({
               title={question.text}
               disabled={disabled}
               onClick={() => onPick(question.text)}
-              className="rounded-full border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:border-slate-900 disabled:opacity-50"
+              className="shrink-0 whitespace-nowrap rounded-full border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:border-slate-900 disabled:opacity-50"
             >
               {question.label}
             </button>
