@@ -59,6 +59,16 @@ MR 검사는 매번 현재 코드의 전체 검사를 수행한다. 결과 재�
 
 캐시는 같은 Jenkins 노드와 기존 신뢰된 팀 MR 실행 환경을 전제로 한다. 서로 다른 노드/도구체인/테스트 실행 옵션을 도입하면 키와 저장소 구성을 함께 수정해야 한다.
 
+### 캐시 도입 전 MR 및 workspace 경로
+
+MR Job이 읽은 develop의 Jenkinsfile과 실제 체크아웃한 MR 커밋은 다를 수 있다. 따라서 캐시 사용 여부는 디스크의 폴더 존재만이 아니라 `HEAD:infra/ci`와 `HEAD:infra/ci/result_cache.py`의 Git 추적 여부로 판단한다. 캐시 도입 전 커밋에서는 캐시 회귀 검사·결과 보관만 대상에서 제외하고 서비스 검사는 유지한다. 분석 Job에서 복원할 수 없으면 기존처럼 전체 커버리지 검사를 실행한다. 캐시를 포함한 커밋인데 회귀 테스트 파일이 누락되면 인프라 검사를 실패시킨다.
+
+인프라 검사와 결과 캐시의 bind mount는 `--mount type=bind`를 사용한다. `-v`와 달리 Docker 호스트에 source가 없으면 폴더를 자동 생성하지 않고 실패한다. Jenkins 쪽 존재 확인과 별도로 호스트 경로 매핑 오류가 root 소유 폴더를 만들지 않게 한다. 기존 MR 검사·분석 컨테이너 수와 재사용 키는 변경하지 않는다.
+
+체크아웃에서 `infra/ci/*: Permission denied`가 발생하면 해당 workspace를 쓰는 실행이 없는 상태에서 인프라 담당자가 호스트의 소유권과 내용을 확인한다. `/home/ubuntu/axcore/jenkins-data/workspace/axcore-mr-check/infra/ci`가 잘못 생성된 빈 폴더라면 그 경로만 `sudo rmdir -- <확인한 경로>`로 제거한 뒤 실패한 MR 검사를 다시 실행한다. 비어 있지 않으면 먼저 내용을 확인하며 workspace 전체·Jenkins 홈·결과 캐시·운영 DB를 일괄 삭제하지 않는다. 이 코드 변경은 이미 발생한 권한 문제를 자동 복구하지 않는다.
+
+재발 방지 회귀 검사는 저장소 루트의 Linux 환경에서 `python -m unittest discover -s infra/tests -p 'test_jenkins_mounts.py' -v`로 실행한다. 실제 Jenkinsfile 셸을 실행하고 Git·Docker 명령은 가짜 CLI로 대체한다. 실제 서버 소유권 확인이나 Jenkins 플러그인 실행 검증을 대신하지 않는다.
+
 ## 자동 실행
 
 - `axcore-deploy`는 활성화 후 Git의 Compose를 검사한다. SonarQube의 CPU·메모리·프로세스 제한 및 재시작 정책 변경을 자동 반영한다. 적용 전에 현재 Compose와 PostgreSQL 덤프를 `/home/ubuntu/axcore/sonarqube/backup.*`에 남긴다. 이미지 버전, DB, 서비스 구성, 볼륨, 네트워크 변경은 별도 운영 작업으로 처리한다.
