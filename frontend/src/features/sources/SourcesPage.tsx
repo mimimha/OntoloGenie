@@ -14,6 +14,7 @@ import ReadableScope from './ReadableScope'
 import SourceFormDialog from './SourceFormDialog'
 import SourceSyncRuns from './SourceSyncRuns'
 import SourceSamples from './SourceSamples'
+import { sourceSyncApi } from './syncApi'
 
 const tabs = [
   { key: 'connection', label: '접속 정보' },
@@ -204,7 +205,11 @@ function SourcesPage() {
           ) : tab === 'scope' ? (
             <ReadableScope key={selected.id} source={selected} />
           ) : tab === 'sync' ? (
-            <SourceSyncRuns key={selected.id} sourceId={selected.id} />
+            <SourceSyncRuns
+              key={selected.id}
+              sourceId={selected.id}
+              api={sourceSyncApi}
+            />
           ) : tab === 'samples' ? (
             <SourceSamples key={selected.id} sourceId={selected.id} />
           ) : (

@@ -9,6 +9,7 @@ import { resetSourceMocks } from '../../mocks/sourceHandlers'
 import { parseEndpoint } from './endpoint'
 import SourcesPage from './SourcesPage'
 import type { ConnectionCheck } from './types'
+import type { SyncRun } from './syncApi'
 
 afterEach(() => {
   resetSourceMocks()
@@ -40,15 +41,98 @@ test('원천 표본 탭은 API·정책 확정 전 준비 중으로 표시한다'
   expect(screen.getByText(/표본 조회는 준비 중/)).toBeInTheDocument()
 })
 
-test('수집 이력 탭에서 미제공 API의 요청을 비활성화하고 안내한다', async () => {
+test('수집 이력 탭에서 실제 어댑터로 073 요청·074 이력·075 결과를 연결한다', async () => {
+  const user = userEvent.setup()
+  const run: SyncRun = {
+    id: 21,
+    syncRunId: 21,
+    dataSourceId: 1,
+    triggerKind: 'MANUAL',
+    status: 'SUCCEEDED',
+    requestedBy: 1,
+    requestedAt: '2026-11-11T01:00:00Z',
+    startedAt: '2026-11-11T01:00:01Z',
+    finishedAt: '2026-11-11T01:00:02Z',
+    errorMessage: null,
+    resources: [
+      {
+        syncRunId: 21,
+        dataSourceId: 1,
+        sourceResourceId: 11,
+        syncStrategy: 'CDC',
+        mode: 'FULL',
+        status: 'SUCCEEDED',
+        fromLsn: null,
+        toLsn: 100,
+        rowsRead: 12,
+        rowsUpserted: 10,
+        rowsDeleted: 2,
+        startedAt: null,
+        finishedAt: null,
+        errorMessage: null,
+      },
+    ],
+  }
+  let requested = false
+  server.use(
+    http.get('/api/v1/sources/1/sync-runs', ({ request }) => {
+      const params = new URL(request.url).searchParams
+      expect(params.get('page')).toBe('0')
+      expect(params.get('size')).toBe('20')
+      expect(params.has('triggerKind')).toBe(false)
+      return HttpResponse.json({
+        data: requested ? [run] : [],
+        meta: {
+          page: 0,
+          size: 20,
+          totalElements: requested ? 1 : 0,
+          hasNext: false,
+        },
+      })
+    }),
+    http.post('/api/v1/sources/1/sync-runs', async ({ request }) => {
+      expect(await request.json()).toEqual({})
+      requested = true
+      return HttpResponse.json(
+        {
+          data: {
+            ...run,
+            status: 'QUEUED',
+            joinedExisting: false,
+            resources: run.resources.map((resource) => ({
+              ...resource,
+              joined: false,
+            })),
+          },
+        },
+        { status: 202 },
+      )
+    }),
+    http.get('/api/v1/sync-runs/21', () => HttpResponse.json({ data: run })),
+  )
   renderSourcesPage('/admin/sources?tab=sync')
   await screen.findByRole('region', { name: '수동 수집' })
   expect(screen.getByRole('button', { name: '수집 이력' })).toHaveAttribute(
     'aria-pressed',
     'true',
   )
-  expect(screen.getByRole('button', { name: '수동 수집 요청' })).toBeDisabled()
-  expect(screen.getByRole('button', { name: '이력 새로고침' })).toBeDisabled()
+  await screen.findByText('수집 실행 이력이 없습니다.')
+  expect(screen.getByRole('button', { name: '수동 수집 요청' })).toBeEnabled()
+  await user.click(screen.getByRole('button', { name: '수동 수집 요청' }))
+  await screen.findByText('수집 실행 #21을 접수했습니다.')
+  await screen.findByRole('button', { name: '수집 실행 #21' })
+  const detail = within(
+    await screen.findByRole('region', { name: '수집 실행 #21 상세' }),
+  )
+  expect(
+    detail.getByText('읽음 12 · 생성·갱신 10 · 삭제 2'),
+  ).toBeInTheDocument()
+  expect(
+    detail.getByText(/erp.item · CDC · 전체 읽기 · 완료/),
+  ).toBeInTheDocument()
+  expect(
+    screen.queryByText('수동 수집과 실행 이력 조회는 아직 사용할 수 없습니다.'),
+  ).not.toBeInTheDocument()
 })
 
 test.each(['CDC', 'FULL_COMPARE'] as const)(
