@@ -107,7 +107,10 @@ public class AgentTargetResolver {
         return new Resolution(List.copyOf(found.values()), issues);
     }
 
-    /** 이름이나 속성 값이 똑같은 것이 하나면 그것, 아니면 이미 대상이던 것이 하나면 그것, 후보가 하나뿐이면 그것을 고른다. */
+    /**
+     * 똑같은 후보({@link #sameNamed}, 단계별로 좁힌 목록)가 하나면 그것, 아니면 그 목록(없으면 검색 결과 전체)에서 이미 대상이던 것이 하나면 그것,
+     * 후보가 하나뿐이면 그것을 고른다.
+     */
     static Optional<ObjectSearchResponse> pick(
             List<ObjectSearchResponse> candidates, Set<String> names, Set<Long> knownIds) {
         List<ObjectSearchResponse> exact = sameNamed(candidates, names);
@@ -144,19 +147,48 @@ public class AgentTargetResolver {
                 .findFirst();
     }
 
+    /**
+     * 이름이 똑같은 후보. 가장 좁은 기준부터 보고, 맞는 것이 있으면 그 기준에서 멈춘다(349). 고르기와 되물을 때 보여 줄 후보 모두 이 목록을 쓴다.
+     *
+     * <ol>
+     *   <li>표시 이름이 같다.
+     *   <li>원천 키가 열 하나이고 그 값이 같다. "P103"은 설비(키 code)와 센서 측정(키 equipment_code·measured_at·metric)에
+     *       똑같이 걸리지만, 키 전체가 P103인 것은 설비뿐이다. 가린 키 값은 null이라 같다고 보지 않는다.
+     *   <li>보이는 속성 값 중 하나가 같다.
+     * </ol>
+     */
     private static List<ObjectSearchResponse> sameNamed(
             List<ObjectSearchResponse> candidates, Set<String> names) {
-        return candidates.stream().filter(candidate -> sameName(candidate, names)).toList();
+        List<ObjectSearchResponse> displayed =
+                candidates.stream().filter(candidate -> sameDisplayName(candidate, names)).toList();
+        if (!displayed.isEmpty()) {
+            return displayed;
+        }
+        List<ObjectSearchResponse> keyed =
+                candidates.stream().filter(candidate -> wholeKey(candidate, names)).toList();
+        if (!keyed.isEmpty()) {
+            return keyed;
+        }
+        return candidates.stream().filter(candidate -> sameProperty(candidate, names)).toList();
+    }
+
+    private static boolean sameDisplayName(ObjectSearchResponse candidate, Set<String> names) {
+        return names.stream().anyMatch(name -> name.equalsIgnoreCase(candidate.displayName()));
+    }
+
+    private static boolean wholeKey(ObjectSearchResponse candidate, Set<String> names) {
+        Map<String, Object> key = candidate.sourceKey();
+        return key != null
+                && key.size() == 1
+                && key.values().iterator().next() instanceof String value
+                && names.stream().anyMatch(value::equalsIgnoreCase);
     }
 
     /**
      * 076은 표시 이름과 식별 속성으로 검색하지만 응답에는 어느 속성이 식별 속성인지 없다. 그래서 보이는 속성 값 전체와 비교한다. 숨긴 속성은 응답에서 이미 가려져
      * 있다.
      */
-    private static boolean sameName(ObjectSearchResponse candidate, Set<String> names) {
-        if (names.stream().anyMatch(name -> name.equalsIgnoreCase(candidate.displayName()))) {
-            return true;
-        }
+    private static boolean sameProperty(ObjectSearchResponse candidate, Set<String> names) {
         if (candidate.properties() == null) {
             return false;
         }

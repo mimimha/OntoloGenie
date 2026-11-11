@@ -18,6 +18,7 @@ import com.axcore.platform.ontology.service.ObjectSearchQuery;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -190,6 +191,152 @@ class AgentTargetResolverTests {
                         tuple(AgentTargetResolver.TARGET_SEARCH, AgentResultCategory.NO_DATA),
                         tuple(AgentTargetResolver.TARGET_SEARCH, AgentResultCategory.FOUND));
         assertThat(session.results()).isEmpty();
+    }
+
+    /** 349: 센서 측정은 여러 열 키(설비 코드·측정 시각·항목)의 한 칸만 같다. 키 전체가 P103인 설비를 고른다. */
+    @Test
+    void picksObjectWholeKeyedByTargetOverOnesSharingOneKeyColumn() {
+        searchReturns(
+                "P103",
+                sourced(2211L, "1라인 3호 프레스", "설비", Map.of("code", "P103")),
+                sensorReading(3788L, "2026-08-03T09:00:00", "temp_c"),
+                sensorReading(3789L, "2026-08-03T09:00:00", "vibration_mm_s"));
+
+        AgentTargetResolver.Resolution resolution =
+                resolver.resolve(List.of("P103"), List.of(), session);
+
+        assertThat(resolution.found())
+                .containsExactly(new AgentReferenceObject(2211L, "1라인 3호 프레스", "설비"));
+        assertThat(resolution.issues()).isEmpty();
+    }
+
+    /** 원천 키 전체가 P103인 객체가 여럿이면 되묻는다. 후보에는 그것들만 보여 주고 센서 측정은 빼낸다. */
+    @Test
+    void asksAgainWithOnlyWholeKeyedCandidatesWhenSeveralExist() {
+        searchReturns(
+                "P103",
+                sourced(2211L, "1라인 3호 프레스", "설비", Map.of("code", "P103")),
+                sensorReading(3788L, "2026-08-03T09:00:00", "temp_c"),
+                sourced(5001L, "P103 금형", "금형", Map.of("die_code", "P103")));
+
+        AgentTargetResolver.Resolution resolution =
+                resolver.resolve(List.of("P103"), List.of(), session);
+
+        assertThat(resolution.found()).isEmpty();
+        assertThat(resolution.issues().getFirst().candidates())
+                .extracting(AgentReferenceObject::id)
+                .containsExactly(2211L, 5001L);
+    }
+
+    /** 표시 이름이 같은 객체가 있으면 그것만 똑같은 후보다. 원천 키 한 칸이 같은 객체보다 먼저다. */
+    @Test
+    void prefersSameDisplayNameOverWholeKey() {
+        searchReturns(
+                "P103",
+                sourced(2211L, "1라인 3호 프레스", "설비", Map.of("code", "P103")),
+                sourced(6001L, "P103", "라인 설비", Map.of("line", "2라인"), Map.of("id", "6001")));
+
+        assertThat(resolver.resolve(List.of("P103"), List.of(), session).found())
+                .extracting(AgentReferenceObject::id)
+                .containsExactly(6001L);
+    }
+
+    /** 라인마다 표시 이름이 P103인 설비가 있으면 되묻는다. 후보는 그 설비들만이다(장민화 리뷰 2). */
+    @Test
+    void asksAgainWithOnlySameDisplayNamedCandidates() {
+        searchReturns(
+                "P103",
+                sourced(6001L, "P103", "설비", Map.of("line", "1라인"), Map.of("id", "6001")),
+                sensorReading(3788L, "2026-08-03T09:00:00", "temp_c"),
+                sourced(6002L, "P103", "설비", Map.of("line", "2라인"), Map.of("id", "6002")));
+
+        assertThat(
+                        resolver.resolve(List.of("P103"), List.of(), session)
+                                .issues()
+                                .getFirst()
+                                .candidates())
+                .extracting(AgentReferenceObject::id)
+                .containsExactly(6001L, 6002L);
+    }
+
+    /** "이미 다룬 객체가 하나면 그것"은 좁힌 후보 안에서 본다. 좁힌 후보 밖의 센서 측정을 다뤘어도 고르지 않는다. */
+    @Test
+    void appliesKnownObjectRuleWithinNarrowedCandidates() {
+        searchReturns(
+                "P103",
+                sourced(6001L, "P103", "설비", Map.of("line", "1라인"), Map.of("id", "6001")),
+                sourced(6002L, "P103", "설비", Map.of("line", "2라인"), Map.of("id", "6002")),
+                sensorReading(3788L, "2026-08-03T09:00:00", "temp_c"));
+
+        assertThat(
+                        resolver.resolve(
+                                        List.of("P103"),
+                                        List.of(AgentReferenceObject.idOnly(6002L)),
+                                        session)
+                                .found())
+                .extracting(AgentReferenceObject::id)
+                .containsExactly(6002L);
+        assertThat(
+                        resolver.resolve(
+                                        List.of("P103"),
+                                        List.of(AgentReferenceObject.idOnly(3788L)),
+                                        session)
+                                .found())
+                .isEmpty();
+    }
+
+    /** 원천 키를 볼 수 없는 사용자에게는 키 값이 가려져(null) 온다. 가린 값으로 고르지 않는다. */
+    @Test
+    void doesNotPickByMaskedKey() {
+        Map<String, Object> masked = new HashMap<>();
+        masked.put("emp_no", null);
+        searchReturns(
+                "P103",
+                sourced(7001L, "작업자 7001", "직원", Map.of("line_code", "P103"), masked),
+                sensorReading(3788L, "2026-08-03T09:00:00", "temp_c"));
+
+        AgentTargetResolver.Resolution resolution =
+                resolver.resolve(List.of("P103"), List.of(), session);
+
+        assertThat(resolution.found()).isEmpty();
+        assertThat(resolution.issues().getFirst().candidates())
+                .as("가린 키는 2단계에 걸리지 않아 속성 값 단계(3단계) 후보로 되묻는다")
+                .extracting(AgentReferenceObject::id)
+                .containsExactly(7001L, 3788L);
+    }
+
+    private static ObjectSearchResponse sensorReading(long id, String measuredAt, String metric) {
+        return sourced(
+                id,
+                "P103 / " + measuredAt + " / " + metric,
+                "설비 센서 측정",
+                Map.of("equipment_code", "P103", "measured_at", measuredAt, "metric", metric));
+    }
+
+    private static ObjectSearchResponse sourced(
+            long id, String name, String typeName, Map<String, Object> sourceKey) {
+        return sourced(id, name, typeName, sourceKey, sourceKey);
+    }
+
+    private static ObjectSearchResponse sourced(
+            long id,
+            String name,
+            String typeName,
+            Map<String, Object> properties,
+            Map<String, Object> sourceKey) {
+        return new ObjectSearchResponse(
+                id,
+                1L,
+                typeName,
+                name,
+                properties,
+                List.of(),
+                ObjectSearchRequest.Status.ACTIVE,
+                9L,
+                sourceKey,
+                null,
+                null,
+                null);
     }
 
     private void searchReturns(String query, ObjectSearchResponse... rows) {
