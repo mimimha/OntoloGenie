@@ -2,9 +2,12 @@ package com.axcore.platform.agent.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -14,6 +17,7 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.ontology.dto.ObjectDetailResponse;
+import com.axcore.platform.ontology.dto.ObjectLinkGroupResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkSearchRequest;
 import com.axcore.platform.ontology.dto.ObjectSearchRequest;
@@ -73,7 +77,7 @@ class AgentObjectDetailToolsTests {
                                 PageRequest.of(0, 20),
                                 2));
 
-        Map<String, Object> reply = tools.objectLinks(301L, 12L, "in");
+        Map<String, Object> reply = tools.objectLinks(301L, 12L, "in", null);
 
         ArgumentCaptor<ObjectLinkSearchRequest> request =
                 ArgumentCaptor.forClass(ObjectLinkSearchRequest.class);
@@ -92,6 +96,105 @@ class AgentObjectDetailToolsTests {
                         Map.of("objectId", 301L),
                         Map.of("objectId", 501L),
                         Map.of("objectId", 502L));
+    }
+
+    /** 관계가 20건을 넘으면 AI가 쪽을 넘겨 본다. 받은 쪽 번호와 다음 쪽 여부를 함께 돌려준다(350). */
+    @Test
+    void readsRequestedPageAndTellsWhetherMoreLinksRemain() {
+        when(objects.links(eq(ASKER), eq(301L), any()))
+                .thenReturn(new PageImpl<>(List.of(link(91L, 501L)), PageRequest.of(2, 20), 65));
+
+        Map<String, Object> reply = tools.objectLinks(301L, 12L, null, 2);
+
+        ArgumentCaptor<ObjectLinkSearchRequest> request =
+                ArgumentCaptor.forClass(ObjectLinkSearchRequest.class);
+        verify(objects).links(eq(ASKER), eq(301L), request.capture());
+        assertThat(request.getValue().page()).isEqualTo(2);
+        assertThat(request.getValue().size()).isEqualTo(AgentQueryTools.MAX_ROWS);
+        Map<?, ?> data = (Map<?, ?>) reply.get("data");
+        assertThat(data.get("total")).isEqualTo(65L);
+        assertThat(data.get("page")).isEqualTo(2);
+        assertThat(data.get("hasNext")).isEqualTo(true);
+        verify(recorder)
+                .record(
+                        eq(ASKER),
+                        eq(11L),
+                        eq(1),
+                        argThat(
+                                input ->
+                                        Integer.valueOf(2).equals(((Map<?, ?>) input).get("page"))),
+                        eq("object_instance"),
+                        eq(301L),
+                        any(),
+                        any());
+    }
+
+    /** 마지막 쪽을 넘겨 links가 비어도 관계는 있으므로 UNLINKED(연결 없음)로 답하지 않는다. */
+    @Test
+    void answersPageBeyondLastAsFoundWithoutLinks() {
+        when(objects.links(eq(ASKER), eq(301L), any()))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(5, 20), 65));
+
+        Map<String, Object> reply = tools.objectLinks(301L, null, null, 5);
+
+        assertThat(reply).containsEntry("resultCategory", "FOUND");
+        Map<?, ?> data = (Map<?, ?>) reply.get("data");
+        assertThat(data.get("links")).isEqualTo(List.of());
+        assertThat(data.get("hasNext")).isEqualTo(false);
+    }
+
+    /** 관계 유형 없이 조회해 한 쪽에 다 담지 못하면 어떤 관계가 몇 건인지 함께 알려 준다. AI가 그 묶음으로 좁혀 다시 부른다(350). */
+    @Test
+    void tellsLinkGroupsWhenUnfilteredLinksDoNotFitOnePage() {
+        List<ObjectLinkGroupResponse> groups =
+                List.of(
+                        new ObjectLinkGroupResponse(
+                                40L,
+                                "센서 측정 → 설비",
+                                ObjectLinkSearchRequest.Direction.IN,
+                                24L,
+                                "센서 측정",
+                                153L),
+                        new ObjectLinkGroupResponse(
+                                38L,
+                                "비가동 → 설비",
+                                ObjectLinkSearchRequest.Direction.IN,
+                                19L,
+                                "비가동",
+                                10L));
+        when(objects.links(eq(ASKER), eq(301L), any()))
+                .thenReturn(new PageImpl<>(List.of(link(91L, 501L)), PageRequest.of(0, 20), 163));
+        when(objects.linkGroups(ASKER, 301L)).thenReturn(groups);
+
+        Map<String, Object> reply = tools.objectLinks(301L, null, null, null);
+
+        assertThat(((Map<?, ?>) reply.get("data")).get("groups")).isEqualTo(groups);
+    }
+
+    /** 관계 유형으로 좁혔거나 한 쪽에 다 담겼으면 묶음 건수를 다시 구하지 않는다. */
+    @Test
+    void omitsLinkGroupsWhenFilteredOrAllLinksFit() {
+        when(objects.links(eq(ASKER), eq(301L), any()))
+                .thenReturn(new PageImpl<>(List.of(link(91L, 501L)), PageRequest.of(0, 20), 163))
+                .thenReturn(new PageImpl<>(List.of(link(92L, 502L)), PageRequest.of(0, 20), 1));
+
+        Map<String, Object> filtered = tools.objectLinks(301L, 40L, "IN", null);
+        Map<String, Object> allFit = tools.objectLinks(301L, null, null, null);
+
+        assertThat(((Map<?, ?>) filtered.get("data")).containsKey("groups")).isFalse();
+        assertThat(((Map<?, ?>) allFit.get("data")).containsKey("groups")).isFalse();
+        verify(objects, never()).linkGroups(any(), anyLong());
+    }
+
+    @Test
+    void recordsCallWithNegativePageAsFailed() {
+        String reply =
+                toolCallback(AgentObjectDetailTools.OBJECT_LINKS)
+                        .call("{\"objectId\": 301, \"page\": -1}");
+
+        assertThat(reply).contains("error");
+        assertThat(session.results().getFirst().succeeded()).isFalse();
+        verifyNoInteractions(objects);
     }
 
     /** AI가 잘못된 값을 보내도 메서드가 불려 조회 기록이 남는다(Spring AI가 인자를 바꾸다 실패하면 기록 없이 끝난다). */
@@ -130,7 +233,8 @@ class AgentObjectDetailToolsTests {
     void answersObjectWithoutVisibleLinksAsUnlinked() {
         when(objects.links(eq(ASKER), eq(301L), any())).thenReturn(new PageImpl<>(List.of()));
 
-        assertThat(tools.objectLinks(301L, null, null)).containsEntry("resultCategory", "UNLINKED");
+        assertThat(tools.objectLinks(301L, null, null, null))
+                .containsEntry("resultCategory", "UNLINKED");
         assertThat(session.results().getFirst().resultCategory())
                 .isEqualTo(AgentResultCategory.UNLINKED);
     }
@@ -140,7 +244,8 @@ class AgentObjectDetailToolsTests {
         when(objects.links(eq(ASKER), eq(999L), any()))
                 .thenThrow(new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, Map.of()));
 
-        assertThat(tools.objectLinks(999L, null, null)).containsEntry("resultCategory", "NO_DATA");
+        assertThat(tools.objectLinks(999L, null, null, null))
+                .containsEntry("resultCategory", "NO_DATA");
     }
 
     private ToolCallback toolCallback(String name) {
