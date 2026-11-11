@@ -24,6 +24,7 @@ public class AgentResponder {
             """
             너는 제조 설비·작업 데이터 조회 Agent다. 사용자의 질문에 한국어로 짧게 답한다.
             - 값은 도구로 조회한 결과에서만 쓴다. 도구 결과에 없는 값은 지어내지 않는다.
+            - 이전 답변의 값은 다시 쓰지 않는다. 같은 정보라도 이번에 도구로 조회한 결과로 답한다.
             - 조회할 도구가 없는 정보는 아직 조회할 수 없는 정보라고 말한다.
             - 답변에 도구, Tool, resultCategory 같은 내부 용어를 쓰지 않는다. 사용자가 쓰는 업무 말로 답한다.
             - resultCategory가 NO_DATA면 해당 데이터가 없다고 말한다.
@@ -32,6 +33,8 @@ public class AgentResponder {
             - 질문한 정보를 조회할 도구가 없으면 다른 도구 결과로 대신 답하지 않고, 아직 조회할 수 없는 정보라고 말한다.
               예: 작업지시 목록을 조회할 도구가 없으면 "작업지시가 없다"가 아니라 "아직 조회할 수 없다"고 말한다.
             - "그럼 지난달은?"처럼 짧은 후속 질문도 "확인한 조건"의 목적·대상·기간으로 답한다. 조건은 이전 질문에서 이어 온 것이다.
+            - "되물은 내용"이 있으면 "사용자의 답"은 되물은 것에 대한 답이다. "두 번째 거"는 되물은 후보 중 두 번째를 고른 말이고,
+              이력의 순서나 개수가 아니다. 고른 대상·조건은 "확인한 조건"에 이미 들어 있으니 "확인한 조건"의 목적·대상·기간으로 처음 물은 것에 답한다.
             - Action 도구(조회 도구가 아닌 것)는 사용자가 그 일을 해 달라고 분명히 요청했을 때만 부른다.
             - Action 입력의 기준 시점(dataAsOf)은 계획에 쓴 조회 결과의 기준 시점 중 가장 이른 값을 쓴다. 조회한 기준 시점이 없을 때만 "현재 시각"을 쓴다.
             - 그 밖에 시각이 필요하면 "현재 시각"을 기준으로 정한다. 사용자가 "지금"이라고 하면 현재 시각이다.
@@ -69,9 +72,15 @@ public class AgentResponder {
         this.reasoningEffort = reasoningEffort;
     }
 
-    /** AI 호출이 실패하거나 답이 비면 예외를 던진다. 부르는 쪽이 답변을 실패로 끝낸다. */
+    /**
+     * AI 호출이 실패하거나 답이 비면 예외를 던진다. 부르는 쪽이 답변을 실패로 끝낸다. askedClarification은 이번 질문이 되묻기에 대한 답일 때 그 되물은
+     * 문장이고, 아니면 null이다. 함께 알려 주지 않으면 "두 번째 거"를 이력의 두 번째로 읽는다(147 로컬 확인).
+     */
     public String answer(
-            String question, QuestionInterpretation interpretation, AgentQuerySession session) {
+            String question,
+            QuestionInterpretation interpretation,
+            AgentQuerySession session,
+            String askedClarification) {
         // 설정이 비어 있으면 추론 옵션을 보내지 않고 모델 기본값에 맡긴다.
         OpenAiChatOptions.Builder options = OpenAiChatOptions.builder();
         if (reasoningEffort != null && !reasoningEffort.isBlank()) {
@@ -81,7 +90,7 @@ public class AgentResponder {
                 ChatClient.create(chatModels.getObject())
                         .prompt()
                         .system(SYSTEM_PROMPT)
-                        .user(userPrompt(question, interpretation))
+                        .user(userPrompt(question, interpretation, askedClarification))
                         .options(options)
                         .tools(
                                 new AgentQueryTools(session, executions),
@@ -95,11 +104,16 @@ public class AgentResponder {
     }
 
     /** AI는 지금 시각을 모르므로 함께 알려 준다. 알려 주지 않으면 "지금"을 날짜의 0시처럼 지어낸다(160 로컬 시험). */
-    private String userPrompt(String question, QuestionInterpretation interpretation) {
+    private String userPrompt(
+            String question, QuestionInterpretation interpretation, String askedClarification) {
+        String asked =
+                askedClarification == null
+                        ? "질문: " + question
+                        : "되물은 내용: " + askedClarification + "\n사용자의 답: " + question;
         return """
                 현재 시각: %s
                 확인한 조건: 목적=%s, 대상=%s, 종류 전체=%s, 기간=%s, 참고 객체 ID=%s, 참고 객체=%s
-                질문: %s"""
+                %s"""
                 .formatted(
                         OffsetDateTime.now(clock.withZone(USER_ZONE))
                                 .truncatedTo(ChronoUnit.SECONDS),
@@ -113,6 +127,6 @@ public class AgentResponder {
                         interpretation.referenceObjects().stream()
                                 .map(AgentReferenceObject::describe)
                                 .toList(),
-                        question);
+                        asked);
     }
 }

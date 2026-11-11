@@ -53,12 +53,16 @@ public class AgentAnswerProcessor {
             }
             QuestionInterpretation asked =
                     interpreter.interpret(
-                            event.question(), event.context(), event.pending(), event.previous());
+                            event.question(),
+                            event.context(),
+                            event.pending(),
+                            event.previous(),
+                            event.recentTurns());
             boolean newQuestionAfterClarification =
                     event.pending() != null && !repliesToClarification(asked, event.pending());
             PendingClarification pending = newQuestionAfterClarification ? null : event.pending();
-            // 되묻기에 답하지 않고 새로 물었으면 그 질문만으로 답한다. 해석할 때 이전 답변의 조건을 받지 않았으므로, 예전 답변의 기간 같은
-            // 조건을 몰래 이어 쓰지 않는다(147).
+            // 되묻기에 답하지 않고 새로 물었으면 그 질문만으로 답한다. 이전 답변의 조건과 합치지 않으므로 서버가 예전 답변의 기간 같은 조건을
+            // 이어 쓰지 않는다(147). 다만 해석 AI는 최근 대화 원문을 보므로, 원문의 조건을 가져오지 않는 것은 해석 지시에 맡긴다.
             QuestionInterpretation interpretation =
                     newQuestionAfterClarification
                             ? asked
@@ -97,7 +101,13 @@ public class AgentAnswerProcessor {
             }
             answers.moveTo(answerId, AnswerStage.QUERYING);
             session.allowObjects(interpretation.referenceObjectIds());
-            String content = responder.answer(event.question(), interpretation, session);
+            // 되묻기에 대한 답이면 무엇을 되물었는지도 알려 "두 번째 거" 같은 답을 질문으로 읽지 않게 한다(147).
+            String content =
+                    responder.answer(
+                            event.question(),
+                            interpretation,
+                            session,
+                            pending == null ? null : pending.askedQuestion());
             session.requireRecorded();
             answers.answerWithResults(
                     answerId, content, interpretation, session.results(), session.actions());
