@@ -80,6 +80,7 @@ class SyncRunRequestApiTests extends SourceApiTestSupport {
                                 jsonPath("$.data.resources[0].sourceResourceId").value(workOrder))
                         .andExpect(jsonPath("$.data.resources[0].joined").value(false))
                         .andExpect(jsonPath("$.data.resources[0].mode").value("FULL"))
+                        .andExpect(jsonPath("$.data.resources[0].syncStrategy").value("CDC"))
                         .andExpect(jsonPath("$.data.resources[0].status").value("QUEUED"))
                         .andExpect(jsonPath("$.data.resources[0].fromLsn").value(nullValue()))
                         .andExpect(jsonPath("$.data.resources[0].toLsn").value(nullValue()))
@@ -245,7 +246,8 @@ class SyncRunRequestApiTests extends SourceApiTestSupport {
 
         send(admin, post(syncRunsPath()), ids(compareTable))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.data.resources[0].sourceResourceId").value(compareTable));
+                .andExpect(jsonPath("$.data.resources[0].sourceResourceId").value(compareTable))
+                .andExpect(jsonPath("$.data.resources[0].syncStrategy").value("FULL_COMPARE"));
 
         recovery("SLOT_LOST");
         send(admin, post(syncRunsPath()), ids(cdcTable))
