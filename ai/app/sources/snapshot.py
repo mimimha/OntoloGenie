@@ -1,8 +1,6 @@
 """분석 대상으로 고른 표·컬럼만 CSV 폴더(`<root>/<원천>/<표>.csv` + `_schema.json`)로 옮긴다.
 
-분석기·제안기가 CSV 폴더를 읽도록 만들어져 있어서, 원천(CSV든 DB든)에서 고른 것만 임시 폴더에 옮겨
-같은 코드로 분석한다. API 명세 018: FastAPI는 고른 컬럼만 읽는다. 기본키는 행을 구별하려고 늘 함께 옮긴다.
-임시 폴더에는 원천 값이 들어 있으므로 분석이 끝나면 지운다(analysis.py).
+원천이 CSV든 DB든 같은 분석 코드를 쓰기 위함이다. 기본키는 행을 구별하려고 늘 함께 옮긴다.
 """
 
 import json
@@ -13,7 +11,6 @@ from app.sources.base import SourceReader
 from app.sources.csv_reader import SCHEMA_FILE
 
 # 표 하나에서 읽는 최대 행 수. AI 계정은 쿼리 30초 제한이 있어 큰 표는 기본키 순서로 앞에서 자른다.
-# 시연 데이터의 가장 큰 표는 600행이라 영향이 없다.
 MAX_ROWS = 100_000
 
 
@@ -35,11 +32,9 @@ def write_snapshot(
     name: str | None = None,
     max_rows: int = MAX_ROWS,
 ) -> SnapshotReport:
-    """columns: {표 이름: 고른 컬럼 목록 또는 None(전체)}. 읽을 수 없는 표는 UnknownTableError.
+    """columns: {표: 고른 컬럼 또는 None(전체)}, metadata: {표: 등록한 원천 설명·동의어·메모}.
 
-    metadata: {표 이름: 플랫폼에 등록한 원천 설명·동의어·메모(source_resource.source_metadata)}.
-    name: 옮길 폴더 이름. 없으면 reader.source_id. 후보의 resourceKey가 이 이름으로 시작한다.
-    고른 컬럼과 기본키만 원천에서 읽는다. 고른 컬럼이 원천에 없으면 빼고 report에 남긴다.
+    name은 옮길 폴더 이름(기본 reader.source_id). 원천에 없는 컬럼은 빼고 report에 남긴다.
     """
     prefix = name or reader.source_id
     folder = Path(root) / prefix
@@ -58,7 +53,7 @@ def write_snapshot(
         if missing:
             report.missing_columns[f"{prefix}.{table}"] = missing
         if not names:
-            # 고른 컬럼이 모두 사라졌고 기본키도 없는 표(뷰 등). 읽을 것이 없어 건너뛰고 missingColumns로만 알린다
+            # 고른 컬럼이 모두 사라졌고 기본키도 없는 표는 건너뛰고 missingColumns로만 알린다
             continue
         rows = reader.read_rows(table, columns=names, limit=max_rows + 1)
         if len(rows) > max_rows:
@@ -81,11 +76,9 @@ def write_snapshot(
 
 
 def add_metadata(table_meta: dict, metadata: dict | None) -> None:
-    """등록한 설명은 원천 주석이 없을 때만 채우고, 동의어·메모는 참고로 덧붙인다.
+    """등록한 설명은 원천 주석이 없을 때만 채우고(주석은 객체·속성 이름으로 쓰인다), 동의어·메모는 덧붙인다.
 
-    형식(docs/api-internal.md 3절): {"description", "synonyms": [...], "memo",
-    "columns": {"<컬럼>": {"description", "synonyms", "memo"}}}. 모르는 키와 고르지 않은 컬럼은 무시한다.
-    원천 주석을 덮어쓰지 않는 이유: 표 주석은 객체 이름, 컬럼 주석은 속성 이름으로 쓰인다.
+    형식은 docs/api-internal.md 3절. 모르는 키와 고르지 않은 컬럼은 무시한다.
     """
     if not isinstance(metadata, dict):
         return

@@ -1,11 +1,6 @@
-"""평가 데이터 전체 점수표 (규칙만, LLM 없음). 발표·회귀 확인용으로 명령 하나로 다시 만든다.
+"""평가 데이터 전체 점수표 (규칙만, LLM 없음). 개발용 A와 data/eval/<이름>/을 분석해 관계·오답·점수 구간을 보인다.
 
-    .\\.venv\\Scripts\\python.exe -m app.validators.scorecard
-    .\\.venv\\Scripts\\python.exe -m app.validators.scorecard --data b8 b9
-
-개발용 A(data/data-v1.0 ↔ gold-v1.0)와 독립 데이터 data/eval/<이름>/(data + answer.json)를 분석해
-찾은 관계(대기 + 보류), 시스템 간 연결, 대기 오답, 보류 오답, 점수 구간별 실제 정답 비율을 보인다.
-LLM(sol) 결과는 크레딧을 쓰므로 여기서 돌리지 않는다(docs/evaluation.md).
+.\\.venv\\Scripts\\python.exe -m app.validators.scorecard [--data b8 b9]
 """
 
 import argparse

@@ -25,8 +25,7 @@ const tabs = [
 
 type TabKey = (typeof tabs)[number]['key']
 
-// 데이터 연결: 원천 목록·등록·수정(S15P31C106-105)과 접속 정보·읽기 범위(S15P31C106-106),
-// 분석 대상 선택(S15P31C106-107)
+// 데이터 연결: 원천 목록·등록·수정, 접속 정보·읽기 범위, 분석 대상 선택
 function SourcesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [registering, setRegistering] = useState(false)
@@ -111,7 +110,7 @@ function SourcesPage() {
                 <td className={`px-4 py-3 ${status.className}`}>
                   {status.label}
                 </td>
-                {/* 수집 상태·시각은 수집 실행 이력(S15P31C106-120)과 연결한다. */}
+                {/* 수집 상태·시각은 수집 실행 이력과 연결한다. */}
                 <td className="px-4 py-3 text-slate-400">-</td>
                 <td className="px-4 py-3 text-slate-400">-</td>
               </tr>

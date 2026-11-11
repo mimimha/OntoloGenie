@@ -1,9 +1,6 @@
-"""00프레스(가상) 3개월 원천 데이터 생성기.
+"""00프레스(가상) 3개월 원천 데이터 생성기 (`python -m app.dataset.build --version v1.0`).
 
-    .\\.venv\\Scripts\\python.exe -m app.dataset.build --version v1.0
-
-출력: data/data-<버전>/(AI 입력: erp·mes 표, 메모), data/gold-<버전>/(정답), data/scenario-<버전>/(S5 원천 수정분).
-기업 예시는 표 구성만 참고했고 값은 모두 새로 만들었다. 같은 시드면 항상 같은 결과가 나온다.
+data-(AI 입력), gold-(정답), scenario-(S5 원천 수정분) 폴더로 낸다. 값은 새로 만들었고 같은 시드면 같은 결과다.
 """
 
 import argparse
@@ -286,7 +283,7 @@ class Calendar:
 class Builder:
     def __init__(self, seed: int):
         self.rng = random.Random(seed)
-        self.time_rng = random.Random(seed + 1)  # 작업 효율(실제 시간)
+        self.time_rng = random.Random(seed + 1)
         self.extra_rng = random.Random(seed + 2)  # 센서·근태
         self.cal = Calendar()
         self.rows: dict[str, list[dict]] = defaultdict(list)
@@ -608,7 +605,7 @@ class Builder:
         ]
         return self.rng.choice(candidates or self.workers)
 
-    # ---------- 3개월 이력: 수주 → 작업지시 → 공정 배정 → 실적·불량·자재 → 출하·검사 ----------
+    # ---------- 3개월 이력 ----------
     def op_minutes(self, product: str, seq: int, qty: int) -> int:
         """준비 시간 + 수량 × 표준 사이클 × 실제 효율(표준보다 8~30% 느림)."""
         _, _, _, _, cycle, setup = next(
@@ -857,10 +854,7 @@ class Builder:
         return ops
 
     def _scenario(self) -> None:
-        """PDF 예시와 같은 상황을 우리 값으로: P103 고장 → 작업지시 A 중단, B는 P101 진행, C는 대기라 납기 위험.
-
-        실적은 교대가 끝날 때 기록한다. 기준 시각(10/30 14:00)에는 주간 실적이 아직 없다.
-        """
+        """P103 고장 → 작업지시 A 중단, B는 P101 진행, C는 대기라 납기 위험. 실적은 교대가 끝날 때 기록한다."""
         prices = {i[0]: i[5] for i in ITEMS}
         self.history_free = dict(self.cal.free)
         self.add(
@@ -911,8 +905,7 @@ class Builder:
             shipped_qty=0,
         )
         d28, d29 = datetime(2026, 10, 28, 8), datetime(2026, 10, 29, 8)
-        # A: 블랭킹 5,000개는 10/28에 끝냄. P103은 10/29 주간 성형 1,800개, 야간 트리밍 1,800개.
-        # 이어서 두 번째 성형 묶음을 찍던 중 10/30 03:10 고장 (끝나지 않은 묶음은 실적이 없다)
+        # A: P103이 두 번째 성형 묶음을 찍던 중 10/30 03:10 고장 (끝나지 않은 묶음은 실적이 없다)
         a_ops = self._book_ops(
             "BRK-210R",
             "P103",
@@ -1229,10 +1222,7 @@ class Builder:
         self.rows["mes.maintenance_order"].sort(key=lambda r: r["mo_no"])
 
     def _sensors(self) -> None:
-        """매일 09시 진동·유압 오일 온도. 고장 전날·당일은 진동이 오른다.
-
-        P103 진동은 10/28부터 상한 4.5를 넘는다(정비 담당 질문 'P103 진동이 언제부터 상한을 넘었어?').
-        """
+        """매일 09시 진동·유압 오일 온도. 고장 전날·당일은 진동이 오르고, P103은 10/28부터 상한 4.5를 넘는다."""
         rng = self.extra_rng
         fixed = {
             "P103": [2.2, 2.4, 2.1, 2.3, 2.6, 3.1, 3.8, 4.9, 5.7],
@@ -1547,10 +1537,7 @@ class Builder:
         return entry_no
 
     def _attendance(self) -> None:
-        """8/3부터 기준 시각까지. 평일은 모두 출근(가끔 연차), 토요일은 실적이 있는 작업자만 특근.
-
-        그날 실적이 있는 작업자는 연차를 쓰지 않는다. 야간조의 근무일은 교대가 시작한 날이다.
-        """
+        """8/3부터 기준 시각까지. 토요일은 실적이 있는 작업자만 특근하고, 야간조 근무일은 교대가 시작한 날이다."""
         rng = self.extra_rng
         workers = {f"GP{int(w['id']):04d}": w for w in self.workers}
         worked = set()
@@ -1565,7 +1552,7 @@ class Builder:
                 if day.weekday() == 6 or (day.weekday() == 5 and not busy):
                     continue
                 if day == NOW.date() and night:
-                    continue  # 오늘 야간은 아직 시작 전
+                    continue
                 leave = not busy and rng.random() < 0.04
                 late = not leave and rng.random() < 0.05
                 overtime = 0 if leave else rng.choice([0, 0, 30, 60, 90])
@@ -1593,7 +1580,7 @@ class Builder:
                 )
             day += timedelta(days=1)
 
-    # ---------- 정합성 검사 사례 (기업 정합성 예시 9건과 같은 종류, 우리 값) ----------
+    # ---------- 정합성 검사 사례 9건 ----------
     def _plant_integrity_cases(self) -> None:
         rng = self.rng
         # 검사 A1: 출하 완료 수주 하나 (수주 상세 출하 수량 = 출하 합)
@@ -1646,7 +1633,7 @@ class Builder:
             [w["wo_no"] for w in missing],
             {w["wo_no"]: w["so_ref"] for w in missing},
         )
-        # 품질 검사: 출하 로트마다 최종 검사. 가장 최근 출하 로트 하나는 검사 기록이 없다(페르소나 질문 '로트 검사 결과')
+        # 출하 로트마다 최종 검사. 가장 최근 출하 로트 하나는 검사 기록이 없다
         for lot, wo_row, finished in self.shipments_for_inspection[:-1]:
             ok = rng.random() > 0.05
             measured = round(
@@ -1671,7 +1658,7 @@ class Builder:
 
     # ---------- 인수인계 메모 표 ----------
     def handover_notes(self, notes) -> None:
-        """메모 원문을 그대로 MES 표에 넣는다. 정답의 원문 위치(start·end)가 content 기준으로 그대로 맞는다."""
+        """메모 원문을 그대로 넣어 정답의 원문 위치(start·end)가 content와 맞게 한다."""
         for doc in sorted(notes, key=lambda d: d.meta["period"]["start"]):
             start = datetime.fromisoformat(doc.meta["period"]["start"])
             self.add(
@@ -1767,7 +1754,7 @@ def write_text(path: Path, text: str) -> None:
 
 
 def write_checksums(folder: Path) -> None:
-    """폴더 안 파일의 SHA-256 목록. 배포 뒤 파일이 바뀌었는지 `sha256sum -c CHECKSUMS.sha256`로 확인한다."""
+    """폴더 안 파일의 SHA-256 목록 (`sha256sum -c CHECKSUMS.sha256`로 확인)."""
     lines = []
     for path in sorted(p for p in folder.rglob("*") if p.is_file()):
         if path.name == "CHECKSUMS.sha256":
@@ -1785,7 +1772,7 @@ RELEASE = "v1.0"
 
 
 def folders_for(root: Path, version: str) -> dict[str, Path]:
-    """원천(data-), 정답(gold-), 시연용 원천 수정분(scenario-)을 다른 폴더에 둔다. 정답은 AI 입력 폴더 밖에 있다."""
+    """원천·정답·시연용 수정분을 다른 폴더에 둔다. 정답은 AI 입력 폴더 밖에 있다."""
     return {
         "sample": root / f"data-{version}",
         "gold": root / f"gold-{version}",

@@ -1,12 +1,6 @@
-"""메모·정비 기록 추출 평가 (FN-AIP-02·03, DAT-05).
+"""메모·정비 기록 추출 평가: 개체(위치 정확·부분 일치), 연결, 부정·추정·시각, 설비 ID 연결만 따로.
 
-    .\\.venv\\Scripts\\python.exe -m app.validators.evaluate_notes results/notes-v1.0.json data/gold-v1.0 data/data-v1.0
-
-- 개체: 같은 문서·유형·원문 위치(start·end가 정확히 같음)면 맞음. 유형별 정밀도·재현율.
-  위치가 겹치기만 하면 맞음으로 보는 부분 일치도 따로 낸다(경계 차이 확인용).
-- 연결: 맞은 개체 중 연결 결과(연결·모호·미연결과 대상)가 정답과 같은 비율.
-- 부정·추정, 시각 절대값: 맞은 개체에서 따로 센다.
-- 설비 ID 연결만 따로: 정답 언급 글자를 그대로 넣었을 때 연결 결과(추출 실력과 분리).
+.\\.venv\\Scripts\\python.exe -m app.validators.evaluate_notes results/notes-v1.0.json data/gold-v1.0 data/data-v1.0
 """
 
 import argparse

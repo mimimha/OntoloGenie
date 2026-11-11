@@ -16,7 +16,7 @@ class EntityType(str, Enum):
 
 
 class Assertion(str, Enum):
-    """원문의 단정 정도. 부정·추정 표현을 확정 사실로 바꾸지 않기 위함 (FN-AIP-02)."""
+    """원문의 단정 정도. 부정·추정 표현을 확정 사실로 바꾸지 않기 위함."""
 
     AFFIRMED = "affirmed"
     NEGATED = "negated"
@@ -24,7 +24,7 @@ class Assertion(str, Enum):
 
 
 class ResolutionStatus(str, Enum):
-    """뽑아낸 이름을 실제 객체(설비 ID 등)에 연결한 결과 (FN-AIP-03)."""
+    """뽑아낸 이름을 실제 객체(설비 ID 등)에 연결한 결과."""
 
     RESOLVED = "resolved"
     AMBIGUOUS = "ambiguous"
@@ -81,7 +81,7 @@ class DocumentExtraction(BaseModel):
     relations: list[ExtractedRelation] = Field(default_factory=list)
 
     def check_against(self, text: str) -> list[str]:
-        """뽑아낸 위치에 실제로 그 글자가 있는지 원문과 대조한다 (Req. 12)."""
+        """뽑아낸 위치에 실제로 그 글자가 있는지 원문과 대조한다."""
         return [
             f"{entity.id}: 위치 {entity.start}~{entity.end}의 원문이 '{entity.text}'와 다릅니다."
             for entity in self.entities

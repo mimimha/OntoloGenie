@@ -1,9 +1,6 @@
-"""FN-AIP-03 설비 ID 연결. 글 속 설비 언급을 설비 마스터의 실제 ID에 잇는다 (코드, LLM 미사용).
+"""글 속 설비 언급(예: '3호기', 'p103')을 라인·호기·종류 단어로 설비 마스터 ID에 잇는다 (LLM 미사용).
 
-설비 이름(예: '1라인 3호 프레스')에서 라인 번호·호기 번호·종류 단어를 읽어 두고,
-언급(예: '3호기', '1-3호', '1라인 3호', 'p103')에서 읽은 값과 맞는 설비를 찾는다.
-- 하나면 연결(resolved), 여럿이면 모두 후보로(ambiguous), 없으면 미연결(unmatched).
-- 작성자 배치 라인 같은 단서는 이유에만 적고 후보를 줄이지 않는다(명세: 후보 여럿이면 모두 제시).
+하나면 resolved, 여럿이면 모두 후보(ambiguous), 없으면 unmatched. 작성자 라인 같은 단서는 이유에만 적는다.
 """
 
 import re
@@ -101,8 +98,7 @@ def resolve(text: str, equipment: list[Equipment]) -> Resolution:
 def looks_like_equipment(text: str, equipment: list[Equipment]) -> bool:
     """설비 코드이거나 라인·호기·설비 종류 단어가 있으면 설비 언급으로 본다.
 
-    '유압 펌프'·'펀치'처럼 설비에 달린 부품 이름은 여기서 걸러진다. '1라인 2호기'처럼
-    목록에 없는 설비도 설비 언급으로는 남기고 연결만 하지 않는다(미연결).
+    부품 이름('유압 펌프')은 걸러지고, 목록에 없는 설비('1라인 2호기')는 언급으로 남기되 연결하지 않는다.
     """
     if text.strip().upper() in {e.code.upper() for e in equipment}:
         return True

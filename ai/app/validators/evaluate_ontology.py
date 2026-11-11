@@ -1,13 +1,8 @@
-"""제안기 후보를 정답셋과 비교한다 (DAT-05). 객체 유형·속성·관계(연결 규칙). 값 단위 연결(id_links) 비교는 아직 없다.
+"""제안기 후보(객체 유형·속성·관계)를 정답셋과 원천 위치 기준으로 비교한다. 이름은 채점하지 않는다.
 
     .\\.venv\\Scripts\\python.exe -m app.validators.evaluate_ontology <후보 JSON> <정답 폴더>
 
-비교 기준은 원천 위치다(이름은 사람이 고칠 수 있어 채점하지 않는다).
-- 객체 유형: OBJECT_MAPPING의 원천 표 ↔ 정답 source_tables. 종류(category) 일치율 따로.
-- 속성: PROPERTY_MAPPING의 원천 컬럼 ↔ 정답 source_column. 자료형·식별자·개인정보 일치를 따로 센다.
-보류(HELD) 후보도 함께 센다(보류는 빠진 것이 아니라 검토 대상이다).
-
---exclude-tables: AI 계정이 읽지 못하는 표(원천 권한 밖)를 정답과 후보 양쪽에서 빼고 센다. 정답 파일은 고치지 않는다.
+--exclude-tables: AI 계정이 읽지 못하는 표를 정답과 후보 양쪽에서 빼고 센다(정답 파일은 그대로).
 """
 
 import argparse
@@ -162,11 +157,7 @@ def _side(value) -> tuple[str, ...]:
 
 
 def evaluate_links(by_kind: dict, onto: dict) -> dict:
-    """컬럼 관계 비교. 같은 컬럼 쌍이면 찾은 것으로 보고, 방향·조건·개수 관계는 따로 센다.
-
-    대기(PENDING) 후보와 보류(HELD) 후보를 나눠 센다. 보류는 검토자에게 넘긴 것이라 정답이면 '보류 정답',
-    정답이 아니면 '보류 오답'이다.
-    """
+    """컬럼 관계 비교. 같은 컬럼 쌍이면 찾은 것으로 보고, 방향·조건·개수와 대기·보류 후보는 따로 센다."""
     table_of = {
         c["payload"]["object_type_code"]: c["payload"]["resource_key"]
         for c in by_kind.get("OBJECT_MAPPING", [])

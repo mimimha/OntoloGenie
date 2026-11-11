@@ -6,7 +6,7 @@ from pydantic import BaseModel, model_validator
 
 
 class TransformOp(str, Enum):
-    """값 변환 허용 목록. 정의 관리 FN-MAP-05(이주헌)의 목록을 따른다. AI 후보도 이 목록 안에서만 만든다."""
+    """값 변환 허용 목록(정의 관리 FN-MAP-05와 같음). AI 후보도 이 목록 안에서만 만든다."""
 
     STRIP_PREFIX = "STRIP_PREFIX"
     ADD_PREFIX = "ADD_PREFIX"
@@ -91,8 +91,7 @@ def apply_step(step: TransformStep, value: str) -> str:
 
 
 def apply_steps(steps: list[TransformStep], value: str | None) -> str | None:
-    """값이 없으면(None) 변환하지 않고 None을 돌려준다. 빈 값을 다른 값과 연결하지 않기 위함.
-    한 단계라도 실패하면 TransformError를 낸다."""
+    """None은 변환하지 않는다(빈 값을 다른 값과 잇지 않게). 한 단계라도 실패하면 TransformError."""
     if value is None:
         return None
     for step in steps:

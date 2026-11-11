@@ -48,7 +48,7 @@ function Candidates({ proposal }: { proposal: Proposal }) {
   )
 }
 
-// 문서 연결(DOCUMENT_LINK) 후보의 원문과 추출 결과 비교(S15P31C106-109)
+// 문서 연결(DOCUMENT_LINK) 후보의 원문과 추출 결과 비교
 function DocumentLinkView({ proposal }: { proposal: Proposal }) {
   const link = readDocumentLink(proposal)
   const undecided = proposal.reviewStatus === 'HELD' || link.holdRecommended

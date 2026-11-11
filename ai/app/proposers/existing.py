@@ -1,25 +1,7 @@
-"""FN-AIP-04 이미 확정된 모델과 같은 후보 거르기 (S15P31C106-281).
+"""이미 확정된 모델(043)과 같은 후보 거르기와 재분석 변경 표시.
 
-분석을 시작할 때 백엔드의 모델 요약(API 043, 객체 유형·속성·관계 유형·ACTIVE 규칙)을 받아,
-검토 단위(105 proposals[])마다 이미 있는 것과 같으면 보내지 않는다. 다시 분석할 때마다 같은
-후보가 검토 목록에 쌓이지 않게 하려는 것이다.
-
-- 객체 유형 묶음: 같은 코드의 객체 유형이 있고 묶음의 속성이 모두 이미 있으면 뺀다. 새 속성이 있으면
-  (예: CDC로 추가된 납기일 컬럼) 그대로 보내고 제안 이유에 이미 있는 유형과 새 속성을 적는다.
-- 연결 규칙 묶음: 같은 코드의 ACTIVE 규칙이 같은 속성끼리 같은 변환(출발·도착 변환 단계, 비교 연산)으로 비교하면 뺀다.
-  속성이나 변환이 다르면(예: 0 채우기 자릿수가 바뀜) 보내고 이유에 적는다. 관계 유형만 같아도 보내고 이유에 적는다.
-- 따로 보내는 관계 유형: 같은 코드가 있으면 뺀다.
-- 문서 연결 등 나머지는 그대로 보낸다.
-
-과거 승인·거절 결정(같은 내용이 거절된 후보 거르기)은 백엔드가 주는 API가 아직 없어 하지 않는다.
-
-재분석 비교(S15P31C106-170, FN-AIP-06): 재분석(REANALYSIS)이면 같은 비교 결과로 evidence.changeType을 붙인다.
-백엔드가 이전 후보를 주는 API가 없어 비교 기준은 '이전 후보'가 아니라 '이미 확정된 모델(043)'이다.
-- ADDED: 모델에 없는 객체 유형·관계 유형·규칙 코드(이미 있는 관계 유형에 새 규칙도 ADDED)
-- CHANGED: 같은 코드가 있는데 새 속성이 생겼거나 규칙의 속성·변환이 다름
-- UNCHANGED: 모델과 같아서 보내지 않음(개수만 결과 요약에)
-- 문서 연결(DOCUMENT_LINK)은 모델 정의가 아니라 비교하지 않는다.
-이전 후보를 받게 되면 app/proposers/reanalysis.py 방식(후보 ID·지문 비교)으로 바꾼다.
+같은 코드의 객체 유형·관계 유형·ACTIVE 규칙이 속성·변환까지 같으면 빼고, 다르면 보내며 이유에 적는다.
+재분석이면 evidence.changeType(ADDED·CHANGED)을 붙인다. 문서 연결은 비교하지 않는다.
 """
 
 import json
@@ -108,9 +90,7 @@ def change_counts(proposals: list[dict], skipped: dict[str, int]) -> dict[str, i
 def filter_existing(
     proposals: list[dict], summary: dict | None, mark_changes: bool = False
 ) -> tuple[list[dict], dict[str, int]]:
-    """(보낼 후보, 종류별로 뺀 수). 모델 요약이 없거나 비면 그대로 돌려준다.
-
-    mark_changes(재분석)이면 비교한 후보에 evidence.changeType(ADDED·CHANGED)을 붙인다."""
+    """(보낼 후보, 종류별로 뺀 수). 모델 요약이 없거나 비면 그대로 돌려준다."""
     skipped = {"objectTypes": 0, "linkRules": 0, "linkTypes": 0}
     if not summary:
         return proposals, skipped
@@ -172,13 +152,10 @@ def _why(decision: dict) -> str:
 def skip_past_decisions(
     proposals: list[dict], decisions: list[dict]
 ) -> tuple[list[dict], dict[str, int]]:
-    """과거 승인·거절 결과 참고 (FN-AIP-04, S15P31C106-281).
+    """018 pastDecisions 참고.
 
-    decisions: 018 pastDecisions `[{candidateId, itemKind, revision, fingerprint 또는 payload, decision, reason}]`.
-    - 같은 내용(지문)이 승인·거절됐으면 다시 내지 않는다.
-    - 문서 연결은 선택지 중 같은 내용이 승인됐으면 다시 내지 않는다.
-    - 같은 내용이 보류됐으면 내되 이유에 이전 보류를 적는다.
-    - 같은 후보 ID가 거절·보류됐는데 내용이 바뀌었으면 내되 이유에 이전 결정을 적는다.
+    같은 내용(지문)이 승인·거절됐으면 빼고(문서 연결은 선택지 중 승인된 것이 있어도 뺀다), 보류됐거나 같은 후보 ID가
+    거절·보류된 뒤 내용이 바뀌었으면 내되 이유에 이전 결정을 적는다.
     """
     skipped = {"APPROVE": 0, "REJECT": 0}
     if not decisions:

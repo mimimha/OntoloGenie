@@ -1,9 +1,8 @@
-"""원천 폴더(CSV)를 읽어 온톨로지 후보 JSON을 만든다. 백엔드 없이 실행한다.
+"""원천 폴더(CSV)로 온톨로지 후보 JSON을 만든다 (백엔드 없이).
 
     .\\.venv\\Scripts\\python.exe -m app.proposers.run data/data-v1.0 --out results/proposals-v1.0.json
 
-후보: 객체 유형·객체 매핑·속성·속성 매핑·관계 유형·연결 규칙. 기본은 코드 규칙만 쓰고,
---llm-credit-limit을 주면 GMS로 표마다 의미 해석을 더한다(크레딧 사용).
+기본은 코드 규칙만 쓰고, --llm-credit-limit을 주면 GMS 의미 해석을 더한다.
 """
 
 import argparse

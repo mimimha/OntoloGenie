@@ -1,8 +1,4 @@
-"""숫자만 우연히 겹친 연결을 잡음으로 내지 않는지, 제안 이유를 사람이 읽는 말로 쓰는지 (2026-11-06).
-
-독립 데이터 B~B7에서 규칙만 쓸 때 틀린 보류가 123건이었다. 대부분 수량·등급·문서 안 줄 번호가
-1, 2, 3… 순번 키와 숫자만 겹친 것이라 검토자가 하나씩 거절해야 했다.
-"""
+"""숫자만 우연히 겹친 연결(수량·등급·줄 번호 ↔ 순번 키)을 내지 않는지, 제안 이유를 읽는 말로 쓰는지."""
 
 from test_links_general import rules, write_table
 
@@ -155,7 +151,7 @@ def test_transform_reason_is_plain_korean(tmp_path):
 
 def test_column_matching_several_sequence_keys_picks_the_tightest(tmp_path):
     # 담당자 번호 1~18은 기술자(18명)·설비(40대)·부품 사용(500건) 번호 모두에 들어간다.
-    # 기술자 번호를 거의 다 쓰는 쪽이 진짜 참조다(B8에서 셋 다 빼 버리던 문제)
+    # 기술자 번호를 거의 다 쓰는 쪽이 진짜 참조다
     for name, n in (("technician", 18), ("asset", 40), ("partUsage", 500)):
         write_table(
             tmp_path,
@@ -242,7 +238,7 @@ def test_transformed_link_is_not_pushed_out_by_raw_sequence_overlap(tmp_path):
 
 
 def test_codes_with_other_letters_matched_only_by_number_are_held(tmp_path):
-    # 불량 코드 S001·P001·C001 중 C001~만 거래처 C001과 글자까지 같고 나머지는 숫자만 같다(B8)
+    # 불량 코드 S001·P001·C001 중 C001~만 거래처 C001과 글자까지 같고 나머지는 숫자만 같다
     defects = [f"{k}{i:03d}" for k in "SCP" for i in range(1, 9)]
     write_table(
         tmp_path,
@@ -271,8 +267,7 @@ def test_codes_with_other_letters_matched_only_by_number_are_held(tmp_path):
 
 
 def test_few_number_values_are_dropped_and_dated_document_numbers_are_held(tmp_path):
-    # B9: 처방 버전(1·2)이 칭량 ID(1, 2, 3…)에 닿거나, 연도·순번 문서 번호(WO-25-0001 ↔ QI-25-00001)가
-    # 숫자만 같아 이어지던 것: 순번 키는 내지 않고, 문서 번호는 보류
+    # 처방 버전(1·2) ↔ 칭량 ID 같은 순번 키는 내지 않고, 숫자만 같은 연도·순번 문서 번호는 보류
     write_table(
         tmp_path,
         "erp",
@@ -303,7 +298,7 @@ def test_few_number_values_are_dropped_and_dated_document_numbers_are_held(tmp_p
 
 
 def test_few_codes_touching_small_part_of_master_are_held(tmp_path):
-    # B6: 판매 조직(1000·1100·2000)이 플랜트 코드 60개 중 일부와 글자까지 같지만 다른 코드다
+    # 판매 조직(1000·1100·2000)이 플랜트 코드 60개 중 일부와 글자까지 같지만 다른 코드다
     write_table(
         tmp_path,
         "sap",

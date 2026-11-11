@@ -1,10 +1,6 @@
-"""후보를 API 명세 105(분석 결과 내부 저장)의 proposals[] 형식으로 바꾼다. JSON 필드는 camelCase.
+"""후보를 API 105 proposals[] 형식(camelCase)으로 바꾼다.
 
-105가 저장하는 칸은 itemKind·payload·evidence·aiConfidence·options뿐이다. 그래서 제안 이유, 근거 목록,
-신뢰도 내역, 보류 권고처럼 검토 화면에 필요한 나머지는 evidence 객체 안에 넣는다.
-
-제안기 안에서는 컬럼 하나하나를 후보로 다루지만(채점·근거 확인 단위), 105로 보낼 때는
-to_api_proposals가 표 하나·관계 하나 단위로 묶는다. 관리자가 판단하는 단위가 객체와 관계이기 때문이다.
+105에 칸이 없는 제안 이유·근거·신뢰도 내역·보류 권고는 evidence에 넣고, 후보는 표·관계 단위로 묶는다.
 """
 
 import hashlib
@@ -101,8 +97,7 @@ def _held(*candidates: Candidate) -> tuple[bool, str | None]:
 
 
 def _part_evidence(api: dict) -> dict:
-    """묶음 안 구성 후보의 근거. 지문·후보 ID처럼 묶음 단위로 다시 정하는 값만 뺀다.
-    보류 권고·이유·신뢰도 상한은 남겨 어느 속성 때문에 묶음이 보류 권고인지 보이게 한다."""
+    """묶음 안 구성 후보의 근거. 묶음 단위로 다시 정하는 지문·후보 ID만 빼고 보류 권고·이유·상한은 남긴다."""
     keep = (
         "title",
         "reason",
@@ -164,12 +159,9 @@ def _link_bundle(rule: Candidate, link_type: Candidate) -> dict:
 
 
 def to_api_proposals(candidates: list[Candidate]) -> list[dict]:
-    """후보 목록 → 105 proposals[]. 관리자가 판단하는 단위로 묶는다.
+    """후보 목록 → 105 proposals[]. 표 하나는 OBJECT_TYPE, 관계 하나는 LINK_RULE 한 건으로 묶는다.
 
-    - 객체 유형 + 객체 매핑 + 속성 + 속성 매핑 → OBJECT_TYPE 한 건 (payload.objectMapping·properties)
-    - 관계 유형 + 그 연결 규칙 → LINK_RULE 한 건 (payload.linkType)
-    - 연결 규칙이 없는 관계 유형(문서 연결용, 규칙으로 못 쓰는 관계)과 문서 연결은 그대로 한 건씩
-    묶을 짝이 없는 구성 후보(예: 객체 유형 후보가 없는 속성)는 원래 종류 그대로 따로 보낸다.
+    규칙 없는 관계 유형·문서 연결과 묶을 짝이 없는 구성 후보는 원래 종류 그대로 따로 보낸다.
     """
     groups: dict[str, list[Candidate]] = {}
     for c in candidates:

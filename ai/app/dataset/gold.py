@@ -1,8 +1,4 @@
-"""정답셋. 형식은 docs/dataset.md 6절. 아래 두 파일도 함께 만든다.
-
-- integrity_checks.json: 정합성 검사 9건의 기대 판정과 근거 값
-- scenario_answers.json: 시나리오·페르소나 질문의 기대 답과 계산 근거
-"""
+"""정답셋(형식은 docs/dataset.md 6절)과 정합성 검사·시나리오 기대 답(integrity_checks·scenario_answers.json)."""
 
 import json
 import math
@@ -176,7 +172,7 @@ def _side(columns: tuple[str, ...]):
 
 
 def ontology() -> dict:
-    """원천 표 한 행 = 객체 하나(FN-MAP-02). 모든 컬럼이 속성이고, 관계 조건은 속성끼리 비교한다(ERD link_mapping_condition)."""
+    """원천 표 한 행 = 객체 하나. 모든 컬럼이 속성이고, 관계 조건은 속성끼리 비교한다."""
     tables = [t for t in schema.TABLES if t.key not in SKIP]
     reference_columns = {c for rel in schema.RELATIONS for c in rel.source}
     object_types, properties, links = [], [], []
@@ -721,8 +717,7 @@ def note_gold(rec: Recorder, onto: dict, notes, maint_docs) -> list[dict]:
                     )
                 )
     group_links(rec, "R-ALIAS", entries)
-    # 메모 객체는 mes.handover_note 표에서 나온다. 작성자는 컬럼 관계(author_id → worker.id)다.
-    # 아래는 메모 본문에서만 확인되는 관계라 비정형 추출(FN-AIP-02·03)로 찾아야 한다.
+    # 아래는 메모 본문에서만 확인되는 관계라 비정형 추출로 찾아야 한다(작성자는 컬럼 관계).
     for code, target, rule, level in [
         ("mentions_equipment", "Equipment", "R-ALIAS", "must"),
         ("refers_maintenance", "MaintenanceOrder", None, "must"),

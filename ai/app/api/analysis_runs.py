@@ -1,7 +1,6 @@
-"""분석 시작 알림 수신(API 018 하단, POST /internal/v1/analysis-runs).
+"""분석 시작 알림 수신(API 018, POST /internal/v1/analysis-runs). 바로 202로 답하고 분석은 백그라운드에서 돌린다.
 
-백엔드가 018로 실행을 만든 직후 부른다. 바로 202 {runId, accepted}로 답하고 분석은 백그라운드에서 돌린다.
-내부망에서만 받으며 X-Internal-Token이 AI_ONTOLOGY_INTERNAL_TOKEN과 같아야 한다. 설정값이 비어 있으면 모두 거절한다.
+X-Internal-Token이 AI_ONTOLOGY_INTERNAL_TOKEN과 같아야 하고, 설정값이 비어 있으면 모두 거절한다.
 """
 
 import hmac

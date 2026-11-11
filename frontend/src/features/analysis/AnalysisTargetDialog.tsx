@@ -240,7 +240,7 @@ type Props = {
   onRegister: () => void
 }
 
-// 분석 대상 선택(S15P31C106-107): 원천의 표·컬럼을 골라 018로 분석을 맡긴다.
+// 분석 대상 선택: 원천의 표·컬럼을 골라 018로 분석을 맡긴다.
 function AnalysisTargetDialog({
   runKind = 'INITIAL',
   initialSourceId,

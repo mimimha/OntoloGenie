@@ -111,9 +111,7 @@ def test_proposals_cover_tables_and_columns_with_rule_method(data, result):
         kinds["OBJECT_TYPE"] == kinds["OBJECT_MAPPING"] == 31
     )  # 변경 이력 표 2개는 객체가 아님
     assert all(c["method"] == "rule" for c in result["candidates"])
-    # 점수는 근거별 실제 정답 비율(최대 0.95)
     assert all(0 < c["ai_confidence"] <= 1.0 for c in result["candidates"])
-    # 보류 권고는 '높음'으로 보이지 않는다(보류 사유별 상한 0.6 이하)
     assert all(
         c["ai_confidence"] <= 0.6
         for c in result["candidates"]
@@ -156,13 +154,12 @@ def test_link_rules_cover_composite_conditional_and_hold_number_only(result):
 
 def test_link_rules_cover_name_key_category_and_via(result):
     rules = _rules(result)
-    # 부서 이름은 값 모양이 제각각이어도 다른 유일 키로 본다. 값이 1종뿐이라 보류
+    # 부서 이름은 다른 유일 키. 값이 1종뿐이라 보류
     buyer = rules["purchase_order_buyer_to_department"]
     assert (
         buyer["payload"]["conditions"][0]["target_property"] == "DEPARTMENT.dept_name"
     )
     assert buyer["review_status"] == "HELD"
-    # 이름에 표·컬럼 이름이 다 들어간 종류 관계: 도착이 키가 아니어도 잇는다
     kind = rules["routing_equipment_kind_to_equipment"]
     assert kind["payload"]["conditions"][0]["target_property"] == "EQUIPMENT.kind"
     types = {
@@ -170,7 +167,7 @@ def test_link_rules_cover_name_key_category_and_via(result):
         for c in result["candidates"]
         if c["payload"]["kind"] == "LINK_TYPE"
     }
-    # 작업지시를 거쳐야 이어지는 관계는 연결 규칙(두 객체 속성 비교)으로 표현할 수 없어 관계 유형만 보류로 낸다
+    # 거쳐 가는 관계는 연결 규칙 없이 관계 유형만 보류로 낸다
     via = "production_result_wo_no_op_seq_to_routing_via_work_order"
     assert via not in rules
     assert types[via]["review_status"] == "HELD"
@@ -219,7 +216,6 @@ def test_llm_semantics_with_mock_merges_and_holds(data, result):
         if c["candidate_id"].startswith("P-mes.worker.")
     }
     assert "name" in worker_names
-    # 개인정보 컬럼 값은 프롬프트에 들어가지 않는다
     import pandas as pd
 
     names = pd.read_csv(data / "data-t3" / "mes" / "worker.csv", dtype=str)["name"]
@@ -286,14 +282,13 @@ def test_llm_semantics_with_mock_merges_and_holds(data, result):
     assert (
         worker.llm_judgement and "기준 정보" in worker.llm_judgement
     )  # 표 종류는 한글로
-    # LLM이 표 종류를 바꾸면 제안 이유의 표 종류도 바꾸고 규칙 판단은 괄호에 남긴다
+    # LLM이 표 종류를 바꾸면 이유도 바꾸고 규칙 판단은 괄호에 남긴다
     defect, defect_rule = by_id["OT-mes.defect"], by_id_rule["OT-mes.defect"]
     if defect_rule.payload.category != "transaction":
         assert defect.payload.category == "transaction"
         assert "분류: 거래 문서 (AI 판단, 규칙 판단" in defect.reason
-    # LLM 동의는 점수에 더하지 않는다
     assert worker.ai_confidence == by_id_rule["OT-mes.worker"].ai_confidence
-    # 보류 권고 규칙을 LLM이 맞다고 보면 보류는 그대로, 상한만 실측(22개 중 19개)대로 0.6
+    # 보류 권고 규칙을 LLM이 맞다고 보면 보류는 그대로, 상한만 0.6
     agreed, agreed_rule = (
         by_id["LR-worker_id_to_employee"],
         by_id_rule["LR-worker_id_to_employee"],
@@ -301,7 +296,7 @@ def test_llm_semantics_with_mock_merges_and_holds(data, result):
     assert agreed_rule.review_status == "HELD" and agreed_rule.ai_confidence < 0.6
     assert agreed.review_status == "HELD" and agreed.ai_confidence == 0.6
     assert "LLM이 업무상 맞다고 봄" in agreed.confidence.cap_reason
-    # 규칙이 이미 보류로 둔 관계를 LLM도 맞지 않다고 보면 관계 유형·규칙 모두 내보내지 않는다
+    # 규칙 보류 + LLM 반대면 내보내지 않는다
     assert by_id_rule["LR-defect_op_seq_to_department"].review_status == "HELD"
     assert "LR-defect_op_seq_to_department" not in by_id
     assert "LT-defect_op_seq_to_department" not in by_id
@@ -321,12 +316,10 @@ def test_api_format_is_camel_case(result):
 
     api = [to_api(Candidate.model_validate(c)) for c in result["candidates"][:50]]
     assert not has_snake_keys(api)
-    # 105 proposals[] 형식: 저장 칸 다섯 개만 쓰고 나머지는 evidence 안에 둔다
     assert set(api[0]) == {"itemKind", "payload", "evidence", "aiConfidence", "options"}
     assert {"reason", "items", "holdRecommended"} <= set(api[0]["evidence"])
     types = [a["payload"]["code"] for a in api if a["itemKind"] == "OBJECT_TYPE"]
     assert types and all(t == t.upper() for t in types)  # 객체 유형 코드는 대문자
-    # 속성 매핑도 객체 매핑과 같은 resourceKey(source_resource.resource_key 형식)로 표를 가리킨다
     tables = {
         a["payload"]["objectTypeCode"]: a["payload"]["resourceKey"]
         for a in api
@@ -351,11 +344,9 @@ def _bundled(result):
 def test_bundles_one_table_into_one_object_proposal_without_losing_columns(result):
     kept, api = _bundled(result)
     kinds = {a["itemKind"] for a in api}
-    # 컬럼 단위 후보는 객체 후보 안으로 들어가 따로 나가지 않는다
     assert not kinds & {"PROPERTY", "OBJECT_MAPPING", "PROPERTY_MAPPING"}
     objects = {a["payload"]["code"]: a for a in api if a["itemKind"] == "OBJECT_TYPE"}
     assert len(objects) == sum(c.payload.kind.value == "OBJECT_TYPE" for c in kept)
-    # 속성·속성 매핑 하나도 빠지지 않고, 각 속성에 원천 컬럼이 붙는다
     props = [c for c in kept if c.payload.kind.value == "PROPERTY"]
     bundled = [
         (code, p["code"])
@@ -372,7 +363,6 @@ def test_bundles_one_table_into_one_object_proposal_without_losing_columns(resul
         for prop in payload["properties"]:
             assert prop["sourceColumn"]["resourceKey"] == mapping["resourceKey"]
             assert "objectTypeCode" not in prop
-        # 속성마다 근거가 남아 원천에서 다시 확인한 값을 볼 수 있다
         assert [e["code"] for e in evidence["properties"]] == [
             p["code"] for p in payload["properties"]
         ]
@@ -390,22 +380,20 @@ def test_bundles_link_type_and_its_rule_into_one_relation_proposal(result):
     for a in bundled:
         link_type = a["payload"]["linkType"]
         assert link_type["code"] == a["payload"]["linkTypeCode"]
-        # 이름·설명은 화면용 한국어로 바뀐다(readable). 나머지는 관계 유형 후보 그대로
+        # 이름·설명만 readable이 바꾼다
         original = to_api(types[link_type["code"]])["payload"]
         assert {
             k: v for k, v in link_type.items() if k not in ("name", "description")
         } == {k: v for k, v in original.items() if k not in ("name", "description")}
-    # 규칙이 없는 관계 유형만 따로 남는다
     alone = {a["payload"]["code"] for a in api if a["itemKind"] == "LINK_TYPE"}
     assert alone == set(types) - {r.payload.link_type_code for r in rules}
-    # 묶어도 보류 권고 수는 관계 기준으로 그대로다
     held_rules = sum(
         r.review_status == "HELD"
         or types[r.payload.link_type_code].review_status == "HELD"
         for r in rules
     )
     assert sum(a["evidence"]["holdRecommended"] for a in bundled) == held_rules
-    assert len(api) < len(kept) / 3  # 검토 건수가 크게 준다
+    assert len(api) < len(kept) / 3
 
 
 def cand(cid, payload, **extra):
@@ -685,7 +673,7 @@ def _write_source(folder, tables):
 
 
 def test_serial_numbers_with_different_prefixes_are_held_not_pending(tmp_path):
-    """B2(2026-11-04): 'L01' → 'EQ-001', '거래처 01' → '설비 01'처럼 일련번호만 같은 값은 대기로 내지 않는다."""
+    """'L01' → 'EQ-001'처럼 일련번호만 같은 값은 대기로 내지 않는다."""
     _write_source(
         tmp_path / "erp",
         {
@@ -726,7 +714,6 @@ def test_serial_numbers_with_different_prefixes_are_held_not_pending(tmp_path):
         for c in result["candidates"]
         if c["payload"]["kind"] == "LINK_TYPE" and c["review_status"] == "PENDING"
     }
-    # 진짜 관계(불량 기록의 설비 → 설비)만 대기로 남는다
     assert pending == {("mes.defect_log.eqp_id", "mes.equipment.eqp_id")}
 
 
@@ -781,7 +768,7 @@ def test_llm_negative_on_pending_link_only_holds_it(data, result):
 
 
 def test_map_value_table_keeps_source_values_as_is():
-    # 대응표 키는 원천 값이다. camelCase로 바꾸면 반영 뒤 변환에서 '대응표에 없는 값'이 된다
+    # 대응표 키를 camelCase로 바꾸면 변환에서 '대응표에 없는 값'이 된다
     from app.proposers.api_format import camel_keys, has_snake_keys
 
     step = {

@@ -1,4 +1,4 @@
-"""같은 메모가 같은 대상을 여러 번 적으면 문서 연결은 한 건 (S15P31C106-327)."""
+"""같은 메모가 같은 대상을 여러 번 적으면 문서 연결은 한 건."""
 
 from app.extractors.notes import _one_per_target
 from app.models.candidate import Candidate, DocumentLinkPayload, Evidence
@@ -27,7 +27,7 @@ def link(doc, ref, status="PENDING", start=0):
 def test_same_memo_and_target_is_one_link_but_ambiguous_mentions_stay():
     first = link("HN-1", "mes.equipment:P103", "PENDING", 0)
     again = link("HN-1", "mes.equipment:P103", "PENDING", 20)
-    # '3호기'(후보 P103·P104)는 첫 후보가 P103이어도 P104일 수 있어 남긴다
+    # 후보가 여럿인 언급('3호기')은 남긴다
     ambiguous = link("HN-1", "mes.equipment:P103", "HELD", 40)
     other = link("HN-2", "mes.equipment:P103")
 

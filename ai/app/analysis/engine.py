@@ -1,11 +1,6 @@
 """분석 엔진. runner가 원천 접속과 고른 표 읽기 권한을 확인한 뒤 analyze()를 부른다.
 
-고른 표·컬럼만 임시 폴더로 옮겨(기본키는 늘 함께) 구조·분포를 분석하고 후보를 만든다. LLM 설정이 있으면
-표 의미 해석을 더하고, 없거나 실패해도 코드 분석 후보는 그대로 낸다. 메모·정비 기록 표를 고르면 글 속
-언급을 DOCUMENT_LINK 후보로 더한다(LLM이 없으면 원천 키 언급만). 결과는 105 SUCCEEDED 본문의
-resultSummary·proposals가 된다. 실패 사유는 AnalysisFailure로 던지면 105 FAILED의 errorMessage로 간다.
-
-아직 하지 않는 것: 043 모델 요약·과거 결정 반영(#168), 재분석 비교(#170).
+LLM이 없거나 실패해도 코드 분석 후보는 그대로 낸다. AnalysisFailure의 사유는 105 FAILED의 errorMessage가 된다.
 """
 
 import shutil
@@ -41,7 +36,7 @@ from app.sources.csv_reader import CsvSourceReader
 from app.sources.postgres_reader import PostgresSourceReader, SourceError
 from app.sources.snapshot import SnapshotReport, write_snapshot
 
-# 글을 읽어 DOCUMENT_LINK 후보를 만드는 표 (FN-AIP-02·03)
+# 글을 읽어 DOCUMENT_LINK 후보를 만드는 표
 NOTE_TABLES = {"mes.handover_note", "mes.maintenance_order"}
 
 
@@ -66,7 +61,7 @@ def get_llm() -> LLMClient | None:
 
 
 def get_model_summary() -> tuple[dict | None, str | None]:
-    """(모델 요약, 못 받은 이유). 내부 토큰이 없으면(로컬·테스트) 부르지 않는다. 못 받아도 분석은 그대로 한다."""
+    """(모델 요약, 못 받은 이유). 내부 토큰이 없으면 부르지 않고, 못 받아도 분석은 한다."""
     settings = get_settings()
     if not settings.internal_token:
         return None, "내부 토큰 없음"
@@ -91,13 +86,12 @@ def analyze(
     try:
         report = _snapshot(request, sources, workdir)
         result = _analyze(request, workdir, llm, get_settings().llm_credit_limit)
-        # 이미 확정된 모델과 같은 후보는 보내지 않는다(S15P31C106-281).
-        # 재분석이면 같은 비교로 추가·변경·유지를 표시한다(S15P31C106-170, 기준: 모델 요약 043)
+        # 확정 모델(043)과 같은 후보는 빼고, 재분석이면 추가·변경·유지를 표시한다
         reanalysis = request.run_kind == "REANALYSIS"
         result.proposals, skipped = filter_existing(
             result.proposals, model_summary, mark_changes=reanalysis
         )
-        # 과거 승인·거절 결과 참고(S15P31C106-281). 백엔드가 pastDecisions를 보내지 않으면 그대로
+        # pastDecisions가 없으면 그대로 둔다
         result.proposals, decided = skip_past_decisions(
             result.proposals,
             [d.model_dump(by_alias=True) for d in request.past_decisions],
@@ -109,7 +103,7 @@ def analyze(
         )
         result.summary["existingSkipped"] = skipped
         result.summary["modelSummarySkipReason"] = summary_skip
-        # 이전 후보를 받으면 이전 후보 기준(원래 계약), 없으면 확정 모델(043) 기준으로 표시한다
+        # 이전 후보가 있으면 그 기준, 없으면 확정 모델(043) 기준으로 표시한다
         if reanalysis and request.previous_proposals:
             result.summary["changeBasis"] = "PREVIOUS_PROPOSALS"
             result.summary["changeCounts"] = mark_changes(
@@ -253,7 +247,6 @@ def _analyze(
     dropped += notes_dropped
 
     codes = {_prefix(t.resource_key): t.data_source_code for t in request.targets}
-    # 표 하나·관계 하나를 검토 한 건으로 묶어 보낸다
     proposals = [_with_source_codes(p, codes) for p in to_api_proposals(kept)]
     summary = {
         "analyzedTables": sorted(scope),

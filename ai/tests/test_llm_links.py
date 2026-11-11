@@ -156,7 +156,7 @@ def test_allowed_steps_become_allowed_transforms_and_others_do_not():
 
 
 def test_link_without_steps_becomes_same_value_rule(tmp_path):
-    # 규칙 기준에 못 미쳐 못 이은 같은 값 연결을 LLM이 변환 없이 주는 경우(A 데이터에서 형식 오류로 멈췄던 경우)
+    # 규칙 기준에 못 미쳐 못 이은 같은 값 연결을 LLM이 변환 없이 주는 경우
     from app.analyzers.structured import analyze_sources
     from app.proposers.links import Tables, to_candidates
     from app.proposers.llm_links import LinkAnswer, _verify

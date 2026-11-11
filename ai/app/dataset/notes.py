@@ -1,7 +1,4 @@
-"""교대 인수인계 메모 60건 (S15P31C106-33). 우리 데이터셋의 실제 식별자(설비·작업지시·정비·로트)를 언급한다.
-
-개체 위치는 문장을 만들면서 코드가 계산한다. 정비 지시(mes.maintenance_order.note)도 짧은 비정형 기록으로 주석한다.
-"""
+"""교대 인수인계 메모 60건과 정비 지시 note 주석. 개체 위치는 문장을 만들면서 코드가 계산한다."""
 
 import random
 from dataclasses import dataclass, field

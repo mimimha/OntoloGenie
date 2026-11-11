@@ -1,16 +1,7 @@
 """FN-AIP-04 객체 유형·속성 후보. 코드 규칙으로만 만든다(method=rule, LLM 미사용).
 
-원천 표 한 행 = 객체 하나(FN-MAP-02). 표마다 OBJECT_TYPE·OBJECT_MAPPING, 컬럼마다 PROPERTY·PROPERTY_MAPPING 후보를 낸다.
-이름과 설명은 표·컬럼 주석을 그대로 쓴다. 주석이 없으면 이름만 바꿔 쓰므로 업무 의미 해석은 하지 않은 것이다.
-표 종류(category)는 아래 데이터 모델링 규칙으로 정한다. 정답셋을 보고 규칙을 고치지 않는다.
-
-1. 컬럼에 변경 대상 행 키(row_key)와 작업 종류(operation)가 함께 있으면 동기화 기록 → 객체로 내지 않는다.
-2. 기본키에 날짜·시각 컬럼이 있으면 시점별 기록 → history.
-3. 기본키가 여러 컬럼이고, 한 컬럼이 다른 표를 가리키며 나머지가 정수 순번이면 → detail.
-4. 그 밖의 여러 컬럼 기본키 → snapshot (조합별 현재 상태).
-5. 한 컬럼 기본키에서 다른 표가 가리키지 않고 날짜·시각 컬럼이 있으면 → history (발생 기록).
-6. 상태 컬럼(이름·주석에 status·상태)이 있고 날짜·시각 컬럼이 2개 이상이면 → transaction.
-7. 그 밖 → master.
+원천 표 한 행 = 객체 하나. 이름과 설명은 표·컬럼 주석을 그대로 쓴다.
+표 종류(category)는 데이터 모델링 규칙(classify)으로 정하고, 정답셋을 보고 규칙을 고치지 않는다.
 """
 
 import re
@@ -43,8 +34,8 @@ PAIR_KEY_COLUMNS = 6  # 기본키 없는 표에서 두 컬럼 키를 찾을 때 
 
 
 def observed_pair_key(df, names: list[str]) -> list[str]:
-    """선언된 기본키도 값이 모두 다른 한 컬럼도 없는 표에서, 빈 값 없이 조합이 모두 다른 두 컬럼.
-    오래된 시스템의 상세 표(수주 번호 + 순번)는 기본키를 선언하지 않은 경우가 많다(B4 독립 데이터)."""
+    """기본키도 값이 모두 다른 한 컬럼도 없는 표에서, 빈 값 없이 조합이 모두 다른 두 컬럼.
+    오래된 시스템의 상세 표는 기본키를 선언하지 않은 경우가 많다."""
     names = names[:PAIR_KEY_COLUMNS]
     for i, a in enumerate(names):
         for b in names[i + 1 :]:
@@ -74,7 +65,7 @@ PERSON_NAME = re.compile(rf"[{SURNAMES}][가-힣]{{1,3}}")
 
 
 def to_code(table: str) -> str:
-    """객체 유형 코드. API 공통 규칙: 객체·관계 유형은 대문자(WORK_ORDER), 속성은 컬럼 이름 그대로."""
+    """객체 유형 코드. 객체·관계 유형은 대문자(WORK_ORDER), 속성은 컬럼 이름 그대로."""
     return table.upper()
 
 
@@ -94,7 +85,6 @@ def data_type(column: ColumnAnalysis, values: list[str]) -> DataType:
         if declared.startswith("bool"):
             return DataType.BOOLEAN
         return DataType.STRING
-    # 선언 타입이 없으면 값 모양으로 추정한다
     sample = [v for v in values if v][:200]
     if sample and all(re.fullmatch(r"-?\d+", v) for v in sample):
         return DataType.INTEGER
@@ -185,15 +175,11 @@ def classify(
     )
 
 
-# 표 종류 이름 (models/candidate.py ObjectCategory)
-
-
 def _cols(names) -> str:
-    """컬럼 목록을 ['a', 'b'] 대신 a, b로 쓴다."""
+    """컬럼 목록을 a, b로 쓴다."""
     return ", ".join(str(n) for n in names)
 
 
-# 속성 자료형 이름 (models/candidate.py DataType)
 TYPE_TEXT = {
     "STRING": "문자",
     "INTEGER": "정수",
@@ -316,7 +302,7 @@ def _table_candidates(
         col_values = values[col.name]
         personal = stats.is_personal or looks_like_person_names(col_values)
         dtype = data_type(stats, col_values)
-        # 부서 칸에 섞인 사람 이름('홍보람')처럼 이름 모양 값은 근거·LLM 질문에 그대로 쓰지 않는다
+        # 다른 칸에 섞인 사람 이름 모양 값은 근거·LLM 질문에 그대로 쓰지 않는다
         hint = f"{col.name} {col.comment or ''}"
         examples = [
             mask_value(v, hint) if isinstance(v, str) else v
