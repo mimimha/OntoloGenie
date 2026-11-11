@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.analyzers.structured import value_pattern
 from app.llm.client import LLMClient, LLMError, token_credits
-from app.llm.privacy import MASK, mask_value
+from app.llm.privacy import MASK, is_person_column, mask_value
 from app.models.candidate import Candidate, DataType, ItemKind, Sensitivity
 from app.proposers.confidence import CAP, LLM_AGREE_HELD
 from app.proposers.objects import CATEGORY_TEXT
@@ -117,6 +117,14 @@ def build_prompt(
         [
             "너는 제조 공장 ERP·MES 데이터의 업무 의미를 해석한다. 아래 원천 표 하나를 보고 JSON 하나로 답한다.",
             "확실하지 않으면 meaning에 '추정'이라고 쓴다. 표에 없는 컬럼이나 목록에 없는 관계는 만들지 않는다. '***'는 가린 개인정보다.",
+            (
+                "글은 업무 시스템 화면에 그대로 보인다. meaning·category_reason·reason은 명사로 끝나는 짧은 말로 쓰고"
+                " '~입니다'·'~이다'·'~한다'로 끝내지 않는다(예: '직원별 근무일 출퇴근 시각·근무 구분 기록', '실제 일어난 입고·검수 내역')."
+            ),
+            (
+                "is_personal은 사람을 직접 알아볼 수 있는 값(사람 이름·전화·이메일·주소·주민번호)만 true."
+                " 사번·작업자 번호 같은 내부 번호, 날짜·시각, 부서·직급·상태·종류 코드는 false."
+            ),
             f"category 값: {CATEGORY_GUIDE}",
             f"role 값: {ROLE_GUIDE}",
             f"data_type 값: {', '.join(t.value for t in DataType)}",
@@ -270,19 +278,28 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
                 )
             c = _note(
                 c,
-                f"표 종류 {new_text}"
-                + ("(규칙과 같음)" if same else f"(규칙은 {old_text})")
-                + f": {view.category_reason}",
+                f"표 종류: {new_text}"
+                + (" (규칙과 같음)" if same else f" (규칙은 {old_text})")
+                + f" · {view.category_reason}",
                 **update,
             )
         elif c.candidate_id.startswith("P-") and view:
             col = next((x for x in view.columns if x.name == c.payload.code), None)
             if col:
+                # 이름 칸이나 사람을 적는 칸이 아니면 LLM이 개인정보라고 해도 따르지 않는다(A에서 22개 중 18개 오답)
+                personal = (
+                    col.is_personal
+                    and c.payload.data_type == DataType.STRING
+                    and (
+                        col.role == "name"
+                        or is_person_column(f"{col.name} {c.payload.description}")
+                    )
+                )
                 payload = c.payload.model_copy(
                     update={
                         "description": col.meaning,
                         "sensitivity": Sensitivity.RESTRICTED
-                        if col.is_personal
+                        if personal
                         else c.payload.sensitivity,
                     }
                 )
@@ -291,7 +308,7 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
                     c,
                     f"역할 {col.role}, 자료형 {col.data_type.value}"
                     + ("" if same else f"(규칙은 {c.payload.data_type.value})")
-                    + (", 개인정보" if col.is_personal else ""),
+                    + (", 개인정보" if personal else ""),
                     payload=payload,
                 )
         elif c.payload.kind in (ItemKind.LINK_RULE, ItemKind.LINK_TYPE):
@@ -313,7 +330,7 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
                             f" — 이런 보류는 평가 데이터에서 {total}개 중 {ok}개가 맞음",
                         }
                     )
-                c = _note(c, f"업무상 맞는 관계: {judged.reason}", **update)
+                c = _note(c, f"업무상 관계 맞음 · {judged.reason}", **update)
             elif judged:
                 # LLM 부정으로 점수가 오르지 않게 더 낮은 보류 상한은 그대로 둔다
                 cap, cap_reason = CAP, "LLM이 업무상 맞지 않다고 봄"
@@ -325,7 +342,7 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
                 )
                 c = _note(
                     c,
-                    f"업무상 맞지 않음: {judged.reason}",
+                    f"업무상 관계 아님 · {judged.reason}",
                     confidence=conf,
                     review_status="HELD",
                     hold_reason=f"LLM: {judged.reason}",

@@ -105,6 +105,81 @@ def test_person_names_by_value():
     )  # 값 종류가 너무 적으면 판단하지 않음
 
 
+def test_repeated_names_stay_personal_but_repeated_category_words_do_not():
+    assert looks_like_person_names(["김민수", "이서준", "박지호", "최유진"] * 5)
+    assert not looks_like_person_names(["공구", "기계장치", "차량"] * 3)
+
+
+def _property_with_view(role, is_personal, data_type="STRING", comment=""):
+    from app.models.candidate import Candidate, DataType, Evidence, PropertyPayload
+    from app.proposers.semantics import TableView, apply
+
+    prop = Candidate(
+        candidate_id="P-mes.equipment.asset_type",
+        title="t",
+        payload=PropertyPayload(
+            object_type_code="EQUIPMENT",
+            code="asset_type",
+            name="자산 종류",
+            data_type=DataType(data_type),
+            description=comment,
+        ),
+        reason="r",
+        evidence=[
+            Evidence(source_id="mes", locator="mes.equipment.asset_type", snippet="s")
+        ],
+    )
+    view = TableView(
+        object_name="설비",
+        meaning="설비 기준 정보",
+        category="master",
+        category_reason="오래 쓰는 대상",
+        columns=[
+            {
+                "name": "asset_type",
+                "meaning": "자산 종류",
+                "role": role,
+                "data_type": data_type,
+                "is_personal": is_personal,
+            }
+        ],
+    )
+    return apply([prop], {"mes.equipment": view})[0].payload.sensitivity.value
+
+
+def test_llm_personal_is_kept_only_for_name_or_person_columns():
+    # LLM이 개인정보라고 해도 이름 칸·사람 칸이 아니면 따르지 않는다(A에서 22개 중 18개 오답)
+    assert _property_with_view("status", True) == "NORMAL"
+    assert _property_with_view("time", True, data_type="DATE") == "NORMAL"
+    assert _property_with_view("name", True) == "RESTRICTED"
+    assert _property_with_view("attribute", True, comment="검사자") == "RESTRICTED"
+    assert _property_with_view("name", False) == "NORMAL"
+
+
+def test_person_column_with_one_name_among_departments_is_personal(tmp_path):
+    # 정비 담당 칸에 부서명 사이로 사람 이름이 섞여 있으면 개인정보로 본다
+    from test_links_general import write_table
+
+    from app.proposers.objects import propose_objects
+
+    write_table(
+        tmp_path,
+        "mes",
+        "maintenance_order",
+        ["mo_no"],
+        {
+            "mo_no": ("varchar(10)", [f"MO-{i:03d}" for i in range(12)]),
+            "technician": ("varchar(20)", ["보전팀"] * 6 + ["설비팀"] * 5 + ["홍보람"]),
+        },
+    )
+    props = [
+        c
+        for c in propose_objects(tmp_path)
+        if c.candidate_id == "P-mes.maintenance_order.technician"
+    ]
+    assert props and props[0].payload.sensitivity.value == "RESTRICTED"
+
+
 def test_proposals_cover_tables_and_columns_with_rule_method(data, result):
     kinds = result["summary"]["by_kind"]
     assert (

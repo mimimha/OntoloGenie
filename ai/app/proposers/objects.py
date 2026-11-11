@@ -14,7 +14,7 @@ from app.analyzers.structured import (
     StructuredAnalysis,
     analyze_sources,
 )
-from app.llm.privacy import SURNAMES, mask_value
+from app.llm.privacy import SURNAMES, is_person_column, looks_like_name, mask_value
 from app.models.candidate import (
     Candidate,
     DataType,
@@ -105,6 +105,15 @@ def looks_like_person_names(values: list[str]) -> bool:
     """주석이 없어도 값이 한국 사람 이름 모양(성 + 1~3글자)이면 개인정보로 본다."""
     distinct = {v for v in values if v}
     if len(distinct) < 3:
+        return False
+    # 몇 가지 값이 여러 행에 되풀이되고 세 글자 이름 모양도 드물면 종류 코드다('공구'·'기계장치'·'차량').
+    # 작업자 몇 명이 되풀이되는 이름 칸('김민수'·'이서준')은 세 글자라 그대로 이름으로 본다
+    three = sum(1 for v in distinct if len(v) == 3) / len(distinct)
+    if (
+        len(distinct) < 10
+        and len([v for v in values if v]) >= 2 * len(distinct)
+        and three < 0.8
+    ):
         return False
     matched = sum(1 for v in distinct if PERSON_NAME.fullmatch(v))
     return matched / len(distinct) >= 0.8
@@ -300,7 +309,15 @@ def _table_candidates(
     for col in schema.columns:
         stats = by_name[col.name]
         col_values = values[col.name]
-        personal = stats.is_personal or looks_like_person_names(col_values)
+        # 담당·검사자처럼 사람을 적는 칸에 이름이 섞여 있으면(부서명 사이 '홍보람') 일부만 이름이어도 개인정보로 본다
+        personal = (
+            stats.is_personal
+            or looks_like_person_names(col_values)
+            or (
+                is_person_column(f"{col.name} {col.comment or ''}")
+                and any(isinstance(v, str) and looks_like_name(v) for v in col_values)
+            )
+        )
         dtype = data_type(stats, col_values)
         # 다른 칸에 섞인 사람 이름 모양 값은 근거·LLM 질문에 그대로 쓰지 않는다
         hint = f"{col.name} {col.comment or ''}"
