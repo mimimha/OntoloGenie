@@ -103,8 +103,8 @@ class AgentToolDataAsOfTests {
         when(dataAsOf.forObjects(any())).thenReturn(CONFIRMED);
         AgentObjectDetailTools tools = new AgentObjectDetailTools(session, details);
 
-        tools.objectLinks(301L, null, null);
-        tools.objectLinks(301L, null, null);
+        tools.objectLinks(301L, null, null, null);
+        tools.objectLinks(301L, null, null, null);
 
         verify(dataAsOf).forObjects(Set.of(301L, 401L));
         verify(dataAsOf).forObjects(Set.of(301L));

@@ -102,7 +102,9 @@ public class AgentQueryTools {
      */
     @Tool(
             name = OBJECT_EXECUTIONS,
-            description = "객체에 대해 실행된 Action·작업 이력을 최근 순으로 최대 20건 조회한다. 기간을 주면 그 사이에 요청된 이력만 조회한다.")
+            description =
+                    "플랫폼에서 이 객체에 실행한 Action·작업(재배정 계획 등)의 이력을 최근 순으로 최대 20건 조회한다. 기간을 주면 그 사이에 요청된"
+                            + " 이력만 조회한다. 비가동·센서 측정·생산 실적 같은 업무 기록은 여기 없고 관계로 찾는다.")
     public Map<String, Object> objectExecutions(
             @ToolParam(description = "객체 ID") Long objectId,
             @ToolParam(description = "기간 시작일(yyyy-MM-dd, 이 날 포함). 기간이 없으면 비운다", required = false)

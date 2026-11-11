@@ -70,6 +70,15 @@ class AgentResponderTests {
                 .contains("\"아직 조회할 수 없다\"고 말한다")
                 // 위 예시 때문에 관계로 찾을 수 있는 작업지시도 "조회할 수 없다"고 답했다(326 GMS 확인).
                 .contains("관계 조회로 찾을 수 있으면 \"아직 조회할 수 없다\"고 말하지 않는다");
+        // 데이터가 많으면 실행 이력으로 비가동을 찾거나 관계 20건만 보고 멈췄다. 업무 기록은 관계로 찾고, 관계 유형으로 좁혀
+        // 쪽을 넘기며, 관계를 보지 않고 "없다"고 하지 않게 한다(342 시나리오 GMS, 350).
+        assertThat(prompt.getSystemMessage().getText())
+                .contains("업무 기록은 대상 객체의 관계로 찾는다")
+                .contains("그 linkTypeId·direction으로 다시 조회한다")
+                .contains("hasNext가 true면 page를 올려")
+                .contains("찾는 정보의 관계를 조회하지 않았으면 \"없다\"고 답하지 않는다")
+                // 관계가 20건 이하라 묶음 건수가 없으면 관계 유형으로 다시 조회할 수 없다. 다 받은 관계에 없으면 없다고 말하게 한다.
+                .contains("관계를 모두 받았는데(hasNext가 false이고 groups가 없음) 그 안에 찾는 정보의 관계가 없을 때");
     }
 
     @Test

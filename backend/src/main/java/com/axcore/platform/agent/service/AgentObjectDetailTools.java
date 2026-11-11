@@ -97,25 +97,36 @@ public class AgentObjectDetailTools {
                                 }));
     }
 
-    /** 객체는 있지만 볼 수 있는 활성 관계가 없으면 UNLINKED다(Action 정의서 8-1). 객체가 없거나 볼 수 없으면 NO_DATA다. */
+    /**
+     * 객체는 있지만 볼 수 있는 활성 관계가 없으면 UNLINKED다(Action 정의서 8-1). 객체가 없거나 볼 수 없으면 NO_DATA다. 관계가 있는데 page가
+     * 마지막 쪽을 넘으면 links만 비고 FOUND다. 관계 유형 없이 조회해 한 쪽에 다 담지 못하면 관계 유형·방향별 건수(groups)를 함께 준다(350).
+     */
     @Tool(
             name = OBJECT_LINKS,
             description =
-                    "객체에 연결된 확정 관계를 최대 20건 조회한다. 연결 상대 객체의 ID·이름과 관계 근거를 돌려준다. 상대 객체의 속성은 OBJECT_DETAIL로 본다.")
+                    "객체에 연결된 확정 관계를 한 번에 최대 20건 조회한다. 연결 상대 객체의 ID·이름과 관계 근거를 돌려준다. 상대 객체의 속성은"
+                            + " OBJECT_DETAIL로 본다. 관계 유형 없이 조회해 total이 20건을 넘으면 groups에 관계 유형·방향별 건수가 온다."
+                            + " 그때는 찾는 정보에 맞는 묶음의 linkTypeId·direction으로 다시 조회하고, hasNext가 true면 page를 올려"
+                            + " 다음 쪽을 본다.")
     public Map<String, Object> objectLinks(
             @ToolParam(description = "기준 객체 ID") Long objectId,
             @ToolParam(
-                            description = "관계 유형 ID. 사용자가 관계 종류를 말했을 때만 모델 요약의 id로 채우고, 아니면 비운다",
+                            description = "관계 유형 ID. 앞 관계 조회의 groups나 모델 요약에 나온 id로만 채운다. 지어내지 않는다",
                             required = false)
                     Long linkTypeId,
             @ToolParam(
                             description = "OUT(기준 객체에서 나가는 관계), IN(들어오는 관계), BOTH(기본, 양쪽)",
                             required = false)
-                    String direction) {
+                    String direction,
+            @ToolParam(
+                            description = "쪽 번호(0부터, 기본 0). 앞 결과의 hasNext가 true일 때 다음 쪽을 볼 때만 채운다",
+                            required = false)
+                    Integer page) {
         Map<String, Object> input = new LinkedHashMap<>();
         AgentQueryTools.putIfPresent(input, "objectId", objectId);
         AgentQueryTools.putIfPresent(input, "linkTypeId", linkTypeId);
         AgentQueryTools.putIfPresent(input, "direction", direction);
+        AgentQueryTools.putIfPresent(input, "page", page);
         return session.run(
                 OBJECT_LINKS,
                 "관계",
@@ -126,7 +137,8 @@ public class AgentObjectDetailTools {
                         AgentQueryTools.noDataIfMissing(
                                 () -> {
                                     long id = AgentQueryTools.required(objectId, "objectId");
-                                    Page<ObjectLinkResponse> page =
+                                    int pageNumber = pageNumber(page);
+                                    Page<ObjectLinkResponse> links =
                                             objects.links(
                                                     session.asker(),
                                                     id,
@@ -136,16 +148,25 @@ public class AgentObjectDetailTools {
                                                                     ObjectLinkSearchRequest
                                                                             .Direction.class,
                                                                     direction),
-                                                            0,
+                                                            pageNumber,
                                                             AgentQueryTools.MAX_ROWS));
                                     Map<String, Object> data = new LinkedHashMap<>();
-                                    data.put("total", page.getTotalElements());
-                                    data.put("links", page.getContent());
+                                    data.put("total", links.getTotalElements());
+                                    data.put("page", pageNumber);
+                                    data.put("hasNext", links.hasNext());
+                                    // 데이터가 많으면 AI가 20건만 보고 멈추거나 실행 이력으로 대신 찾았다(342 GMS).
+                                    // 어떤 관계가 몇 건인지 알려 줘 그 묶음으로 좁혀 다시 조회하게 한다.
+                                    if (linkTypeId == null
+                                            && links.getTotalElements()
+                                                    > links.getNumberOfElements()) {
+                                        data.put("groups", objects.linkGroups(session.asker(), id));
+                                    }
+                                    data.put("links", links.getContent());
                                     // 연결이 없으면(UNLINKED) 기준 객체의 표만, 있으면 상대 객체의 표까지 본다.
-                                    Set<Long> linked = objectIds(id, page.getContent());
+                                    Set<Long> linked = objectIds(id, links.getContent());
                                     return new AgentQuerySession.Outcome(
                                             data,
-                                            page.isEmpty()
+                                            links.getTotalElements() == 0
                                                     ? AgentResultCategory.UNLINKED
                                                     : AgentResultCategory.FOUND,
                                             linked.stream()
@@ -156,6 +177,17 @@ public class AgentObjectDetailTools {
                                                     .toList(),
                                             session.dataAsOfObjects(linked));
                                 }));
+    }
+
+    /** AI가 음수 쪽 번호를 보내면 조회하지 않고 오류로 기록한다. */
+    private static int pageNumber(Integer page) {
+        if (page == null) {
+            return 0;
+        }
+        if (page < 0) {
+            throw new IllegalArgumentException("page는 0 이상이어야 합니다.");
+        }
+        return page;
     }
 
     /** 기준 객체와 연결 상대 객체. 화면이 답변에서 각 객체를 열 수 있게 출처로 남기고, 기준 시점도 이 객체들의 표로 구한다. */
