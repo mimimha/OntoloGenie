@@ -71,7 +71,7 @@ function renderAgentPage(
 }
 
 const SAMPLE_ANSWER = /PR-03의 이번 달 비가동은 2건입니다/
-const EMPTY_MESSAGE = '업무에 대해 질문해 주세요. 예: PR-03의 상태를 알려줘'
+const EMPTY_MESSAGE = '업무에 대해 질문해 주세요. 예: P103의 상태를 알려줘'
 
 test('대화 목록을 최근 순으로 보여 주고 가장 최근 대화를 연다', async () => {
   renderAgentPage()
@@ -438,12 +438,12 @@ test('참고 객체 없이 시작하면 역할에 맞는 기본 추천 질문을
   ).toBeNull()
   await user.click(
     await screen.findByRole('button', {
-      name: '고정자산 장부가',
+      name: '중단 작업지시',
     }),
   )
 
   expect(screen.getByLabelText('업무 질문')).toHaveValue(
-    'FA-0006 장부가와 취득가 알려줘',
+    'JB2610-0141 작업지시 상세 알려줘',
   )
   expect(screen.queryByRole('button', { name: /재배정 계획/ })).toBeNull()
 })

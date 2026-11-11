@@ -18,7 +18,7 @@ test('참고 객체가 없으면 조회만 하는 역할에는 시연 데이터�
     expect(questions.map((question) => question.text)).toEqual([
       ...COMMON,
       'P101 상세 정보 알려줘',
-      'FA-0006 장부가와 취득가 알려줘',
+      'JB2610-0141 작업지시 상세 알려줘',
     ])
     expect(questions[0]).toEqual({
       label: 'P103 비가동',
@@ -38,6 +38,14 @@ test('참고 객체가 없으면 계획 권한이 있는 역할에는 재배정 
     'FA-0006 장부가와 취득가 알려줘',
     REASSIGNMENT_PLAN,
   ])
+})
+
+test('고정자산(재무) 질문은 그 데이터를 볼 수 있는 관리자에게만 추천한다', () => {
+  for (const role of ['VIEWER', 'MAINTENANCE', 'PLANNER', null] as const) {
+    expect(suggestedQuestions(null, role).map((q) => q.text)).not.toContain(
+      'FA-0006 장부가와 취득가 알려줘',
+    )
+  }
 })
 
 test('기본 문장에는 답하지 못하는 질문(종류 전체 목록, 범위 없는 기간)을 넣지 않는다', () => {

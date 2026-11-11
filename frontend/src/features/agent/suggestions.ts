@@ -41,6 +41,11 @@ const EQUIPMENT_DETAIL: SuggestedQuestion = {
   label: 'P101 상세',
   text: 'P101 상세 정보 알려줘',
 }
+const STOPPED_WORK_ORDER: SuggestedQuestion = {
+  label: '중단 작업지시',
+  text: 'JB2610-0141 작업지시 상세 알려줘',
+}
+// 고정자산은 재무(FINANCE) 데이터라 관리자만 본다(V13, 역할별 조회 범위). 다른 역할에는 추천하지 않는다.
 const FIXED_ASSET_VALUE: SuggestedQuestion = {
   label: '고정자산 장부가',
   text: 'FA-0006 장부가와 취득가 알려줘',
@@ -50,13 +55,13 @@ const REASSIGNMENT_PLAN: SuggestedQuestion = {
   text: 'P103에 배정된 남은 작업을 다른 설비로 옮기는 재배정 계획을 만들어줘',
 }
 
-// 조회만 하는 역할의 문장.
+// 조회만 하는 역할의 문장. 생산(PRODUCTION) 데이터만 묻는다.
 const VIEW_ONLY_QUESTIONS = [
   DOWNTIME_RECORDS,
   LINKED_OBJECTS,
   WORK_ORDER_PROGRESS,
   EQUIPMENT_DETAIL,
-  FIXED_ASSET_VALUE,
+  STOPPED_WORK_ORDER,
 ]
 
 // 참고 객체가 없을 때 역할별 고정 문장 5개. 정비 담당은 MVP에서 조회 사용자와 권한이 같다(V10 주석).
