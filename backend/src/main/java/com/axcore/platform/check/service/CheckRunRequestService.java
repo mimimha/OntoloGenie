@@ -150,11 +150,12 @@ public class CheckRunRequestService {
             if (succeeded.isPresent()) {
                 return response(succeeded.get(), false, true);
             }
+            // 재검증은 대기 중인 작업에만 기준과 상관없이 합류한다. 실행 중인 작업은 같은 기준(work_key)일 때만 아래에서 합류한다.
             if (reverificationScope != null) {
-                Optional<Long> active =
-                        checkRunRepository.findActiveReverification(reverificationScope);
-                if (active.isPresent()) {
-                    return response(active.get(), true, false);
+                Optional<Long> queued =
+                        checkRunRepository.findQueuedReverification(reverificationScope);
+                if (queued.isPresent()) {
+                    return response(queued.get(), true, false);
                 }
             }
             Optional<Long> inserted = checkRunRepository.insertQueued(run);
@@ -397,7 +398,7 @@ public class CheckRunRequestService {
         return new BusinessException(CommonErrorCode.BUSINESS_RULE_VIOLATION, reason, details);
     }
 
-    /** work_key의 해시. 수집 뒤 검사(SyncCheckRequester)도 같은 방식으로 만든다. */
+    /** 검사 실행의 work_key: 종류, 비교 실행, 범위와 수집 기준의 해시. 재검증은 완료 때 실제로 읽은 기준으로 다시 만든다. */
     static String workKey(
             String triggerKind, Long comparedToRunId, String scopeJson, String basisJson) {
         return triggerKind
@@ -407,6 +408,7 @@ public class CheckRunRequestService {
                 + sha256(scopeJson + "|" + basisJson);
     }
 
+    /** work_key의 해시. 수집 뒤 검사(SyncCheckRequester)도 같은 방식으로 만든다. */
     static String sha256(String text) {
         try {
             return HexFormat.of()
