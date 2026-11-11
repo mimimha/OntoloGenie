@@ -192,6 +192,14 @@ MR을 올리거나 MR 브랜치에 push하면 Job `axcore-mr-check`가 MR 커밋
 
 Job은 develop의 Jenkinsfile로 검사 절차를 읽고, Checkout 단계에서 MR 코드를 받는다. 따라서 Jenkinsfile만 변경한 MR의 성공 표시가 새 Jenkinsfile의 문법·실행 검증을 의미하지는 않는다.
 
+### MR 최신 커밋 확인
+
+`axcore-mr-check`의 Webhook 검사에서는 Checkout 직후, backend·frontend·AI·infra 검사 시작 전, 마지막 `Verify MR head` 단계에서 GitLab의 `refs/merge-requests/<MR 번호>/head`를 조회해 검사 중인 전체 SHA와 비교한다. 이벤트 당시 SHA나 로컬 `origin` 추적 브랜치를 최신값으로 사용하지 않는다. 조회에는 기존 `gitlab-clone` 자격 증명과 Git 플러그인의 `gitUsernamePassword` 바인딩(`Default` Git 도구)을 사용하며, 각 조회의 제한 시간은 30초다.
+
+SHA가 다르면 빌드를 `ABORTED`로 종료하고 기존 종료 처리로 GitLab에 `canceled`를 표시한다. MR 번호 누락, 잘못된 응답, 인증·통신 오류는 성공으로 간주하지 않으며 검사를 중단한다. 배포·SonarQube Job과 수동 검사에는 적용하지 않는다. 긴 검사 명령 실행 도중에는 이 함수가 주기적으로 감시하지 않는다. 새 Push 즉시 이전 검사를 중단하는 기능은 Job 설정의 GitLab 고급 옵션 `Cancel pending merge request builds on update`, `Cancel running merge request builds on update`를 함께 사용한다. 마지막 조회 뒤의 Push까지 원자적으로 차단하는 것은 아니다.
+
+Jenkinsfile 변경은 `develop` 반영 뒤 다음 실행부터 적용된다. 로컬 회귀 검사는 저장소 루트에서 Gradle 설치 경로를 지정해 `java -cp "<Gradle 설치 경로>/lib/*" groovy.ui.GroovyMain infra/tests/jenkins-mr-head-tests.groovy`로 실행한다. 이는 Jenkins 단계 API를 대체하는 검사이며 실제 GitLab 인증, Jenkins 취소 상태와 새 Push에 따른 취소 동작은 서버에서 별도 확인해야 한다.
+
 ### MR 검사와 배포를 동시에 실행
 
 Jenkins 관리 → Nodes → Built-In Node → Configure에서 **Number of executors**를 `2`로 저장한다. 이 값은 Jenkins 서버 설정에서 관리한다. 공용 Jenkinsfile의 `disableConcurrentBuilds()`는 각 Job에 적용되므로 `axcore-mr-check`와 `axcore-deploy`는 동시에 실행할 수 있고, 같은 Job의 여러 실행은 순서대로 처리한다.

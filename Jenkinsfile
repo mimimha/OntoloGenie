@@ -97,6 +97,8 @@ pipeline {
                         }
                     }
 
+                    ensureLatestMrCommit()
+
                     // MR 검사에서 어느 서비스 검사를 돌릴지 정한다. develop과 갈라진 뒤 그 폴더가 바뀐 MR만 돌린다 (문서만 고친 MR에 gradle 몇 분을 쓰지 않는다).
                     // 수동 빌드는 폴더가 있는 서비스를 전부 돌린다 (develop 전체를 다시 검사하는 용도).
                     if (env.IS_DEPLOY_JOB != 'true' && env.IS_SONAR_JOB != 'true') {
@@ -131,6 +133,7 @@ pipeline {
             // backend/ 가 안 바뀐 MR은 건너뛴다 (Checkout 단계의 CHECK_BACKEND).
             when { expression { env.IS_DEPLOY_JOB != 'true' && env.IS_SONAR_JOB != 'true' && env.CHECK_BACKEND == 'true' } }
             steps {
+                script { ensureLatestMrCommit() }
                 dir('backend') {
                     script {
                         sh './gradlew --no-daemon spotlessCheck build jacocoTestReport'
@@ -154,6 +157,7 @@ pipeline {
             when { expression { env.IS_DEPLOY_JOB != 'true' && env.IS_SONAR_JOB != 'true' && env.CHECK_FRONTEND == 'true' } }
             steps {
                 script {
+                    ensureLatestMrCommit()
                     def testCommand = 'npm run test:coverage'
                     runFrontendCommands("npm run format:check && npm run lint && ${testCommand} && npm run build")
                     publishTestResults('frontend')
@@ -165,6 +169,7 @@ pipeline {
             when { expression { env.IS_DEPLOY_JOB != 'true' && env.IS_SONAR_JOB != 'true' && env.CHECK_AI == 'true' } }
             steps {
                 script {
+                    ensureLatestMrCommit()
                     def coverageOptions = ' --cov --cov-report=xml'
                     runAiCommands("ruff check . && pytest -q --junitxml=test-results/pytest.xml${coverageOptions}")
                     publishTestResults('ai')
@@ -180,6 +185,7 @@ pipeline {
         stage('Infra check') {
             when { expression { env.IS_DEPLOY_JOB != 'true' && env.IS_SONAR_JOB != 'true' && env.CHECK_INFRA == 'true' } }
             steps {
+                script { ensureLatestMrCommit() }
                 sh '''
                     bash -n infra/deploy/sync-config.sh
                     if [ -f infra/deploy/sync-sonarqube.sh ]; then
@@ -458,6 +464,13 @@ pipeline {
                 }
             }
         }
+
+        stage('Verify MR head') {
+            when { expression { env.JOB_NAME == 'axcore-mr-check' && env.gitlabActionType } }
+            steps {
+                script { ensureLatestMrCommit() }
+            }
+        }
     }
 
     post {
@@ -490,6 +503,44 @@ pipeline {
             }
         }
     }
+}
+
+def ensureLatestMrCommit() {
+    if (env.JOB_NAME != 'axcore-mr-check' || !env.gitlabActionType) {
+        return
+    }
+    def mrIid = env.gitlabMergeRequestIid
+    if (!(mrIid ==~ /[1-9][0-9]*/)) {
+        error '최신 커밋 확인 실패: MR 번호가 없거나 올바르지 않습니다.'
+    }
+    def head = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
+    if (!(head ==~ /[0-9a-f]{40}/)) {
+        error '최신 커밋 확인 실패: 검사 중인 커밋 SHA가 올바르지 않습니다.'
+    }
+    // 이벤트 당시 SHA나 로컬 원격 추적 브랜치 대신 GitLab의 현재 MR head를 직접 조회한다.
+    def ref = "refs/merge-requests/${mrIid}/head"
+    def remoteHead
+    withEnv(["MR_HEAD_REF=${ref}"]) {
+        timeout(time: 30, unit: 'SECONDS') {
+            withCredentials([gitUsernamePassword(credentialsId: 'gitlab-clone', gitToolName: 'Default')]) {
+                remoteHead = sh(returnStdout: true, script: '''
+                    set +x
+                    set -eu
+                    GIT_TERMINAL_PROMPT=0 git -c credential.helper= ls-remote --exit-code --refs \
+                        https://lab.ssafy.com/s15-final/S15P31C106.git "$MR_HEAD_REF"
+                ''').trim()
+            }
+        }
+    }
+    def fields = remoteHead.tokenize()
+    if (fields.size() != 2 || !(fields[0] ==~ /[0-9a-f]{40}/) || fields[1] != ref) {
+        error '최신 커밋 확인 실패: 원격 MR head 응답이 없거나 올바르지 않습니다.'
+    }
+    if (head != fields[0]) {
+        currentBuild.result = 'ABORTED'
+        error "MR !${mrIid}에 다른 최신 커밋이 있어 검사를 취소합니다. 검사=${head}, 최신=${fields[0]}"
+    }
+    echo "최신 MR 커밋 확인: !${mrIid} @ ${head}"
 }
 
 def isManualSonarCheck() {
