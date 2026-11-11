@@ -374,7 +374,7 @@ class ObjectSearchApiTests {
                 .andExpect(jsonPath("$.data[0].linkTypeName").value("Related"))
                 .andExpect(jsonPath("$.data[0].relatedObject.id").value((int) outgoing))
                 .andExpect(jsonPath("$.data[0].relatedObject.displayName").value("#" + outgoing))
-                .andExpect(jsonPath("$.data[0].evidence").isEmpty())
+                .andExpect(jsonPath("$.data[0].evidence.evidenceRestricted").value(true))
                 .andExpect(jsonPath("$.meta.totalElements").value(3))
                 .andExpect(jsonPath("$.meta.hasNext").value(true));
 
@@ -504,13 +504,42 @@ class ObjectSearchApiTests {
                 .andExpect(jsonPath("$.data[0].origin").value("DOCUMENT"))
                 .andExpect(jsonPath("$.data[0].expressionKind").value("ESTIMATED"))
                 .andExpect(jsonPath("$.data[0].confirmedBy").value((int) confirmer))
-                .andExpect(jsonPath("$.data[0].evidence").isEmpty());
+                .andExpect(jsonPath("$.data[0].evidence.evidenceRestricted").value(true))
+                .andExpect(jsonPath("$.data[0].evidence.quote").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data[0].evidence.event").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data[0].evidence.timeExpression").doesNotHaveJsonPath());
         mvc.perform(get(PATH + "/{id}/links", target).with(actor("ADMIN")))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].evidence.evidenceRestricted").value(false))
                 .andExpect(jsonPath("$.data[0].evidence.quote").value("private document text"))
                 .andExpect(jsonPath("$.data[0].evidence.event").value("noise"))
                 .andExpect(jsonPath("$.data[0].evidence.timeExpression").value("night shift"))
                 .andExpect(jsonPath("$.data[0].evidence.document_id").doesNotHaveJsonPath());
+
+        jdbc.sql(
+                        """
+                        update object_link set evidence = '{"expression_kind":"ESTIMATED"}'::jsonb
+                        where link_type_id = :type and source_object_id = :source
+                        """)
+                .param("type", relation)
+                .param("source", source)
+                .update();
+        mvc.perform(get(PATH + "/{id}/links", source).with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].evidence.evidenceRestricted").value(false));
+
+        jdbc.sql(
+                        """
+                        update object_link set origin = 'MANUAL', evidence = '{}'::jsonb
+                        where link_type_id = :type and source_object_id = :source
+                        """)
+                .param("type", relation)
+                .param("source", source)
+                .update();
+        mvc.perform(get(PATH + "/{id}/links", source).with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].origin").value("MANUAL"))
+                .andExpect(jsonPath("$.data[0].evidence.evidenceRestricted").value(false));
     }
 
     @Test
@@ -543,6 +572,7 @@ class ObjectSearchApiTests {
 
         LoginAccount admin = new LoginAccount(1L, "tester", "ADMIN", false);
         var evidence = evidenceQuery.getObject().linkEvidence(admin, target, link);
+        assertThat(evidence.evidenceRestricted()).isFalse();
         assertThat(evidence.sourceKey()).containsEntry("serial", "private-serial");
         assertThat(evidence.transformedValue()).isEqualTo("private-label");
         assertThat(evidence.rawValue()).isNull();
@@ -614,10 +644,53 @@ class ObjectSearchApiTests {
                                 .value("PRIVATE SERIAL"));
         mvc.perform(get(PATH + "/{id}/links", source).with(actor("VIEWER")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].evidence").isEmpty());
+                .andExpect(jsonPath("$.data[0].evidence.evidenceRestricted").value(true))
+                .andExpect(jsonPath("$.data[0].evidence.rawValue").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data[0].evidence.transformedValue").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data[0].evidence.comparisons").doesNotHaveJsonPath());
         LoginAccount viewer = new LoginAccount(1L, "tester", "VIEWER", false);
-        assertThat(evidenceQuery.getObject().linkEvidence(viewer, source, link).transformedValue())
-                .isNull();
+        var hiddenEvidence = evidenceQuery.getObject().linkEvidence(viewer, source, link);
+        assertThat(hiddenEvidence.evidenceRestricted()).isTrue();
+        assertThat(hiddenEvidence.transformedValue()).isNull();
+
+        jdbc.sql(
+                        """
+                        update object_link set evidence = '{"rawValues":{"1":"raw","2":42}}'::jsonb
+                        where id = :id
+                        """)
+                .param("id", link)
+                .update();
+        mvc.perform(get(PATH + "/{id}/links", source).with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].evidence.rawValue").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data[0].evidence.comparisons").doesNotHaveJsonPath());
+        mvc.perform(get(PATH + "/{id}/links", source).with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].evidence.evidenceRestricted").value(false));
+
+        jdbc.sql(
+                        """
+                        update object_link
+                        set evidence = evidence || '{"matchedValues":{"1":"MATCH","2":42}}'::jsonb
+                        where id = :id
+                        """)
+                .param("id", link)
+                .update();
+        mvc.perform(get(PATH + "/{id}/links", source).with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.data[0].evidence.comparisons[0].matchedValue").value("MATCH"));
+        mvc.perform(get(PATH + "/{id}/links", source).with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].evidence.evidenceRestricted").value(true))
+                .andExpect(jsonPath("$.data[0].evidence.comparisons").doesNotHaveJsonPath());
+
+        jdbc.sql("update object_link set evidence = '{}'::jsonb where id = :id")
+                .param("id", link)
+                .update();
+        mvc.perform(get(PATH + "/{id}/links", source).with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].evidence.evidenceRestricted").value(false));
 
         jdbc.sql(
                         "update object_link set status = 'INACTIVE', inactivated_at = now() where id = :id")

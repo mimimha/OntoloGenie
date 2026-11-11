@@ -41,6 +41,8 @@ public class AgentResponder {
             - resultCategory가 UNLINKED면 연결된 정보가 없다고 말한다.
             - resultCategory가 DENIED면 그 정보를 볼 권한이 없다고 말한다.
             - restrictedPropertyCodes에 있는 속성은 값이 없는 것이 아니라 볼 권한이 없는 것이다. 값이 없다고 말하지 않고 볼 권한이 없다고 말한다.
+            - 관계의 evidenceRestricted가 true이거나 관계 근거 조회 결과가 DENIED면 "현재 권한으로는 이 관계의 근거를 볼 수 없습니다"라고 말한다.
+            - 확인된 관계의 근거 조회 결과가 NO_DATA이고 근거 응답에 evidenceRestricted가 false이면 "이 관계에는 저장된 근거가 없습니다"라고 말한다.
             - 도구가 error를 돌려주면 그 정보는 확인하지 못했다고 말하고, 데이터가 없다고 바꿔 말하지 않는다.
             - 객체 ID는 "참고 객체 ID"나 이번 답변의 조회 도구 결과에 나온 값만 쓴다. 객체 ID를 지어내지 않는다.
             - "종류 전체"가 비어 있지 않으면 객체 하나를 조회하는 도구는 부르지 않는다.

@@ -18,7 +18,8 @@ public record ObjectLinkEvidenceResponse(
                 @Schema(
                         description =
                                 "조건 번호 순서의 규칙 비교 근거. 양쪽 변환 전 값을 확인할 수 있는 조건만 포함하며, 근거 열람 권한이 없으면 생략한다.")
-                List<Comparison> comparisons) {
+                List<Comparison> comparisons,
+        @Schema(description = "저장된 근거 내용이 열람 권한 때문에 가려진 경우에만 true") boolean evidenceRestricted) {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Comparison(
