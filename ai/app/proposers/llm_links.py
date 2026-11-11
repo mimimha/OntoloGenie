@@ -396,7 +396,7 @@ def _verify(
         column_steps.append((allowed, []))
     needs_function = any(s[0] and s[0][0]["op"] == "MAP_VALUE" for s in column_steps)
     how = " / ".join(describe(st) for st in steps)
-    hold = f"LLM이 제안한 시스템 간 연결 (변환: {how}) · 값 확인 완료"
+    hold = f"시스템 간 연결이라 확인 필요 (변환: {how}) · 값 확인 완료"
     if needs_function:
         hold += (
             ". 허용 변환으로 표현할 수 없어 대응표로 이었으니 변환 함수 추가 검토 필요"
