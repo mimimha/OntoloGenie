@@ -13,6 +13,9 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
+import com.jayway.jsonpath.JsonPath;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
@@ -23,6 +26,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 class ObjectSearchApiTests {
 
     private static final String PATH = "/api/v1/objects";
+    private static final String TYPES_PATH = "/api/v1/objects/types";
 
     @Autowired MockMvc mvc;
     @Autowired JdbcClient jdbc;
@@ -95,6 +100,59 @@ class ObjectSearchApiTests {
                 .andExpect(jsonPath("$.meta.totalElements").value(4))
                 .andExpect(jsonPath("$.data[2].properties.cost").value(1200))
                 .andExpect(jsonPath("$.data[2].restrictedPropertyCodes").isEmpty());
+    }
+
+    @Test
+    void typeOptionsFollowSearchScopeAndSortByName() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long second = type(tag + "-b-visible", tag);
+        long first = type(tag + "-a-visible", tag);
+        long hidden = type(tag + "-hidden", tag + "-private");
+        allowViewer(tag);
+
+        MvcResult viewer =
+                mvc.perform(get(TYPES_PATH).with(actor("VIEWER")))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.meta").doesNotExist())
+                        .andReturn();
+        assertThat(typeIdsWithTag(viewer, tag)).containsExactly(first, second);
+        String body = viewer.getResponse().getContentAsString();
+        assertThat(JsonPath.<List<String>>read(body, "$.data[?(@.id == " + first + ")].code"))
+                .containsExactly(tag + "-a-visible");
+        assertThat(JsonPath.<List<String>>read(body, "$.data[?(@.id == " + first + ")].name"))
+                .containsExactly(tag + "-a-visible");
+
+        MvcResult admin =
+                mvc.perform(get(TYPES_PATH).with(actor("ADMIN")))
+                        .andExpect(status().isOk())
+                        .andReturn();
+        assertThat(typeIdsWithTag(admin, tag)).containsExactly(first, second, hidden);
+
+        mvc.perform(get(TYPES_PATH).with(actor("NO_SCOPE_ROLE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    void typeOptionsRequireUsableSession() throws Exception {
+        mvc.perform(get(TYPES_PATH)).andExpect(status().isUnauthorized());
+        mvc.perform(
+                        get(TYPES_PATH)
+                                .with(
+                                        authentication(
+                                                new LoginAccount(1L, "tester", "ADMIN", true)
+                                                        .toAuthentication())))
+                .andExpect(status().isForbidden());
+    }
+
+    private static List<Long> typeIdsWithTag(MvcResult result, String tag) throws Exception {
+        List<Map<String, Object>> data =
+                JsonPath.read(result.getResponse().getContentAsString(), "$.data");
+        return data.stream()
+                .filter(item -> String.valueOf(item.get("code")).startsWith(tag))
+                .map(item -> ((Number) item.get("id")).longValue())
+                .toList();
     }
 
     @Test
