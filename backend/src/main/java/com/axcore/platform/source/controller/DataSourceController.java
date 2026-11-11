@@ -16,9 +16,12 @@ import com.axcore.platform.source.dto.SourceResourceSearchRequest;
 import com.axcore.platform.source.dto.SourceResponse;
 import com.axcore.platform.source.dto.SourceSearchRequest;
 import com.axcore.platform.source.dto.SourceUpdateRequest;
+import com.axcore.platform.source.dto.SyncRunAcceptedResponse;
+import com.axcore.platform.source.dto.SyncRunRequest;
 import com.axcore.platform.source.service.DataSourceService;
 import com.axcore.platform.source.service.SourceCatalogService;
 import com.axcore.platform.source.service.SourceConnectionCheckService;
+import com.axcore.platform.source.service.SyncRunRequestService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import java.util.List;
@@ -38,7 +41,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 원천 정보·연결 검사·자원 목록 (API 009~015, 100, FN-SRC-01·02). 모두 ADMIN만 쓸 수 있다. */
+/**
+ * 원천 정보·연결 검사·자원 목록·수동 다시 읽기 (API 009~015, 073, 100, FN-SRC-01·02, FN-BAT-03). 모두 ADMIN만 쓸 수 있다.
+ */
 @RestController
 @RequestMapping("/api/v1/sources")
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -50,6 +55,7 @@ public class DataSourceController {
     private final DataSourceService dataSourceService;
     private final SourceConnectionCheckService connectionCheckService;
     private final SourceCatalogService catalogService;
+    private final SyncRunRequestService syncRunRequestService;
 
     @GetMapping
     public ApiResponse<List<SourceResponse>> search(
@@ -106,6 +112,19 @@ public class DataSourceController {
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
         return ApiResponse.of(dataSourceService.reconnectCdc(id));
+    }
+
+    /** 고른 테이블의 전체 다시 읽기를 접수한다. 대기·실행 중인 테이블은 그 실행에 합류한다. */
+    @PostMapping("/{id}/sync-runs")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ApiResponse<SyncRunAcceptedResponse> requestSyncRun(
+            @PathVariable("id") @Min(1) long id,
+            @Valid @RequestBody(required = false) SyncRunRequest request,
+            @AuthenticationPrincipal LoginAccount loginAccount) {
+        requireAdmin(loginAccount);
+        return ApiResponse.of(
+                syncRunRequestService.request(
+                        id, request == null ? null : request.sourceResourceIds(), loginAccount));
     }
 
     @GetMapping("/{id}/connection-checks/{checkId}")
