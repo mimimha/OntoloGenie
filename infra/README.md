@@ -12,6 +12,7 @@ Credentials 전환 작업의 등록 ID·실행 파일 구분·검증 절차는 [
 | `monitoring/` | Prometheus·Alloy 설정, Linux 서버 전용 컨테이너 지표 수집과 노트북 검증 설정. 상세는 `monitoring/README.md` |
 | `.env.example` | Compose 변수 목록. 운영 비밀값 원본은 Credentials, 일반 설정은 `.env.config`, `.env`는 배포 실행용 산출물 |
 | `nginx/conf.d/default.conf` | HTTP → HTTPS 리다이렉트, TLS 설정, `/jenkins/` 리버스 프록시, `/api/` → backend, `/` → frontend, Swagger Basic Auth |
+| `nginx/templates/` · `nginx/README.md` | backend 외부 라우팅의 Blue·Green 선택 예시와 검증·수동 전환·복구 절차. 활성 선택 파일은 서버에서만 관리 |
 | `jenkins/Dockerfile` | Jenkins 공식 이미지 + docker CLI · compose 플러그인 |
 | `scripts/renew-cert.sh` | 인증서 자동 갱신 + nginx reload (cron에서 매일 03:00 실행) |
 | `scripts/pg-backup.sh` | 플랫폼 DB `pg_dump` 백업 + 7일 지난 파일 삭제 (cron에서 매일 04:00 실행) |
@@ -60,14 +61,16 @@ SSAFY 클라우드 방화벽은 tcp · udp 1024~65535를 열어 두므로, 서�
 | 경로 | 가는 곳 | 비고 |
 | --- | --- | --- |
 | `/` | frontend:80 (React 정적 파일) | resolver + 변수 proxy_pass(frontend 재시작 중에도 nginx 유지). SPA fallback은 frontend 컨테이너 안 nginx가 처리. 이미지 태그 `.env`의 `FRONTEND_TAG`, 호스트 `127.0.0.1:10080`(디버그용) |
-| `/api/` | backend:8080 (경로 그대로) | 로그인 전 요청은 backend가 401로 응답. `X-Forwarded-Proto` 전달(세션 Secure 쿠키), `proxy_buffering off` + `proxy_read_timeout 300s`(Agent 스트리밍), 업로드 상한 20m |
+| `/api/` | 선택한 backend:8080 (경로 그대로, 기본 backend) | 로그인 전 요청은 backend가 401로 응답. `X-Forwarded-Proto` 전달(세션 Secure 쿠키), `proxy_buffering off` + `proxy_read_timeout 300s`, 업로드 상한 20m |
 | `/jenkins/` | jenkins:8080 | 팀원 Read 권한 |
 | `/grafana/` | grafana:3000 | Grafana 로그인 필요. 하위 경로 유지, Live WebSocket 전달. 67 서버 반영 후 외부 검증 필요 |
-| `/swagger-ui.html` · `/swagger-ui/` · `/v3/api-docs` | backend:8080 | nginx Basic Auth (아이디 · 비밀번호는 서버 `nginx/htpasswd`, 팀 DM으로 공유). 백엔드 로그인과 별개 |
+| `/swagger-ui.html` · `/swagger-ui/` · `/v3/api-docs` | `/api/`와 같은 선택 대상 | nginx Basic Auth (아이디 · 비밀번호는 서버 `nginx/htpasswd`, 팀 DM으로 공유). 백엔드 로그인과 별개 |
+
+354의 외부 라우팅 설정은 활성 파일이 없으면 기존 `backend`를 사용한다. 서버 전용 `nginx/conf.d/runtime/backend-active.inc`를 교체하고 검사·reload한 경우에만 대상을 바꾼다. 이 파일과 선택 예시는 설정 자동 배포 대상이 아니다. [검증·전환·복구 절차](nginx/README.md)를 먼저 확인한다. AI 콜백·기존 모니터링은 아직 `backend:8080`을 직접 사용하므로 외부 전환 후에도 기존 backend를 종료하지 않는다. 실제 서버 전환은 아직 미검증이다.
 
 바깥에 열지 않는 것: backend `/actuator/*`와 AI 서비스. backend Actuator 전용 nginx 프록시 경로는 없으며, AI도 nginx에 외부 경로를 추가하지 않는다. backend 헬스체크는 `/actuator/health`, Alloy의 앱 지표 수집은 내부 `backend:8080/actuator/prometheus`를 사용한다. Alloy 설정도 Credentials 전환 후 관리 대상 설정 자동 배포에 포함한다. 전환 전 운영에서는 별도 수동 반영했다.
 
-공통 보호: 모든 HTTPS 응답에 보안 헤더 3개(HSTS 1주 · `X-Content-Type-Options nosniff` · `X-Frame-Options SAMEORIGIN`). 로그인 `/api/v1/auth/login`만 IP별 요청 제한(20회 즉시 통과, 이후 분당 30회, 초과 시 429). 교육장은 팀이 공인 IP 하나를 같이 쓰므로 느슨하게 둔다.
+공통 보호: HTTPS 응답의 보안 헤더 3개는 앱이 이미 보낸 값을 유지하고, 없는 항목만 nginx가 보충한다. nginx 기본값은 HSTS 1주 · `X-Content-Type-Options nosniff` · `X-Frame-Options SAMEORIGIN`이다. Spring Security API 응답의 기존 HSTS 1년·하위 도메인 포함 및 `X-Frame-Options DENY`는 유지하며 nginx가 같은 이름의 헤더를 덧붙이지 않는다. 사용자가 서버의 후보 nginx에서 Blue·Green API, internal 차단, Swagger 인증 요구, frontend 응답의 중복 제거를 확인했으며 운영 nginx에는 아직 반영하지 않았다. 범위와 미검증 항목은 [nginx 안내](nginx/README.md)를 따른다. 로그인 `/api/v1/auth/login`만 IP별 요청 제한(20회 즉시 통과, 이후 분당 30회, 초과 시 429). 교육장은 팀이 공인 IP 하나를 같이 쓰므로 느슨하게 둔다.
 
 Swagger 열쇠 파일 만들기 (서버): `echo "swagger:$(openssl passwd -apr1)" > ~/axcore/nginx/htpasswd && chmod 644 ~/axcore/nginx/htpasswd` (비밀번호 두 번 입력. 파일에는 해시만 저장되고 저장소에는 올리지 않음. nginx 일꾼 사용자가 읽어야 하므로 644)
 
