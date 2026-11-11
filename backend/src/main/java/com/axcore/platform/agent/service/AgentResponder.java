@@ -1,10 +1,15 @@
 package com.axcore.platform.agent.service;
 
 import com.axcore.platform.audit.service.AuditExecutionQueryService;
+import com.axcore.platform.ontology.service.ObjectDetailQuery;
+import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
+import com.axcore.platform.ontology.service.ObjectSearchQuery;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -28,10 +33,16 @@ public class AgentResponder {
             - 조회할 도구가 없는 정보는 아직 조회할 수 없는 정보라고 말한다.
             - 답변에 도구, Tool, resultCategory 같은 내부 용어를 쓰지 않는다. 사용자가 쓰는 업무 말로 답한다.
             - resultCategory가 NO_DATA면 해당 데이터가 없다고 말한다.
+            - resultCategory가 UNLINKED면 연결된 정보가 없다고 말한다.
+            - resultCategory가 DENIED면 그 정보를 볼 권한이 없다고 말한다.
+            - restrictedPropertyCodes에 있는 속성은 값이 없는 것이 아니라 볼 권한이 없는 것이다. 값이 없다고 말하지 않고 볼 권한이 없다고 말한다.
             - 도구가 error를 돌려주면 그 정보는 확인하지 못했다고 말하고, 데이터가 없다고 바꿔 말하지 않는다.
-            - 객체 ID는 "참고 객체 ID"에 있는 값만 쓴다. "참고 객체 ID"가 비어 있으면 객체 하나를 조회하는 도구는 부르지 않는다.
+            - 객체 ID는 "참고 객체 ID"나 이번 답변의 조회 도구 결과에 나온 값만 쓴다. 객체 ID를 지어내지 않는다.
+            - "종류 전체"가 비어 있지 않으면 객체 하나를 조회하는 도구는 부르지 않는다.
+            - 질문의 대상은 "참고 객체"로 이미 정해져 있다. 그 밖의 객체를 이름이나 코드로만 알면 객체 검색으로 먼저 찾는다. 후보가 여럿이면 어느 것인지 되묻는다.
             - 질문한 정보를 조회할 도구가 없으면 다른 도구 결과로 대신 답하지 않고, 아직 조회할 수 없는 정보라고 말한다.
               예: 작업지시 목록을 조회할 도구가 없으면 "작업지시가 없다"가 아니라 "아직 조회할 수 없다"고 말한다.
+            - 객체에 연결된 정보(예: 설비에 배정된 작업지시)는 관계를 조회해 답한다. 관계 조회로 찾을 수 있으면 "아직 조회할 수 없다"고 말하지 않는다.
             - "그럼 지난달은?"처럼 짧은 후속 질문도 "확인한 조건"의 목적·대상·기간으로 답한다. 조건은 이전 질문에서 이어 온 것이다.
             - "되물은 내용"이 있으면 "사용자의 답"은 되물은 것에 대한 답이다. "두 번째 거"는 되물은 후보 중 두 번째를 고른 말이고,
               이력의 순서나 개수가 아니다. 고른 대상·조건은 "확인한 조건"에 이미 들어 있으니 "확인한 조건"의 목적·대상·기간으로 처음 물은 것에 답한다.
@@ -48,6 +59,9 @@ public class AgentResponder {
 
     private final ObjectProvider<ChatModel> chatModels;
     private final AuditExecutionQueryService executions;
+    private final ObjectSearchQuery objectSearch;
+    private final ObjectProvider<ObjectDetailQuery> objectDetails;
+    private final ObjectProvider<ObjectEvidenceQuery> objectEvidence;
     private final AgentActionTools actionTools;
     private final Clock clock;
 
@@ -62,11 +76,17 @@ public class AgentResponder {
     public AgentResponder(
             ObjectProvider<ChatModel> chatModels,
             AuditExecutionQueryService executions,
+            ObjectSearchQuery objectSearch,
+            ObjectProvider<ObjectDetailQuery> objectDetails,
+            ObjectProvider<ObjectEvidenceQuery> objectEvidence,
             AgentActionTools actionTools,
             Clock clock,
             @Value("${axcore.agent.reasoning-effort:none}") String reasoningEffort) {
         this.chatModels = chatModels;
         this.executions = executions;
+        this.objectSearch = objectSearch;
+        this.objectDetails = objectDetails;
+        this.objectEvidence = objectEvidence;
         this.actionTools = actionTools;
         this.clock = clock;
         this.reasoningEffort = reasoningEffort;
@@ -92,15 +112,24 @@ public class AgentResponder {
                         .system(SYSTEM_PROMPT)
                         .user(userPrompt(question, interpretation, askedClarification))
                         .options(options)
-                        .tools(
-                                new AgentQueryTools(session, executions),
-                                actionTools.forAnswer(session))
+                        .tools(tools(session))
                         .call()
                         .content();
         if (content == null || content.isBlank()) {
             throw new IllegalStateException("AI 답변이 비어 있습니다.");
         }
         return content.strip();
+    }
+
+    /** 상세·관계·근거 조회는 구현(S15P31C106-137·138)이 배포된 뒤에만 준다. 부를 수 없는 도구를 AI에게 보여 주지 않는다. */
+    private Object[] tools(AgentQuerySession session) {
+        List<Object> tools = new ArrayList<>();
+        tools.add(new AgentQueryTools(session, executions, objectSearch));
+        objectDetails.ifAvailable(query -> tools.add(new AgentObjectDetailTools(session, query)));
+        objectEvidence.ifAvailable(
+                query -> tools.add(new AgentObjectEvidenceTools(session, query)));
+        tools.add(actionTools.forAnswer(session));
+        return tools.toArray();
     }
 
     /** AI는 지금 시각을 모르므로 함께 알려 준다. 알려 주지 않으면 "지금"을 날짜의 0시처럼 지어낸다(160 로컬 시험). */

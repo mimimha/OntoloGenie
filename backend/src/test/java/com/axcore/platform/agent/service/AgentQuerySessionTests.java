@@ -162,7 +162,7 @@ class AgentQuerySessionTests {
     @Test
     void numbersServerLookupAndToolCallsTogether() {
         session.lookup(
-                "OBJECT_SEARCH",
+                "TARGET_SEARCH",
                 "대상 찾기",
                 Map.of("q", "PR-03"),
                 () ->
@@ -191,7 +191,7 @@ class AgentQuerySessionTests {
         assertThatThrownBy(
                         () ->
                                 session.lookup(
-                                        "OBJECT_SEARCH",
+                                        "TARGET_SEARCH",
                                         "대상 찾기",
                                         Map.of("q", "PR-03"),
                                         () -> {
@@ -213,5 +213,63 @@ class AgentQuerySessionTests {
                         any());
         assertThat(recorded.getValue().succeeded()).isFalse();
         assertThat(session.results()).isEmpty();
+    }
+
+    @Test
+    void allowsObjectsFoundInThisAnswersResultsButNotInventedOnes() {
+        session.allowObjects(List.of(301L), true);
+
+        session.run(
+                "OBJECT_SEARCH",
+                "객체 검색",
+                Map.of("q", "금형"),
+                null,
+                null,
+                () ->
+                        new AgentQuerySession.Outcome(
+                                List.of(),
+                                AgentResultCategory.FOUND,
+                                List.of(Map.of("objectId", 415L)),
+                                null));
+
+        // 검색 결과에 나온 객체는 조회하고, 결과에 없던 ID는 계속 막는다(326).
+        assertThat(detail(415L)).containsEntry("resultCategory", "FOUND");
+        assertThat(detail(0L)).isEqualTo(Map.of("error", AgentQuerySession.NOT_TARGET));
+    }
+
+    @Test
+    void keepsOnlyTargetsWhenFoundObjectsAreNotAllowed() {
+        // 종류 전체 질문처럼 도구 결과의 객체를 더하지 않는 경우
+        session.allowObjects(List.of(), false);
+
+        session.run(
+                "OBJECT_SEARCH",
+                "객체 검색",
+                Map.of("q", "설비"),
+                null,
+                null,
+                () ->
+                        new AgentQuerySession.Outcome(
+                                List.of(),
+                                AgentResultCategory.FOUND,
+                                List.of(Map.of("objectId", 415L)),
+                                null));
+
+        assertThat(detail(415L)).isEqualTo(Map.of("error", AgentQuerySession.NOT_TARGET));
+    }
+
+    private Map<String, Object> detail(long objectId) {
+        return session.run(
+                "OBJECT_DETAIL",
+                "객체 상세",
+                Map.of("objectId", objectId),
+                "object_instance",
+                objectId,
+                () ->
+                        new AgentQuerySession.Outcome(
+                                Map.of(),
+                                AgentResultCategory.FOUND,
+                                List.of(Map.of("objectId", objectId)),
+                                null));
     }
 }

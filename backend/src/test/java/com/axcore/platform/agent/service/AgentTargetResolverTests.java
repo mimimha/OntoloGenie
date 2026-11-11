@@ -187,8 +187,8 @@ class AgentTargetResolverTests {
         assertThat(recorded.getAllValues())
                 .extracting(AgentQueryResult::toolCode, AgentQueryResult::resultCategory)
                 .containsExactly(
-                        tuple(AgentTargetResolver.OBJECT_SEARCH, AgentResultCategory.NO_DATA),
-                        tuple(AgentTargetResolver.OBJECT_SEARCH, AgentResultCategory.FOUND));
+                        tuple(AgentTargetResolver.TARGET_SEARCH, AgentResultCategory.NO_DATA),
+                        tuple(AgentTargetResolver.TARGET_SEARCH, AgentResultCategory.FOUND));
         assertThat(session.results()).isEmpty();
     }
 

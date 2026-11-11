@@ -214,6 +214,83 @@ class AgentAnswerProcessorTests {
     }
 
     @Test
+    void letsToolsQueryObjectsFoundInThisAnswerOnly() {
+        interpretAs(INTERPRETATION);
+        List<Map<String, Object>> replies = new ArrayList<>();
+        doAnswer(
+                        invocation -> {
+                            AgentQuerySession session = invocation.getArgument(2);
+                            // PR-03(301)의 관계에서 연결된 금형 415를 찾고 그 금형의 상세를 본다.
+                            session.run(
+                                    "OBJECT_LINKS",
+                                    "관계",
+                                    Map.of("objectId", 301L),
+                                    "object_instance",
+                                    301L,
+                                    () ->
+                                            new AgentQuerySession.Outcome(
+                                                    List.of(),
+                                                    AgentResultCategory.FOUND,
+                                                    List.of(
+                                                            Map.of("objectId", 301L),
+                                                            Map.of("objectId", 415L)),
+                                                    null));
+                            replies.add(detail(session, 415L));
+                            return "금형 상태 답변";
+                        })
+                .doAnswer(
+                        invocation -> {
+                            // 다음 답변에서 관계 조회 없이 같은 금형을 부른 경우
+                            replies.add(detail(invocation.getArgument(2), 415L));
+                            return "금형 상태 답변";
+                        })
+                .when(responder)
+                .answer(any(), any(), any(), any());
+
+        processor.onRequested(EVENT);
+        processor.onRequested(EVENT);
+
+        // 도구 결과로 허용한 객체는 그 답변에서만 조회할 수 있다(326).
+        assertThat(replies.get(0)).containsEntry("resultCategory", "FOUND");
+        assertThat(replies.get(1)).isEqualTo(Map.of("error", AgentQuerySession.NOT_TARGET));
+    }
+
+    @Test
+    void doesNotLetWholeKindQuestionQuerySearchedObjects() {
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(interpreter.interpret(any(), any(), any(), any(), any()))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                "비가동 현황", List.of(), null, null, List.of(), null, List.of("설비")));
+        List<Map<String, Object>> replies = new ArrayList<>();
+        doAnswer(
+                        invocation -> {
+                            AgentQuerySession session = invocation.getArgument(2);
+                            session.run(
+                                    "OBJECT_SEARCH",
+                                    "객체 검색",
+                                    Map.of("q", "설비"),
+                                    null,
+                                    null,
+                                    () ->
+                                            new AgentQuerySession.Outcome(
+                                                    List.of(),
+                                                    AgentResultCategory.FOUND,
+                                                    List.of(Map.of("objectId", 415L)),
+                                                    null));
+                            replies.add(detail(session, 415L));
+                            return "전체 현황은 아직 조회할 수 없습니다.";
+                        })
+                .when(responder)
+                .answer(any(), any(), any(), any());
+
+        processor.onRequested(EVENT);
+
+        // 종류 전체 질문은 검색으로 찾은 객체를 하나씩 조회하지 않는다(326).
+        assertThat(replies).containsExactly(Map.of("error", AgentQuerySession.NOT_TARGET));
+    }
+
+    @Test
     void asksBackWhenTargetMatchesSeveralObjects() {
         when(interpreter.isConfigured()).thenReturn(true);
         when(interpreter.interpret(any(), any(), any(), any(), any()))
@@ -554,5 +631,20 @@ class AgentAnswerProcessorTests {
                 .thenReturn(
                         new AgentTargetResolver.Resolution(
                                 List.of(new AgentReferenceObject(301L, "PR-03", "설비")), List.of()));
+    }
+
+    private static Map<String, Object> detail(AgentQuerySession session, long objectId) {
+        return session.run(
+                "OBJECT_DETAIL",
+                "객체 상세",
+                Map.of("objectId", objectId),
+                "object_instance",
+                objectId,
+                () ->
+                        new AgentQuerySession.Outcome(
+                                Map.of(),
+                                AgentResultCategory.FOUND,
+                                List.of(Map.of("objectId", objectId)),
+                                null));
     }
 }

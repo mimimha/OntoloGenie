@@ -6,6 +6,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +21,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class AgentQuerySession {
     static final String QUERY_FAILED = "조회하지 못했습니다.";
-    static final String NOT_TARGET = "이 질문의 대상 객체가 아니라 조회하지 않았습니다. '참고 객체 ID'에 있는 객체만 조회할 수 있습니다.";
+    static final String NOT_TARGET =
+            "이 질문의 대상 객체가 아니라 조회하지 않았습니다. '참고 객체 ID'나 이번 답변의 조회 결과에 나온 객체만 조회할 수 있습니다.";
 
     /** 객체 하나를 조회하는 도구의 대상 종류. */
     static final String OBJECT_INSTANCE = "object_instance";
@@ -36,6 +38,8 @@ public class AgentQuerySession {
     private int sequence;
     // 객체별 도구로 조회할 수 있는 객체. null이면 제한하지 않는다.
     private Set<Long> allowedObjectIds;
+    // 도구 결과에 나온 객체도 조회를 허용하는가. 종류 전체 질문이면 허용하지 않는다(326).
+    private boolean allowFoundObjects;
 
     public AgentQuerySession(
             LoginAccount asker, long questionId, AgentQueryRecorder recorder, Clock clock) {
@@ -53,15 +57,29 @@ public class AgentQuerySession {
             Instant dataAsOf) {}
 
     /**
-     * 이번 답변에서 객체별 도구로 조회할 수 있는 객체를 정한다(147). 질문을 해석해 정한 대상 객체만 허용한다. 부르지 않으면 제한하지 않는다(답변 처리기는 늘
+     * 이번 답변에서 객체별 도구로 조회할 수 있는 객체를 정한다(147). 질문을 해석해 정한 대상 객체를 허용하고, includeFound면 이번 답변의 도구
+     * 결과(검색·관계)에 실제로 나온 객체도 허용한다(326). 결과에 나온 ID만 더하므로 AI가 지어낸 ID는 계속 막힌다. 허용 목록은 이 세션에만 있어 다음 답변으로
+     * 넘어가지 않는다. 종류 전체 질문은 검색으로 객체를 많이 찾아 하나씩 조회하지 않게 includeFound를 끈다. 부르지 않으면 제한하지 않는다(답변 처리기는 늘
      * 부른다).
      */
-    public synchronized void allowObjects(Collection<Long> objectIds) {
-        allowedObjectIds = Set.copyOf(objectIds);
+    public synchronized void allowObjects(Collection<Long> objectIds, boolean includeFound) {
+        allowedObjectIds = new HashSet<>(objectIds);
+        allowFoundObjects = includeFound;
     }
 
     private boolean objectAllowed(Long objectId) {
         return allowedObjectIds == null || allowedObjectIds.contains(objectId);
+    }
+
+    private void allowFound(List<Map<String, Object>> sources) {
+        if (allowedObjectIds == null || !allowFoundObjects) {
+            return;
+        }
+        for (Map<String, Object> source : sources) {
+            if (source.get("objectId") instanceof Long objectId) {
+                allowedObjectIds.add(objectId);
+            }
+        }
     }
 
     public LoginAccount asker() {
@@ -94,6 +112,7 @@ public class AgentQuerySession {
         Map<String, Object> reply = new LinkedHashMap<>();
         try {
             Outcome outcome = query.get();
+            allowFound(outcome.sources());
             result =
                     new AgentQueryResult(
                             label,

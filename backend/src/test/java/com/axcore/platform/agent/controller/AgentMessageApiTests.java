@@ -31,6 +31,7 @@ import com.axcore.platform.agent.service.QuestionInterpretation;
 import com.axcore.platform.agent.service.QuestionInterpreter;
 import com.axcore.platform.audit.service.AuditExecutionQueryService;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.ontology.service.ObjectSearchQuery;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +62,7 @@ class AgentMessageApiTests {
     @Autowired MockMvc mvc;
     @Autowired JdbcClient jdbc;
     @Autowired AuditExecutionQueryService executions;
+    @Autowired ObjectSearchQuery objects;
     @MockitoBean QuestionInterpreter interpreter;
     @MockitoBean AgentResponder responder;
     @MockitoBean AgentTargetResolver targetResolver;
@@ -86,7 +88,8 @@ class AgentMessageApiTests {
                 .thenAnswer(
                         call -> {
                             AgentQuerySession session = call.getArgument(2);
-                            new AgentQueryTools(session, executions).objectExecutions(302L);
+                            new AgentQueryTools(session, executions, objects)
+                                    .objectExecutions(302L, null, null);
                             return "PR-03의 실행 이력이 없습니다.";
                         });
         when(interpreter.interpret(anyString(), anyMap(), any(), any(), any()))
