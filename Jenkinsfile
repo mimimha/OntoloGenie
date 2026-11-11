@@ -189,12 +189,17 @@ pipeline {
                     HOST_WS=$(printf '%s' "$WORKSPACE" | sed 's#^/var/jenkins_home#/home/ubuntu/axcore/jenkins-data#')
                     docker run --rm --network none --memory 256m \
                         -e PYTHONDONTWRITEBYTECODE=1 \
-                        -v "$HOST_WS/infra/deploy:/work:ro" -w /work \
+                        --mount "type=bind,src=$HOST_WS/infra/deploy,dst=/work,readonly" -w /work \
                         python:3.11-slim python -m unittest discover -p 'test_*.py' -v
-                    docker run --rm --network none --memory 256m \
-                        -e PYTHONDONTWRITEBYTECODE=1 \
-                        -v "$HOST_WS/infra/ci:/work:ro" -w /work \
-                        python:3.11-slim python -m unittest discover -p 'test_*.py' -v
+                    if git cat-file -e HEAD:infra/ci 2>/dev/null; then
+                        test -f infra/ci/test_result_cache.py
+                        docker run --rm --network none --memory 256m \
+                            -e PYTHONDONTWRITEBYTECODE=1 \
+                            --mount "type=bind,src=$HOST_WS/infra/ci,dst=/work,readonly" -w /work \
+                            python:3.11-slim python -m unittest discover -p 'test_*.py' -v
+                    else
+                        echo '검사 커밋에 infra/ci가 없습니다. 캐시 도입 전 코드이므로 캐시 회귀 검사는 대상이 아닙니다.'
+                    fi
                 '''
             }
         }
@@ -520,6 +525,10 @@ def runTestResultCache(String action, String component) {
     withEnv(["RESULT_ACTION=${action}", "RESULT_COMPONENT=${component}"]) {
         return sh(returnStatus: true, script: '''
             set -eu
+            if ! git cat-file -e HEAD:infra/ci/result_cache.py 2>/dev/null || [ ! -f infra/ci/result_cache.py ]; then
+                echo '검사 커밋에 결과 캐시 스크립트가 없습니다. 보관·복원 없이 진행합니다.'
+                exit 1
+            fi
             HOST_WS=$(printf '%s' "$WORKSPACE" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
             CACHE_DIR="${JENKINS_HOME:-/var/jenkins_home}/ci-results"
             mkdir -p "$CACHE_DIR"
@@ -537,8 +546,9 @@ def runTestResultCache(String action, String component) {
             fi
             docker run --rm --network none --memory 256m "$@" \
                 -e BUILD_URL \
-                -v "$HOST_WS/infra/ci:/script:ro" \
-                -v "$HOST_WS/$RESULT_COMPONENT:/work" -v "$CACHE_HOST:/cache" \
+                --mount "type=bind,src=$HOST_WS/infra/ci,dst=/script,readonly" \
+                --mount "type=bind,src=$HOST_WS/$RESULT_COMPONENT,dst=/work" \
+                --mount "type=bind,src=$CACHE_HOST,dst=/cache" \
                 python:3.11-slim python /script/result_cache.py "$RESULT_ACTION" "$RESULT_COMPONENT" \
                 --tree "$TREE" --pipeline "$PIPELINE" --runtime "$RUNTIME" --commit "$COMMIT"
         ''')
