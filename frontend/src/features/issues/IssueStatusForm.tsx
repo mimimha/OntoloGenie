@@ -40,7 +40,12 @@ export default function IssueStatusForm({
       setTarget('')
       setReason('')
       setRunId('')
-      await queryClient.invalidateQueries({ queryKey: listKey })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: listKey }),
+        queryClient.invalidateQueries({
+          queryKey: ['issues', 'history', issue.id],
+        }),
+      ])
     },
     onError: async (error) => {
       if (error instanceof ApiError && error.kind === 'conflict') {
