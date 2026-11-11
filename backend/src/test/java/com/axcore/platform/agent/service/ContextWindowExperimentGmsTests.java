@@ -142,7 +142,8 @@ class ContextWindowExperimentGmsTests {
         QuestionInterpretation previous = scenario.previous().toInterpretation();
         try {
             QuestionInterpretation asked =
-                    interpreter.interpret(scenario.followUp(), Map.of(), null, previous, turns);
+                    interpreter.interpret(
+                            scenario.followUp(), Map.of(), null, previous, turns, null);
             // 답변 처리기처럼 직전 답변의 조건에 이어 붙인 최종 조건으로 채점한다.
             QuestionInterpretation used = asked.continueFrom(previous);
             return Outcome.of(call, turns.size(), model.promptTokens, asked, used, null);

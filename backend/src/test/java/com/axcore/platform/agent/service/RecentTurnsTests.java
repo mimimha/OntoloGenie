@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class RecentTurnsTests {
     private static final Instant NOW = Instant.parse("2026-11-11T01:00:00Z");
@@ -129,6 +130,41 @@ class RecentTurnsTests {
                 .containsExactly(
                         new ConversationTurn("PR-03 상태", null),
                         new ConversationTurn("지금 질문", null));
+    }
+
+    @Test
+    void tellsWhereRawTurnsStartSoSummaryCoversEverythingBefore() {
+        List<AgentMessage> messages = new ArrayList<>();
+        for (int i = 1; i <= 6; i++) {
+            messages.addAll(answered("질문 " + i, "답변 " + i));
+        }
+        numbered(messages, 11);
+
+        // 4턴이면 질문 3(메시지 15)부터 원문이다. 요약은 그 앞(메시지 11~14)까지 다룬다(333).
+        assertThat(new RecentTurns(4, 2000).firstPickedMessageId(messages)).isEqualTo(15L);
+        // 토큰 상한에 걸려 2턴만 원문이면 질문 5(메시지 19)부터다. 원문과 요약 사이에 빠지는 턴이 없다.
+        assertThat(new RecentTurns(4, 2 * (45 + 8)).firstPickedMessageId(messages)).isEqualTo(19L);
+        assertThat(new RecentTurns(0, 2000).firstPickedMessageId(messages)).isNull();
+    }
+
+    @Test
+    void buildsSummaryTurnsLikeRawTurns() {
+        List<AgentMessage> messages = new ArrayList<>(answered("질문", "답변"));
+        AgentMessage failedQuestion = AgentMessage.question(1L, "실패한 질문", Map.of(), NOW);
+        AgentMessage failed = AgentMessage.runningAnswer(1L, NOW);
+        failed.fail("답변을 끝내지 못했습니다.", "AI 응답 실패");
+        messages.add(failedQuestion);
+        messages.add(failed);
+
+        assertThat(RecentTurns.turnsOf(messages))
+                .containsExactly(
+                        new ConversationTurn("질문", "답변"), new ConversationTurn("실패한 질문", null));
+    }
+
+    private static void numbered(List<AgentMessage> messages, long firstId) {
+        for (int i = 0; i < messages.size(); i++) {
+            ReflectionTestUtils.setField(messages.get(i), "id", firstId + i);
+        }
     }
 
     @Test

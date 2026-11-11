@@ -92,7 +92,7 @@ class AgentMessageApiTests {
                                     .objectExecutions(302L, null, null);
                             return "PR-03의 실행 이력이 없습니다.";
                         });
-        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any()))
+        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "비가동 이력",
@@ -178,7 +178,7 @@ class AgentMessageApiTests {
     @Test
     void asksBackWhenConditionsAreMissing() throws Exception {
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any()))
+        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(null, List.of(), null, null, List.of(), "최근"));
 
@@ -203,7 +203,7 @@ class AgentMessageApiTests {
     void fillsAskedConditionsWithReply() throws Exception {
         when(interpreter.isConfigured()).thenReturn(true);
         when(responder.answer(anyString(), any(), any(), any())).thenReturn("PR-03 10월 비가동 이력 답변");
-        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any()))
+        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "비가동 이력", List.of("PR-03"), null, null, List.of(), "최근"),
@@ -220,7 +220,7 @@ class AgentMessageApiTests {
         ask(conversation, "10월 1일부터 31일까지").andExpect(status().isAccepted());
         awaitAnswered(conversation);
 
-        verify(interpreter).interpret(anyString(), anyMap(), notNull(), any(), any());
+        verify(interpreter).interpret(anyString(), anyMap(), notNull(), any(), any(), any());
         mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
                 .andExpect(
                         jsonPath("$.data[1].answerMeta.clarification.missing[0]").value("PERIOD"))
@@ -237,7 +237,7 @@ class AgentMessageApiTests {
     void followUpKeepsPreviousTargetAndChangesOnlyPeriod() throws Exception {
         when(interpreter.isConfigured()).thenReturn(true);
         when(responder.answer(anyString(), any(), any(), any())).thenReturn("비가동 이력 답변");
-        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any()))
+        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "비가동 이력",
@@ -273,7 +273,7 @@ class AgentMessageApiTests {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<ConversationTurn>> turns = ArgumentCaptor.forClass(List.class);
         verify(interpreter)
-                .interpret(eq("그럼 지난달은?"), anyMap(), isNull(), notNull(), turns.capture());
+                .interpret(eq("그럼 지난달은?"), anyMap(), isNull(), notNull(), turns.capture(), any());
         assertThat(turns.getValue())
                 .containsExactly(new ConversationTurn("PR-03 10월 비가동 이력 알려줘", "비가동 이력 답변"));
         verify(targetResolver, times(1)).resolve(any(), any(), any());
@@ -299,7 +299,7 @@ class AgentMessageApiTests {
     void followUpSkipsClarificationAndFailedAnswerWhenContinuing() throws Exception {
         when(interpreter.isConfigured()).thenReturn(true);
         when(responder.answer(anyString(), any(), any(), any())).thenReturn("비가동 이력 답변");
-        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any()))
+        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "비가동 이력",
@@ -334,7 +334,7 @@ class AgentMessageApiTests {
         ArgumentCaptor<QuestionInterpretation> previous =
                 ArgumentCaptor.forClass(QuestionInterpretation.class);
         verify(interpreter)
-                .interpret(eq("그럼 지난달은?"), anyMap(), isNull(), previous.capture(), any());
+                .interpret(eq("그럼 지난달은?"), anyMap(), isNull(), previous.capture(), any(), any());
         assertThat(previous.getValue().from()).isEqualTo(LocalDate.parse("2026-10-01"));
         assertThat(previous.getValue().vaguePeriod()).isNull();
         mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
@@ -363,7 +363,7 @@ class AgentMessageApiTests {
     @Test
     void failsAnswerWhenAiCallFails() throws Exception {
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any()))
+        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
                 .thenThrow(new IllegalStateException("GMS 시간 초과"));
 
         ask(conversation, "PR-03 상태 알려줘").andExpect(status().isAccepted());
@@ -373,6 +373,34 @@ class AgentMessageApiTests {
                 .andExpect(jsonPath("$.data[1].status").value("FAILED"))
                 .andExpect(jsonPath("$.data[1].errorMessage").value("AI 응답 실패"))
                 .andExpect(jsonPath("$.data[1].answerMeta.syncStatus").value("NONE"));
+    }
+
+    @Test
+    void passesStoredOlderSummaryOfThisConversationToInterpreter() throws Exception {
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
+                .thenThrow(new IllegalStateException("해석만 확인한다"));
+        jdbc.sql(
+                        """
+                        update agent_conversation
+                           set summary = '처음에 PR-06 비가동 이력을 물었다.', summarized_until_message_id = 1
+                         where id = :id
+                        """)
+                .param("id", conversation)
+                .update();
+
+        ask(conversation, "처음에 물어본 설비는?").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+
+        // 앞 답변 뒤에 저장한 오래된 대화 요약을 질문 해석에 넘긴다(333).
+        verify(interpreter)
+                .interpret(
+                        eq("처음에 물어본 설비는?"),
+                        anyMap(),
+                        any(),
+                        any(),
+                        any(),
+                        eq("처음에 PR-06 비가동 이력을 물었다."));
     }
 
     @Test

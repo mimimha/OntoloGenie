@@ -21,6 +21,14 @@ public interface AgentMessageRepository extends JpaRepository<AgentMessage, Long
     /** 대화의 최근 메시지를 최신 순으로 읽는다. 질문 해석에 넘길 최근 대화 원문을 고를 때 쓴다(147). */
     List<AgentMessage> findByConversationIdOrderByIdDesc(Long conversationId, Pageable pageable);
 
+    /** 대화에서 두 ID 사이(양 끝 제외)의 메시지를 최신 순으로 읽는다. 요약이 없던 대화의 첫 요약에 넣을 메시지를 고를 때 쓴다(333). */
+    List<AgentMessage> findByConversationIdAndIdGreaterThanAndIdLessThanOrderByIdDesc(
+            Long conversationId, Long afterId, Long beforeId, Pageable pageable);
+
+    /** 대화에서 두 ID 사이(양 끝 제외)의 메시지를 오래된 순으로 읽는다. 이전 요약에 이어 합칠 메시지를 고를 때 쓴다(333). */
+    List<AgentMessage> findByConversationIdAndIdGreaterThanAndIdLessThanOrderByIdAsc(
+            Long conversationId, Long afterId, Long beforeId, Pageable pageable);
+
     boolean existsByConversationIdAndStatus(Long conversationId, MessageStatus status);
 
     /**

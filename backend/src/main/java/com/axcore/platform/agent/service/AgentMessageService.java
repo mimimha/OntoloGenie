@@ -81,7 +81,9 @@ public class AgentMessageService {
                         request.messageContext(),
                         pending,
                         previous,
-                        turns));
+                        turns,
+                        // 앞 답변 뒤에 저장한 오래된 대화 요약(333). 그 답변 직후 요약을 만드는 중이면 이전 요약이다.
+                        conversation.getSummary()));
         return List.of(AgentMessageResponse.from(question), AgentMessageResponse.from(answer));
     }
 

@@ -1,5 +1,6 @@
 package com.axcore.platform.agent.domain;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -28,6 +29,17 @@ public class AgentConversation {
     private Instant startedAt;
 
     private Instant lastMessageAt;
+
+    /**
+     * 최근 대화 원문 범위 밖의 오래된 대화 요약(333). 답변 처리 뒤 {@code AgentConversationRepository.saveSummary}로만 바꾼다.
+     * 질문을 받을 때 이 Entity를 고쳐 저장해도 그사이 저장된 요약을 옛 값으로 덮지 않게 Entity 저장에서는 쓰지 않는다.
+     */
+    @Column(insertable = false, updatable = false)
+    private String summary;
+
+    /** 요약에 넣은 마지막 메시지 ID(333). summary와 함께 바뀐다. */
+    @Column(insertable = false, updatable = false)
+    private Long summarizedUntilMessageId;
 
     private AgentConversation(Long accountId, Instant now) {
         this.accountId = accountId;
