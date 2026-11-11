@@ -255,7 +255,9 @@ test('참고 객체는 첫 질문에만 보내고, 다음 질문부터는 보내
   await waitFor(() => expect(input).toBeEnabled())
   // 미리 채운 질문을 다시 채우지 않고, 추천 질문도 기본 예시로 돌아간다.
   expect(input).toHaveValue('')
-  expect(screen.getByRole('button', { name: '정지 설비' })).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: 'P103 비가동' }),
+  ).toBeInTheDocument()
 
   await user.type(input, '06번의 실행 이력은?')
   await user.click(screen.getByRole('button', { name: '보내기 ↑' }))
@@ -284,7 +286,7 @@ test('추천 질문을 고르면 입력란에 채우고, 답변을 기다리는 
   expect(await screen.findByText(/^답변 준비 중/)).toBeInTheDocument()
   expect(
     within(suggestions).getByRole('button', {
-      name: '정지 설비',
+      name: 'P103 비가동',
     }),
   ).toBeDisabled()
 })
@@ -348,7 +350,9 @@ test('이미 질문이 있는 대화에 남은 기록으로 들어오면 참고 
   expect(await screen.findByText(SAMPLE_ANSWER)).toBeInTheDocument()
   const input = await screen.findByLabelText('업무 질문')
   expect(input).toHaveValue('')
-  expect(screen.getByRole('button', { name: '정지 설비' })).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: 'P103 비가동' }),
+  ).toBeInTheDocument()
 
   await user.type(input, '06번의 실행 이력은?')
   await user.click(screen.getByRole('button', { name: '보내기 ↑' }))
@@ -423,7 +427,7 @@ test('Enter로 질문을 보내고, Shift+Enter와 한글 조합 중 Enter로는
 
 test('참고 객체 없이 시작하면 역할에 맞는 기본 추천 질문을 보여 준다', async () => {
   const user = userEvent.setup()
-  // 조회 사용자는 086 예시 다섯 개를 보고, 계획 권한이 없으므로 재배정 계획 문장은 없다.
+  // 조회 사용자는 조회 문장 다섯 개를 보고, 계획 권한이 없으므로 재배정 계획 문장은 없다.
   renderAgentPage('/agent?conversation=2', 'VIEWER')
 
   expect(
@@ -434,12 +438,12 @@ test('참고 객체 없이 시작하면 역할에 맞는 기본 추천 질문을
   ).toBeNull()
   await user.click(
     await screen.findByRole('button', {
-      name: '정합성 문제',
+      name: '고정자산 장부가',
     }),
   )
 
   expect(screen.getByLabelText('업무 질문')).toHaveValue(
-    '최근 정합성 문제 현황을 보여줘',
+    'FA-0006 장부가와 취득가 알려줘',
   )
   expect(screen.queryByRole('button', { name: /재배정 계획/ })).toBeNull()
 })
@@ -478,7 +482,7 @@ test('이름·유형이 없는 예전 기록으로 들어오면 참고 객체 �
 
   expect(
     await screen.findByRole('button', {
-      name: '정지 설비',
+      name: 'P103 비가동',
     }),
   ).toBeInTheDocument()
   expect(screen.queryByText(/undefined/)).not.toBeInTheDocument()
