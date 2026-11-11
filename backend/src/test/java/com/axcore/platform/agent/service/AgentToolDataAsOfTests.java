@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.data.domain.PageImpl;
 
 /** 조회 도구가 결과에 나온 객체들의 원천 표 기준으로 기준 시점을 채우는지 본다(145). 표별 규칙은 {@link DataAsOfResolverTests}가 본다. */
@@ -114,12 +116,30 @@ class AgentToolDataAsOfTests {
         when(evidence.linkEvidence(ASKER, 301L, 91L))
                 .thenReturn(
                         new ObjectLinkEvidenceResponse(
-                                Map.of(), null, null, null, null, null, List.of()));
+                                Map.of(), null, "일치 값", null, null, null, List.of(), false));
         when(dataAsOf.forLink(91L)).thenReturn(CONFIRMED);
 
         new AgentObjectEvidenceTools(session, evidence).linkEvidence(301L, 91L);
 
         assertThat(session.results().getFirst().dataAsOf()).isEqualTo(CONFIRMED);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void doesNotResolveDataAsOfWhenEvidenceIsRestrictedOrAbsent(boolean restricted) {
+        when(evidence.linkEvidence(ASKER, 301L, 91L))
+                .thenReturn(
+                        new ObjectLinkEvidenceResponse(
+                                null, null, null, null, null, null, List.of(), restricted));
+        when(dataAsOf.forLink(91L)).thenReturn(CONFIRMED);
+
+        var reply = new AgentObjectEvidenceTools(session, evidence).linkEvidence(301L, 91L);
+
+        assertThat(reply)
+                .containsEntry("resultCategory", restricted ? "DENIED" : "NO_DATA")
+                .containsEntry("dataAsOf", null);
+        assertThat(session.results().getFirst().dataAsOf()).isNull();
+        verify(dataAsOf, never()).forLink(anyLong());
     }
 
     @Test

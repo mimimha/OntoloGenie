@@ -46,12 +46,30 @@ public class AgentObjectEvidenceTools {
                                     long link = AgentQueryTools.required(linkId, "linkId");
                                     ObjectLinkEvidenceResponse found =
                                             evidence.linkEvidence(session.asker(), id, link);
-                                    // 근거는 관계 양 끝 객체의 원천 값이라 두 객체의 표 기준으로 구한다(145).
+                                    AgentResultCategory category = evidenceCategory(found);
+                                    // 공개한 근거는 관계 양 끝 객체의 표 기준으로 시점을 구한다(145).
                                     return new AgentQuerySession.Outcome(
                                             found,
-                                            AgentResultCategory.FOUND,
+                                            category,
                                             List.of(Map.of("objectId", id)),
-                                            session.dataAsOfLink(link));
+                                            category == AgentResultCategory.FOUND
+                                                    ? session.dataAsOfLink(link)
+                                                    : null);
                                 }));
+    }
+
+    private static AgentResultCategory evidenceCategory(ObjectLinkEvidenceResponse evidence) {
+        if (evidence.evidenceRestricted()) {
+            return AgentResultCategory.DENIED;
+        }
+        // 원천 키는 객체 식별 정보다. 관계를 뒷받침하는 저장 근거는 별도로 확인한다.
+        boolean hasEvidence =
+                evidence.rawValue() != null
+                        || evidence.transformedValue() != null
+                        || !evidence.comparisons().isEmpty()
+                        || evidence.quote() != null
+                        || evidence.event() != null
+                        || evidence.timeExpression() != null;
+        return hasEvidence ? AgentResultCategory.FOUND : AgentResultCategory.NO_DATA;
     }
 }

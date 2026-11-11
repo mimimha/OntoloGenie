@@ -39,7 +39,7 @@ public class ObjectQueryRepository {
             new TypeReference<>() {};
 
     private static final ObjectLinkEvidenceResponse EMPTY_EVIDENCE =
-            new ObjectLinkEvidenceResponse(null, null, null, null, null, null, List.of());
+            new ObjectLinkEvidenceResponse(null, null, null, null, null, null, List.of(), false);
 
     private static final String OBJECTS = "from object_instance oi\n";
 
@@ -140,11 +140,31 @@ public class ObjectQueryRepository {
               and (cast(:linkTypeId as bigint) is null or l.link_type_id = :linkTypeId)
             """;
 
+    // 가림 표시는 공개 응답에 담을 수 있는 문자열 맵이나 비교 조건이 있을 때만 켠다.
     private static final String LINK_EVIDENCE_FIELDS =
             """
             , evidence_source.source_key as evidence_source_key,
               case when evidence_scope.can_view then l.evidence::text end as evidence_payload,
-              case when evidence_scope.can_view then comparison_details.items::text end as evidence_comparisons
+              case when evidence_scope.can_view then comparison_details.items::text end as evidence_comparisons,
+              case
+                  when evidence_scope.can_view then false
+                  when l.origin = 'RULE' then
+                      comparison_details.has_items or exists (
+                          select 1
+                          from (values (l.evidence -> 'rawValues'), (l.evidence -> 'matchedValues')) stored(payload)
+                          where jsonb_typeof(stored.payload) = 'object'
+                            and stored.payload <> '{}'::jsonb
+                            and not jsonb_path_exists(stored.payload, 'strict $.* ? (@.type() != "string")',
+                                                      '{}'::jsonb, true)
+                      )
+                  when l.origin = 'DOCUMENT' then coalesce(
+                      jsonb_typeof(l.evidence -> 'quote') = 'string'
+                      or jsonb_typeof(l.evidence -> 'event') = 'string'
+                      or jsonb_typeof(coalesce(
+                          l.evidence -> 'time_expression', l.evidence -> 'timeExpression')) = 'string',
+                      false)
+                  else false
+              end as evidence_restricted
             """;
 
     // 관계 방향과 관계없이 원천 키는 출발 객체의 것을 사용한다.
@@ -194,16 +214,19 @@ public class ObjectQueryRepository {
                     'targetColumn', target_column.column_name,
                     'targetValue', comparison.target_value,
                     'matchedValue', l.evidence -> 'matchedValues' -> (c.sequence_no::text)
-                ) order by c.sequence_no) as items
+                ) order by c.sequence_no) filter (where evidence_scope.can_view) as items,
+                       count(*) > 0 as has_items
                 from link_mapping_condition c
                 join property_definition src on src.id = c.source_property_id
                 join property_definition dst on dst.id = c.target_property_id
                 left join property_source_mapping source_mapping
-                    on source_mapping.source_mapping_id = evidence_source.source_mapping_id
+                    on evidence_scope.can_view
+                   and source_mapping.source_mapping_id = evidence_source.source_mapping_id
                    and source_mapping.property_definition_id = src.id
                 left join source_column source_column on source_column.id = source_mapping.source_column_id
                 left join property_source_mapping target_mapping
-                    on target_mapping.source_mapping_id = evidence_target.source_mapping_id
+                    on evidence_scope.can_view
+                   and target_mapping.source_mapping_id = evidence_target.source_mapping_id
                    and target_mapping.property_definition_id = dst.id
                 left join source_column target_column on target_column.id = target_mapping.source_column_id
                 cross join lateral (
@@ -212,7 +235,7 @@ public class ObjectQueryRepository {
                                case when c.target_transforms = '[]'::jsonb
                                     then l.evidence -> 'matchedValues' -> (c.sequence_no::text) end) as target_value
                 ) comparison
-                where l.origin = 'RULE' and evidence_scope.can_view
+                where l.origin = 'RULE'
                   and c.link_mapping_id = l.link_mapping_id
                   and jsonb_typeof(comparison.source_value) = 'string'
                   and jsonb_typeof(comparison.target_value) = 'string'
@@ -459,6 +482,7 @@ public class ObjectQueryRepository {
         String stored = rs.getString("evidence_payload");
         Map<String, Object> payload =
                 stored == null ? Map.of() : json.readValue(stored, JSON_OBJECT);
+        boolean restricted = rs.getBoolean("evidence_restricted");
         return switch (origin) {
             case RULE -> {
                 String sourceKey = rs.getString("evidence_source_key");
@@ -470,7 +494,8 @@ public class ObjectQueryRepository {
                         null,
                         null,
                         null,
-                        comparisons == null ? List.of() : json.readValue(comparisons, COMPARISONS));
+                        comparisons == null ? List.of() : json.readValue(comparisons, COMPARISONS),
+                        restricted);
             }
             case DOCUMENT ->
                     new ObjectLinkEvidenceResponse(
@@ -482,7 +507,8 @@ public class ObjectQueryRepository {
                             textValue(
                                     payload.getOrDefault(
                                             "time_expression", payload.get("timeExpression"))),
-                            List.of());
+                            List.of(),
+                            restricted);
             case MANUAL -> EMPTY_EVIDENCE;
         };
     }

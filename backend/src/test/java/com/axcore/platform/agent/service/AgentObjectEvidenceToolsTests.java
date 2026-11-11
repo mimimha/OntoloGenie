@@ -32,7 +32,8 @@ class AgentObjectEvidenceToolsTests {
                         null,
                         null,
                         null,
-                        List.of());
+                        List.of(),
+                        false);
         when(evidence.linkEvidence(ASKER, 301L, 91L)).thenReturn(found);
 
         Map<String, Object> reply = tools.linkEvidence(301L, 91L);
@@ -41,6 +42,36 @@ class AgentObjectEvidenceToolsTests {
         AgentQueryResult result = session.results().getFirst();
         assertThat(result.toolCode()).isEqualTo(AgentObjectEvidenceTools.OBJECT_LINK_EVIDENCE);
         assertThat(result.sources()).containsExactly(Map.of("objectId", 301L));
+    }
+
+    @Test
+    void treatsLinkWithOnlySourceKeyAsNoEvidence() {
+        var found =
+                new ObjectLinkEvidenceResponse(
+                        Map.of("work_order_no", "WO-501"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        false);
+        when(evidence.linkEvidence(ASKER, 301L, 91L)).thenReturn(found);
+
+        assertThat(tools.linkEvidence(301L, 91L))
+                .containsEntry("resultCategory", "NO_DATA")
+                .containsEntry("data", found);
+    }
+
+    @Test
+    void treatsRestrictedEvidenceAsDeniedEvenWithoutVisibleValues() {
+        var restricted =
+                new ObjectLinkEvidenceResponse(null, null, null, null, null, null, List.of(), true);
+        when(evidence.linkEvidence(ASKER, 301L, 91L)).thenReturn(restricted);
+
+        assertThat(tools.linkEvidence(301L, 91L))
+                .containsEntry("resultCategory", "DENIED")
+                .containsEntry("data", restricted);
     }
 
     @Test
