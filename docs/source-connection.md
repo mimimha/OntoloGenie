@@ -77,6 +77,6 @@
 
 ## 7. 남은 것·확인할 것
 
-- **016 원천 행 표본 조회:** 배치 작업 종류(`SOURCE_PREVIEW`)와 표(`source_preview`)는 있지만, API 경로는 develop에 없습니다(미구현). 화면(원천 표본 탭, S15P31C106-225)은 develop `119d85d`에 들어왔지만 실제 요청 함수를 주입하지 않아 서버와 연결되지 않습니다(`docs/source-samples-225.md`). 016·102 형식과 가림 정책이 정해져야 연결합니다.
+- **016 원천 행 표본 조회:** 배치 작업 종류(`SOURCE_PREVIEW`)와 표(`source_preview`)는 있지만, 016 접수 API와 SAMPLE 처리기는 아직 없습니다(미구현). 결과 조회 102(`GET /api/v1/ontology/source-previews/{previewId}`)는 매핑 미리보기(S15P31C106-185, [mapping-preview.md](mapping-preview.md))와 함께 들어왔고 SAMPLE 결과(`columns`·`rows`)도 그대로 돌려줍니다. 화면(원천 표본 탭, S15P31C106-225)은 develop `119d85d`에 들어왔지만 실제 요청 함수를 주입하지 않아 서버와 연결되지 않습니다(`docs/source-samples-225.md`). 016 형식과 가림 정책이 정해져야 연결합니다.
 - **CSV·DOCUMENT 원천:** 연결 검사는 "지원하지 않음"으로 실패합니다. 원천 목록도 PostgreSQL 카탈로그에서 TABLE·VIEW만 만듭니다(`SourceCatalogReader`).
 - **로컬 시험:** 연결 검사가 batch에서만 돌아서, api와 batch를 같은 플랫폼 DB로 함께 띄워야 표 목록이 채워집니다.
