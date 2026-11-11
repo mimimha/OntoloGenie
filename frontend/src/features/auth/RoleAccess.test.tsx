@@ -94,6 +94,22 @@ test.each(
   },
 )
 
+test.each(nonAdminRoles)(
+  '%s는 문제 상세 직접 진입 시 전달 기록·상태 이력 API를 호출하지 않는다',
+  async (role) => {
+    const issue = vi.fn(() => HttpResponse.json({ data: [] }))
+    server.use(
+      http.get('/api/v1/issues', issue),
+      http.get('/api/v1/issues/:id', issue),
+      http.get('/api/v1/issues/:id/history', issue),
+      http.post('/api/v1/issues/:id/forward', issue),
+    )
+    openAt('/admin/rules?view=issues&issue=1', role)
+    await screen.findByRole('heading', { name: '접근 권한이 없습니다.' })
+    expect(issue).not.toHaveBeenCalled()
+  },
+)
+
 test.each(adminPages)(
   'ADMIN은 %s의 관리 화면을 사용할 수 있다',
   async (path, title) => {

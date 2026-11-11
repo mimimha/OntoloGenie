@@ -92,7 +92,11 @@ function IssueDetail({ id, onClose }: { id: number; onClose: () => void }) {
             </dl>
             <IssueStatusForm issue={issue} statusLabels={statusLabels} />
             <IssueReverification issue={issue} />
-            <IssueTracking issue={issue} statusLabels={statusLabels} />
+            <IssueTracking
+              key={issue.id}
+              issue={issue}
+              statusLabels={statusLabels}
+            />
             <section aria-label="원천 근거" className="space-y-2">
               <h3 className="font-semibold">원천 근거</h3>
               {evidence.length ? (

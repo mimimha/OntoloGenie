@@ -21,6 +21,29 @@ export const issueFixture: Issue = {
 }
 
 export const issueHandlers = [
+  http.get('/api/v1/issues/:id/history', ({ params, request }) => {
+    if (Number(params.id) !== issueFixture.id)
+      return HttpResponse.json(
+        {
+          error: {
+            code: 'RESOURCE_NOT_FOUND',
+            message: '문제를 찾을 수 없습니다.',
+            details: {},
+          },
+        },
+        { status: 404 },
+      )
+    const query = new URL(request.url).searchParams
+    return HttpResponse.json({
+      data: [],
+      meta: {
+        page: Number(query.get('page') ?? 0),
+        size: Number(query.get('size') ?? 20),
+        totalElements: 0,
+        hasNext: false,
+      },
+    })
+  }),
   http.get('/api/v1/issues', ({ request }) => {
     const params = new URL(request.url).searchParams
     const page = Number(params.get('page') ?? 0)

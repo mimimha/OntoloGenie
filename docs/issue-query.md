@@ -4,26 +4,26 @@
 
 FN-ISS-01~04의 정합성 문제 목록·근거 조회, 처리 상태 변경, 원천 전달 기록, 상태 이력 API와, 검사가 문제를 등록할 때 쓰는 중복 방지 등록 서비스를 제공한다. 모든 API는 세션 인증과 ADMIN 권한이 필요하다.
 
-| API | 요청 | 결과 |
-| --- | --- | --- |
-| 065 | `GET /api/v1/issues` | `data` 배열과 `meta.page/size/totalElements/hasNext` |
-| 066 | `GET /api/v1/issues/{id}` | `data` 객체. `id`는 1 이상 |
-| 067 | `PATCH /api/v1/issues/{id}/status` | 바뀐 `data` 객체(066과 같은 형식) |
-| 068 | `POST /api/v1/issues/{id}/forward` | 바뀐 `data` 객체(066과 같은 형식) |
-| 069 | `GET /api/v1/issues/{id}/history` | `data` 배열과 `meta` |
+| API | 요청                               | 결과                                                 |
+| --- | ---------------------------------- | ---------------------------------------------------- |
+| 065 | `GET /api/v1/issues`               | `data` 배열과 `meta.page/size/totalElements/hasNext` |
+| 066 | `GET /api/v1/issues/{id}`          | `data` 객체. `id`는 1 이상                           |
+| 067 | `PATCH /api/v1/issues/{id}/status` | 바뀐 `data` 객체(066과 같은 형식)                    |
+| 068 | `POST /api/v1/issues/{id}/forward` | 바뀐 `data` 객체(066과 같은 형식)                    |
+| 069 | `GET /api/v1/issues/{id}/history`  | `data` 배열과 `meta`                                 |
 
 065·066·069는 읽기만 한다.
 
 ## 목록 조건과 기본값
 
-| 조건 | 검증 | 생략 시 |
-| --- | --- | --- |
-| `status` | `NEW`, `CHECKING`, `FIXED_PENDING_REVERIFY`, `RESOLVED` 중 하나 | 모든 상태 |
-| `issueKind` | `UNMATCHED`, `DUPLICATE`, `VIOLATION` 중 하나 | 모든 종류 |
-| `linkMappingId` | 1 이상 | 규칙 제한 없음 |
-| `from`, `to` | 시간대가 붙은 ISO 8601. `from`이 `to`보다 늦으면 400 | 기간 제한 없음 |
-| `page` | 0 이상 | 0 |
-| `size` | 1 이상 | 20 |
+| 조건            | 검증                                                            | 생략 시        |
+| --------------- | --------------------------------------------------------------- | -------------- |
+| `status`        | `NEW`, `CHECKING`, `FIXED_PENDING_REVERIFY`, `RESOLVED` 중 하나 | 모든 상태      |
+| `issueKind`     | `UNMATCHED`, `DUPLICATE`, `VIOLATION` 중 하나                   | 모든 종류      |
+| `linkMappingId` | 1 이상                                                          | 규칙 제한 없음 |
+| `from`, `to`    | 시간대가 붙은 ISO 8601. `from`이 `to`보다 늦으면 400            | 기간 제한 없음 |
+| `page`          | 0 이상                                                          | 0              |
+| `size`          | 1 이상                                                          | 20             |
 
 - `from`·`to`는 문제 등록 시각(`createdAt`) 기준이고 양 끝을 포함한다.
 - 쿼리 문자열의 `+09:00`은 `%2B09:00`으로 보내야 한다. 그대로 보내면 `+`가 공백으로 바뀌어 400이 된다.
@@ -51,10 +51,10 @@ FN-ISS-01~04의 정합성 문제 목록·근거 조회, 처리 상태 변경, �
 
 `IssueDedupeKey`로 만든다. 규칙은 개정본 ID가 아니라 **규칙 코드**로 가리킨다. 규칙을 개정해도 같은 행의 같은 문제는 열린 문제 하나로 남는다.
 
-| 경우 | 메서드 | 예 |
-| --- | --- | --- |
-| 반영된 규칙이 객체 하나에서 낸 문제 | `forRule(kind, linkMappingCode, objectId)` | `UNMATCHED:rule:W2E:object:501` |
-| 후보 시험이 원천 행 하나에서 낸 문제 | `forProposal(kind, proposalItemId, rowKey)` | `UNMATCHED:proposal:7:row:W23` |
+| 경우                                 | 메서드                                      | 예                              |
+| ------------------------------------ | ------------------------------------------- | ------------------------------- |
+| 반영된 규칙이 객체 하나에서 낸 문제  | `forRule(kind, linkMappingCode, objectId)`  | `UNMATCHED:rule:W2E:object:501` |
+| 후보 시험이 원천 행 하나에서 낸 문제 | `forProposal(kind, proposalItemId, rowKey)` | `UNMATCHED:proposal:7:row:W23`  |
 
 최대 300자다. Notion 065 예시(`UNMATCHED:link_mapping:12:object:501`)와 ERD 예시(`UNMATCHED:W2E:W23`)가 서로 달라 위 형식으로 정했다. 명세 예시를 맞춰야 한다.
 
@@ -64,26 +64,26 @@ FN-ISS-01~04의 정합성 문제 목록·근거 조회, 처리 상태 변경, �
 
 ### 허용 전환
 
-| 지금 | 바꿀 수 있는 상태 |
-| --- | --- |
-| NEW | CHECKING |
-| CHECKING | FIXED_PENDING_REVERIFY |
+| 지금                   | 바꿀 수 있는 상태                                |
+| ---------------------- | ------------------------------------------------ |
+| NEW                    | CHECKING                                         |
+| CHECKING               | FIXED_PENDING_REVERIFY                           |
 | FIXED_PENDING_REVERIFY | CHECKING(재검증 실패 등으로 다시 확인), RESOLVED |
-| RESOLVED | 없음. 같은 문제가 다시 나오면 새 문제로 등록된다 |
+| RESOLVED               | 없음. 같은 문제가 다시 나오면 새 문제로 등록된다 |
 
 - 표에 없는 전환과 같은 상태로의 변경은 409 `INVALID_STATUS_TRANSITION`이다. `details`에 `currentStatus`, `requestedStatus`, `allowedStatuses`를 준다.
 - 표는 `IssueStatus.nextStatuses()` 한 곳에 있다.
 
 ### 상태 전환 정책 (246 확정)
 
-| 전환 | 누가 | 조건 |
-| --- | --- | --- |
-| (등록) → NEW | 검사(SYNC·MANUAL) | 같은 `dedupeKey`의 열린 문제가 없을 때 |
-| NEW → CHECKING | 관리자(067) | 없음 |
-| CHECKING → FIXED_PENDING_REVERIFY | 관리자(067) | 없음. 이 시각이 "원천을 고쳤다"는 기준이 된다 |
-| FIXED_PENDING_REVERIFY → CHECKING | 관리자(067) 또는 재검증 실패 시 검사 | 검사는 조치완료 표시 뒤에 시작한 재검증에서 FAILED일 때만 |
-| FIXED_PENDING_REVERIFY → RESOLVED | **관리자만**(067) | 아래 해결 조건. 재검증이 통과해도 자동으로 해결하지 않는다(2026-10-27 결정, 시나리오 S5-6) |
-| RESOLVED → (없음) | — | 끝 상태. 같은 문제가 다시 나오면 새 문제로 등록된다 |
+| 전환                              | 누가                                 | 조건                                                                                       |
+| --------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ |
+| (등록) → NEW                      | 검사(SYNC·MANUAL)                    | 같은 `dedupeKey`의 열린 문제가 없을 때                                                     |
+| NEW → CHECKING                    | 관리자(067)                          | 없음                                                                                       |
+| CHECKING → FIXED_PENDING_REVERIFY | 관리자(067)                          | 없음. 이 시각이 "원천을 고쳤다"는 기준이 된다                                              |
+| FIXED_PENDING_REVERIFY → CHECKING | 관리자(067) 또는 재검증 실패 시 검사 | 검사는 조치완료 표시 뒤에 시작한 재검증에서 FAILED일 때만                                  |
+| FIXED_PENDING_REVERIFY → RESOLVED | **관리자만**(067)                    | 아래 해결 조건. 재검증이 통과해도 자동으로 해결하지 않는다(2026-10-27 결정, 시나리오 S5-6) |
+| RESOLVED → (없음)                 | —                                    | 끝 상태. 같은 문제가 다시 나오면 새 문제로 등록된다                                        |
 
 - **한 칸씩만 앞으로 간다.** NEW·CHECKING에서 바로 RESOLVED로 가는 길은 없다. 관리자가 "원천을 고쳤다"고 표시한 시점이 있어야 해결 조건 3(조치완료 뒤에 시작한 재검증)을 검사할 수 있기 때문이다.
 - **되돌림은 FIXED_PENDING_REVERIFY → CHECKING 하나다.** 재검증이 실패했거나 관리자가 다시 확인해야 한다고 판단한 경우다.
@@ -159,6 +159,19 @@ FN-ISS-01~04의 정합성 문제 목록·근거 조회, 처리 상태 변경, �
 - 테스트의 CSRF는 `IssueTestFixtures.csrfToken()`으로 쿠키·헤더를 직접 보낸다. spring-security-test `csrf()`는 같은 컨텍스트를 쓰는 다른 테스트의 실제 로그인 요청을 깨뜨린다.
 
 동시 등록은 테스트하지 않았다. PostgreSQL `on conflict`와 부분 유일 인덱스에 맡긴다. DB 스키마·의존성 변경은 없다.
+
+## 프론트 전달 기록·상태 이력 연동 (S15P31C106-118)
+
+2026-11-12 원격 develop `b4976d4`에서 시작했다. Jira의 기존 완료 상태는 변경하지 않았다. Chrome에서 Notion 068·069의 전달 사실 기록·버전 충돌·이력 순서와 시스템/관리자 필드를 확인하고, 최신 Controller·DTO·서비스·기존 API 테스트와 대조했다.
+
+- 문제 상세의 전달 기록은 068에 현재 `rowVersion`을 보낸다. 성공 응답으로 상세 캐시를 갱신하고 목록·상세·이력을 다시 조회한다. 늦은 저장 응답이 더 높은 버전의 상세를 덮어쓰지 않게 한다.
+- 068은 실제 메시지 전송·상태 변경이 아니다. 다시 전달했다고 기록하면 마지막 전달 시각·처리자를 갱신한다. `RESOLVED` 문제는 전달 기록 버튼을 제공하지 않는다.
+- 연속 클릭과 자동 재전송을 막는다. 409 버전·상태 충돌은 서버 오류를 표시하고 최신 기록을 조회한다. 네트워크·서버·저장 응답 오류는 성공으로 표시하지 않으며, 다시 기록하기 전에 조회로 확인하도록 안내한다.
+- 069는 `page`·`size=20`으로 조회한다. `beforeStatus/afterStatus/changedBy/checkRunId/note`를 화면에 표시하고 서버의 시간순 정렬을 유지한다. 처리자가 null인 행은 시스템으로, 근거 검사가 있으면 검사 ID도 표시한다.
+- 기존 067 상태 변경 성공 뒤에도 069를 갱신한다. 이력의 로딩·빈 결과·실패·재조회·페이지 이동을 구분하며 다른 문제 ID나 잘못된 페이지 응답을 정상 이력으로 표시하지 않는다.
+- 권한은 기존 ADMIN 관리 라우트와 서버 인가를 사용한다. API·DB·인증 구조·인프라는 변경하지 않았다.
+
+자동 검증은 모의 HTTP 응답으로 정상·재전달·중복 클릭·권한·충돌·응답 지연·페이지·조회 실패와 067 후 갱신을 확인한다. 실제 운영 068 저장·069 조회 및 배포 후 확인은 별도이며, 최종 테스트·빌드·정적 검사·리뷰 결과는 MR에 기록한다.
 
 ## 기준
 
