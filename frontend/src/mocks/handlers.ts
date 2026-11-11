@@ -814,9 +814,12 @@ export const handlers = [
     })
   }),
   // 078 확정 관계·원천 근거 조회
-  http.get('/api/v1/objects/:id/links', async ({ params }) => {
+  http.get('/api/v1/objects/:id/links', async ({ params, request }) => {
     await delay()
     const id = Number(params.id)
+    const url = new URL(request.url)
+    const page = Number(url.searchParams.get('page') ?? 0)
+    const size = Number(url.searchParams.get('size') ?? 20)
     const matched = links
       .filter(
         (link) => link.sourceObjectId === id || link.targetObjectId === id,
@@ -827,12 +830,12 @@ export const handlers = [
         return { ...link, relatedObject: objectSummary(relatedId) }
       })
     return HttpResponse.json({
-      data: matched,
+      data: matched.slice(page * size, (page + 1) * size),
       meta: {
-        page: 0,
-        size: 20,
+        page,
+        size,
         totalElements: matched.length,
-        hasNext: false,
+        hasNext: (page + 1) * size < matched.length,
       },
     })
   }),
