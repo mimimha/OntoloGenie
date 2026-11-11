@@ -10,11 +10,10 @@ SCHEMA_FILE = "_schema.json"
 
 
 class CsvSourceReader:
-    """폴더 하나를 원천 하나로 보고, `<표 이름>.csv` 파일을 표로 읽는다.
+    """폴더 하나를 원천 하나로 보고 `<표 이름>.csv`를 표로 읽는다.
 
-    같은 폴더의 `_schema.json`이 있으면 컬럼 타입·주석·기본키를 덧붙인다. 형식:
-    {"tables": {"<표>": {"description": "...", "note": "...", "primary_key": ["..."],
-                         "columns": {"<컬럼>": {"type": "...", "comment": "..."}}}}}
+    `_schema.json`이 있으면 타입·주석·기본키를 덧붙인다: {"tables": {"<표>": {"description", "note",
+    "primary_key", "columns": {"<컬럼>": {"type", "comment"}}}}}
     """
 
     def __init__(self, source_id: str, root: Path):

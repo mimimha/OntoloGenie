@@ -1,4 +1,4 @@
-"""검토 화면용 한국어 제목·설명과 바뀐 점수 (S15P31C106-327)."""
+"""검토 화면용 한국어 제목·설명과 바뀐 점수."""
 
 import pytest
 
@@ -23,7 +23,7 @@ from app.proposers.readable import josa, readable
         ("라인7", "이/가", "라인7이"),
         ("코드3", "으로/로", "코드3으로"),
         ("R", "을/를", "R을"),
-        # 영어 컬럼 이름은 소리로 어림한다(네임·라인·레벨·그룹·넘버)
+        # 영어 컬럼 이름은 소리로 어림한다
         ("dept_name", "으로/로", "dept_name으로"),
         ("line", "으로/로", "line으로"),
         ("level", "으로/로", "level로"),
@@ -119,7 +119,7 @@ def test_link_rule_link_type_and_document_link_get_korean_titles():
 
     assert rule["payload"]["name"] == "작업지시 → 수주 (수주 참조 번호)"
     assert rule["evidence"]["title"] == rule["payload"]["name"]
-    # 연결 규칙 이유는 분석 결과 그대로(항목형) 둔다
+    # 연결 규칙 이유는 그대로 둔다
     assert rule["evidence"]["reason"] == "값이 이어진다."
     assert rule["payload"]["description"] == (
         "연결 기준: 작업지시 수주 참조 번호 = 수주 수주 번호"
@@ -142,14 +142,12 @@ def test_link_rule_link_type_and_document_link_get_korean_titles():
 
 
 def test_unknown_object_keeps_its_code():
-    # 분석 범위 밖이라 이름을 모르는 객체는 코드를 그대로 쓴다
     rule = proposals()[3]
     out = readable([rule])
     assert out[0]["payload"]["name"] == "WORK_ORDER → SALES_ORDER (so_ref)"
 
 
 def test_object_type_from_source_table_is_not_shown_as_25_percent():
-    # 평가 데이터의 표는 모두 정답 객체 유형이었다. 전에는 다른 표가 가리키지 않으면 0.25였다
     plain = confidence.build(confidence.object_type(True, False, 0))
     assert plain.total == 0.95
     assert "평가 데이터의 표는 모두 맞음" in plain.items[0].label
@@ -157,7 +155,7 @@ def test_object_type_from_source_table_is_not_shown_as_25_percent():
 
 
 def test_fingerprint_is_kept_when_only_names_change():
-    # 이름은 LLM·분석 범위에 따라 바뀐다. 재분석 비교가 '변경'으로 보지 않게 지문은 그대로 둔다
+    # 재분석 비교가 이름만 바뀐 것을 '변경'으로 보지 않게 지문은 그대로 둔다
     items = proposals()
     items[3]["evidence"]["fingerprint"] = "before"
     out = readable(items)
@@ -179,7 +177,7 @@ def test_held_document_link_keeps_reason_and_does_not_pick_first_option():
     assert "EQ-01" not in out["payload"]["name"]
     assert out["evidence"]["reason"].startswith("본문 '2호기' 해당")
     assert "작성자(작업자 24) 배치 라인 확인 필요" in out["evidence"]["reason"]
-    # 같은 말을 두 번 쓰지 않는다(원래 이유의 첫 문장은 빼고 단서만)
+    # 원래 이유의 첫 문장은 빼고 단서만 잇는다
     assert "하나로 정할 수 없다" not in out["evidence"]["reason"]
     assert "후보 2개" in out["evidence"]["reason"]
 
@@ -205,7 +203,6 @@ def test_document_link_shows_alias_and_memo_excerpt():
     out = readable(items)[5]
     assert out["payload"]["name"] == "HN-260820-N → equipment P103"
     reason = out["evidence"]["reason"]
-    # 별명은 이름·별명과 맞춘 것이라고 쓰고, 앞뒤 원문을 붙인다
     assert reason.startswith(
         "본문 '1라인 3호 프레스' → equipment P103 (명칭·별칭 일치)"
     )
@@ -225,7 +222,6 @@ def test_lot_number_found_through_another_column_says_so():
 
 
 def test_long_table_comments_are_shortened_in_titles():
-    # 표 주석의 괄호 설명은 제목에서 뺀다(객체 유형 이름 자체는 그대로)
     items = [
         object_type("PICK", "출고 피킹 실적", "wms.pick", ("item_cd", "품목 코드")),
         object_type(

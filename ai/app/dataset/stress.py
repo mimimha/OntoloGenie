@@ -1,9 +1,8 @@
-"""스트레스 평가 데이터 C: 개발용 데이터 A(v1.0)를 변형해 분석기가 처음 보는 표기·잡음·미끼를 견디는지 본다.
+"""스트레스 평가 데이터 C: 데이터 A를 변형해 분석기가 처음 보는 표기·잡음·미끼를 견디는지 본다.
 
     .\\.venv\\Scripts\\python.exe -m app.dataset.stress --base v1.0
 
 분석기를 고정한 뒤 만들고, 결과를 보고 분석기를 고치지 않는다(docs/evaluation.md 0-1절).
-출력: data/data-<base>-stress (AI 입력), data/gold-<base>-stress/expected.json (기대 결과)
 """
 
 import argparse

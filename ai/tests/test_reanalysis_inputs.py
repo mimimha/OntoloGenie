@@ -1,4 +1,4 @@
-"""018 선택 필드 pastDecisions(S15P31C106-281)·previousProposals(S15P31C106-170) 받기."""
+"""018 선택 필드 pastDecisions·previousProposals 받기."""
 
 from app.analysis import engine
 from app.analysis.engine import analyze

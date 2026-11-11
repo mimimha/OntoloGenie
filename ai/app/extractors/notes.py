@@ -1,11 +1,6 @@
 """FN-AIP-02·03 메모·정비 기록 추출. 원천 표(mes.handover_note, mes.maintenance_order)에서 글을 읽는다.
 
-    .\\.venv\\Scripts\\python.exe -m app.extractors.notes data/data-v1.0 --out results/notes-v1.0.json
-
-코드가 하는 일: 원천 키 찾기(identifiers.py), 설비 언급 → 설비 ID(equipment.py), 시각 계산, 원문 위치.
-LLM이 하는 일: 증상·조치·시각 표현을 뽑고 부정·추정을 구분한다. LLM 없이 실행하면 코드 부분만 나온다.
-LLM 답은 믿지 않고 다시 확인한다. 원문에 없는 글자, 설비 목록과 안 맞는 '설비'(부품 오인식)는 버린다.
-'점심 직후'처럼 기준 시각을 원천에서 알 수 없으면 시각을 만들지 않는다(10-27 GMS 실험에서 정한 규칙).
+코드는 원천 키·설비 ID·시각·원문 위치를, LLM은 증상·조치·부정·추정을 맡고 LLM 답은 다시 확인한다.
 """
 
 import argparse
@@ -61,10 +56,9 @@ LINK_OF = {
     EntityType.MAINTENANCE: "refers_maintenance",
     EntityType.LOT: "about_lot",
 }
-# 글이 있는 표의 객체 유형 코드 (objects.py처럼 표 이름을 대문자로)
 DOCUMENT_TYPES = {"note": "HANDOVER_NOTE", "maint": "MAINTENANCE_ORDER"}
 LOCATORS = {"note": "mes.handover_note.content", "maint": "mes.maintenance_order.note"}
-# 문서 번호 컬럼. 근거 재확인(evidence.verify)이 그 문서가 원천에 아직 있는지 본다
+# 문서 번호 컬럼. evidence.verify가 그 문서가 원천에 아직 있는지 본다
 DOCUMENT_KEYS = {
     "note": "mes.handover_note.note_id",
     "maint": "mes.maintenance_order.mo_no",
@@ -72,7 +66,7 @@ DOCUMENT_KEYS = {
 LLM_TYPES = {"EQUIPMENT", "OBSERVATION", "ACTION", "TIME"}
 HOUR = re.compile(r"(새벽|아침|오전|오후|저녁|밤)?\s*(\d{1,2})\s*시")
 SHIFT_START = re.compile(r"교대\s*(직후|하자마자|시작)")
-SHIFT_HOURS = {"주간": 8, "야간": 20}  # 교대 시작 (docs/dataset.md 2절)
+SHIFT_HOURS = {"주간": 8, "야간": 20}  # 교대 시작 시각
 TRAILING = " .,!?…;:"
 BATCH = 10  # LLM 한 번에 보내는 문서 수
 
@@ -84,7 +78,7 @@ class Document(BaseModel):
     shift: str | None = None
     start: datetime | None = None
     author: str | None = None
-    body_start: int = 0  # 머리말 다음 글자 위치. 머리말은 추출 대상이 아니다
+    body_start: int = 0  # 머리말 다음 글자 위치
 
 
 def load_documents(root: Path) -> list[Document]:
@@ -132,12 +126,7 @@ def load_documents(root: Path) -> list[Document]:
 
 
 def interpret_time(text: str, doc: Document) -> tuple[str | None, str]:
-    """(절대 시각, 근거). 기준을 원천에서 알 수 없으면 시각을 만들지 않는다.
-
-    - '새벽 3시쯤': 교대 날짜 + 그 시각. 야간 교대의 새벽 시각은 다음 날이다.
-    - '교대 직후': 교대 시작 시각(주간 08시, 야간 20시).
-    - '점심 직후'처럼 숫자도 교대 기준도 없는 표현: 시각 없음(점심 시각은 원천에 없다).
-    """
+    """(절대 시각, 근거). 기준을 원천에서 알 수 없으면('점심 직후') 시각을 만들지 않는다."""
     if doc.start is None:
         return None, "문서에 교대 날짜가 없어 기준 없음"
     m = HOUR.search(text)
@@ -309,8 +298,7 @@ def extract(
                 continue
             span = _locate(doc.text, text, taken, doc.body_start) if text else None
             if span is None and text:
-                # LLM이 코드가 이미 찾은 원천 번호까지 붙여 뽑은 경우('JB2608-0103 잔량 ... 넘김'):
-                # 그 번호를 떼고 남은 글자를 다시 찾는다
+                # LLM이 원천 번호까지 붙여 뽑았으면 그 번호를 떼고 다시 찾는다
                 rest = _without_found(text, entities)
                 if rest and rest != text:
                     span = _locate(doc.text, rest, taken, doc.body_start)
@@ -415,7 +403,7 @@ def _expression_kind(
 def _observations(
     entity_id: str, extraction: DocumentExtraction, by_id
 ) -> list[Observation]:
-    """언급에 걸린 관찰 표현. 검토 화면이 원문에서 확인·부정·추정을 나눠 보여 준다."""
+    """언급에 걸린 관찰 표현."""
     return [
         Observation(
             text=by_id[r.source].text,
@@ -515,8 +503,7 @@ def to_candidates(doc: Document, extraction: DocumentExtraction) -> list[Candida
                 confidence=confidence(
                     [("근거", "후보 설비가 여럿", 0.3)]
                     if ambiguous
-                    # 작업지시·정비·로트 번호는 원천 값이 글에 그대로 적힌 것이다(로트는 출하의 로트 번호로 찾음).
-                    # 설비만 이름·별명('3호기')으로 맞춘다
+                    # 설비만 이름·별명('3호기')으로 맞추고, 나머지는 원천 값이 글에 그대로 적힌 것이다
                     else document_link(
                         e.type != EntityType.EQUIPMENT
                         or e.text.upper() == refs[0].split(":")[1].upper()
@@ -538,7 +525,7 @@ def to_candidates(doc: Document, extraction: DocumentExtraction) -> list[Candida
 def _link_type_reason(
     source: str, target: str, docs: int, group: list[Candidate]
 ) -> str:
-    """유형 코드로 쓴다. 검토 화면 이름(readable)에서 객체 유형 이름으로 바꾼다."""
+    """유형 코드로 쓴다. readable에서 객체 유형 이름으로 바꾼다."""
     held = sum(c.review_status == "HELD" for c in group)
     text = (
         f"{source} {docs}건 · {target} 기재 {len(group)}건 · 일치 {len(group) - held}건"
@@ -547,7 +534,7 @@ def _link_type_reason(
 
 
 def _around(doc: Document, start: int, end: int, width: int = 15) -> str:
-    """근거에 보여 줄 언급 앞뒤 글. 글자 위치(29~40) 대신 원문으로 보여 준다."""
+    """근거에 보여 줄 언급 앞뒤 글."""
     a, b = max(doc.body_start, start - width), min(len(doc.text), end + width)
     text = " ".join(doc.text[a:b].split())
     return (
@@ -556,7 +543,7 @@ def _around(doc: Document, start: int, end: int, width: int = 15) -> str:
 
 
 def document_link_types(links: list[Candidate]) -> list[Candidate]:
-    """문서 연결이 쓰는 관계 유형마다 LINK_TYPE 후보 하나. 승인된 문서 연결은 이 관계 유형으로 저장된다."""
+    """문서 연결이 쓰는 관계 유형마다 LINK_TYPE 후보 하나."""
     groups: dict[str, list[Candidate]] = {}
     for link in links:
         groups.setdefault(link.payload.link_type_code, []).append(link)
@@ -604,9 +591,7 @@ def document_links(
     root: Path, llm: LLMClient | None = None
 ) -> tuple[int, list[Candidate], list[dict], list[dict]]:
     """분석 엔진용 (문서 수, DOCUMENT_LINK 후보, LLM 호출별 사용량, 실패한 묶음).
-
-    LLM이 없거나 묶음 호출이 실패하면 그 문서는 코드로 찾은 원천 키 언급만 쓴다.
-    """
+    LLM이 없거나 호출이 실패하면 코드로 찾은 원천 키 언급만 쓴다."""
     docs = load_documents(root)
     dictionary = load_dictionary(root)
     equipment = _equipment(root)
@@ -621,8 +606,7 @@ def document_links(
 
 
 def _one_per_target(links: list[Candidate]) -> list[Candidate]:
-    """같은 메모가 같은 대상을 여러 번 적으면('P103 진동… P103 점검') 승인 결과가 같은 연결 하나라
-    한 건만 남긴다. 후보가 여럿인 언급(HELD, '3호기' → P103·P104)은 첫 후보만으로 같다고 볼 수 없어 그대로 둔다."""
+    """같은 메모가 같은 대상을 여러 번 적으면 한 건만 남긴다. 후보가 여럿인 언급은 같다고 볼 수 없어 둔다."""
     seen: set[tuple[str, str]] = set()
     out = []
     for link in links:
@@ -636,7 +620,7 @@ def _one_per_target(links: list[Candidate]) -> list[Candidate]:
 
 
 def _equipment(root: Path) -> list[Equipment]:
-    """설비 표가 분석 대상에 없으면 빈 목록. 이때 설비 언급은 연결하지 못한다(미연결)."""
+    """설비 표가 분석 대상에 없으면 빈 목록."""
     mes = CsvSourceReader("mes", Path(root) / "mes")
     if "equipment" not in mes.list_tables():
         return []
@@ -683,7 +667,7 @@ def run(
 def estimate_credits(
     docs: list[Document],
     equipment: list[Equipment] | None = None,
-    output_tokens_per_batch: int = 2000,  # 10-27 실측: 호출당 평균 1,834, 최대 3,315 (추론 포함)
+    output_tokens_per_batch: int = 2000,  # 실측 호출당 평균 약 1,800(추론 포함)
     model: str | None = None,
 ) -> float:
     prompts = [

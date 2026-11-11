@@ -1,15 +1,7 @@
 """FN-AIP-04·05 LLM 의미 해석. 규칙 후보에 업무 의미를 더한다(method=rule+llm).
 
-표마다 LLM을 한 번 부른다. 보내는 것: 표·컬럼 이름과 주석, 컬럼 통계, 개인정보를 가린 표본(최대 20행),
-코드가 찾은 관계 후보. 받는 것: 객체 이름·뜻·종류, 컬럼 뜻·역할·개인정보 여부, 관계 후보마다 업무상 맞는지.
-
-합치는 규칙 (LLM 판단은 신뢰도 점수에 더하지 않고 llm_judgement에 따로 적는다)
-- 객체 종류: LLM 판단을 쓰고 규칙 판단은 llm_judgement에 남긴다.
-- 속성: 뜻을 설명에 넣는다. 개인정보는 규칙 OR LLM.
-- 관계: LLM이 맞다고 해도 점수·상태는 그대로. 아니라고 하면 보류(HELD)로 바꾸고 상한 0.3(confidence.CAP).
-- 형식에 안 맞는 답, 표에 없는 컬럼, 목록에 없는 관계는 버린다.
-
-실제 GMS 호출은 크레딧을 쓰므로 사용자 승인 뒤에만 한다. 테스트는 가짜 응답(MockLLMClient)으로만 한다.
+표마다 LLM을 한 번 불러 객체·컬럼 뜻과 관계 후보가 업무상 맞는지 받는다. LLM 판단은 점수에 더하지 않고
+llm_judgement에 따로 적으며, 관계를 아니라고 하면 보류로 바꾼다. 형식에 안 맞는 답은 버린다.
 """
 
 import json
@@ -75,11 +67,7 @@ def _table_of(candidate: Candidate) -> str | None:
 
 
 def pick_sample_positions(df: pd.DataFrame, limit: int) -> list[int]:
-    """앞에서부터 자르지 않고 값이 고루 보이게 고른다.
-
-    1) 빈 값이 있는 행 (최대 limit의 1/4) 2) 컬럼마다 모양이 다른 값(예: 2610021과 OD-2610-021)
-    3) 남는 자리는 표 전체에서 같은 간격으로. 같은 표면 항상 같은 행을 고른다.
-    """
+    """앞에서부터 자르지 않고 빈 값·모양이 다른 값이 고루 보이게 고른다. 같은 표면 항상 같은 행."""
     if len(df) <= limit:
         return list(range(len(df)))
     chosen: list[int] = []
@@ -228,7 +216,7 @@ def parse(answer: dict, column_names: set[str], link_codes: set[str]) -> TableVi
 
 
 def _note(candidate: Candidate, judgement: str, **update) -> Candidate:
-    """LLM 판단은 신뢰도 점수에 넣지 않고 따로 적는다(LLM 동의만으로 점수가 오르지 않게)."""
+    """LLM 동의만으로 점수가 오르지 않게 LLM 판단은 따로 적는다."""
     return candidate.model_copy(
         update={"method": "rule+llm", "llm_judgement": judgement, **update}
     )
@@ -237,11 +225,7 @@ def _note(candidate: Candidate, judgement: str, **update) -> Candidate:
 def rejected_codes(
     candidates: list[Candidate], views: dict[str, TableView]
 ) -> dict[str, str]:
-    """규칙이 이미 보류로 둔 관계를 LLM도 업무상 맞지 않다고 본 것 {관계 코드: LLM 이유}.
-
-    둘 다 확신이 없는 관계라 관리자 검토 목록에 올리지 않는다(관계 유형·연결 규칙 모두).
-    규칙이 대기로 둔 관계는 LLM이 반대해도 빼지 않고 보류로만 바꾼다(apply).
-    """
+    """규칙이 보류로 둔 관계를 LLM도 맞지 않다고 본 것 {관계 코드: LLM 이유}. 검토 목록에 올리지 않는다."""
     link_view = {link.code: link for v in views.values() for link in v.links}
     out = {}
     for c in candidates:
@@ -279,7 +263,7 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
             old_text = CATEGORY_TEXT.get(rule_category, rule_category)
             update = {"payload": payload}
             if not same:
-                # 제안 이유의 표 종류도 최종 판단(LLM)으로 맞춘다. 규칙 판단은 괄호에 남긴다
+                # 제안 이유의 표 종류도 LLM 판단으로 맞추고 규칙 판단은 괄호에 남긴다
                 update["reason"] = c.reason.replace(
                     f"분류: {old_text} (",
                     f"분류: {new_text} (AI 판단, 규칙 판단 {old_text}: ",
@@ -321,7 +305,7 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
                     and held_cap is not None
                     and held_cap < cap
                 ):
-                    # 보류 사유만으로는 낮게 나오지만, LLM이 맞다고 본 보류는 평가에서 대부분 맞았다
+                    # LLM이 맞다고 본 보류는 평가에서 대부분 맞았다
                     update["confidence"] = c.confidence.model_copy(
                         update={
                             "cap": cap,
@@ -331,8 +315,7 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
                     )
                 c = _note(c, f"업무상 맞는 관계: {judged.reason}", **update)
             elif judged:
-                # 부정 판단만 반영한다: 보류로 바꾸고 상한을 둔다
-                # 이미 더 낮은 보류 상한이 있으면 그대로 둔다(LLM 부정으로 점수가 오르지 않게)
+                # LLM 부정으로 점수가 오르지 않게 더 낮은 보류 상한은 그대로 둔다
                 cap, cap_reason = CAP, "LLM이 업무상 맞지 않다고 봄"
                 if c.confidence.cap is not None and c.confidence.cap < CAP:
                     cap = c.confidence.cap
@@ -381,7 +364,7 @@ def interpret(
         "interpreted": len(views),
         "failed": failed,
         "credits_used": round(used, 2),
-        # 규칙 보류 + LLM 반대로 내보내지 않은 관계 {코드: 이유}
+        # 규칙 보류 + LLM 반대로 내보내지 않은 관계
         "rejected_links": rejected_codes(candidates, views),
     }
     return apply(candidates, views), report

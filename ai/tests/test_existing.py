@@ -1,4 +1,4 @@
-"""이미 확정된 모델(API 043 모델 요약)과 같은 후보 거르기 (S15P31C106-281)."""
+"""이미 확정된 모델(API 043 모델 요약)과 같은 후보 거르기."""
 
 import io
 import json
@@ -281,7 +281,7 @@ def test_same_properties_with_different_transforms_are_kept():
 
 
 def test_reanalysis_marks_added_and_changed_against_the_model():
-    # S15P31C106-170: 이전 후보 API가 없어 확정된 모델(043)과 비교한다
+    # 재분석은 확정된 모델(043)과 비교한다
     proposals = [
         object_type(
             "WORK_ORDER", "wo_no", "so_ref"

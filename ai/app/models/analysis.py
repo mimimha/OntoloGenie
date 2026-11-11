@@ -1,8 +1,6 @@
-"""분석 시작 알림(API 018 하단, POST /internal/v1/analysis-runs)의 요청 모양.
+"""분석 시작 알림(API 018, POST /internal/v1/analysis-runs)의 요청 모양. JSON은 camelCase.
 
-JSON은 camelCase, 코드는 snake_case로 쓴다. 선택 필드 중 pastDecisions·previousProposals는 받아서 쓰고,
-allowedTransforms·options는 아직 쓰지 않아 받아도 버린다. 백엔드가 아직 보내지 않아도(빈 목록) 그대로 분석한다.
-sources[].connection에는 원천 AI 계정 비밀번호가 있어 repr에서 뺀다. 저장하지 않고 분석이 끝나면 버린다.
+allowedTransforms·options는 아직 쓰지 않아 버린다. connection의 비밀번호는 repr에서 빼고 저장하지 않는다.
 """
 
 from typing import Literal
@@ -38,7 +36,7 @@ class AnalysisSource(_Wire):
 
 
 class PastDecision(_Wire):
-    """승인·거절·보류된 이전 후보 (S15P31C106-281). 지문이 없으면 payload로 계산한다."""
+    """승인·거절·보류된 이전 후보. 지문이 없으면 payload로 계산한다."""
 
     candidate_id: str | None = None
     item_kind: str | None = None
@@ -50,7 +48,7 @@ class PastDecision(_Wire):
 
 
 class PreviousProposal(_Wire):
-    """재분석 비교용 이전 후보 (S15P31C106-170). 이전 후보 evidence의 candidateId·fingerprint."""
+    """재분석 비교용 이전 후보. 이전 후보 evidence의 candidateId·fingerprint."""
 
     candidate_id: str
     fingerprint: str | None = None

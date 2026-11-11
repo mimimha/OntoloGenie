@@ -1,7 +1,6 @@
-"""원천 표 정의. 표·컬럼 구성은 기업 제공 예시(ERP 17·MES 12)를 참고했고, 주석 문장은 새로 썼다.
+"""원천 표 정의. 표·컬럼 구성은 기업 예시를 참고했고 주석 문장은 새로 썼다.
 
-시나리오에 필요한 것(수주 참조 so_ref, 최소 톤수 min_tonnage, 공정별 배정 work_order_operation)과
-변경 이력 표(결정 9)를 더했다. 주석에는 다른 표 이름을 적지 않는다(관계는 AI가 찾아야 할 정답이다).
+주석에는 다른 표 이름을 적지 않는다(관계는 AI가 찾아야 할 정답이다).
 """
 
 from dataclasses import dataclass
@@ -534,12 +533,10 @@ PERSONAL_COLUMNS = {
 
 @dataclass(frozen=True)
 class Relation:
-    """정답 관계. 주석에는 적지 않고 정답셋에만 둔다.
+    """정답 관계(주석에는 적지 않는다). source·target은 컬럼 목록(둘 이상이면 복합키).
 
-    source·target은 컬럼 목록(두 개 이상이면 복합키), condition은 (컬럼, 값)일 때만 성립,
-    target_key는 도착 컬럼이 기본키(primary)인지, 다른 유일 키(alternate)인지, 키가 아닌지(none).
-    through는 (거쳐 가는 표의 키, 가져올 컬럼): 출발 첫 컬럼 값으로 그 표를 찾아 가져온 값으로 잇는다.
-    known_unmatched: 정합성 사례가 아닌데 원천에서 안 이어지는 값과 이유(데이터 한계).
+    condition은 (컬럼, 값)일 때만 성립, target_key는 도착 컬럼의 키 종류(primary·alternate·none).
+    through는 (거쳐 가는 표의 키, 가져올 컬럼), known_unmatched는 정합성 사례가 아닌데 안 이어지는 값과 이유.
     """
 
     source: tuple[str, ...]

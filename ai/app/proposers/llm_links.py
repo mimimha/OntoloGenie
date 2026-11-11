@@ -1,13 +1,7 @@
-"""FN-AIP-04 시스템 간 식별자 연결을 LLM에게 묻는다(2026-11-06, 독립 데이터 B5에서 드러난 한계).
+"""FN-AIP-04 규칙(links.py)이 못 이은 시스템 간 식별자 연결을 LLM에게 묻는다.
 
-규칙(links.py)은 아는 표기 차이만 잇는다. 처음 보는 표기(코드 안 순서 바꾸기 '0123-B24' ↔ 'B24-0123',
-연도 줄이기 + 하이픈 빼기 + 0 채우기 등)는 못 잇는다. 그래서 규칙이 아무 데도 잇지 못한 참조 컬럼만 골라
-다른 시스템의 키 목록과 함께 LLM에게 보여 주고, 어느 키를 가리키는지와 값 변환 단계를 받는다.
-
-- 받은 변환을 실제 값에 적용해 다시 확인한다. 서로 다른 값 80%(복합키는 행 90%) 넘게 이어질 때만 후보로 낸다.
-- LLM이 제안한 것이므로 모두 보류(HELD)로 내고 신뢰도에 더하지 않는다.
-- 변환이 FN-MAP-05 허용 목록으로 표현되면 그대로 쓰고, 아니면 이어진 값의 대응표(MAP_VALUE)로 내고
-  "변환 함수 추가 검토 필요"를 적는다(새 값은 대응표로 이어지지 않으므로).
+받은 변환은 실제 값에 적용해 다시 확인하고, 이어지는 것만 보류(HELD)로 낸다.
+허용 변환으로 표현되지 않으면 대응표(MAP_VALUE)로 내고 변환 함수 추가 검토를 적는다.
 """
 
 import json
@@ -40,13 +34,11 @@ MAX_TARGETS = 60  # 한 번에 보여 주는 도착 키 수
 SAMPLES = 6
 MAX_PATTERN = 200  # LLM이 준 정규식 길이 상한
 MAX_VALUE = 64  # 식별자로 볼 값 길이 상한(정규식 적용 시간도 묶는다)
-# 끝없는 되풀이가 바로 이어짐('\d*\d*')은 값에 따라 아주 느려질 수 있어 받지 않는다.
-# 되풀이되는 묶음 안의 되풀이('(\d+)+')·선택('(a|aa)*')은 _slow_group이 본다
+# 끝없는 되풀이가 바로 이어지면('\d*\d*') 아주 느려질 수 있어 받지 않는다
 ATOM = r"(?:\\.|\[[^\]]*\]|[^\\()\[\]|])"
 ADJACENT_REPEATS = re.compile(ATOM + r"[+*]\??" + ATOM + r"[+*]")
 OUTPUT_TOKENS = 1500  # 예상 크레딧 계산용 호출당 출력 토큰
-# 같은 질문을 몇 번 묻고 값으로 확인된 답을 합칠지. 2로 해 봤지만 B6·B7에서 더 찾은 것이 없어(2026-11-06)
-# 크레딧을 아끼려고 1로 둔다. LLM 답이 실행마다 달라 놓치는 일이 잦으면 올린다
+# 같은 질문을 몇 번 묻고 답을 합칠지. 늘려도 더 찾은 것이 없어 크레딧을 아끼려고 1로 둔다
 ROUNDS = 1
 
 STEP_GUIDE = (
@@ -112,8 +104,7 @@ def _bare(text: str) -> str:
 
 
 def _slow_group(pattern: str) -> bool:
-    """되풀이되는 괄호 묶음 안에 다시 되풀이('(\\d+)+')나 선택('(a|aa)*')이 있는지. 값에 따라 아주
-    느려질 수 있는 모양이다. 정규식으로 찾으면 그 검사 정규식도 느려질 수 있어 글자를 한 번 훑어 본다."""
+    """되풀이되는 괄호 묶음 안에 다시 되풀이('(\\d+)+')나 선택('(a|aa)*')이 있는지(아주 느려질 수 있는 모양)."""
     bare = _bare(pattern)
     starts = []
     for i, ch in enumerate(bare):
@@ -138,7 +129,7 @@ def safe_pattern(pattern: str | None) -> bool:
 
 
 def apply(steps: list[Step], value: str) -> str | None:
-    """LLM이 준 변환 단계. 적용할 수 없으면 None. LLM 답은 믿지 않으므로 어떤 오류도 밖으로 내지 않는다."""
+    """LLM이 준 변환 단계. 적용할 수 없으면 None이고 어떤 오류도 밖으로 내지 않는다."""
     if len(value) > MAX_VALUE:
         return None
     try:
@@ -198,10 +189,7 @@ def to_allowed(steps: list[Step]) -> list[dict] | None:
 
 
 def _linked_sources(candidates: list[Candidate]) -> set[str]:
-    """규칙이 대기(PENDING)로 이은 출발 컬럼(복합키는 각 컬럼).
-
-    보류로만 이은 컬럼은 다시 묻는다. 규칙이 숫자만 우연히 같은 엉뚱한 키에 보류로 이어 두면
-    진짜 도착 키를 찾을 기회가 없어지기 때문이다(B6 배치 번호)."""
+    """규칙이 대기(PENDING)로 이은 출발 컬럼. 보류로만 이은 컬럼은 엉뚱한 키일 수 있어 다시 묻는다."""
     out = set()
     for c in candidates:
         if (
@@ -233,7 +221,7 @@ def unlinked_columns(
             or col.values.str.len().median() > MAX_ID_LENGTH
             or col.values.str.strip().str.contains(" ", regex=False).mean() > 0.5
         ):
-            continue  # 메모 본문 같은 글은 식별자가 아니다(글 속 번호는 메모 추출이 따로 본다)
+            continue  # 메모 본문 같은 글
         out.setdefault(col.table.split(".")[0], []).append(col)
     return {s: cols[:MAX_SOURCES] for s, cols in out.items()}
 
@@ -326,7 +314,7 @@ def prepare(
 ) -> tuple[Tables, list[tuple]]:
     """(Tables, [(시스템, 출발 컬럼들, 도착 키들, 프롬프트)])"""
     root = Path(root)
-    # 원천 분석은 무거워서(표 33개에 약 2초), 예상 크레딧을 셀 때 만든 것을 그대로 받아 쓴다
+    # 원천 분석은 무거워서 예상 크레딧을 셀 때 만든 것을 받아 쓴다
     tables = tables or Tables(root, analyze_sources(root))
     out = []
     for system, columns in sorted(unlinked_columns(tables, candidates).items()):
@@ -377,7 +365,7 @@ def _verify(
         len(names) != len(target["columns"])
         or len(set(names)) != len(names)
         or any(n not in s_cols for n in names)
-        # 첫 컬럼은 이번에 물어본 컬럼이어야 한다(규칙이 이미 이은 컬럼·키를 다시 잇지 않음)
+        # 규칙이 이미 이은 컬럼은 다시 잇지 않는다
         or f"{link.source_table}.{names[0]}" not in asked
         or link.source_table == target["table"]
     ):
@@ -393,7 +381,7 @@ def _verify(
     t_rows = set(map(tuple, t_df.values.tolist()))
     checked = _check(s_df, t_rows, link.source_columns, steps)
     if checked is None:
-        # 원천 값이 지저분한 경우(소문자·공백 섞임)가 많아, 앞에 공백 제거·대문자를 붙여 한 번 더 본다
+        # 원천 값에 소문자·공백이 섞인 경우가 많아 공백 제거·대문자를 붙여 한 번 더 본다
         cleaned = [[Step(op="trim"), Step(op="upper"), *st] for st in steps]
         checked = _check(s_df, t_rows, link.source_columns, cleaned)
         if checked is None:
@@ -413,7 +401,6 @@ def _verify(
         hold += (
             ". 허용 변환으로 표현할 수 없어 대응표로 이었으니 변환 함수 추가 검토 필요"
         )
-    # 변환이 하나도 없으면 값 그대로 비교하는 규칙이다(규칙 기준에 못 미쳐 못 이었던 경우)
     plain = all(not s_steps for s_steps, _ in column_steps)
     return Relation(
         sources,
@@ -440,7 +427,7 @@ def propose(
     tables, prompts = prepare(root, candidates, tables)
     found, failed, used, asked, calls = [], [], 0.0, 0, 0
     not_verified: list[str] = []
-    # 규칙이 이미 낸 후보와 같은 ID(같은 컬럼 → 같은 표)는 다시 내지 않는다. 같은 ID가 105로 두 번 가지 않게
+    # 규칙이 이미 낸 후보와 같은 ID는 다시 내지 않는다
     seen: set[str] = {c.candidate_id for c in candidates}
     for system, columns, targets, prompt in prompts:
         by_id = {t["id"]: t for t in targets}
@@ -464,7 +451,7 @@ def propose(
                     usage.get("output_tokens", 0),
                 )
             for link in answer.links:
-                # 완전히 같은 답(변환까지 같음)만 한 번으로 친다. 변환이 다르면 따로 값으로 확인한다
+                # 변환까지 같은 답만 한 번으로 친다
                 key = link.model_dump_json()
                 if key not in keys:
                     keys.add(key)
@@ -501,7 +488,6 @@ def propose(
         "calls": calls,
         "asked_columns": asked,
         "proposed": sum(c.payload.kind.value == "LINK_RULE" for c in found),
-        # LLM이 답했지만 값으로 확인되지 않아 버린 연결(무엇을 버렸는지 보이게)
         "not_verified": not_verified,
         "failed": failed,
         "credits_used": round(used, 2),

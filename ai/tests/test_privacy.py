@@ -28,7 +28,7 @@ def test_korean_particles_right_after_numbers_and_emails():
 
 
 def test_name_in_assignee_column_is_masked_but_codes_and_words_are_not():
-    # 담당 부서 칸에 섞인 사람 이름(데이터 v1.0 정비 지시 technician '홍보람')은 LLM 질문·근거에 그대로 쓰지 않는다
+    # 담당 부서 칸에 섞인 사람 이름은 LLM 질문·근거에 그대로 쓰지 않는다
     from app.llm.privacy import mask_value
 
     assert mask_value("홍보람", "technician 담당 부서") == "***"

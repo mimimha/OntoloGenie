@@ -1,4 +1,4 @@
-"""처음 보는 원천 모양에서도 관계를 찾는지 (B3·B4 독립 데이터에서 드러난 표기 차이, 2026-11-06)."""
+"""처음 보는 원천 모양(독립 데이터에서 드러난 표기 차이)에서도 관계를 찾는지."""
 
 import json
 
@@ -253,8 +253,7 @@ def test_quantity_is_not_used_as_second_column_of_a_composite_key(tmp_path):
     [("b4", 14, 0, 4), ("b6", 17, 1, 7), ("b8", 20, 1, 2), ("b9", 20, 0, 6)],
 )
 def test_independent_datasets_keep_their_scores(name, found, wrong_pending, wrong_held):
-    # 독립 데이터(규칙만, LLM 없음): 고친 코드로 찾는 관계 수가 떨어지거나 틀린 후보가 늘면 알 수 있게 둔다.
-    # B4는 한글 컬럼·기본키 없는 표, B6·B8은 나중에 새로 만든 데이터. B3·B5·B7은 채점기로 따로 잰다
+    # 독립 데이터(규칙만, LLM 없음): 찾는 관계 수가 떨어지거나 틀린 후보가 늘면 알 수 있게 둔다
     import json
     from pathlib import Path
 
@@ -265,14 +264,13 @@ def test_independent_datasets_keep_their_scores(name, found, wrong_pending, wron
     answer = json.loads((data / "eval" / name / "answer.json").read_text("utf-8"))
     report = evaluate(run(data / "eval" / name / "data"), answer)
     assert report["found_pending"] + report["found_held"] >= found
-    # 틀린 후보가 늘어도 알 수 있게 둔다(2026-11-09 값)
     assert len(report["wrong_pending"]) <= wrong_pending
     assert report["wrong_held"] <= wrong_held
 
 
 def test_gtin_with_leading_zero_links_to_fixed_length_barcode(tmp_path):
     # 바코드(EAN-13)는 숫자뿐이지만 글자형·고정 길이 코드라 도착 키로 본다.
-    # 고객 불만의 GTIN-14는 앞의 0을 떼면 바코드와 같다(B7)
+    # 고객 불만의 GTIN-14는 앞의 0을 떼면 바코드와 같다
     barcodes = [f"8801234{i:06d}" for i in range(100, 160)]
     write_table(
         tmp_path,

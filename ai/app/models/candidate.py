@@ -45,11 +45,7 @@ class ItemKind(str, Enum):
 
 
 class Evidence(BaseModel):
-    """후보의 근거 한 건.
-
-    verified는 위치(표·컬럼)와 values가 원천에 실제로 있는지만 뜻한다.
-    그 값이 관계의 업무 의미까지 뒷받침하는지는 확인하지 않는다(LLM 판단·사람 검토의 몫).
-    """
+    """후보의 근거 한 건. verified는 위치·값이 원천에 있는지만 뜻하고 업무 의미까지 보장하지 않는다."""
 
     source_id: str
     locator: str
@@ -67,10 +63,7 @@ class ScoreItem(BaseModel):
 
 
 class Confidence(BaseModel):
-    """AI 신뢰도(0~1). 근거별 평가 데이터 실제 정답 비율(confidence.py)이고, 보류면 상한(cap)을 둔다.
-
-    LLM이 스스로 말한 숫자는 쓰지 않는다.
-    """
+    """AI 신뢰도(0~1). 근거별 실제 정답 비율(confidence.py)이고 보류면 상한을 둔다. LLM이 말한 숫자는 쓰지 않는다."""
 
     items: list[ScoreItem] = Field(default_factory=list)
     cap: float | None = Field(default=None, ge=0, le=1)
@@ -187,7 +180,7 @@ class SourceFilter(BaseModel):
 
 
 class LinkRulePayload(BaseModel):
-    """객체를 잇는 규칙. conditions가 둘 이상이면 모두 같아야 한다(복합키). 실제 데이터 시험 적용은 서버(FN-CHK-04)가 한다."""
+    """객체를 잇는 규칙. conditions가 둘 이상이면 모두 같아야 한다(복합키)."""
 
     kind: Literal[ItemKind.LINK_RULE] = ItemKind.LINK_RULE
     code: str
@@ -261,7 +254,7 @@ class TimeExpression(BaseModel):
 
 
 class DocumentContext(BaseModel):
-    """DOCUMENT_LINK 후보를 원문과 비교해 검토하도록 함께 보내는 원문·관찰 표현·시각 (FN-AIP-02)."""
+    """DOCUMENT_LINK 후보를 원문과 비교해 검토하도록 함께 보내는 원문·관찰 표현·시각."""
 
     original_text: str = Field(min_length=1)
     observations: list[Observation] = Field(default_factory=list)
@@ -285,10 +278,7 @@ class CandidateOption(BaseModel):
 
 
 class Candidate(BaseModel):
-    """AI 제안기가 Backend로 넘기는 후보 한 건 (운영 ERD proposal_item).
-
-    검토 상태(대기·승인·거절·보류)와 반영 상태는 Backend가 관리하므로 여기에는 없다.
-    """
+    """AI 제안기가 Backend로 넘기는 후보 한 건 (운영 ERD proposal_item). 검토·반영 상태는 Backend가 관리한다."""
 
     candidate_id: str
     title: str

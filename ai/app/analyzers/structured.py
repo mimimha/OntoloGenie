@@ -1,9 +1,6 @@
-"""FN-AIP-01 정형 데이터 분석 중 코드가 하는 부분.
+"""정형 데이터 분석의 코드 부분(LLM 없음). 컬럼 통계·키 후보, 값이 이어지는 컬럼과 변환 단계를 찾는다.
 
-컬럼 통계·값 모양·키 후보를 계산하고, 두 컬럼의 값이 이어지는지(값 포함 비율)와
-표기가 다르면 어떤 변환 단계로 같아지는지 찾는다. LLM은 쓰지 않는다(크레딧 0).
-
-    .\\.venv\\Scripts\\python.exe -m app.analyzers.structured data\\sample\\v1
+python -m app.analyzers.structured data\\sample\\v1
 """
 
 import argparse
@@ -34,7 +31,7 @@ MIN_KEY_UNIQUE_RATIO = 0.95
 MIN_MATCHED = 3
 SKIP_TABLES = {"change_log"}  # 변경 이력은 원천 데이터가 아니라 동기화용 기록이다.
 EXAMPLE_COUNT = 3
-# 개인정보 컬럼(공통 기준 AI-C-08). 값을 가리고 연결 비교에도 쓰지 않는다.
+# 개인정보 컬럼. 값을 가리고 연결 비교에도 쓰지 않는다.
 PERSONAL_COMMENT_HINTS = ("가명", "성명", "전화", "휴대", "주소", "이메일", "주민")
 PERSONAL_COLUMN_NAMES = {
     "emp_name",
@@ -178,8 +175,7 @@ def is_personal(name: str, comment: str | None) -> bool:
 
 
 def _table_keys(schema, df, columns: list[ColumnAnalysis]) -> list[TableKey]:
-    """표 정의에 기본키가 있으면 그것을(여러 컬럼 가능), 없을 때만 값으로 찾은 코드형 한 컬럼 키 후보를 낸다.
-    이름·금액·시각은 값이 우연히 안 겹칠 수 있어 키로 추측하지 않는다."""
+    """표 정의의 기본키, 없을 때만 값으로 찾은 코드형 한 컬럼 키 후보. 이름·금액·시각은 키로 추측하지 않는다."""
     if schema.primary_key:
         return [
             TableKey(
@@ -199,8 +195,7 @@ def _table_keys(schema, df, columns: list[ColumnAnalysis]) -> list[TableKey]:
 def _is_link_target(
     column: ColumnAnalysis, table_columns: list[ColumnAnalysis]
 ) -> bool:
-    """연결의 도착이 될 수 있는 컬럼. 표 정의에 한 컬럼 기본키가 있으면 그 키만, 기본키가 없을 때만 값으로 찾은 키 후보.
-    작은 표에서 우연히 값이 안 겹치는 컬럼(재고의 품번, 금형의 제품 코드 등)으로 잘못 잇는 것을 막는다."""
+    """연결 도착 컬럼: 한 컬럼 기본키가 있으면 그것만, 없을 때만 값으로 찾은 키 후보(작은 표의 우연한 고유값 방지)."""
     declared = [c for c in table_columns if c.is_declared_key]
     if declared:
         return len(declared) == 1 and column is declared[0] and _is_code_like(column)
@@ -241,8 +236,7 @@ def _find_links(frames, tables) -> list[LinkCandidate]:
 
 
 def _prefer_direct_links(links: list[LinkCandidate]) -> list[LinkCandidate]:
-    """값 그대로 거의 다 이어지는 연결이 있는 컬럼은 변환으로 만든 다른 연결을 버린다.
-    예: 실적의 작업자 번호는 MES 작업자로 이어지므로, 직원 번호로 다시 잇지 않는다."""
+    """값 그대로 거의 다 이어지는 연결이 있는 컬럼은 변환으로 만든 다른 연결을 버린다."""
     direct = {
         l.from_ref for l in links if l.rule_type == "same_value" and l.coverage >= 0.9
     }
@@ -377,8 +371,7 @@ def _transform_options(source_values, target_values):
 
 
 def _digits_comparison_makes_sense(source_values, target_values) -> bool:
-    """숫자만 비교는 출발 값이 대부분 숫자뿐이거나, 일부가 이미 도착 값과 똑같을 때만 시도한다.
-    CU0001(고객)과 FA-0001(자산)처럼 번호만 우연히 같은 경우를 막는다."""
+    """숫자만 비교는 출발 값이 대부분 숫자뿐이거나 일부가 도착 값과 똑같을 때만 시도한다(CU0001·FA-0001 우연 일치 방지)."""
     if not source_values or not any(ch.isdigit() for v in target_values for ch in v):
         return False
     digits_only = sum(v.isdigit() for v in source_values) / len(source_values)

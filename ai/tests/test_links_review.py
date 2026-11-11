@@ -1,4 +1,4 @@
-"""MR 전 코드 리뷰(2026-11-09)에서 찾은 경우들. 고친 뒤 다시 생기지 않는지 본다."""
+"""코드 리뷰에서 찾은 경우들이 다시 생기지 않는지 본다."""
 
 import pytest
 from test_links_general import rules, write_table

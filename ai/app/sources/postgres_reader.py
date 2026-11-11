@@ -1,9 +1,6 @@
-"""AI 분석용 PostgreSQL 원천 읽기. CsvSourceReader와 같은 메서드를 가진다.
+"""AI 분석용 PostgreSQL 원천 읽기 (CsvSourceReader와 같은 창구).
 
-API 공통 규칙: 원천 연결 검사·표본은 배치가 하고, AI 분석만 FastAPI가 AI 계정으로 원천을 읽는다.
-
-드라이버(psycopg)는 psycopg_connector 안에서만 불러온다. 자동 테스트는 가짜 연결로 한다.
-세션을 읽기 전용으로 열고 SELECT 권한이 있는 표·뷰만 보여 준다. 오류에는 접속 정보를 넣지 않는다.
+읽기 전용 세션으로 SELECT 권한이 있는 표·뷰만 보여 주고, 오류에는 접속 정보를 넣지 않는다.
 """
 
 from collections.abc import Callable
@@ -53,8 +50,7 @@ def type_name(pg_type: str) -> str:
     return TYPE_NAMES.get(base, base) + paren + rest
 
 
-# 드라이버 메시지에는 호스트·계정이 들어 있어 밖으로 내보내지 않는다.
-# 화면(019)에 그대로 보이므로 명세의 다른 실패 문구와 같은 말투로 쓴다
+# 드라이버 메시지에는 호스트·계정이 들어 있어 내보내지 않고, 화면(019)에 보일 문구로 바꾼다
 ERROR_MESSAGES = {
     "SOURCE_AUTH_FAILED": "원천 계정 인증에 실패했습니다",
     "SOURCE_PERMISSION_DENIED": "원천을 읽을 권한이 없습니다",
@@ -195,10 +191,9 @@ class PostgresSourceReader:
     def read_rows(
         self, table: str, columns: list[str] | None = None, limit: int | None = None
     ) -> pd.DataFrame:
-        """CsvSourceReader처럼 모든 값을 문자열로, 빈 값은 결측으로 돌려준다.
+        """모든 값을 문자열로, 빈 값은 결측으로 돌려준다. 고르지 않은 컬럼은 SELECT에 넣지 않는다.
 
-        고르지 않은 컬럼(개인정보일 수 있음)은 SELECT에 넣지 않는다.
-        limit은 기본키가 있으면 기본키 순서로, 없으면 정렬 없이 앞에서 자른다(큰 뷰 전체 정렬·정렬 못 하는 타입 방지).
+        limit은 기본키 순서로, 기본키가 없으면 정렬 없이 앞에서 자른다(큰 뷰 전체 정렬 방지).
         """
         self._check(table)
         schema = self.read_schema(table)

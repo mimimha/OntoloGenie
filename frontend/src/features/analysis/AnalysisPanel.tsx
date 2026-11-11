@@ -231,7 +231,7 @@ type Props = {
   onStarted: (run: AnalysisRun) => void
 }
 
-// 연결 규칙의 AI 분석 실행·진행·최근 이력(S15P31C106-108)
+// 연결 규칙의 AI 분석 실행·진행·최근 이력
 function AnalysisPanel({ currentId, joined, onSelect, onStarted }: Props) {
   const navigate = useNavigate()
   const [choosing, setChoosing] = useState(false)

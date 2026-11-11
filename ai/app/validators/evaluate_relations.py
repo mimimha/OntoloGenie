@@ -1,8 +1,7 @@
-"""독립 데이터(B·B2~B6) 관계 채점. 정답 형식은 data/eval/b*/answer.json.
+"""독립 데이터 관계 채점 (정답 형식: data/eval/b*/answer.json).
 
     .\\.venv\\Scripts\\python.exe -m app.validators.evaluate_relations results\\proposals-b6.json data\\eval\\b6\\answer.json
 
-관계 찾음(대기·보류), 시스템 간 관계, 대기 오답, 보류 오답, 미끼에 걸린 후보, 검토 단위 수를 센다.
 정답의 복합키는 'sys.t.a+b'와 'sys.t.a+sys.t.b' 두 표기를 모두 받는다.
 """
 

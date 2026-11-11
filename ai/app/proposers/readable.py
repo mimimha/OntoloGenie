@@ -1,9 +1,6 @@
-"""검토 화면용 이름·설명 (S15P31C106-327, FN-AIP-05).
+"""검토 화면용 이름·설명 (FN-AIP-05).
 
-화면 목록은 제안 제목으로 payload.name(없으면 code)을 쓴다. 연결 규칙·관계 유형·문서 연결은 코드
-(`WORK_ORDER_SO_REF_TO_SALES_ORDER`)나 '문서 연결 제안 #126'으로만 보여 관리자가 하나씩 열어 봐야 했다.
-같은 분석의 객체 유형 이름(작업지시)과 속성 이름(수주 참조 번호)으로 한국어 제목·설명을 붙인다.
-분석 범위 밖이라 이름을 모르는 객체는 코드를 그대로 쓴다.
+같은 분석의 객체 유형·속성 이름으로 한국어 제목·설명을 붙이고, 이름을 모르면 코드를 그대로 쓴다.
 """
 
 import re
@@ -12,7 +9,7 @@ from app.proposers.korean import josa
 
 
 def _short(name: str) -> str:
-    # 괄호 설명을 지우고 띄어쓰기는 split으로 정리한다(앞 공백까지 정규식으로 잡으면 되돌아가기가 생긴다)
+    # 앞 공백까지 정규식으로 잡으면 되돌아가기가 생겨 띄어쓰기는 split으로 정리한다
     short = " ".join(re.sub(r"\([^()]*\)", " ", name).split())
     return short or name
 
@@ -40,7 +37,7 @@ class Names:
                     )
 
     def type(self, code: str | None) -> str:
-        """제목·설명용 이름. 표 주석의 괄호 설명('품목 마스터(원자재, 포장재)')은 빼서 짧게 쓴다."""
+        """제목·설명용 이름. 표 주석의 괄호 설명은 빼서 짧게 쓴다."""
         return _short(self.types.get(code or "", code or ""))
 
     def table(self, resource_key: str) -> str:
@@ -59,7 +56,7 @@ _VIA = re.compile(r"\(\w+로 ([a-z][\w]*\.[a-z][\w]*)를 찾아 그 \w+로 비�
 
 
 def _table_names(text: str, names: Names) -> str:
-    """이유·보류 이유의 원천 표 이름(mes.work_order)을 객체 유형 이름(작업지시)으로. 모르는 표는 그대로."""
+    """이유·보류 이유의 원천 표 이름을 객체 유형 이름으로. 모르는 표는 그대로."""
     return _TABLE_KEY.sub(
         lambda m: names.table(m.group(1)) if m.group(1) in names.tables else m.group(1),
         text,
@@ -73,7 +70,6 @@ def _name_link_type(link_type: dict, names: Names, document: bool = False) -> No
         return
     original = link_type.get("description") or ""
     if document:
-        # 목업 '메모의 설비 연결' 형식
         link_type["name"] = f"{source}의 {target} 연결"
         link_type["description"] = (
             f"{source} 본문에 기재된 {josa(target, '과/와')} 연결"
@@ -88,7 +84,6 @@ def _name_link_type(link_type: dict, names: Names, document: bool = False) -> No
     if via:
         parts.append(f"{names.table(via[1])} 경유")
     if "(1:1)" in original:
-        # 데이터에서는 1:1로만 보여도 업무상 한쪽이 여러 건일 수 있다
         parts.append("데이터상 1:1, 업무상 1:N 여부 확인 필요")
     link_type["description"] = " · ".join(parts)
 
@@ -124,8 +119,7 @@ def _link_rule_name(payload: dict, names: Names) -> tuple[str, str] | None:
 
 
 def _excerpt(evidence: dict, payload: dict, limit: int = 60) -> str:
-    """언급이 든 문장. 검토자가 메모를 열지 않고도 어떤 문맥인지 보게 한다.
-    줄·마침표에서 끊고(머리말 '[8/4 주간 → 야간 인수인계] 작성 52' 줄은 빠짐), 길면 언급 앞뒤만 남긴다."""
+    """언급이 든 문장. 줄·마침표에서 끊고, 길면 언급 앞뒤만 남긴다."""
     text = evidence.get("originalText") or ""
     start, end = payload.get("spanStart"), payload.get("spanEnd")
     if not text or not isinstance(start, int) or not isinstance(end, int):
@@ -136,7 +130,6 @@ def _excerpt(evidence: dict, payload: dict, limit: int = 60) -> str:
     sentence = " ".join(text[left:right].split())
     if len(sentence) <= limit:
         return sentence
-    # 긴 문장은 언급 앞뒤를 띄어쓰기에서 자른다
     at = sentence.find(payload.get("mentionText") or "")
     a = max(0, at - limit // 3)
     a = sentence.find(" ", a) + 1 if a > 0 else 0
@@ -165,16 +158,15 @@ def _document_name(
     doc = names.table(doc_table) if doc_table else "문서"
     target = names.table(table)
     mention = payload.get("mentionText") or key
-    # 목록에 같은 문서 종류 이름이 줄마다 반복되지 않게 제목은 '문서 번호 → 대상'으로 쓴다
+    # 같은 문서 종류 이름이 줄마다 반복되지 않게 제목은 '문서 번호 → 대상'으로 쓴다
     doc_id = payload.get("documentId") or doc
     excerpt = _excerpt(evidence, payload)
     quote = f" · “{excerpt}”" if excerpt else ""
     quoted = f"'{mention}'"
     if choices > 1:
-        # 보류 권고(후보 설비가 여럿): 첫 후보로 단정하지 않는다
         title = f"{doc_id} → {target} (후보 {choices}개)"
         lead = f"본문 {quoted} 해당 {target} 후보 {choices}개{quote}"
-        # 원래 이유의 첫 문장은 같은 말이라 빼고, 단서(작성자 배치 라인 등)만 잇는다
+        # 원래 이유의 첫 문장은 같은 말이라 빼고 단서만 잇는다
         hint = evidence.get("reason") or ""
         hint = hint[hint.find("작성자") :] if "작성자" in hint else ""
         return title, f"{lead} {hint}".strip()
@@ -188,16 +180,12 @@ def _document_name(
     elif alias:
         lead = f"본문 {quoted} → {target} {key} (명칭·별칭 일치)"
     else:
-        # 로트 번호처럼 다른 컬럼 값으로 찾은 경우
         lead = f"본문 {quoted} → {target} {key} (다른 컬럼 값 일치)"
     return title, lead + quote
 
 
 def readable(proposals: list[dict]) -> list[dict]:
-    """105 proposals[]에 한국어 제목(payload.name)·설명을 붙인다.
-
-    지문(evidence.fingerprint)은 다시 계산하지 않는다. 이름은 LLM 판단·분석 범위에 따라 바뀌므로
-    재분석 비교가 이름만 바뀐 같은 규칙을 '변경'으로 보지 않게 한다."""
+    """105 proposals[]에 한국어 제목·설명을 붙인다. 이름만 바뀐 것이 '변경'이 되지 않게 지문은 그대로 둔다."""
     names = Names(proposals)
     for p in proposals:
         kind, payload, evidence = (
@@ -207,7 +195,7 @@ def readable(proposals: list[dict]) -> list[dict]:
         )
         made = None
         if kind == "OBJECT_TYPE":
-            # 규칙만 쓴 설명('원천 erp.attendance의 한 행')을 문장으로. LLM 설명은 그대로 둔다
+            # 규칙만 쓴 설명을 문장으로. LLM 설명은 그대로 둔다
             plain = re.fullmatch(
                 r"원천 (\S+)의 한 행", payload.get("description") or ""
             )
@@ -228,7 +216,6 @@ def readable(proposals: list[dict]) -> list[dict]:
             if payload.get("name"):
                 evidence["title"] = payload["name"]
             if document:
-                # 'HANDOVER_NOTE 11건에 WORK_ORDER 13개가 …'의 유형 코드를 이름으로
                 reason = evidence.get("reason") or ""
                 for key in ("sourceTypeCode", "targetTypeCode"):
                     code = payload.get(key)
@@ -248,7 +235,7 @@ def readable(proposals: list[dict]) -> list[dict]:
             title, lead = made
             payload["name"] = title
             evidence["title"] = title
-            # 문서 연결은 새 문구로 바꾼다(보류면 단서만 잇는다). 연결 규칙은 이유를 그대로 둔다
+            # 연결 규칙은 이유를 그대로 둔다
             if kind == "DOCUMENT_LINK":
                 evidence["reason"] = lead
     return proposals
