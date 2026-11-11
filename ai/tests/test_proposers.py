@@ -357,11 +357,11 @@ def test_llm_semantics_with_mock_merges_and_holds(data, result):
     assert (
         worker.llm_judgement and "기준 정보" in worker.llm_judgement
     )  # 표 종류는 한글로
-    # LLM이 표 종류를 바꾸면 이유도 바꾸고 규칙 판단은 괄호에 남긴다
+    # LLM이 표 종류를 바꾸면 이유도 바꾸고 표 구조로 본 분류는 괄호에 남긴다
     defect, defect_rule = by_id["OT-mes.defect"], by_id_rule["OT-mes.defect"]
     if defect_rule.payload.category != "transaction":
         assert defect.payload.category == "transaction"
-        assert "분류: 거래 문서 (AI 판단, 규칙 판단" in defect.reason
+        assert "분류: 거래 문서 (표 구조로는" in defect.reason
     assert worker.ai_confidence == by_id_rule["OT-mes.worker"].ai_confidence
     # 보류 권고 규칙을 LLM이 맞다고 보면 보류는 그대로, 상한만 0.6
     agreed, agreed_rule = (

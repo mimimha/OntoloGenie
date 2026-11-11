@@ -271,15 +271,15 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
             old_text = CATEGORY_TEXT.get(rule_category, rule_category)
             update = {"payload": payload}
             if not same:
-                # 제안 이유의 표 종류도 LLM 판단으로 맞추고 규칙 판단은 괄호에 남긴다
+                # 제안 이유의 표 종류도 LLM 판단으로 맞추고 표 구조로 본 분류는 괄호에 남긴다
                 update["reason"] = c.reason.replace(
                     f"분류: {old_text} (",
-                    f"분류: {new_text} (AI 판단, 규칙 판단 {old_text}: ",
+                    f"분류: {new_text} (표 구조로는 {old_text}: ",
                 )
             c = _note(
                 c,
                 f"표 종류: {new_text}"
-                + (" (규칙과 같음)" if same else f" (규칙은 {old_text})")
+                + (" (표 구조와 같음)" if same else f" (표 구조로는 {old_text})")
                 + f" · {view.category_reason}",
                 **update,
             )
@@ -307,7 +307,7 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
                 c = _note(
                     c,
                     f"역할 {col.role}, 자료형 {col.data_type.value}"
-                    + ("" if same else f"(규칙은 {c.payload.data_type.value})")
+                    + ("" if same else f" (값으로는 {c.payload.data_type.value})")
                     + (", 개인정보" if personal else ""),
                     payload=payload,
                 )
