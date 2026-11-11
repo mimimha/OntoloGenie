@@ -51,7 +51,11 @@ class AgentQueryToolsTests {
         Map<String, Object> reply = tools.objectExecutions(301L, null, null);
 
         assertThat(reply).containsEntry("resultCategory", "FOUND");
-        assertThat((List<?>) reply.get("data")).hasSize(1);
+        assertThat((List<?>) reply.get("data"))
+                .singleElement()
+                .extracting("requestedAt")
+                .as("AI에게는 한국 시간 오프셋으로 넘긴다")
+                .isEqualTo("2026-11-01T09:00+09:00");
         AgentQueryResult result = session.results().getFirst();
         assertThat(result.toolCode()).isEqualTo(AgentQueryTools.OBJECT_EXECUTIONS);
         assertThat(result.sources()).containsExactly(Map.of("objectId", 301L));
