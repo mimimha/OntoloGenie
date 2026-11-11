@@ -159,42 +159,69 @@ export default function IssuesPanel() {
 
   const meta = query.data?.meta
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 p-5">
-      <h2 className="text-lg font-semibold">적용 후 문제</h2>
-      <div className="flex flex-wrap gap-4">
-        {[
-          {
-            key: 'issueStatus',
-            label: '처리 상태',
-            value: filters.status,
-            options: statusLabels,
-          },
-          {
-            key: 'issueKind',
-            label: '문제 유형',
-            value: filters.issueKind,
-            options: kindLabels,
-          },
-        ].map(({ key, label, value, options }) => (
-          <label key={key} className="flex flex-col gap-2 text-sm">
-            {label}
-            <select
-              className="rounded-lg border border-slate-300 px-3 py-2"
-              value={value}
-              onChange={(event) =>
-                update({ [key]: event.target.value, issuePage: '', issue: '' })
+    <section className="rules-issues space-y-4 rounded-xl border border-slate-200 p-5">
+      <h2 className="sr-only">적용 후 문제</h2>
+      <div
+        className="issue-status-tabs"
+        role="group"
+        aria-label="문제 상태 필터"
+      >
+        {Object.entries({ '': '전체', ...statusLabels }).map(
+          ([value, label]) => (
+            <button
+              type="button"
+              key={value}
+              aria-pressed={filters.status === value}
+              onClick={() =>
+                update({ issueStatus: value, issuePage: '', issue: '' })
               }
             >
-              <option value="">전체</option>
-              {Object.entries(options).map(([option, name]) => (
-                <option key={option} value={option}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ))}
+              {label}
+            </button>
+          ),
+        )}
       </div>
+      <details className="rules-extra-filters">
+        <summary>문제 상세 필터</summary>
+        <div className="flex flex-wrap gap-4">
+          {[
+            {
+              key: 'issueStatus',
+              label: '처리 상태',
+              value: filters.status,
+              options: statusLabels,
+            },
+            {
+              key: 'issueKind',
+              label: '문제 유형',
+              value: filters.issueKind,
+              options: kindLabels,
+            },
+          ].map(({ key, label, value, options }) => (
+            <label key={key} className="flex flex-col gap-2 text-sm">
+              {label}
+              <select
+                className="rounded-lg border border-slate-300 px-3 py-2"
+                value={value}
+                onChange={(event) =>
+                  update({
+                    [key]: event.target.value,
+                    issuePage: '',
+                    issue: '',
+                  })
+                }
+              >
+                <option value="">전체</option>
+                {Object.entries(options).map(([option, name]) => (
+                  <option key={option} value={option}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+      </details>
       {query.isPending && <LoadingState message="문제 목록을 불러오는 중…" />}
       {query.isError && (
         <ErrorState error={query.error} onRetry={() => void query.refetch()} />

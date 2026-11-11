@@ -4,7 +4,13 @@ import { ErrorState } from '../../components/Feedback'
 import { useAuth } from './auth-context'
 import { roleLabels } from './access'
 
-function AccountMenu({ disabled = false }: { disabled?: boolean }) {
+function AccountMenu({
+  disabled = false,
+  compact = false,
+}: {
+  disabled?: boolean
+  compact?: boolean
+}) {
   const { account, signOut } = useAuth()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<Error | null>(null)
@@ -26,10 +32,14 @@ function AccountMenu({ disabled = false }: { disabled?: boolean }) {
     }
   }
   return (
-    <div className="space-y-2">
+    <div className="account-menu space-y-2">
       <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
-        <span>{account?.displayName}</span>
-        {account && (
+        <span>
+          {compact && account
+            ? `${account.loginId} · ${roleLabels[account.roleCode] ?? '알 수 없는 역할'}`
+            : account?.displayName}
+        </span>
+        {!compact && account && (
           <span className="text-xs text-slate-500">
             {roleLabels[account.roleCode] ?? '알 수 없는 역할'}
           </span>

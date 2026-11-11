@@ -127,7 +127,9 @@ test('연결 규칙에서 문제를 열어 별도 상세 응답의 원천 근거
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: '브라우저 뒤로 가기' }))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: '검토 제안' })).toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { name: '연결 규칙 목록' }),
+  ).toBeInTheDocument()
 })
 
 test('지연된 상태 변경 응답이 더 최신 상세를 덮어쓰지 않는다', async () => {
@@ -178,7 +180,9 @@ test('상세 URL로 직접 들어오면 닫아도 목록 필터가 유지되고 
 
   await user.click(screen.getByRole('button', { name: '브라우저 뒤로 가기' }))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: '검토 제안' })).toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { name: '연결 규칙 목록' }),
+  ).toBeInTheDocument()
 })
 
 test('상태 필터를 서버에 보내고 페이지를 첫 쪽으로 되돌린다', async () => {
@@ -196,11 +200,13 @@ test('상태 필터를 서버에 보내고 페이지를 첫 쪽으로 되돌린�
   await user.selectOptions(screen.getByLabelText('처리 상태'), 'CHECKING')
   await screen.findByText('조건에 맞는 정합성 문제가 없습니다.')
   expect(
-    requests.map((params) => [
-      params.get('page'),
-      params.get('status'),
-      params.get('issueKind'),
-    ]),
+    requests
+      .filter((params) => params.has('issueKind'))
+      .map((params) => [
+        params.get('page'),
+        params.get('status'),
+        params.get('issueKind'),
+      ]),
   ).toEqual([
     ['2', null, 'UNMATCHED'],
     ['0', 'CHECKING', 'UNMATCHED'],

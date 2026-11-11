@@ -2,48 +2,38 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import Button from '../../components/Button'
-import DataTable from '../../components/DataTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import Pagination from '../../components/Pagination'
 import StatusBadge from '../../components/StatusBadge'
 import AnalysisPanel from '../analysis/AnalysisPanel'
 import { fetchAnalysisProposals } from '../analysis/api'
 import IssuesPanel from '../issues/IssuesPanel'
+import { fetchIssues } from '../issues/api'
 import { fetchProposals, PROPOSAL_PAGE_SIZE } from './api'
+import { collectProposals, isObjectProposal, matchesProposal } from './catalog'
+import ProposalDetail from './ProposalDetail'
 import {
   applyLabels,
   changeLabels,
-  confidence,
   filterKindLabels,
-  kindLabels,
   originLabels,
   proposalTitle,
   reviewLabels,
 } from './labels'
 import type { Proposal, ProposalFilters } from './types'
 
-// 목록에서 바로 보이게: AI 보류 권고(검토 대기일 때만), 재분석 비교
-function ProposalFlags({ item }: { item: Proposal }) {
-  const held =
-    item.evidence?.holdRecommended === true && item.reviewStatus === 'PENDING'
-  const change = item.evidence?.changeType
-  const changeLabel = typeof change === 'string' ? changeLabels[change] : null
-  if (!held && !changeLabel) return null
-  return (
-    <div className="mt-1 flex flex-wrap gap-1">
-      {held && <StatusBadge tone="warning">보류 권고</StatusBadge>}
-      {changeLabel && (
-        <StatusBadge tone="info">재분석 {changeLabel}</StatusBadge>
-      )}
-    </div>
-  )
-}
-
 const fields = [
   { key: 'origin', label: '제안 출처', options: originLabels },
   { key: 'itemKind', label: '제안 종류', options: filterKindLabels },
   { key: 'reviewStatus', label: '검토 상태', options: reviewLabels },
   { key: 'applyStatus', label: '반영 상태', options: applyLabels },
+] as const
+const statuses = [
+  ['', '전체'],
+  ['PENDING', '검토 대기'],
+  ['HELD', '보류'],
+  ['APPROVED', '승인'],
+  ['REJECTED', '거절'],
 ] as const
 
 function ProposalFilterForm({
@@ -59,8 +49,8 @@ function ProposalFilterForm({
   return (
     <form
       className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[repeat(4,1fr)_auto_auto]"
-      onSubmit={(event) => {
-        event.preventDefault()
+      onSubmit={(e) => {
+        e.preventDefault()
         onSearch(draft)
       }}
     >
@@ -68,10 +58,9 @@ function ProposalFilterForm({
         <label key={field.key} className="flex flex-col gap-2 text-sm">
           {field.label}
           <select
-            className="rounded-lg border border-slate-300 px-3 py-2"
             value={draft[field.key] ?? ''}
-            onChange={(event) =>
-              setDraft({ ...draft, [field.key]: event.target.value })
+            onChange={(e) =>
+              setDraft({ ...draft, [field.key]: e.target.value })
             }
           >
             <option value="">전체</option>
@@ -99,199 +88,296 @@ function ProposalFilterForm({
   )
 }
 
-export default function ProposalsPage() {
-  const [params] = useSearchParams()
-  const showingIssues = params.get('view') === 'issues'
-  const proposalParams = new URLSearchParams(params)
-  for (const key of [
-    'view',
-    'issue',
-    'issuePage',
-    'issueKind',
-    'issueStatus',
-  ]) {
-    proposalParams.delete(key)
-  }
-  const issueParams = new URLSearchParams(proposalParams)
-  issueParams.set('view', 'issues')
-
+function ProposalFlags({ item }: { item: Proposal }) {
+  const change = item.evidence?.changeType
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">연결 규칙</h1>
-        <p className="mt-2 text-sm text-slate-500">
-          분석 결과와 직접 추가한 제안을 검토하고, 적용 후 문제를 확인하세요.
-        </p>
-      </header>
-      <nav aria-label="연결 규칙 보기" className="flex gap-4 text-sm">
-        <Link
-          to={{ search: proposalParams.toString() }}
-          aria-current={showingIssues ? undefined : 'page'}
-          className="text-violet-700 underline underline-offset-4 aria-[current=page]:font-semibold"
-        >
-          검토 제안
-        </Link>
-        <Link
-          to={{
-            search: showingIssues ? params.toString() : issueParams.toString(),
-          }}
-          aria-current={showingIssues ? 'page' : undefined}
-          className="text-violet-700 underline underline-offset-4 aria-[current=page]:font-semibold"
-        >
-          적용 후 문제
-        </Link>
-      </nav>
-      {showingIssues ? <IssuesPanel /> : <ProposalList />}
+    <div className="mt-1 flex flex-wrap gap-1">
+      {item.evidence?.holdRecommended === true &&
+        item.reviewStatus === 'PENDING' && (
+          <StatusBadge tone="warning">보류 권고</StatusBadge>
+        )}
+      {typeof change === 'string' && changeLabels[change] && (
+        <StatusBadge tone="info">재분석 {changeLabels[change]}</StatusBadge>
+      )}
     </div>
   )
 }
 
-function ProposalList() {
+export default function ProposalsPage() {
   const [params, setParams] = useSearchParams()
-  const filters: ProposalFilters = {}
-  for (const field of fields) {
-    const value = params.get(field.key)
-    if (value && Object.hasOwn(field.options, value)) filters[field.key] = value
-  }
-  const pageValue = Number(params.get('page') ?? 0)
-  const page = Number.isSafeInteger(pageValue) && pageValue >= 0 ? pageValue : 0
-  // 분석을 고르면 그 분석이 만든 제안만 본다(020, S15P31C106-108).
+  const showingIssues = params.get('view') === 'issues'
   const analysisValue = Number(params.get('analysis'))
   const analysisId =
     Number.isSafeInteger(analysisValue) && analysisValue > 0
       ? analysisValue
       : undefined
   const query = useQuery({
-    queryKey: ['proposals', 'list', filters, page, analysisId],
+    queryKey: ['proposals', 'catalog', analysisId],
     queryFn: ({ signal }) =>
-      analysisId === undefined
-        ? fetchProposals(filters, page, signal)
-        : fetchAnalysisProposals(analysisId, filters, page, signal),
+      collectProposals((page) =>
+        analysisId === undefined
+          ? fetchProposals({}, page, signal)
+          : fetchAnalysisProposals(analysisId, {}, page, signal),
+      ),
     retry: false,
   })
-  function update(
-    next: ProposalFilters,
-    nextPage = 0,
-    nextAnalysis: { id?: number; joined?: boolean } = { id: analysisId },
-  ) {
-    const search = new URLSearchParams()
-    if (nextAnalysis.id !== undefined) {
-      search.set('analysis', String(nextAnalysis.id))
-      if (nextAnalysis.joined) search.set('joined', '1')
-    }
-    for (const [key, value] of Object.entries(next))
-      if (value) search.set(key, value)
-    if (nextPage) search.set('page', String(nextPage))
-    setParams(search)
+  const issues = useQuery({
+    queryKey: ['issues', 'count'],
+    queryFn: ({ signal }) =>
+      fetchIssues({ status: '', issueKind: '' }, 0, signal),
+    retry: false,
+  })
+  const filters: ProposalFilters = {}
+  for (const field of fields) {
+    const value = params.get(field.key)
+    if (value && Object.hasOwn(field.options, value)) filters[field.key] = value
   }
-  let content
-  if (query.isPending)
-    content = <LoadingState message="제안 목록을 불러오는 중…" />
-  else if (query.isError)
-    content = (
-      <ErrorState
-        error={query.error}
-        onRetry={() => {
-          void query.refetch()
-        }}
-      />
-    )
-  else if (!query.data.data.length)
-    content = <EmptyState message="조건에 맞는 제안이 없습니다." />
-  else
-    content = (
-      <>
-        <DataTable label="검토 제안 목록" className="min-w-[760px]">
-          <thead className="bg-slate-50 text-left text-xs text-slate-500">
-            <tr>
-              {['제안', '종류·출처', '검토 상태', '반영 상태', 'AI 신뢰도'].map(
-                (title) => (
-                  <th key={title} className="px-4 py-3 font-medium">
-                    {title}
-                  </th>
-                ),
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {query.data.data.map((item) => (
-              <tr key={item.id}>
-                <td className="px-4 py-4">
-                  <Link
-                    to={`${item.id}?${params}`}
-                    className="font-medium text-violet-700 underline underline-offset-4"
-                  >
-                    {proposalTitle(item)}
-                  </Link>
-                  <p className="mt-1 text-xs text-slate-500">
-                    #{item.id} · 개정 {item.revision}
-                  </p>
-                  <ProposalFlags item={item} />
-                </td>
-                <td className="px-4 py-4 text-sm">
-                  {kindLabels[item.itemKind] ?? item.itemKind}
-                  <p className="text-xs text-slate-500">
-                    {originLabels[item.origin] ?? item.origin}
-                  </p>
-                </td>
-                <td className="px-4 py-4">
-                  <StatusBadge>
-                    {reviewLabels[item.reviewStatus] ?? item.reviewStatus}
-                  </StatusBadge>
-                </td>
-                <td className="px-4 py-4">
-                  <StatusBadge
-                    tone={item.applyStatus === 'FAILED' ? 'danger' : 'neutral'}
-                  >
-                    {applyLabels[item.applyStatus] ?? item.applyStatus}
-                  </StatusBadge>
-                </td>
-                <td className="px-4 py-4 text-sm">
-                  {confidence(item.aiConfidence)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </DataTable>
-        {query.data.meta && (
-          <Pagination
-            page={page}
-            size={PROPOSAL_PAGE_SIZE}
-            totalElements={query.data.meta.totalElements}
-            onChange={(next) => update(filters, next)}
-          />
-        )}
-      </>
-    )
+  function update(values: Record<string, string | undefined>, replace = false) {
+    const next = new URLSearchParams(params)
+    for (const [key, value] of Object.entries(values)) {
+      if (value) next.set(key, value)
+      else next.delete(key)
+    }
+    setParams(next, { replace })
+  }
+  const all = query.data ?? []
+  const statusItems = all.filter(
+    (item) =>
+      !filters.reviewStatus || item.reviewStatus === filters.reviewStatus,
+  )
+  const objectCount = statusItems.filter(isObjectProposal).length
+  const mappingCount = statusItems.length - objectCount
+  const group =
+    params.get('group') ?? (all.some(isObjectProposal) ? 'objects' : 'mappings')
+  const search = params.get('q') ?? ''
+  const filtered = statusItems.filter(
+    (item) =>
+      (!filters.origin || item.origin === filters.origin) &&
+      (!filters.itemKind
+        ? isObjectProposal(item) === (group === 'objects')
+        : item.itemKind === filters.itemKind) &&
+      (!filters.applyStatus || item.applyStatus === filters.applyStatus) &&
+      matchesProposal(item, search),
+  )
+  const pageValue = Number(params.get('page') ?? 0)
+  const requestedPage =
+    Number.isSafeInteger(pageValue) && pageValue >= 0 ? pageValue : 0
+  const page = Math.min(
+    requestedPage,
+    Math.max(0, Math.ceil(filtered.length / PROPOSAL_PAGE_SIZE) - 1),
+  )
+  const visible = filtered.slice(
+    page * PROPOSAL_PAGE_SIZE,
+    (page + 1) * PROPOSAL_PAGE_SIZE,
+  )
+  const selected =
+    visible.find((item) => String(item.id) === params.get('candidate')) ??
+    visible[0]
+  const issueCount = issues.isSuccess
+    ? (issues.data.meta?.totalElements ?? issues.data.data.length)
+    : '…'
+  function selectAnalysis(id?: number, joined?: boolean) {
+    update({
+      analysis: id?.toString(),
+      joined: joined ? '1' : '',
+      page: '',
+      candidate: '',
+      q: '',
+      reviewStatus: '',
+      itemKind: '',
+      group: '',
+    })
+  }
   return (
-    <div className="space-y-6">
-      <AnalysisPanel
-        currentId={analysisId}
-        joined={params.get('joined') === '1'}
-        onSelect={(id) => update(filters, 0, { id })}
-        onStarted={(run) => update({}, 0, { id: run.id, joined: run.joined })}
-      />
-      <section className="space-y-5 rounded-xl border border-slate-200 p-5">
-        <h2 className="text-lg font-semibold">검토 제안</h2>
+    <div className="rules-workspace">
+      <header className="rules-page-heading">
+        <p className="rules-eyebrow">ONTOLOGY</p>
+        <h1>연결 규칙</h1>
+        <p>원천 데이터를 분석하고, 신뢰할 수 있는 관계를 만들어 보세요.</p>
+      </header>
+      <div className="rules-list-heading">
+        <h2>연결 규칙 목록</h2>
+        <div className="rules-list-actions">
+          <AnalysisPanel
+            compact
+            currentId={analysisId}
+            joined={params.get('joined') === '1'}
+            onSelect={(id) => selectAnalysis(id)}
+            onStarted={(run) => {
+              const next = new URLSearchParams({ analysis: String(run.id) })
+              if (run.joined) next.set('joined', '1')
+              setParams(next)
+            }}
+          />
+          <Link className="rules-pill" to="/admin/rules/new">
+            직접 관계 제안
+          </Link>
+        </div>
+      </div>
+      <nav className="rules-tabs" aria-label="연결 규칙 상태">
+        {statuses.map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={
+              !showingIssues && (filters.reviewStatus ?? '') === value
+            }
+            onClick={() =>
+              update({
+                view: '',
+                reviewStatus: value,
+                page: '',
+                candidate: '',
+                issue: '',
+              })
+            }
+          >
+            {label}{' '}
+            {query.isSuccess
+              ? value
+                ? all.filter((item) => item.reviewStatus === value).length
+                : all.length
+              : '…'}
+          </button>
+        ))}
         <Link
-          to="/admin/rules/new"
-          className="inline-block rounded-lg bg-violet-700 px-4 py-2 text-sm font-medium text-white"
+          className="rules-issues-tab"
+          aria-label="적용 후 문제"
+          aria-current={showingIssues ? 'page' : undefined}
+          to={{
+            search: (() => {
+              const p = new URLSearchParams(params)
+              p.set('view', 'issues')
+              return p.toString()
+            })(),
+          }}
         >
-          규칙 후보 추가
+          적용 후 문제 {issueCount}건
         </Link>
-        <ProposalFilterForm
-          key={params.toString()}
-          initialFilters={filters}
-          pending={query.isFetching}
-          onSearch={(next) => update(next)}
-        />
-        {query.isSuccess && (
-          <p className="text-sm text-slate-500">
-            {query.data.meta?.totalElements ?? query.data.data.length}건
-          </p>
-        )}
-        {content}
-      </section>
+      </nav>
+      {showingIssues ? (
+        <IssuesPanel />
+      ) : (
+        <>
+          <div
+            className="rules-kind-tabs"
+            role="group"
+            aria-label="후보 유형 필터"
+          >
+            <button
+              type="button"
+              aria-pressed={group === 'objects' && !filters.itemKind}
+              onClick={() =>
+                update({
+                  group: 'objects',
+                  itemKind: '',
+                  candidate: '',
+                  page: '',
+                })
+              }
+            >
+              객체 속성 {objectCount}
+            </button>
+            <button
+              type="button"
+              aria-pressed={group === 'mappings' && !filters.itemKind}
+              onClick={() =>
+                update({
+                  group: 'mappings',
+                  itemKind: '',
+                  candidate: '',
+                  page: '',
+                })
+              }
+            >
+              매핑 {mappingCount}
+            </button>
+          </div>
+          <label className="rules-search">
+            후보 검색
+            <input
+              type="search"
+              value={search}
+              placeholder="후보명·원천·테이블 검색"
+              onChange={(e) =>
+                update({ q: e.target.value, page: '', candidate: '' }, true)
+              }
+            />
+          </label>
+          <details className="rules-extra-filters">
+            <summary>상세 필터</summary>
+            <ProposalFilterForm
+              key={params.toString()}
+              initialFilters={filters}
+              pending={query.isFetching}
+              onSearch={(next) =>
+                update({
+                  ...Object.fromEntries(
+                    fields.map((f) => [f.key, next[f.key] ?? '']),
+                  ),
+                  page: '',
+                  candidate: '',
+                })
+              }
+            />
+          </details>
+          {query.isPending ? (
+            <LoadingState message="제안 목록을 불러오는 중…" />
+          ) : query.isError ? (
+            <ErrorState
+              error={query.error}
+              onRetry={() => void query.refetch()}
+            />
+          ) : (
+            <>
+              <p className="rules-result-count">후보 {filtered.length}건</p>
+              {!selected ? (
+                <EmptyState message="선택한 상태·유형·검색어에 해당하는 후보가 없습니다." />
+              ) : (
+                <div className="candidate-workbench">
+                  <aside className="candidate-list" aria-label="검토 목록">
+                    <div className="candidate-cards">
+                      {visible.map((item) => (
+                        <button
+                          type="button"
+                          key={item.id}
+                          className="candidate-card"
+                          aria-pressed={item.id === selected.id}
+                          onClick={() => update({ candidate: String(item.id) })}
+                        >
+                          <span className="candidate-kind">
+                            {isObjectProposal(item) ? '객체 속성' : '매핑'}
+                          </span>
+                          <strong>{proposalTitle(item)}</strong>
+                          <span>
+                            검토 상태:{' '}
+                            {reviewLabels[item.reviewStatus] ??
+                              item.reviewStatus}
+                          </span>
+                          <span>
+                            적용 여부:{' '}
+                            {applyLabels[item.applyStatus] ?? item.applyStatus}
+                          </span>
+                          <ProposalFlags item={item} />
+                        </button>
+                      ))}
+                    </div>
+                    <Pagination
+                      page={page}
+                      size={PROPOSAL_PAGE_SIZE}
+                      totalElements={filtered.length}
+                      onChange={(next) =>
+                        update({ page: String(next), candidate: '' })
+                      }
+                    />
+                  </aside>
+                  <ProposalDetail key={selected.id} embeddedId={selected.id} />
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
     </div>
   )
 }

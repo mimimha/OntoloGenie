@@ -44,88 +44,104 @@ function open(path = '/admin/rules', withHistoryControls = false) {
   )
 }
 
-test('AI·직접 추가 제안을 함께 표시하고 상세의 근거·신뢰도를 확인한다', async () => {
+test('후보 카드 선택과 상세 탭에서 근거·신뢰도를 확인한다', async () => {
   const user = userEvent.setup()
   open()
-  expect(
-    await screen.findByRole('link', { name: '작업지시 설비 코드 연결' }),
-  ).toBeInTheDocument()
-  expect(screen.getByText('직접 추가한 대체 설비 연결')).toBeInTheDocument()
-  await user.click(
-    screen.getByRole('link', { name: '작업지시 설비 코드 연결' }),
+  const list = within(
+    await screen.findByRole('complementary', { name: '검토 목록' }),
   )
   expect(
-    await screen.findByRole('heading', { name: '제안 근거' }),
-  ).toBeInTheDocument()
-  expect(
-    screen.getByText('작업지시의 설비 코드와 설비 원장의 코드가 대응합니다.'),
-  ).toBeInTheDocument()
-  expect(screen.getByText('86.0%')).toBeInTheDocument()
-  expect(screen.getByText(/AI가 제안한 신뢰도이며/)).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '승인' })).toBeDisabled()
-})
-
-test('서버 필터를 전달하고 상세에서 돌아와도 선택한 조회 조건을 유지한다', async () => {
-  const user = userEvent.setup()
-  open()
-  await screen.findByRole('table')
-  await user.selectOptions(screen.getByLabelText('제안 출처'), 'MANUAL')
-  await user.click(screen.getByRole('button', { name: '검색' }))
-  await screen.findByText('1건')
-  expect(screen.queryByText('작업지시 설비 코드 연결')).not.toBeInTheDocument()
-  await user.click(
-    screen.getByRole('link', { name: '직접 추가한 대체 설비 연결' }),
+    list.getByRole('button', { name: /작업지시 설비 코드 연결/ }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  expect(list.getByText('직접 추가한 대체 설비 연결')).toBeInTheDocument()
+  const detail = within(
+    await screen.findByRole('region', { name: '후보 검토 상세' }),
   )
-  await screen.findByRole('heading', { name: '제안 근거' })
-  expect(screen.getByText('제공되지 않음')).toBeInTheDocument()
-  await user.click(screen.getByRole('link', { name: '제안 목록으로 돌아가기' }))
-  expect(screen.getByLabelText('제안 출처')).toHaveValue('MANUAL')
-  await user.click(screen.getByRole('button', { name: '초기화' }))
-  await screen.findByText('3건')
+  await detail.findByText('신뢰도: 86.0%')
+  await user.click(detail.getByRole('button', { name: '제안 이유·원본' }))
+  expect(
+    detail.getByText('작업지시의 설비 코드와 설비 원장의 코드가 대응합니다.'),
+  ).toBeVisible()
+  expect(detail.getByRole('button', { name: '승인' })).toBeDisabled()
+  await user.click(
+    list.getByRole('button', { name: /직접 추가한 대체 설비 연결/ }),
+  )
+  expect(
+    await screen.findByRole('heading', { name: '직접 추가한 대체 설비 연결' }),
+  ).toBeVisible()
+  expect(screen.getByText('신뢰도: 제공되지 않음')).toBeVisible()
 })
 
-test('뒤로가기·앞으로가기 시 모든 필터와 조회 결과를 해당 주소로 복원한다', async () => {
+test('상세 필터와 브라우저 이동으로 조회 조건을 복원한다', async () => {
   const user = userEvent.setup()
   open('/admin/rules', true)
-  await screen.findByRole('table')
-  await user.selectOptions(screen.getByLabelText('제안 출처'), 'AI')
-  await user.selectOptions(screen.getByLabelText('제안 종류'), 'LINK_RULE')
-  await user.selectOptions(screen.getByLabelText('검토 상태'), 'PENDING')
-  await user.selectOptions(screen.getByLabelText('반영 상태'), 'NOT_APPLIED')
-  await user.click(screen.getByRole('button', { name: '검색' }))
-  await screen.findByText('1건')
-
+  await screen.findByRole('complementary')
+  await user.click(screen.getByText('상세 필터', { selector: 'summary' }))
   await user.selectOptions(screen.getByLabelText('제안 출처'), 'MANUAL')
   await user.selectOptions(screen.getByLabelText('검토 상태'), 'HELD')
-  // 검색 전에는 선택만 바뀌며 기존 조회 결과를 유지한다.
-  expect(
-    screen.getByRole('link', { name: '작업지시 설비 코드 연결' }),
-  ).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: '검색' }))
-  await screen.findByRole('link', { name: '직접 추가한 대체 설비 연결' })
-
-  await user.click(screen.getByRole('button', { name: '뒤로가기' }))
-  await screen.findByRole('link', { name: '작업지시 설비 코드 연결' })
-  expect(screen.getByLabelText('제안 출처')).toHaveValue('AI')
-  expect(screen.getByLabelText('제안 종류')).toHaveValue('LINK_RULE')
-  expect(screen.getByLabelText('검토 상태')).toHaveValue('PENDING')
-  expect(screen.getByLabelText('반영 상태')).toHaveValue('NOT_APPLIED')
+  expect(await screen.findByText('후보 1건')).toBeInTheDocument()
   expect(
-    screen.queryByRole('link', { name: '직접 추가한 대체 설비 연결' }),
+    within(screen.getByRole('complementary')).queryByText(
+      '작업지시 설비 코드 연결',
+    ),
   ).not.toBeInTheDocument()
-
-  await user.click(screen.getByRole('button', { name: '앞으로가기' }))
-  await screen.findByRole('link', { name: '직접 추가한 대체 설비 연결' })
   expect(screen.getByLabelText('제안 출처')).toHaveValue('MANUAL')
-  expect(screen.getByLabelText('제안 종류')).toHaveValue('LINK_RULE')
+  await user.click(screen.getByRole('button', { name: '초기화' }))
+  expect(await screen.findByText('후보 3건')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '뒤로가기' }))
+  expect(await screen.findByText('후보 1건')).toBeInTheDocument()
   expect(screen.getByLabelText('검토 상태')).toHaveValue('HELD')
-  expect(screen.getByLabelText('반영 상태')).toHaveValue('NOT_APPLIED')
-  expect(
-    screen.queryByRole('link', { name: '작업지시 설비 코드 연결' }),
-  ).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '앞으로가기' }))
+  expect(await screen.findByText('후보 3건')).toBeInTheDocument()
 })
 
-test('종류 필터는 실제로 오는 종류만 두고 목록에 보류 권고·재분석 비교를 보인다', async () => {
+test('상태 탭·유형·검색을 결합하고 빈 결과에서도 전체 건수를 유지한다', async () => {
+  const object = {
+    ...proposalFixtures[0],
+    id: 900,
+    itemKind: 'OBJECT_TYPE',
+    payload: {
+      name: '작업지시 객체 정의',
+      objectMapping: { resourceKey: 'mes.work_order' },
+      properties: [],
+    },
+  }
+  server.use(
+    http.get('/api/v1/proposals', () =>
+      HttpResponse.json({
+        data: [object, ...proposalFixtures],
+        meta: { page: 0, size: 20, totalElements: 4, hasNext: false },
+      }),
+    ),
+  )
+  const user = userEvent.setup()
+  open()
+  expect(await screen.findByRole('button', { name: '전체 4' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  const types = within(screen.getByRole('group', { name: '후보 유형 필터' }))
+  expect(types.getByRole('button', { name: '객체 속성 1' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await user.click(types.getByRole('button', { name: '매핑 3' }))
+  await user.click(screen.getByRole('button', { name: '보류 1' }))
+  expect(await screen.findByText('후보 1건')).toBeInTheDocument()
+  await user.type(
+    screen.getByRole('searchbox', { name: '후보 검색' }),
+    '없는 후보',
+  )
+  expect(
+    await screen.findByText(
+      '선택한 상태·유형·검색어에 해당하는 후보가 없습니다.',
+    ),
+  ).toBeVisible()
+  expect(screen.getByRole('button', { name: '전체 4' })).toBeInTheDocument()
+})
+
+test('카드에 보류 권고·재분석 비교를 보이고 실제 후보 종류로 필터한다', async () => {
   const base = proposalFixtures[0]
   server.use(
     http.get('/api/v1/proposals', () =>
@@ -134,14 +150,14 @@ test('종류 필터는 실제로 오는 종류만 두고 목록에 보류 권고
           {
             ...base,
             id: 901,
-            payload: { ...base.payload, name: '보류 권고 규칙' },
+            payload: { name: '보류 권고 규칙' },
             evidence: { holdRecommended: true, changeType: 'CHANGED' },
             reviewStatus: 'PENDING',
           },
           {
             ...base,
             id: 902,
-            payload: { ...base.payload, name: '이미 보류한 규칙' },
+            payload: { name: '이미 보류한 규칙' },
             evidence: { holdRecommended: true },
             reviewStatus: 'HELD',
           },
@@ -151,25 +167,20 @@ test('종류 필터는 실제로 오는 종류만 두고 목록에 보류 권고
     ),
   )
   open()
-  const rows = await screen.findAllByRole('row')
-  const flagged = rows.find((row) => within(row).queryByText('보류 권고 규칙'))!
-  expect(within(flagged).getByText('보류 권고')).toBeInTheDocument()
-  expect(within(flagged).getByText('재분석 변경')).toBeInTheDocument()
-  // 이미 보류 결정한 제안에는 권고 표시를 다시 붙이지 않는다
-  const decided = rows.find((row) =>
-    within(row).queryByText('이미 보류한 규칙'),
-  )!
-  expect(within(decided).queryByText('보류 권고')).not.toBeInTheDocument()
-  const kinds = within(screen.getByLabelText('제안 종류'))
-    .getAllByRole('option')
-    .map((option) => option.textContent)
-  expect(kinds).toEqual([
-    '전체',
-    '객체 유형',
-    '연결 규칙',
-    '관계 유형',
-    '문서 연결',
-  ])
+  const list = within(await screen.findByRole('complementary'))
+  const flagged = within(list.getByRole('button', { name: /보류 권고 규칙/ }))
+  expect(flagged.getByText('보류 권고')).toBeInTheDocument()
+  expect(flagged.getByText('재분석 변경')).toBeInTheDocument()
+  expect(
+    within(list.getByRole('button', { name: /이미 보류한 규칙/ })).queryByText(
+      '보류 권고',
+    ),
+  ).not.toBeInTheDocument()
+  expect(
+    within(screen.getByLabelText('제안 종류'))
+      .getAllByRole('option', { hidden: true })
+      .map((o) => o.textContent),
+  ).toEqual(['전체', '객체 유형', '연결 규칙', '관계 유형', '문서 연결'])
 })
 
 test('빈 결과와 로딩을 구별한다', async () => {
@@ -185,8 +196,10 @@ test('빈 결과와 로딩을 구별한다', async () => {
   open()
   expect(screen.getByText('제안 목록을 불러오는 중…')).toBeInTheDocument()
   expect(
-    await screen.findByText('조건에 맞는 제안이 없습니다.'),
-  ).toBeInTheDocument()
+    await screen.findByText(
+      '선택한 상태·유형·검색어에 해당하는 후보가 없습니다.',
+    ),
+  ).toBeVisible()
 })
 
 test.each([403, 404, 409, 500])(
@@ -225,37 +238,39 @@ test('잘못된 상세 ID는 요청하지 않는다', async () => {
   expect(request).not.toHaveBeenCalled()
 })
 
-test('다음 페이지는 서버 페이지 번호를 사용한다', async () => {
+test('서버의 다음 페이지 후보도 집계·검색하고 화면 페이지를 이동한다', async () => {
+  const items = Array.from({ length: 21 }, (_, index) => ({
+    ...proposalFixtures[0],
+    id: 1000 + index,
+    payload: { name: '후보 ' + index },
+  }))
   const pages: string[] = []
   server.use(
     http.get('/api/v1/proposals', ({ request }) => {
-      const page = new URL(request.url).searchParams.get('page') ?? '0'
-      pages.push(page)
+      const page = Number(new URL(request.url).searchParams.get('page') ?? 0)
+      pages.push(String(page))
       return HttpResponse.json({
-        data: [{ ...proposalFixtures[0], payload: { name: `페이지 ${page}` } }],
-        meta: {
-          page: Number(page),
-          size: 20,
-          totalElements: 21,
-          hasNext: page === '0',
-        },
+        data: items.slice(page * 20, (page + 1) * 20),
+        meta: { page, size: 20, totalElements: 21, hasNext: page === 0 },
       })
     }),
   )
   const user = userEvent.setup()
   open()
-  await screen.findByText('페이지 0')
-  await user.click(screen.getByRole('button', { name: '다음 페이지' }))
-  await screen.findByText('페이지 1')
+  await screen.findByText('후보 21건')
+  const list = within(screen.getByRole('complementary'))
+  expect(list.getByText('후보 0')).toBeInTheDocument()
+  await user.click(list.getByRole('button', { name: '다음 페이지' }))
+  expect(list.getByText('후보 20')).toBeInTheDocument()
+  expect(list.getByRole('button', { name: '다음 페이지' })).toBeDisabled()
   expect(pages).toEqual(['0', '1'])
-  expect(
-    within(screen.getByRole('navigation', { name: '페이지 이동' })).getByRole(
-      'button',
-      { name: '다음 페이지' },
-    ),
-  ).toBeDisabled()
+  await user.type(
+    screen.getByRole('searchbox', { name: '후보 검색' }),
+    '후보 20',
+  )
+  expect(await screen.findByText('후보 1건')).toBeInTheDocument()
+  expect(list.getByText('후보 20')).toBeInTheDocument()
 })
-
 test('조회 사용자가 상세 주소로 진입해도 제안 API를 호출하지 않는다', async () => {
   const request = vi.fn(() => HttpResponse.json({ data: proposalFixtures[0] }))
   server.use(http.get('/api/v1/proposals/:id', request))
