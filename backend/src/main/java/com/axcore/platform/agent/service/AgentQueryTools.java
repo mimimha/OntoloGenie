@@ -50,16 +50,19 @@ public class AgentQueryTools {
         this.objects = objects;
     }
 
-    /** 실행 이력 한 줄. 입력·결과 원문은 AI에게 넘기지 않는다. */
+    /**
+     * 실행 이력 한 줄. 입력·결과 원문은 AI에게 넘기지 않는다. 요청 시각은 AI가 9시간 틀리게 말하지 않게 한국 시간 오프셋으로 적는다(예:
+     * 2026-11-01T09:00+09:00).
+     */
     public record ExecutionSummary(
-            Long id, String actionName, ExecutionStatus status, Instant requestedAt) {
+            Long id, String actionName, ExecutionStatus status, String requestedAt) {
 
         static ExecutionSummary from(AuditExecutionResponse response) {
             return new ExecutionSummary(
                     response.id(),
                     response.actionName(),
                     response.status(),
-                    response.requestedAt());
+                    AgentQuerySession.inUserZone(response.requestedAt()));
         }
     }
 
