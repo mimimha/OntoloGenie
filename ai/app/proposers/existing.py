@@ -149,13 +149,39 @@ def _why(decision: dict) -> str:
     return f"(사유: {decision['reason']})" if decision.get("reason") else ""
 
 
+def _option_fingerprint(option: dict) -> str:
+    return (option.get("evidence") or {}).get("fingerprint") or fingerprint_payload(
+        option.get("payload") or {}
+    )
+
+
+def _promote_remaining_option(p: dict, by_fingerprint: dict) -> dict | None:
+    """거절된 본문 대신 거절되지 않은 첫 대안을 본문으로. 남은 대안이 없으면 None."""
+    main = p["evidence"].get("fingerprint")
+    remaining = [
+        o
+        for o in p.get("options") or []
+        if _option_fingerprint(o) != main
+        and by_fingerprint.get(_option_fingerprint(o), {}).get("decision") != "REJECT"
+    ]
+    if not remaining:
+        return None
+    first = remaining[0]
+    payload = {**first["payload"]}
+    if p["payload"].get("name"):
+        payload["name"] = p["payload"]["name"]
+    evidence = {**p["evidence"], "fingerprint": _option_fingerprint(first)}
+    out = {**p, "payload": payload, "evidence": evidence, "options": remaining}
+    return _note(out, "이전에 거절한 대상은 빼고 남은 후보로 다시 제안합니다.")
+
+
 def skip_past_decisions(
     proposals: list[dict], decisions: list[dict]
 ) -> tuple[list[dict], dict[str, int]]:
     """018 pastDecisions 참고.
 
-    같은 내용(지문)이 승인·거절됐으면 빼고(문서 연결은 선택지 중 승인된 것이 있어도 뺀다), 보류됐거나 같은 후보 ID가
-    거절·보류된 뒤 내용이 바뀌었으면 내되 이유에 이전 결정을 적는다.
+    같은 내용(지문)이 승인·거절됐으면 빼고(문서 연결은 선택지 중 승인된 것이 있어도 뺀다), 거절된 선택지는 선택지
+    목록에서 뺀다. 보류됐거나 같은 후보 ID가 거절·보류된 뒤 내용이 바뀌었으면 내되 이유에 이전 결정을 적는다.
     """
     skipped = {"APPROVE": 0, "REJECT": 0}
     if not decisions:
@@ -166,7 +192,7 @@ def skip_past_decisions(
         fp = d.get("fingerprint") or (
             fingerprint_payload(d["payload"]) if d.get("payload") else None
         )
-        entry = {**d, "decision": _decision(d.get("decision", ""))}
+        entry = {**d, "decision": _decision(d.get("decision", "")), "fp": fp}
         if fp:
             by_fingerprint[fp] = entry
         if d.get("candidateId"):
@@ -175,23 +201,43 @@ def skip_past_decisions(
     for p in proposals:
         evidence = p.get("evidence") or {}
         same = by_fingerprint.get(evidence.get("fingerprint"))
+        if same and same["decision"] == "REJECT":
+            # 본문(1번 선택지)이 거절됐어도 거절되지 않은 다른 대안이 있으면 그 대안을 본문으로 올려 다시 묻는다
+            p = _promote_remaining_option(p, by_fingerprint)
+            if p is None:
+                skipped["REJECT"] += 1
+                continue
+            evidence = p["evidence"]
+            same = None
         if same and same["decision"] in skipped:
             skipped[same["decision"]] += 1
             continue
         if p.get("itemKind") == "DOCUMENT_LINK" and any(
-            by_fingerprint.get(fingerprint_payload(option["payload"]), {}).get(
-                "decision"
-            )
+            by_fingerprint.get(_option_fingerprint(option), {}).get("decision")
             == "APPROVE"
             for option in p.get("options") or []
         ):
             skipped["APPROVE"] += 1
             continue
+        options = p.get("options") or []
+        rejected = {
+            id(o)
+            for o in options
+            if by_fingerprint.get(_option_fingerprint(o), {}).get("decision")
+            == "REJECT"
+        }
+        if rejected:
+            p = {**p, "options": [o for o in options if id(o) not in rejected]}
+            p = _note(p, f"이전에 거절한 대안 {len(rejected)}개는 뺐습니다.")
         if same and same["decision"] == "HOLD":
             p = _note(p, f"같은 내용이 이전에 보류됐습니다{_why(same)}.")
         else:
             before = by_candidate.get(evidence.get("candidateId"))
-            if before and before["decision"] in ("REJECT", "HOLD"):
+            # 거절이 대안(선택지)에 대한 것이었으면 본문은 바뀐 것이 아니다
+            about_option = before is not None and any(
+                _option_fingerprint(o) == before["fp"] for o in options
+            )
+            if before and before["decision"] in ("REJECT", "HOLD") and not about_option:
                 word = "거절" if before["decision"] == "REJECT" else "보류"
                 p = _note(
                     p,

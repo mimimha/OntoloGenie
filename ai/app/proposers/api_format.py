@@ -79,7 +79,11 @@ def to_api(candidate: Candidate) -> dict:
             {
                 "optionNo": o["option_no"],
                 "payload": api_payload(o["payload"]),
-                "evidence": {"items": camel_keys(o["evidence"])},
+                # 선택지에도 지문을 둔다. 백엔드가 고른 선택지의 결정(거절 등)을 이 지문으로 다음 분석에 돌려준다
+                "evidence": {
+                    "fingerprint": fingerprint_payload(api_payload(o["payload"])),
+                    "items": camel_keys(o["evidence"]),
+                },
                 "aiConfidence": opt.confidence.total if opt.confidence else None,
             }
             for o, opt in zip(data["options"], candidate.options, strict=True)

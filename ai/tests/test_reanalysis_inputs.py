@@ -58,6 +58,102 @@ def test_rejected_or_approved_same_content_is_not_sent_again():
     assert kept[2]["evidence"]["reason"] == "값이 이어진다."
 
 
+def test_rejected_option_is_removed_and_main_content_is_not_called_changed():
+    # A안(본문)과 B안(선택지) 중 B안을 골라 거절하면, 다음 분석에서 B안만 빠지고 A안은 그대로 낸다
+    main = proposal("LR-a", {"code": "A"})
+    option_b = {"optionNo": 1, "payload": {"code": "A", "conditions": ["B"]}}
+    option_b["evidence"] = {"fingerprint": fingerprint_payload(option_b["payload"])}
+    option_c = {"optionNo": 2, "payload": {"code": "A", "conditions": ["C"]}}
+    main["options"] = [option_b, option_c]
+    decisions = [
+        {
+            "candidateId": "LR-a",
+            "fingerprint": option_b["evidence"]["fingerprint"],
+            "decision": "REJECT",
+        }
+    ]
+
+    kept, skipped = skip_past_decisions([main], decisions)
+
+    assert skipped == {"APPROVE": 0, "REJECT": 0}
+    assert [o["optionNo"] for o in kept[0]["options"]] == [2]
+    reason = kept[0]["evidence"]["reason"]
+    assert "이전에 거절한 대안 1개는 뺐습니다" in reason
+    assert "내용이 바뀌어" not in reason
+
+
+def test_rejecting_first_option_offers_the_remaining_candidate():
+    # '1호기' 후보 P101(본문 = 1번)·P301 중 P101을 거절하면 제안을 통째로 빼지 않고 P301로 다시 묻는다
+    main = proposal(
+        "DL-HN-1",
+        {"targetObjectRef": "mes.equipment:P101", "name": "HN-1 → 설비 (후보 2개)"},
+    )
+    first = {"optionNo": 1, "payload": {"targetObjectRef": "mes.equipment:P101"}}
+    second = {"optionNo": 2, "payload": {"targetObjectRef": "mes.equipment:P301"}}
+    for o in (first, second):
+        o["evidence"] = {"fingerprint": fingerprint_payload(o["payload"])}
+    main["evidence"]["fingerprint"] = first["evidence"]["fingerprint"]
+    main["options"] = [first, second]
+    decisions = [
+        {"fingerprint": first["evidence"]["fingerprint"], "decision": "REJECT"}
+    ]
+
+    kept, skipped = skip_past_decisions([main], decisions)
+
+    assert skipped == {"APPROVE": 0, "REJECT": 0}
+    assert kept[0]["payload"]["targetObjectRef"] == "mes.equipment:P301"
+    assert kept[0]["payload"]["name"] == "HN-1 → 설비 (후보 2개)"
+    assert kept[0]["evidence"]["fingerprint"] == second["evidence"]["fingerprint"]
+    assert [o["optionNo"] for o in kept[0]["options"]] == [2]
+    assert "남은 후보로 다시 제안" in kept[0]["evidence"]["reason"]
+
+    # 남은 대안도 모두 거절됐으면 뺀다
+    decisions.append(
+        {"fingerprint": second["evidence"]["fingerprint"], "decision": "REJECT"}
+    )
+    main["payload"] = {"targetObjectRef": "mes.equipment:P101"}
+    kept, skipped = skip_past_decisions([main], decisions)
+    assert kept == [] and skipped["REJECT"] == 1
+
+
+def test_options_carry_their_own_fingerprint():
+    from app.models.candidate import (
+        Candidate,
+        CandidateOption,
+        DocumentLinkPayload,
+        Evidence,
+    )
+    from app.proposers.api_format import to_api
+
+    first = DocumentLinkPayload(
+        link_type_code="MENTIONS_EQUIPMENT",
+        document_id="HN-1",
+        span_start=0,
+        span_end=3,
+        mention_text="1호기",
+        target_object_ref="mes.equipment:P101",
+    )
+    second = first.model_copy(update={"target_object_ref": "mes.equipment:P301"})
+    evidence = [Evidence(source_id="mes", locator="handover_note", snippet="1호기")]
+    api = to_api(
+        Candidate(
+            candidate_id="DL-HN-1",
+            title="t",
+            payload=first,
+            reason="r",
+            evidence=evidence,
+            options=[
+                CandidateOption(option_no=1, payload=first, evidence=evidence),
+                CandidateOption(option_no=2, payload=second, evidence=evidence),
+            ],
+        )
+    )
+    for option in api["options"]:
+        assert option["evidence"]["fingerprint"] == fingerprint_payload(
+            option["payload"]
+        )
+
+
 def test_no_past_decisions_keeps_everything():
     items = [proposal("LR-a", {"code": "A"})]
     assert skip_past_decisions(items, []) == (items, {"APPROVE": 0, "REJECT": 0})
