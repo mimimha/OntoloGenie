@@ -25,11 +25,23 @@ export type ObjectInstanceDetail = ObjectInstance & {
 
 export type LinkOrigin = 'RULE' | 'DOCUMENT' | 'MANUAL'
 
-// 078 연결 근거: RULE은 원천 키·변환 결과, DOCUMENT는 원문 구간·사건·시간 표현
+export type LinkComparison = {
+  sequenceNo: number
+  sourceProperty: string
+  sourceColumn?: string
+  sourceValue: string
+  targetProperty: string
+  targetColumn?: string
+  targetValue: string
+  matchedValue: string
+}
+
+// 078 연결 근거. RULE은 원천 키와 비교 조건, DOCUMENT는 원문 구간·사건·시간 표현을 제공한다.
 export type LinkEvidence = {
   sourceKey?: Record<string, unknown>
   rawValue?: unknown
   transformedValue?: unknown
+  comparisons?: LinkComparison[]
   quote?: string
   event?: string
   timeExpression?: string

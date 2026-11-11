@@ -34,9 +34,11 @@ public class ObjectQueryRepository {
     private static final TypeReference<Map<String, Object>> JSON_OBJECT = new TypeReference<>() {};
     private static final TypeReference<Map<String, String>> PROPERTY_NAMES =
             new TypeReference<>() {};
+    private static final TypeReference<List<ObjectLinkEvidenceResponse.Comparison>> COMPARISONS =
+            new TypeReference<>() {};
 
     private static final ObjectLinkEvidenceResponse EMPTY_EVIDENCE =
-            new ObjectLinkEvidenceResponse(null, null, null, null, null, null);
+            new ObjectLinkEvidenceResponse(null, null, null, null, null, null, List.of());
 
     private static final String OBJECTS = "from object_instance oi\n";
 
@@ -140,14 +142,15 @@ public class ObjectQueryRepository {
     private static final String LINK_EVIDENCE_FIELDS =
             """
             , evidence_source.source_key as evidence_source_key,
-              case when evidence_scope.can_view then l.evidence::text end as evidence_payload
+              case when evidence_scope.can_view then l.evidence::text end as evidence_payload,
+              case when evidence_scope.can_view then comparison_details.items::text end as evidence_comparisons
             """;
 
     // 관계 방향과 관계없이 원천 키는 출발 객체의 것을 사용한다.
     private static final String LINK_EVIDENCE_JOINS =
             """
             join lateral (
-                select oi.object_type_id, oi.status, scope.can_view_restricted,
+                select oi.object_type_id, oi.source_mapping_id, oi.status, scope.can_view_restricted,
                        case when l.origin = 'RULE'
                             then (oi.source_key || coalesce(source_mask.masked_values, '{}'::jsonb))::text
                        end as source_key
@@ -180,6 +183,40 @@ public class ObjectQueryRepository {
                     else false
                 end as can_view
             ) evidence_scope
+            left join lateral (
+                select jsonb_agg(jsonb_build_object(
+                    'sequenceNo', c.sequence_no,
+                    'sourceProperty', src.code,
+                    'sourceColumn', source_column.column_name,
+                    'sourceValue', comparison.source_value,
+                    'targetProperty', dst.code,
+                    'targetColumn', target_column.column_name,
+                    'targetValue', comparison.target_value,
+                    'matchedValue', l.evidence -> 'matchedValues' -> (c.sequence_no::text)
+                ) order by c.sequence_no) as items
+                from link_mapping_condition c
+                join property_definition src on src.id = c.source_property_id
+                join property_definition dst on dst.id = c.target_property_id
+                left join property_source_mapping source_mapping
+                    on source_mapping.source_mapping_id = evidence_source.source_mapping_id
+                   and source_mapping.property_definition_id = src.id
+                left join source_column source_column on source_column.id = source_mapping.source_column_id
+                left join property_source_mapping target_mapping
+                    on target_mapping.source_mapping_id = evidence_target.source_mapping_id
+                   and target_mapping.property_definition_id = dst.id
+                left join source_column target_column on target_column.id = target_mapping.source_column_id
+                cross join lateral (
+                    select l.evidence -> 'rawValues' -> (c.sequence_no::text) as source_value,
+                           coalesce(l.evidence -> 'targetRawValues' -> (c.sequence_no::text),
+                               case when c.target_transforms = '[]'::jsonb
+                                    then l.evidence -> 'matchedValues' -> (c.sequence_no::text) end) as target_value
+                ) comparison
+                where l.origin = 'RULE' and evidence_scope.can_view
+                  and c.link_mapping_id = l.link_mapping_id
+                  and jsonb_typeof(comparison.source_value) = 'string'
+                  and jsonb_typeof(comparison.target_value) = 'string'
+                  and jsonb_typeof(l.evidence -> 'matchedValues' -> (c.sequence_no::text)) = 'string'
+            ) comparison_details on true
             """;
 
     private final JdbcClient jdbc;
@@ -387,13 +424,15 @@ public class ObjectQueryRepository {
         return switch (origin) {
             case RULE -> {
                 String sourceKey = rs.getString("evidence_source_key");
+                String comparisons = rs.getString("evidence_comparisons");
                 yield new ObjectLinkEvidenceResponse(
                         sourceKey == null ? null : json.readValue(sourceKey, JSON_OBJECT),
                         comparisonValue(payload.get("rawValues")),
                         comparisonValue(payload.get("matchedValues")),
                         null,
                         null,
-                        null);
+                        null,
+                        comparisons == null ? List.of() : json.readValue(comparisons, COMPARISONS));
             }
             case DOCUMENT ->
                     new ObjectLinkEvidenceResponse(
@@ -404,7 +443,8 @@ public class ObjectQueryRepository {
                             textValue(payload.get("event")),
                             textValue(
                                     payload.getOrDefault(
-                                            "time_expression", payload.get("timeExpression"))));
+                                            "time_expression", payload.get("timeExpression"))),
+                            List.of());
             case MANUAL -> EMPTY_EVIDENCE;
         };
     }

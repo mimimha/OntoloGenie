@@ -11,6 +11,8 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -107,7 +109,8 @@ class LinkRecomputeServiceTests {
         assertThat(String.valueOf(link.get("evidence")))
                 .contains("\"ruleCode\": \"" + ruleCode + "\"")
                 .contains("\"matchedValues\": {\"1\": \"EQ-3\"}")
-                .contains("\"rawValues\": {\"1\": \" eq-3 \"}");
+                .contains("\"rawValues\": {\"1\": \" eq-3 \"}")
+                .contains("\"targetRawValues\": {\"1\": \"EQ-3\"}");
 
         long linkId = result.activatedLinkIds().getFirst();
         setProperty(wo, "equipment_code", "eq-3");
@@ -117,12 +120,15 @@ class LinkRecomputeServiceTests {
         assertThat(recompute(wo).updatedLinkIds()).isEmpty();
     }
 
-    @Test
-    void keepsLegacyEvidenceUntilTheLinkIsReactivated() {
+    @ParameterizedTest
+    @ValueSource(strings = {"{rawValues,targetRawValues}", "{targetRawValues}"})
+    void keepsLegacyEvidenceUntilTheLinkIsReactivated(String missingFields) {
         long wo = workOrder(" eq-3 ");
         long eq = equipment("EQ-3");
         long linkId = recompute(wo).activatedLinkIds().getFirst();
-        jdbc.sql("update object_link set evidence = evidence - 'rawValues' where id = :id")
+        jdbc.sql(
+                        "update object_link set evidence = evidence - cast(:fields as text[]) where id = :id")
+                .param("fields", missingFields)
                 .param("id", linkId)
                 .update();
         Object legacyEvidence = link(linkId).get("evidence");
@@ -135,7 +141,32 @@ class LinkRecomputeServiceTests {
         setStatus(eq, "ACTIVE");
         assertThat(recompute(eq).activatedLinkIds()).containsExactly(linkId);
         assertThat(String.valueOf(link(linkId).get("evidence")))
-                .contains("\"rawValues\": {\"1\": \" eq-3 \"}");
+                .contains("\"rawValues\": {\"1\": \" eq-3 \"}")
+                .contains("\"targetRawValues\": {\"1\": \"EQ-3\"}");
+    }
+
+    @Test
+    void updatesEvidenceWhenOnlyTheTargetRawValueChanges() {
+        rule(
+                linkType("MANY_TO_ONE"),
+                "RULE_" + suffix(),
+                1,
+                "{}",
+                "{}",
+                """
+                [{"op":"TRIM","arg":null},{"op":"UPPER","arg":null}]
+                """);
+        long wo = workOrder("EQ-3");
+        long eq = equipment(" eq-3 ");
+        long linkId = recompute(wo).activatedLinkIds().getFirst();
+
+        setProperty(eq, "code", "eq-3");
+
+        assertThat(recompute(eq).updatedLinkIds()).containsExactly(linkId);
+        assertThat(String.valueOf(link(linkId).get("evidence")))
+                .contains("\"matchedValues\": {\"1\": \"EQ-3\"}")
+                .contains("\"targetRawValues\": {\"1\": \"eq-3\"}");
+        assertThat(recompute(eq).updatedLinkIds()).isEmpty();
     }
 
     @Test
@@ -685,6 +716,16 @@ class LinkRecomputeServiceTests {
     // 비교 항목은 규칙을 만든 트랜잭션 안에서만 넣을 수 있다(DB 트리거).
     private long rule(
             long linkTypeId, String code, int revision, String sourceFilter, String targetFilter) {
+        return rule(linkTypeId, code, revision, sourceFilter, targetFilter, "[]");
+    }
+
+    private long rule(
+            long linkTypeId,
+            String code,
+            int revision,
+            String sourceFilter,
+            String targetFilter,
+            String targetTransforms) {
         return inTx(
                 () -> {
                     long id =
@@ -706,13 +747,15 @@ class LinkRecomputeServiceTests {
                                     """
                                     insert into link_mapping_condition
                                         (link_mapping_id, source_property_id, target_property_id, sequence_no,
-                                         source_transforms)
+                                         source_transforms, target_transforms)
                                     values (:rule, :source, :target, 1,
-                                            '[{"op": "TRIM", "arg": null}, {"op": "UPPER", "arg": null}]')
+                                            '[{"op": "TRIM", "arg": null}, {"op": "UPPER", "arg": null}]',
+                                            cast(:targetTransforms as jsonb))
                                     """)
                             .param("rule", id)
                             .param("source", woEquipmentCode)
                             .param("target", eqCode)
+                            .param("targetTransforms", targetTransforms)
                             .update();
                     return id;
                 });
