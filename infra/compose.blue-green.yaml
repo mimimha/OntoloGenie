@@ -1,0 +1,13 @@
+services:
+  backend-green:
+    extends:
+      file: compose.yaml
+      service: backend
+    image: axcore-backend:${BACKEND_GREEN_TAG:?BACKEND_GREEN_TAG must be set}
+    container_name: backend-green
+    profiles: ["blue-green"]
+    pull_policy: never
+    restart: "no"
+    ports: !reset []
+    environment:
+      SPRING_FLYWAY_ENABLED: "false"
