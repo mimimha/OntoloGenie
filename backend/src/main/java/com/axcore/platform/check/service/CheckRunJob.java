@@ -290,6 +290,7 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         detail.put("transformedValue", CheckRowText.transformedValue(row, conditions));
         detail.put("targetFound", !row.targets().isEmpty());
         detail.put("classification", row.outcome().name());
+        detail.put("reason", row.reason());
         Verdict verdict = row.outcome() == CheckOutcome.MATCHED ? Verdict.PASSED : Verdict.FAILED;
         return new IssueReverification(issue.getId(), revision, verdict, detail, null);
     }

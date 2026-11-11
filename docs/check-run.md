@@ -37,7 +37,7 @@ FN-CHK-01·02의 검사 실행 목록·상태 조회, 수동 검사·재검증 �
 
 일부 일치 사유를 위한 조건별 색인은 그 검사에서 미연결 행이 처음 나올 때 한 번 만든다. 미연결이 없으면 만들지 않는다.
 
-**135 후속 작업:** 재검증의 문제별 검증 기록(`issue_verification`)과 이전 결과 비교. 문제별 판정은 실행기가 만들어 확장 지점(`IssueReverificationRecorder`)에 넘긴다(아래 "문제별 재검증 판정").
+**재검증 결과(135):** 문제별 판정은 `issue_verification`에 남고 [API 070](issue-query.md#재검증-기록-api-070)에서 조회한다. 실행 간 비교는 `GET /api/v1/checks/runs/{id}/comparison`으로 조회한다.
 
 **수동 검사의 역할(2026-11-06 합의):** 평소 판정은 수집 뒤 배치가 주기적으로 넣는 SYNC가 한다. 수동 검사(MANUAL)는 실패한 후보 시험을 다시 돌리거나, 장애 복구 뒤·문제가 의심될 때 고른 규칙을 다시 점검하는 데 쓴다. issue는 SYNC·MANUAL 판정에서 만들고, 원천 사이 규칙의 미연결은 확인 대기(`link_check_pending`)를 거친다(191-3).
 
@@ -68,7 +68,7 @@ FN-CHK-01·02의 검사 실행 목록·상태 조회, 수동 검사·재검증 �
 
 ### 같은 검사 판단
 
-`work_key` = `종류:비교대상(없으면 -):SHA-256(저장 범위 + 데이터 기준)`.
+`work_key` = `종류:비교대상(없으면 -):SHA-256(저장 범위 + 데이터 기준)`. REVERIFY의 해시 입력에는 이력 형식 버전도 포함한다. 문제별 이력을 저장하기 전에 성공한 실행을 같은 요청에서 재사용하지 않는다.
 
 1. 같은 키로 성공한 검사가 있으면 그 검사를 돌려준다. HTTP 200, `reused=true`.
 2. 재사용할 결과가 없으면 대기·실행 중인 검사에 합류한다. HTTP 202, `joined=true`.
@@ -160,7 +160,16 @@ batch 프로필의 작업 표 처리기(`QueuedJobHandler`, `CHECK_RUN`)다. `tr
 | NOT_EVALUATED | 문제에 객체가 없음, 같은 코드의 규칙을 판정하지 못함(실행 때 반영 중 아님·건너뜀), 객체가 판정 대상에 없음(원천 삭제·행 조건 밖) | 비어 있음. `reason`에 이유 |
 
 - 결과를 저장하는 complete 트랜잭션에서, 검사를 SUCCEEDED로 바꾸기 전에 `IssueReverificationRecorder.record(checkRunId, 판정 목록, 시각)`을 부른다. 구현이 예외를 던지면 결과 저장도 함께 롤백되고 검사는 실패한다.
-- 구현은 135(정유림)가 한다. `issue_verification`에 PASSED·FAILED를 기록하고, FAILED면 `IssueStatusService.reopenAfterFailedReverification`을 부른다. NOT_EVALUATED를 기록할지는 135가 정한다(`issue_verification.outcome`은 PASSED·FAILED만 받는다).
+- `IssueVerificationRecorder`가 `issue_verification`에 PASSED·FAILED를 기록한다. 새 FAILED를 저장하면 `IssueStatusService.reopenAfterFailedReverification`을 부른다. NOT_EVALUATED는 검사 감사 집계에 남는다.
+
+### 이전 검사와의 비교 (135)
+
+`GET /api/v1/checks/runs/{id}/comparison?page=0&size=20`은 관리자 전용이다. 재검증 실행에 저장된 `comparedToRunId`가 비교 기준이다. `page`는 0 이상, `size`는 1~100이며, 행은 규칙 코드와 출발 객체 ID 오름차순이다.
+
+- `data`에는 `comparedToRunId`, `coverage`, `hasBaselinePassEvidence`, `rows`가 있다. `hasBaselinePassEvidence`는 비교 결과를 조회할 때 이전 실행에 정상 판정 근거가 하나라도 남아 있는지 나타낸다. 진행 중이거나 실패한 실행은 `false`를 반환한다. `coverage`는 확인 가능한 행이 있는 `PARTIAL`, 또는 확인 가능한 행이 없는 `UNAVAILABLE`이다. 진행 중이거나 실패한 실행도 `UNAVAILABLE`과 빈 목록을 반환한다. `meta`는 페이지 정보다.
+- 행마다 `ruleCode`, `objectInstanceId`, `category`, `before`, `after`를 반환한다. 근거에는 각 실행에서 사용한 규칙 개정본 ID(`linkMappingId`), 판정(`classification`), 저장된 원본·변환 값과 사유가 포함된다.
+- 두 실행에 저장된 이상 행 표본과 문제별 판정을 같은 규칙 코드 및 출발 객체 ID로 대조한다. 이상→정상은 `RESOLVED`, 이상→이상은 `REMAINING`, 정상→이상은 `NEW`다. 이전 정상 판정은 저장된 통과 기록으로 확인해야 한다. 이전 실행에 정상 판정이 저장되지 않은 경우 화면에 신규 문제 확인 불가를 표시한다.
+- 삭제, 행 조건 제외, 표본 상한 또는 검증 대상 차이로 한쪽 판정이 없으면 그 행은 분류하지 않는다. 비교의 `RESOLVED`는 두 실행에서 관찰한 결과다. 문제 상태의 해결 처리는 API 067이 통과 이력과 상태를 다시 확인해 별도로 처리한다.
 - 구현이 없으면 부르지 않고 규칙별 결과만 저장한다. 범위가 ALL·LINK_MAPPINGS인 재검증도 부르지 않는다.
 
 **알려 둘 것**
@@ -259,7 +268,7 @@ DB 스키마·의존성 변경은 없다(확인 대기 표는 V12에 있다. Ent
 - 202 신규·합류(`joined`)와 200 완료 결과 재사용(`reused`)을 구분한다. 진행 중에는 중복 클릭을 막고, 061을 2초 간격으로 조회한다. 종료·조회 실패 시 주기 조회를 멈추며 조회 재시도는 GET만 수행한다. 통신 실패로 접수 여부를 모르면 실행 이력 확인을 안내하고 POST를 자동 재전송하지 않는다.
 - 선택한 문제와 실행 ID는 URL의 `reverifyIssue`·`reverifyRun`에 함께 보관해 새로고침 후 상태 조회를 이어간다. 응답의 실행 종류·대상 문제·비교 기준을 검사해 다른 실행을 표시하지 않는다. 종료 후 목록·상세·상태 이력을 다시 조회한다.
 - 발견 당시 결과는 기존 규칙 ID로, 이번 성공 재검증의 062 결과는 061 `scope.linkMappingIds`의 실제 검사 개정본 ID로 조회한다. 060 접수 기준과 061 완료 후 실제 사용한 `dataBasis`가 다를 수 있어 완료 조회 값을 표시한다. 검사 성공과 규칙 단위 건수만으로 개별 문제의 통과·해결을 판정하지 않는다.
-- **070 대기:** 2026-11-12 기준 Notion [070 문제 재검증 이력](https://app.notion.com/p/405bdf14d2d881609c88ddd0dfcabd27)은 `GET /api/v1/issues/{id}/verifications`, 개발 상태 미확인·명세 초안이다. 기준 develop `8afa5dc`에는 해당 조회 Controller가 없다. 135의 문제별 판정 기록과 070이 제공되면 개별 `PASSED`·`FAILED` 근거 및 해결·잔존·신규 비교를 연결해야 한다. `NOT_EVALUATED`의 기록·조회 방식은 135 정책 확인이 필요하다. 현재 범위는 060·061·062이며 FN-CHK-06의 전체 완료를 뜻하지 않는다.
+- **135 연동:** 비교 패널에서 070 문제별 재검증 이력과 실행 간 비교를 조회한다. 재검증 완료 시 상태 변경 이력(069)과 재검증 이력(070)을 다시 읽는다. `NOT_EVALUATED`는 검사 감사 집계에 남기고 070에는 `PASSED`·`FAILED`만 제공한다. [Notion 070 초안](https://app.notion.com/p/405bdf14d2d881609c88ddd0dfcabd27)의 `checkedAt`·페이지 응답 보강과 비교 API 명세 등록이 필요하다.
 - 검증은 MSW 기반 화면·계약 테스트다. 운영 Swagger는 인증으로 열지 못했으며, 운영 재검증 실행·저장·배치·서버 권한·DB 동시성은 검증하지 않았다. 운영 기록 변경 보류 요청에 따라 실제 POST는 수행하지 않는다.
 
 ## 기준

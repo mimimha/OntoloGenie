@@ -401,11 +401,13 @@ public class CheckRunRequestService {
     /** 검사 실행의 work_key: 종류, 비교 실행, 범위와 수집 기준의 해시. 재검증은 완료 때 실제로 읽은 기준으로 다시 만든다. */
     static String workKey(
             String triggerKind, Long comparedToRunId, String scopeJson, String basisJson) {
+        // 이전 배치가 성공한 재검증에는 문제별 이력이 없을 수 있어 새 실행을 접수한다.
+        String version = "REVERIFY".equals(triggerKind) ? "|verification-history-v1" : "";
         return triggerKind
                 + ":"
                 + (comparedToRunId == null ? "-" : comparedToRunId)
                 + ":"
-                + sha256(scopeJson + "|" + basisJson);
+                + sha256(scopeJson + "|" + basisJson + version);
     }
 
     /** work_key의 해시. 수집 뒤 검사(SyncCheckRequester)도 같은 방식으로 만든다. */

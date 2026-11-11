@@ -124,13 +124,40 @@ test('한 번 접수하고 대기·실행·완료를 조회하며 실제 개정�
     },
   )
   const change = vi.fn(() => HttpResponse.json({}))
-  const verifications = vi.fn(() => HttpResponse.json({}))
+  const verifications = vi.fn(() =>
+    HttpResponse.json({
+      data: [
+        {
+          issueId: 1,
+          checkRunId: 20,
+          triggerKind: 'REVERIFY',
+          status: 'SUCCEEDED',
+          outcome: 'PASSED',
+          detail: { classification: 'MATCHED' },
+          checkedAt: '2026-11-12T01:02:00Z',
+        },
+      ],
+      meta: { page: 0, size: 20, totalElements: 1, hasNext: false },
+    }),
+  )
+  const comparison = vi.fn(() =>
+    HttpResponse.json({
+      data: {
+        comparedToRunId: 1,
+        coverage: 'UNAVAILABLE',
+        hasBaselinePassEvidence: false,
+        rows: [],
+      },
+      meta: { page: 0, size: 20, totalElements: 0, hasNext: false },
+    }),
+  )
   server.use(
     http.post('/api/v1/checks/runs', post),
     http.get('/api/v1/checks/runs/20', get),
     http.get('/api/v1/checks/runs/:id/results', result),
     http.patch('/api/v1/issues/1/status', change),
     http.get('/api/v1/issues/1/verifications', verifications),
+    http.get('/api/v1/checks/runs/20/comparison', comparison),
   )
   const { detail, list, history } = open()
   await user.dblClick(
@@ -149,6 +176,8 @@ test('한 번 접수하고 대기·실행·완료를 조회하며 실제 개정�
   )
   await user.click(screen.getByText('검사 데이터 기준'))
   expect(screen.getByText('원천 자원 #3 · 성공 수집 #5')).toBeInTheDocument()
+  expect(verifications).not.toHaveBeenCalled()
+  expect(comparison).not.toHaveBeenCalled()
   await user.click(screen.getByText('검사 결과 비교'))
   await within(
     await screen.findByRole('region', { name: '발견 당시 검사 결과' }),
@@ -159,11 +188,18 @@ test('한 번 접수하고 대기·실행·완료를 조회하며 실제 개정�
   expect(
     screen.getByText(/실행 완료는 개별 문제의 통과·해결 판정이 아닙니다/),
   ).toBeInTheDocument()
-  expect(screen.queryByText('통과')).not.toBeInTheDocument()
+  const historyRegion = within(
+    await screen.findByRole('region', { name: '문제 재검증 이력' }),
+  )
+  expect(await historyRegion.findByText('실행 #20 · 통과')).toBeInTheDocument()
+  expect(
+    await screen.findByRole('region', { name: '재검증 비교 결과' }),
+  ).toBeInTheDocument()
   expect(post).toHaveBeenCalledTimes(1)
   expect(get).toHaveBeenCalledTimes(2)
   expect(change).not.toHaveBeenCalled()
-  expect(verifications).not.toHaveBeenCalled()
+  expect(verifications).toHaveBeenCalledTimes(1)
+  expect(comparison).toHaveBeenCalledTimes(1)
 })
 
 test.each([false, true])(

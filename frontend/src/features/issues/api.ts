@@ -40,6 +40,58 @@ export function fetchIssue(id: number, signal?: AbortSignal) {
   return apiGet<Issue>(`/issues/${id}`, { signal })
 }
 
+export type IssueVerification = {
+  issueId: number
+  checkRunId: number
+  triggerKind: string
+  status: string
+  outcome: 'PASSED' | 'FAILED'
+  detail: Evidence & { linkMappingId?: number }
+  checkedAt: string
+}
+
+type Evidence = {
+  classification?: string
+  reason?: string | null
+  rawValue?: string | null
+  transformedValue?: string | null
+}
+
+export type ReverificationComparison = {
+  comparedToRunId: number
+  coverage: 'PARTIAL' | 'UNAVAILABLE'
+  hasBaselinePassEvidence: boolean
+  rows: {
+    category: 'RESOLVED' | 'REMAINING' | 'NEW'
+    ruleCode: string
+    objectInstanceId: number
+    before: Evidence
+    after: Evidence
+  }[]
+}
+
+export function fetchIssueVerifications(
+  id: number,
+  page: number,
+  signal?: AbortSignal,
+) {
+  return apiGet<IssueVerification[]>(
+    `/issues/${id}/verifications?page=${page}&size=${ISSUE_PAGE_SIZE}`,
+    { signal },
+  )
+}
+
+export function fetchReverificationComparison(
+  id: number,
+  page: number,
+  signal?: AbortSignal,
+) {
+  return apiGet<ReverificationComparison>(
+    `/checks/runs/${id}/comparison?page=${page}&size=${ISSUE_PAGE_SIZE}`,
+    { signal },
+  )
+}
+
 export function changeIssueStatus(
   id: number,
   request: {
