@@ -409,6 +409,48 @@ class CheckRunApiIntegrationTests {
     }
 
     @Test
+    void joinsRunningReverificationOnlyWhileNoNewDataWasCollected() throws Exception {
+        long ruleId = rule();
+        long detected = fixtures.insertRun("MANUAL", "SUCCEEDED", accountId, key());
+        long issueId = issue(detected, ruleId);
+        String body = reverify(detected, "{\"kind\":\"ISSUES\",\"issueIds\":[" + issueId + "]}");
+
+        long first = id(request(body).andExpect(status().isAccepted()));
+        fixtures.setStatus(first, "RUNNING");
+
+        // 수집 기준이 그대로면 실행 중인 작업이 지금 데이터를 읽은 것과 같으므로 합류한다.
+        request(body)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.id").value(first))
+                .andExpect(jsonPath("$.data.joined").value(true));
+
+        // 실행 중인 작업이 시작한 뒤 새 수집이 끝났으면, 그 작업은 새 데이터를 보지 못하므로 새로 넣는다.
+        long sync =
+                fixtures.insertSync(
+                        dataSource,
+                        workerTable,
+                        accountId,
+                        "SUCCEEDED",
+                        SYNCED_AT.plusSeconds(120));
+        long next =
+                id(
+                        request(body)
+                                .andExpect(status().isAccepted())
+                                .andExpect(jsonPath("$.data.joined").value(false))
+                                .andExpect(jsonPath("$.data.reused").value(false))
+                                .andExpect(
+                                        jsonPath("$.data.dataBasis.resources[0].lastSyncRunId")
+                                                .value(sync)));
+        assertThat(next).isNotEqualTo(first);
+
+        // 새로 넣은 작업은 아직 대기 중이라 다음 요청은 거기에 합류한다.
+        request(body)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.id").value(next))
+                .andExpect(jsonPath("$.data.joined").value(true));
+    }
+
+    @Test
     void keepsManualAndReverificationApart() throws Exception {
         rule();
         long previous = fixtures.insertRun("MANUAL", "SUCCEEDED", accountId, key());

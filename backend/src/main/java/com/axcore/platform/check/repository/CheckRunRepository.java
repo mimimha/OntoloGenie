@@ -171,12 +171,16 @@ public class CheckRunRepository {
                 .singleRow();
     }
 
-    /** 재검증은 같은 범위와 비교 실행으로 진행 중인 작업에 합류한다. */
-    public Optional<Long> findActiveReverification(ReverificationScope scope) {
+    /**
+     * 재검증은 같은 범위와 비교 실행으로 <b>대기 중(QUEUED)</b>인 작업에만 합류한다. 대기 중인 작업은 시작할 때 최신 수집 기준을 읽으므로 지금 요청한
+     * 사람에게도 맞는 결과를 준다. 이미 실행 중(RUNNING)인 작업은 시작할 때 데이터를 읽었으므로 그 뒤의 수집을 보지 못한다. 그래서 수집 기준(work_key)이
+     * 같을 때만 {@link #insertQueued}의 충돌 → {@link #findActive}로 합류한다.
+     */
+    public Optional<Long> findQueuedReverification(ReverificationScope scope) {
         return jdbc.sql(
                         """
                         select id from check_run
-                        where trigger_kind = 'REVERIFY' and status in ('QUEUED', 'RUNNING')
+                        where trigger_kind = 'REVERIFY' and status = 'QUEUED'
                           and compared_to_run_id = :comparedTo and scope = cast(:scope as jsonb)
                         order by id limit 1
                         """)
