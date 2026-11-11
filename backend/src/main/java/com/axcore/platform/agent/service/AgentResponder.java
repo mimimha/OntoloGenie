@@ -5,11 +5,11 @@ import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
-import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.stereotype.Component;
 
@@ -19,7 +19,6 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
-@RequiredArgsConstructor
 public class AgentResponder {
     private static final String SYSTEM_PROMPT =
             """
@@ -29,7 +28,10 @@ public class AgentResponder {
             - 답변에 도구, Tool, resultCategory 같은 내부 용어를 쓰지 않는다. 사용자가 쓰는 업무 말로 답한다.
             - resultCategory가 NO_DATA면 해당 데이터가 없다고 말한다.
             - 도구가 error를 돌려주면 그 정보는 확인하지 못했다고 말하고, 데이터가 없다고 바꿔 말하지 않는다.
-            - 객체 ID는 "참고 객체 ID"에 있는 값만 쓴다.
+            - 객체 ID는 "참고 객체 ID"에 있는 값만 쓴다. "참고 객체 ID"가 비어 있으면 객체 하나를 조회하는 도구는 부르지 않는다.
+            - 질문한 정보를 조회할 도구가 없으면 다른 도구 결과로 대신 답하지 않고, 아직 조회할 수 없는 정보라고 말한다.
+              예: 작업지시 목록을 조회할 도구가 없으면 "작업지시가 없다"가 아니라 "아직 조회할 수 없다"고 말한다.
+            - "그럼 지난달은?"처럼 짧은 후속 질문도 "확인한 조건"의 목적·대상·기간으로 답한다. 조건은 이전 질문에서 이어 온 것이다.
             - Action 도구(조회 도구가 아닌 것)는 사용자가 그 일을 해 달라고 분명히 요청했을 때만 부른다.
             - Action 입력의 기준 시점(dataAsOf)은 계획에 쓴 조회 결과의 기준 시점 중 가장 이른 값을 쓴다. 조회한 기준 시점이 없을 때만 "현재 시각"을 쓴다.
             - 그 밖에 시각이 필요하면 "현재 시각"을 기준으로 정한다. 사용자가 "지금"이라고 하면 현재 시각이다.
@@ -41,26 +43,46 @@ public class AgentResponder {
     /** "지금" 같은 표현은 사용자 기준 시각으로 계산한다. */
     private static final ZoneId USER_ZONE = ZoneId.of("Asia/Seoul");
 
-    /**
-     * GMS의 gpt-6-luna는 함수 도구와 추론 옵션을 함께 보내면 400으로 거절한다. 도구를 쓰는 이 요청에만 추론을 끈다고 명시한다(배포 확인
-     * 2026-11-06). 도구가 없는 질문 해석 요청(QuestionInterpreter)에는 넣지 않는다.
-     */
-    static final String NO_REASONING = "none";
-
     private final ObjectProvider<ChatModel> chatModels;
     private final AuditExecutionQueryService executions;
     private final AgentActionTools actionTools;
     private final Clock clock;
 
+    /**
+     * 도구를 쓰는 이 요청에 보내는 추론 강도(147). GMS chat/completions는 함수 도구와 추론을 함께 쓰는 것을 거절하므로 기본값은
+     * "none"이다(gpt-6-luna 배포 확인 2026-11-06, gpt-5.6-sol 등 로컬 확인 2026-11-10). 모델마다 받는 값이 달라 설정으로 두고,
+     * 비우면 옵션을 보내지 않는다. 추론을 끌 수 없는 gpt-6-astra·gpt-6.1-sol은 이 방식으로 도구를 쓸 수 없다. 도구가 없는 질문 해석
+     * 요청(QuestionInterpreter)에는 넣지 않는다.
+     */
+    private final String reasoningEffort;
+
+    public AgentResponder(
+            ObjectProvider<ChatModel> chatModels,
+            AuditExecutionQueryService executions,
+            AgentActionTools actionTools,
+            Clock clock,
+            @Value("${axcore.agent.reasoning-effort:none}") String reasoningEffort) {
+        this.chatModels = chatModels;
+        this.executions = executions;
+        this.actionTools = actionTools;
+        this.clock = clock;
+        this.reasoningEffort = reasoningEffort;
+    }
+
     /** AI 호출이 실패하거나 답이 비면 예외를 던진다. 부르는 쪽이 답변을 실패로 끝낸다. */
     public String answer(
             String question, QuestionInterpretation interpretation, AgentQuerySession session) {
+        // 설정이 비어 있으면 추론 옵션을 보내지 않고 모델 기본값에 맡긴다.
+        OpenAiChatOptions.Builder options = OpenAiChatOptions.builder();
+        if (reasoningEffort != null && !reasoningEffort.isBlank()) {
+            options.reasoningEffort(reasoningEffort);
+        }
         String content =
                 ChatClient.create(chatModels.getObject())
                         .prompt()
                         .system(SYSTEM_PROMPT)
                         .user(userPrompt(question, interpretation))
-                        .options(OpenAiChatOptions.builder().reasoningEffort(NO_REASONING))
+                        .options(options)
                         .tools(
                                 new AgentQueryTools(session, executions),
                                 actionTools.forAnswer(session))
@@ -76,17 +98,21 @@ public class AgentResponder {
     private String userPrompt(String question, QuestionInterpretation interpretation) {
         return """
                 현재 시각: %s
-                확인한 조건: 목적=%s, 대상=%s, 기간=%s, 참고 객체 ID=%s
+                확인한 조건: 목적=%s, 대상=%s, 종류 전체=%s, 기간=%s, 참고 객체 ID=%s, 참고 객체=%s
                 질문: %s"""
                 .formatted(
                         OffsetDateTime.now(clock.withZone(USER_ZONE))
                                 .truncatedTo(ChronoUnit.SECONDS),
                         interpretation.purpose(),
                         interpretation.targets(),
+                        interpretation.kinds(),
                         interpretation.hasPeriod()
                                 ? interpretation.from() + " ~ " + interpretation.to()
                                 : "없음",
                         interpretation.referenceObjectIds(),
+                        interpretation.referenceObjects().stream()
+                                .map(AgentReferenceObject::describe)
+                                .toList(),
                         question);
     }
 }

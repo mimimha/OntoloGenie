@@ -37,6 +37,55 @@ class AgentAnswerServiceTests {
     private final AgentAnswerService answers = new AgentAnswerService(messages);
 
     @Test
+    void numbersCandidatesThatLookTheSame() {
+        String text =
+                AgentAnswerService.clarifyingQuestion(
+                        new QuestionInterpretation(
+                                "상태", List.of("PR-03"), null, null, List.of(), null),
+                        List.of(
+                                new AgentTargetResolver.TargetIssue(
+                                        "PR-03",
+                                        List.of(
+                                                new AgentReferenceObject(306L, "PR-03", "설비"),
+                                                new AgentReferenceObject(406L, "PR-03", "설비"),
+                                                new AgentReferenceObject(506L, "PR-03", "작업지시")))));
+
+        // 이름·유형이 같은 후보만 번호를 붙여 사용자가 "번호 N"으로 고를 수 있게 한다.
+        assertThat(text).contains("PR-03(설비, 번호 306), PR-03(설비, 번호 406), PR-03(작업지시).");
+    }
+
+    @Test
+    void asksWhichObjectWhenTargetIsNotSettled() {
+        AgentMessage answer = runningAnswer();
+        List<AgentTargetResolver.TargetIssue> issues =
+                List.of(
+                        new AgentTargetResolver.TargetIssue(
+                                "06번",
+                                List.of(
+                                        new AgentReferenceObject(306L, "PR-06", "설비"),
+                                        new AgentReferenceObject(406L, "CNC-06", "설비"))),
+                        new AgentTargetResolver.TargetIssue("99번", List.of()));
+
+        answers.answerClarification(
+                900L,
+                new QuestionInterpretation(
+                        "실행 이력", List.of("06번", "99번"), null, null, List.of(), null),
+                issues,
+                List.of());
+
+        assertThat(answer.getContent())
+                .contains("'06번'에 해당하는 대상이 여러 개입니다: PR-06(설비), CNC-06(설비). 어느 것인지 알려 주세요.")
+                .contains("'99번'에 해당하는 대상을 찾지 못했습니다.");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> clarification =
+                (Map<String, Object>) answer.getAnswerMeta().get("clarification");
+        // 대상은 말했지만 객체로 정하지 못했으므로 대상을 되묻는 것으로 남긴다. 다음 질문은 이 되묻기의 답으로 본다.
+        assertThat(clarification.get("missing")).isEqualTo(List.of("TARGET"));
+        assertThat(clarification.get("targets"))
+                .isEqualTo(issues.stream().map(AgentTargetResolver.TargetIssue::toMap).toList());
+    }
+
+    @Test
     void savesActionsRunDuringAnswer() {
         AgentMessage answer = runningAnswer();
 
@@ -126,7 +175,10 @@ class AgentAnswerServiceTests {
     void keepsActionsKeyInEveryFinishedAnswer() {
         AgentMessage clarification = runningAnswer();
         answers.answerClarification(
-                900L, new QuestionInterpretation(null, List.of(), null, null, List.of(), null));
+                900L,
+                new QuestionInterpretation(null, List.of(), null, null, List.of(), null),
+                List.of(),
+                List.of());
 
         // 화면이 답변 종류와 상관없이 같은 모양으로 읽도록 actions는 늘 있다(빈 목록 포함).
         assertThat(clarification.getAnswerMeta()).containsEntry("actions", List.of());

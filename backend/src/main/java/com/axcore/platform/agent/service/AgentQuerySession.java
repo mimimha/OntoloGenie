@@ -5,9 +5,11 @@ import com.axcore.platform.global.security.LoginAccount;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 
@@ -18,6 +20,10 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class AgentQuerySession {
     static final String QUERY_FAILED = "조회하지 못했습니다.";
+    static final String NOT_TARGET = "이 질문의 대상 객체가 아니라 조회하지 않았습니다. '참고 객체 ID'에 있는 객체만 조회할 수 있습니다.";
+
+    /** 객체 하나를 조회하는 도구의 대상 종류. */
+    static final String OBJECT_INSTANCE = "object_instance";
 
     private final LoginAccount asker;
     private final long questionId;
@@ -26,6 +32,10 @@ public class AgentQuerySession {
     private final List<AgentQueryResult> results = new ArrayList<>();
     private final List<AgentActionOutcome> actions = new ArrayList<>();
     private boolean unrecorded;
+    // 이 답변에서 남긴 조회 기록의 순번. 서버 조회(lookup)와 도구 조회(run)가 함께 쓴다.
+    private int sequence;
+    // 객체별 도구로 조회할 수 있는 객체. null이면 제한하지 않는다.
+    private Set<Long> allowedObjectIds;
 
     public AgentQuerySession(
             LoginAccount asker, long questionId, AgentQueryRecorder recorder, Clock clock) {
@@ -41,6 +51,18 @@ public class AgentQuerySession {
             AgentResultCategory category,
             List<Map<String, Object>> sources,
             Instant dataAsOf) {}
+
+    /**
+     * 이번 답변에서 객체별 도구로 조회할 수 있는 객체를 정한다(147). 질문을 해석해 정한 대상 객체만 허용한다. 부르지 않으면 제한하지 않는다(답변 처리기는 늘
+     * 부른다).
+     */
+    public synchronized void allowObjects(Collection<Long> objectIds) {
+        allowedObjectIds = Set.copyOf(objectIds);
+    }
+
+    private boolean objectAllowed(Long objectId) {
+        return allowedObjectIds == null || allowedObjectIds.contains(objectId);
+    }
 
     public LoginAccount asker() {
         return asker;
@@ -62,6 +84,11 @@ public class AgentQuerySession {
             String targetType,
             Long targetId,
             Supplier<Outcome> query) {
+        if (OBJECT_INSTANCE.equals(targetType) && !objectAllowed(targetId)) {
+            // 이번 답변의 대상이 아닌 객체는 조회하지 않는다. 데이터에 닿지 않았으므로 기록하지 않고, AI가 "데이터 없음"으로 말하지 않게
+            // 조회하지 않은 이유를 돌려준다(147).
+            return Map.of("error", NOT_TARGET);
+        }
         Instant requestedAt = Instant.now(clock);
         AgentQueryResult result;
         Map<String, Object> reply = new LinkedHashMap<>();
@@ -90,21 +117,66 @@ public class AgentQuerySession {
             reply.put("error", QUERY_FAILED);
         }
         results.add(result);
+        record(input, targetType, targetId, result, requestedAt);
+        return reply;
+    }
+
+    /**
+     * 서버가 답변 전에 직접 하는 조회다(147 대상 찾기). 도구 조회와 같이 순번을 매겨 기록하지만, 사용자가 물은 정보가 아니므로 정보별 결과(results)에는 넣지
+     * 않는다. 조회가 실패하면 실패로 기록하고 예외를 다시 던져 답변을 실패로 끝낸다.
+     */
+    public synchronized Outcome lookup(
+            String toolCode, String label, Map<String, Object> input, Supplier<Outcome> query) {
+        Instant requestedAt = Instant.now(clock);
+        Outcome outcome;
+        try {
+            outcome = query.get();
+        } catch (RuntimeException ex) {
+            log.error("Agent 서버 조회 {} 실패 question={}", toolCode, questionId, ex);
+            try {
+                record(
+                        input,
+                        null,
+                        null,
+                        new AgentQueryResult(
+                                label, toolCode, false, null, List.of(), null, false, QUERY_FAILED),
+                        requestedAt);
+            } catch (RuntimeException recordEx) {
+                ex.addSuppressed(recordEx);
+            }
+            throw ex;
+        }
+        record(
+                input,
+                null,
+                null,
+                new AgentQueryResult(
+                        label,
+                        toolCode,
+                        true,
+                        outcome.category(),
+                        outcome.sources(),
+                        outcome.dataAsOf(),
+                        false,
+                        null),
+                requestedAt);
+        return outcome;
+    }
+
+    private void record(
+            Map<String, Object> input,
+            String targetType,
+            Long targetId,
+            AgentQueryResult result,
+            Instant requestedAt) {
+        sequence++;
         try {
             recorder.record(
-                    asker,
-                    questionId,
-                    results.size(),
-                    input,
-                    targetType,
-                    targetId,
-                    result,
-                    requestedAt);
+                    asker, questionId, sequence, input, targetType, targetId, result, requestedAt);
         } catch (RuntimeException ex) {
             unrecorded = true;
             throw ex;
         }
-        return reply;
     }
 
     /** 조회 기록을 하나라도 남기지 못했으면 답변을 끝내지 않는다. 기록 없는 조회 답변이 나가지 않게 한다. */

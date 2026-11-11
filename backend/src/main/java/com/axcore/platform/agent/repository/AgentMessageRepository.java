@@ -36,6 +36,9 @@ public interface AgentMessageRepository extends JpaRepository<AgentMessage, Long
     Optional<AgentMessage> findFirstByConversationIdAndSenderOrderByIdDesc(
             Long conversationId, MessageSender sender);
 
+    List<AgentMessage> findTop10ByConversationIdAndSenderAndStatusOrderByIdDesc(
+            Long conversationId, MessageSender sender, MessageStatus status);
+
     /** 메시지가 속한 대화 ID. 재배정 계획을 Agent 대화에 연결할 때 쓴다. 메시지가 없으면 비어 있다. */
     @Query("select m.conversationId from AgentMessage m where m.id = :id")
     Optional<Long> findConversationIdById(@Param("id") Long id);

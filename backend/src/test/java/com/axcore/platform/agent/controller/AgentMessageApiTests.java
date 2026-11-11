@@ -6,7 +6,11 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.notNull;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -19,7 +23,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.axcore.platform.TestcontainersConfiguration;
 import com.axcore.platform.agent.service.AgentQuerySession;
 import com.axcore.platform.agent.service.AgentQueryTools;
+import com.axcore.platform.agent.service.AgentReferenceObject;
 import com.axcore.platform.agent.service.AgentResponder;
+import com.axcore.platform.agent.service.AgentTargetResolver;
 import com.axcore.platform.agent.service.QuestionInterpretation;
 import com.axcore.platform.agent.service.QuestionInterpreter;
 import com.axcore.platform.audit.service.AuditExecutionQueryService;
@@ -30,6 +36,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -55,6 +62,7 @@ class AgentMessageApiTests {
     @Autowired AuditExecutionQueryService executions;
     @MockitoBean QuestionInterpreter interpreter;
     @MockitoBean AgentResponder responder;
+    @MockitoBean AgentTargetResolver targetResolver;
     long owner;
     long conversation;
 
@@ -62,6 +70,12 @@ class AgentMessageApiTests {
     void setUp() {
         owner = account();
         conversation = conversation(owner);
+        // 대상 찾기(147)는 객체 검색 데이터가 필요해 AgentTargetResolverTests에서 따로 시험한다. 여기서는 질문의 대상이 객체 302로
+        // 정해진다고 둔다. 화면 참고 객체(301)와 다른 값으로 두어, 답변 조건이 화면 값이 아니라 찾은 값에서 온 것을 구별한다.
+        when(targetResolver.resolve(any(), any(), any()))
+                .thenReturn(
+                        new AgentTargetResolver.Resolution(
+                                List.of(new AgentReferenceObject(302L, "PR-03", "설비")), List.of()));
     }
 
     @Test
@@ -71,17 +85,17 @@ class AgentMessageApiTests {
                 .thenAnswer(
                         call -> {
                             AgentQuerySession session = call.getArgument(2);
-                            new AgentQueryTools(session, executions).objectExecutions(301L);
+                            new AgentQueryTools(session, executions).objectExecutions(302L);
                             return "PR-03의 실행 이력이 없습니다.";
                         });
-        when(interpreter.interpret(anyString(), anyMap(), any()))
+        when(interpreter.interpret(anyString(), anyMap(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "비가동 이력",
                                 List.of("PR-03"),
                                 LocalDate.parse("2026-10-01"),
                                 LocalDate.parse("2026-10-27"),
-                                List.of(301L),
+                                List.of(new AgentReferenceObject(301L, null, null)),
                                 null));
 
         askRaw(
@@ -124,9 +138,15 @@ class AgentMessageApiTests {
                         jsonPath("$.data[1].answerMeta.conditions.period.from").value("2026-10-01"))
                 .andExpect(
                         jsonPath("$.data[1].answerMeta.conditions.referenceObjectIds[0]")
-                                .value(301))
+                                .value(302))
                 // 이 질문은 Action을 부르지 않았으므로 실행 결과는 비어 있다(160).
                 .andExpect(jsonPath("$.data[1].answerMeta.actions.length()").value(0));
+        // 화면 참고 객체(301)는 대상을 고를 때 먼저 볼 객체로 넘긴다.
+        verify(targetResolver)
+                .resolve(
+                        eq(List.of("PR-03")),
+                        argThat(known -> known.stream().anyMatch(object -> object.id() == 301L)),
+                        any());
         assertThat(title(conversation)).isEqualTo("PR-03 비가동 이력 알려줘");
         // 조회 기록은 질문 메시지에 연결되고, Agent가 질문한 사용자를 대신한 것으로 남는다.
         Map<String, Object> query =
@@ -147,14 +167,14 @@ class AgentMessageApiTests {
                 .containsEntry("tool_code", "OBJECT_EXECUTIONS")
                 .containsEntry("sequence_no", 1)
                 .containsEntry("result_category", "NO_DATA")
-                .containsEntry("target_id", 301L)
+                .containsEntry("target_id", 302L)
                 .containsEntry("sender", "USER");
     }
 
     @Test
     void asksBackWhenConditionsAreMissing() throws Exception {
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(anyString(), anyMap(), any()))
+        when(interpreter.interpret(anyString(), anyMap(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(null, List.of(), null, null, List.of(), "최근"));
 
@@ -179,7 +199,7 @@ class AgentMessageApiTests {
     void fillsAskedConditionsWithReply() throws Exception {
         when(interpreter.isConfigured()).thenReturn(true);
         when(responder.answer(anyString(), any(), any())).thenReturn("PR-03 10월 비가동 이력 답변");
-        when(interpreter.interpret(anyString(), anyMap(), any()))
+        when(interpreter.interpret(anyString(), anyMap(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "비가동 이력", List.of("PR-03"), null, null, List.of(), "최근"),
@@ -196,7 +216,7 @@ class AgentMessageApiTests {
         ask(conversation, "10월 1일부터 31일까지").andExpect(status().isAccepted());
         awaitAnswered(conversation);
 
-        verify(interpreter).interpret(anyString(), anyMap(), notNull());
+        verify(interpreter).interpret(anyString(), anyMap(), notNull(), any());
         mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
                 .andExpect(
                         jsonPath("$.data[1].answerMeta.clarification.missing[0]").value("PERIOD"))
@@ -207,6 +227,105 @@ class AgentMessageApiTests {
                 .andExpect(
                         jsonPath("$.data[3].answerMeta.conditions.period.from")
                                 .value("2026-10-01"));
+    }
+
+    @Test
+    void followUpKeepsPreviousTargetAndChangesOnlyPeriod() throws Exception {
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(responder.answer(anyString(), any(), any())).thenReturn("비가동 이력 답변");
+        when(interpreter.interpret(anyString(), anyMap(), any(), any()))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                "비가동 이력",
+                                List.of("PR-03"),
+                                LocalDate.parse("2026-10-01"),
+                                LocalDate.parse("2026-10-31"),
+                                List.of(),
+                                null),
+                        new QuestionInterpretation(
+                                null,
+                                List.of(),
+                                LocalDate.parse("2026-09-01"),
+                                LocalDate.parse("2026-09-30"),
+                                List.of(),
+                                null));
+
+        ask(conversation, "PR-03 10월 비가동 이력 알려줘").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        ask(conversation, "그럼 지난달은?").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+
+        // 두 번째 질문은 첫 답변에서 확정한 조건을 받아 해석하고, 대상은 다시 찾지 않는다(147).
+        verify(interpreter).interpret(eq("그럼 지난달은?"), anyMap(), isNull(), notNull());
+        verify(targetResolver, times(1)).resolve(any(), any(), any());
+        mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
+                .andExpect(
+                        jsonPath("$.data[1].answerMeta.conditions.referenceObjects[0].id")
+                                .value(302))
+                .andExpect(
+                        jsonPath("$.data[1].answerMeta.conditions.referenceObjects[0].name")
+                                .value("PR-03"))
+                .andExpect(jsonPath("$.data[3].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data[3].answerMeta.conditions.purpose").value("비가동 이력"))
+                .andExpect(jsonPath("$.data[3].answerMeta.conditions.targets[0]").value("PR-03"))
+                .andExpect(
+                        jsonPath("$.data[3].answerMeta.conditions.referenceObjectIds[0]")
+                                .value(302))
+                .andExpect(
+                        jsonPath("$.data[3].answerMeta.conditions.period.from")
+                                .value("2026-09-01"));
+    }
+
+    @Test
+    void followUpSkipsClarificationAndFailedAnswerWhenContinuing() throws Exception {
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(responder.answer(anyString(), any(), any())).thenReturn("비가동 이력 답변");
+        when(interpreter.interpret(anyString(), anyMap(), any(), any()))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                "비가동 이력",
+                                List.of("PR-03"),
+                                LocalDate.parse("2026-10-01"),
+                                LocalDate.parse("2026-10-31"),
+                                List.of(),
+                                null))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                "비가동 이력", List.of("PR-03"), null, null, List.of(), "최근"))
+                .thenThrow(new IllegalStateException("GMS 시간 초과"))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                null,
+                                List.of(),
+                                LocalDate.parse("2026-09-01"),
+                                LocalDate.parse("2026-09-30"),
+                                List.of(),
+                                null));
+
+        ask(conversation, "PR-03 10월 비가동 이력 알려줘").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        ask(conversation, "PR-03 최근 비가동 이력은?").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        ask(conversation, "10월 1일부터").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        ask(conversation, "그럼 지난달은?").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+
+        // 되묻기(조건 일부만 확정)와 실패한 답변은 건너뛰고, 끝까지 답한 첫 답변의 조건을 이어 쓴다(147).
+        ArgumentCaptor<QuestionInterpretation> previous =
+                ArgumentCaptor.forClass(QuestionInterpretation.class);
+        verify(interpreter).interpret(eq("그럼 지난달은?"), anyMap(), isNull(), previous.capture());
+        assertThat(previous.getValue().from()).isEqualTo(LocalDate.parse("2026-10-01"));
+        assertThat(previous.getValue().vaguePeriod()).isNull();
+        mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
+                .andExpect(jsonPath("$.data[3].answerMeta.clarification").exists())
+                .andExpect(jsonPath("$.data[5].status").value("FAILED"))
+                .andExpect(jsonPath("$.data[7].status").value("SUCCEEDED"))
+                .andExpect(
+                        jsonPath("$.data[7].answerMeta.conditions.period.from").value("2026-09-01"))
+                .andExpect(
+                        jsonPath("$.data[7].answerMeta.conditions.referenceObjectIds[0]")
+                                .value(302));
     }
 
     @Test
@@ -224,7 +343,7 @@ class AgentMessageApiTests {
     @Test
     void failsAnswerWhenAiCallFails() throws Exception {
         when(interpreter.isConfigured()).thenReturn(true);
-        when(interpreter.interpret(anyString(), anyMap(), any()))
+        when(interpreter.interpret(anyString(), anyMap(), any(), any()))
                 .thenThrow(new IllegalStateException("GMS 시간 초과"));
 
         ask(conversation, "PR-03 상태 알려줘").andExpect(status().isAccepted());
