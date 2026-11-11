@@ -26,6 +26,8 @@ from app.sources.postgres_reader import (
 log = logging.getLogger(__name__)
 
 UNEXPECTED = "분석 중 오류가 났습니다"
+STOPPED = "AI 서비스가 다시 시작되어 분석이 중단되었습니다. 다시 분석해 주세요"
+STOP_WAIT_SEC = 5  # 컨테이너 종료 유예(기본 10초) 안에 알림을 끝낸다
 
 Connector = Callable[[dict], Callable[[], Any]]
 Analyze = Callable[[AnalysisStartRequest, Sources], AnalysisResult]
@@ -42,6 +44,8 @@ class AnalysisRunner:
         self._connector = connector
         self._analyze = analyze
         self._active: set[int] = set()
+        self._stopped: set[int] = set()
+        self._stopping = False
         self._lock = threading.Lock()
 
     def claim(self, run_id: int) -> bool:
@@ -52,10 +56,42 @@ class AnalysisRunner:
             self._active.add(run_id)
             return True
 
+    def stop(self) -> list[int]:
+        """종료(재배포) 직전에 진행 중인 실행을 FAILED로 알린다. 알리지 않으면 백엔드는 실행을 계속 RUNNING으로
+        두고, 같은 대상의 새 요청도 그 실행에 합류해 시간 제한까지 막힌다. 실행마다 한 번만 알린다."""
+        with self._lock:
+            self._stopping = True  # 이 뒤에 받은 실행은 run()이 바로 중단으로 알린다
+            runs = sorted(self._active - self._stopped)
+            self._stopped.update(runs)
+
+        def send(run_id: int) -> None:
+            try:
+                self._report(run_id, {"status": "FAILED", "errorMessage": STOPPED})
+            except BackendError as error:
+                log.warning("분석 실행 %s 중단 알림 실패(%s)", run_id, error)
+
+        threads = [threading.Thread(target=send, args=(r,), daemon=True) for r in runs]
+        for t in threads:
+            t.start()
+        deadline = time.monotonic() + STOP_WAIT_SEC
+        for t in threads:
+            t.join(max(0.0, deadline - time.monotonic()))
+        if runs:
+            log.warning("종료로 분석 실행 %s을 중단으로 알림", runs)
+        return runs
+
     def run(self, request: AnalysisStartRequest) -> None:
         run_id = request.run_id
         started = time.monotonic()
         try:
+            with self._lock:
+                stopping = self._stopping
+            if stopping:
+                try:
+                    self._report(run_id, {"status": "FAILED", "errorMessage": STOPPED})
+                except BackendError as error:
+                    log.warning("분석 실행 %s 중단 알림 실패(%s)", run_id, error)
+                return
             try:
                 self._report(run_id, {"status": "RUNNING"})
             except BackendError as error:
@@ -65,6 +101,10 @@ class AnalysisRunner:
                 )
                 return
             body = self._analyze_to_body(request)
+            with self._lock:
+                stopped = run_id in self._stopped
+            if stopped:
+                return  # 이미 중단으로 알린 실행
             try:
                 self._report(run_id, body)
             except BackendError as error:
@@ -79,6 +119,7 @@ class AnalysisRunner:
         finally:
             with self._lock:
                 self._active.discard(run_id)
+                self._stopped.discard(run_id)
 
     def _analyze_to_body(self, request: AnalysisStartRequest) -> dict:
         try:

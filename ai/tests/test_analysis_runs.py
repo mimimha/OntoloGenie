@@ -341,3 +341,49 @@ def test_reporter_turns_http_and_connection_errors_into_backend_error(
     closed = results_reporter(Settings(backend_url="http://127.0.0.1:1"))
     with pytest.raises(BackendError):
         closed(7, {"status": "RUNNING"})
+
+
+def test_stop_reports_running_analyses_as_failed_once_and_drops_late_result():
+    # 재배포로 AI가 꺼지면 진행 중이던 실행을 백엔드에 FAILED로 알린다(안 알리면 RUNNING으로 남아 새 요청이 합류해 막힌다)
+    from app.analysis.runner import STOPPED
+
+    backend = Backend()
+    started, release = threading.Event(), threading.Event()
+
+    def slow(request, sources):
+        started.set()
+        release.wait(5)
+        return AnalysisResult(summary={}, proposals=[])
+
+    runner = AnalysisRunner(backend, connector=lambda c: FakeConn, analyze=slow)
+    assert runner.claim(7)
+    worker = threading.Thread(
+        target=runner.run, args=(AnalysisStartRequest.model_validate(body()),)
+    )
+    worker.start()
+    assert started.wait(5)
+
+    assert runner.stop() == [7]
+    assert runner.stop() == []  # 두 번 알리지 않는다
+    release.set()
+    worker.join(5)
+
+    statuses = [b["status"] for _, b in backend.reports]
+    assert statuses == ["RUNNING", "FAILED"]  # 중단 뒤 늦게 끝난 결과는 보내지 않는다
+    assert backend.reports[-1][1]["errorMessage"] == STOPPED
+
+
+def test_run_received_after_stop_is_reported_stopped_without_analysis():
+    from app.analysis.runner import STOPPED
+
+    backend = Backend()
+    called = []
+    runner = AnalysisRunner(
+        backend, connector=lambda c: FakeConn, analyze=lambda r, s: called.append(1)
+    )
+    runner.stop()
+    assert runner.claim(9)
+    runner.run(AnalysisStartRequest.model_validate(body(run_id=9)))
+
+    assert backend.reports == [(9, {"status": "FAILED", "errorMessage": STOPPED})]
+    assert called == []

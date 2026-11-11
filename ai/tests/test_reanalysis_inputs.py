@@ -80,6 +80,15 @@ def test_previous_proposals_mark_added_changed_unchanged():
     ]
 
 
+def test_existing_model_with_new_property_stays_changed_when_not_in_previous_proposals():
+    # 직전 분석에서 이미 승인된 객체라 걸러져 이전 후보에 없지만, 새 컬럼(납기일)이 붙어 다시 나온 경우
+    work_order = proposal("OT-mes.work_order", {"code": "WORK_ORDER"})
+    work_order["evidence"]["changeType"] = "CHANGED"  # 043 모델 비교 결과
+    counts = mark_changes([work_order], [{"candidateId": "LR-x", "fingerprint": "f"}])
+    assert counts == {"ADDED": 0, "CHANGED": 1, "UNCHANGED": 0}
+    assert work_order["evidence"]["changeType"] == "CHANGED"
+
+
 def request(kind, **extra):
     return AnalysisStartRequest.model_validate(
         {
