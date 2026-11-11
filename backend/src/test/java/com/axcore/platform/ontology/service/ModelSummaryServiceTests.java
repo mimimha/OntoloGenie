@@ -170,6 +170,10 @@ class ModelSummaryServiceTests {
                 .as("민감 값을 막은 유형의 민감 속성과 볼 수 없는 유형의 속성은 뺀다")
                 .doesNotContain(purchasePrice, hiddenCode);
         assertThat(linkTypeIds(summary)).contains(woToEquipment).doesNotContain(woToHidden);
+        assertThat(summary.linkTypes())
+                .filteredOn(link -> link.id().equals(woToEquipment))
+                .singleElement()
+                .satisfies(link -> assertThat(link.name()).isEqualTo("관계 " + link.code()));
         assertThat(ruleIds(summary))
                 .contains(activeRule)
                 .doesNotContain(
@@ -258,7 +262,8 @@ class ModelSummaryServiceTests {
         return jdbc.sql(
                         """
                         insert into link_type (code, name, source_type_id, target_type_id, cardinality, description)
-                        values (:code, :code, :source, :target, 'MANY_TO_ONE', '요약 테스트') returning id
+                        values (:code, '관계 ' || :code, :source, :target, 'MANY_TO_ONE', '요약 테스트')
+                        returning id
                         """)
                 .param("code", code)
                 .param("source", source)

@@ -7,7 +7,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.axcore.platform.audit.service.AuditExecutionQueryService;
+import com.axcore.platform.auth.service.DataAccessPolicy;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.ontology.service.ModelSummaryService;
 import com.axcore.platform.ontology.service.ObjectDetailQuery;
 import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
 import com.axcore.platform.ontology.service.ObjectSearchQuery;
@@ -112,7 +114,9 @@ class AgentResponderTests {
 
         assertThat(toolNames(prompt))
                 .containsExactlyInAnyOrder(
-                        AgentQueryTools.OBJECT_EXECUTIONS, AgentQueryTools.OBJECT_SEARCH);
+                        AgentQueryTools.OBJECT_EXECUTIONS,
+                        AgentQueryTools.OBJECT_SEARCH,
+                        AgentModelSummaryTools.MODEL_SUMMARY);
     }
 
     @Test
@@ -126,6 +130,7 @@ class AgentResponderTests {
                 .containsExactlyInAnyOrder(
                         AgentQueryTools.OBJECT_EXECUTIONS,
                         AgentQueryTools.OBJECT_SEARCH,
+                        AgentModelSummaryTools.MODEL_SUMMARY,
                         AgentObjectDetailTools.OBJECT_DETAIL,
                         AgentObjectDetailTools.OBJECT_LINKS,
                         AgentObjectEvidenceTools.OBJECT_LINK_EVIDENCE);
@@ -163,6 +168,8 @@ class AgentResponderTests {
                         mock(ObjectSearchQuery.class),
                         beans.getBeanProvider(ObjectDetailQuery.class),
                         beans.getBeanProvider(ObjectEvidenceQuery.class),
+                        mock(ModelSummaryService.class),
+                        mock(DataAccessPolicy.class),
                         actionTools,
                         CLOCK,
                         reasoningEffort);
