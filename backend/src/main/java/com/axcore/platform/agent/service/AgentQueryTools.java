@@ -153,7 +153,10 @@ public class AgentQueryTools {
             description = "볼 수 있는 객체를 이름·코드로 검색해 최대 20건을 돌려준다. 결과의 id를 다른 조회 도구의 객체 ID로 쓴다.")
     public Map<String, Object> objectSearch(
             @ToolParam(description = "검색어. 객체 이름이나 코드의 일부(예: PR-03)", required = false) String q,
-            @ToolParam(description = "객체 유형 ID. 모르면 비운다", required = false) Long objectTypeId,
+            @ToolParam(
+                            description = "객체 유형 ID. 사용자가 유형을 말했을 때만 모델 요약의 id로 채우고, 아니면 비운다",
+                            required = false)
+                    Long objectTypeId,
             @ToolParam(
                             description = "ACTIVE(기본, 사용 중인 객체) 또는 DELETED_AT_SOURCE(원천에서 삭제된 객체)",
                             required = false)

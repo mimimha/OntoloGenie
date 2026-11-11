@@ -11,10 +11,12 @@ import static org.mockito.Mockito.when;
 
 import com.axcore.platform.TestcontainersConfiguration;
 import com.axcore.platform.audit.service.AuditExecutionQueryService;
+import com.axcore.platform.auth.service.DataAccessPolicy;
 import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.ontology.dto.ObjectDetailResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkResponse;
 import com.axcore.platform.ontology.dto.ObjectSearchRequest;
+import com.axcore.platform.ontology.service.ModelSummaryService;
 import com.axcore.platform.ontology.service.ObjectDetailQuery;
 import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
 import com.axcore.platform.ontology.service.ObjectSearchQuery;
@@ -56,6 +58,8 @@ class AgentResponderGmsTests {
     @Autowired AuditExecutionQueryService executions;
     @Autowired ObjectSearchQuery objectSearch;
     @Autowired ObjectProvider<ObjectEvidenceQuery> objectEvidence;
+    @Autowired ModelSummaryService modelSummary;
+    @Autowired DataAccessPolicy dataAccess;
     @Autowired JdbcClient jdbc;
     @MockitoBean AgentActionTools actionTools;
 
@@ -188,9 +192,53 @@ class AgentResponderGmsTests {
                 objectSearch,
                 details.getBeanProvider(ObjectDetailQuery.class),
                 objectEvidence,
+                modelSummary,
+                dataAccess,
                 actionTools,
                 Clock.systemUTC(),
                 reasoningEffort);
+    }
+
+    /** 유형으로 좁혀야 하는 질문이면 모델 요약으로 유형 ID를 얻은 뒤 그 유형으로 검색한다(345). 같은 코드를 쓰는 다른 유형의 객체가 섞이지 않아야 한다. */
+    @Test
+    void readsModelSummaryThenSearchesWithinTheNamedType() {
+        String tag = String.valueOf(System.nanoTime() % 100_000);
+        long equipment = objectType("시험설비-" + tag);
+        long mold = objectType("시험금형-" + tag);
+        object(equipment, "프레스 PR-97", "{\"equipment_code\":\"PR-97\"}");
+        object(mold, "금형 PR-97", "{\"mold_code\":\"PR-97\"}");
+        AgentQuerySession session = new AgentQuerySession(ADMIN, 14L, recorder, Clock.systemUTC());
+
+        String answer =
+                responder()
+                        .answer(
+                                "'시험설비-" + tag + "' 유형 객체 중에서 PR-97을 찾아줘",
+                                new QuestionInterpretation(
+                                        "객체 찾기", List.of("PR-97"), null, null, List.of(), null),
+                                session,
+                                null);
+
+        List<String> called = logCalls(session, answer);
+
+        assertThat(called)
+                .contains(AgentModelSummaryTools.MODEL_SUMMARY, AgentQueryTools.OBJECT_SEARCH);
+        assertThat(called.indexOf(AgentModelSummaryTools.MODEL_SUMMARY))
+                .isLessThan(called.indexOf(AgentQueryTools.OBJECT_SEARCH));
+        assertThat(toolInputs(AgentQueryTools.OBJECT_SEARCH))
+                .anySatisfy(input -> assertThat(input).containsEntry("objectTypeId", equipment));
+    }
+
+    /** 기록기에 넘긴 도구 입력. 판정에 쓴다. */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> toolInputs(String toolCode) {
+        return mockingDetails(recorder).getInvocations().stream()
+                .filter(
+                        call ->
+                                ((AgentQueryResult) call.getArguments()[6])
+                                        .toolCode()
+                                        .equals(toolCode))
+                .map(call -> (Map<String, Object>) call.getArguments()[3])
+                .toList();
     }
 
     /** 도구 호출 순서·입력과 답변을 남긴다. 판정은 도구 호출로만 하고 답변 문장은 사람이 로그로 본다. */
@@ -223,13 +271,18 @@ class AgentResponderGmsTests {
     }
 
     private long objectType() {
+        return objectType("설비");
+    }
+
+    private long objectType(String name) {
         String code = "gms-check-equipment-" + System.nanoTime();
         return jdbc.sql(
                         """
                         insert into object_type (code, name, access_group)
-                        values (:code, '설비', 'PRODUCTION') returning id
+                        values (:code, :name, 'PRODUCTION') returning id
                         """)
                 .param("code", code)
+                .param("name", name)
                 .query(Long.class)
                 .single();
     }

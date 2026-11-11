@@ -62,7 +62,10 @@ public class AgentObjectDetailTools {
                     "객체에 연결된 확정 관계를 최대 20건 조회한다. 연결 상대 객체의 ID·이름과 관계 근거를 돌려준다. 상대 객체의 속성은 OBJECT_DETAIL로 본다.")
     public Map<String, Object> objectLinks(
             @ToolParam(description = "기준 객체 ID") Long objectId,
-            @ToolParam(description = "관계 유형 ID. 모르면 비운다", required = false) Long linkTypeId,
+            @ToolParam(
+                            description = "관계 유형 ID. 사용자가 관계 종류를 말했을 때만 모델 요약의 id로 채우고, 아니면 비운다",
+                            required = false)
+                    Long linkTypeId,
             @ToolParam(
                             description = "OUT(기준 객체에서 나가는 관계), IN(들어오는 관계), BOTH(기본, 양쪽)",
                             required = false)

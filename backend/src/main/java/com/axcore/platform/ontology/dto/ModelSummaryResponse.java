@@ -63,6 +63,7 @@ public record ModelSummaryResponse(
     public record LinkTypeSummary(
             Long id,
             String code,
+            String name,
             Long sourceTypeId,
             Long targetTypeId,
             LinkCardinality cardinality,
@@ -72,6 +73,7 @@ public record ModelSummaryResponse(
             return new LinkTypeSummary(
                     linkType.getId(),
                     linkType.getCode(),
+                    linkType.getName(),
                     linkType.getSourceTypeId(),
                     linkType.getTargetTypeId(),
                     linkType.getCardinality(),

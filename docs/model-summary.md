@@ -13,7 +13,7 @@ AI 분석(FastAPI)과 Agent가 같은 구조로 온톨로지 정의를 받는다
 |---|---|---|
 | `objectTypes` | id, code, name, description | 볼 수 있는 객체 유형 |
 | `properties` | id, objectTypeId, code, name, dataType, description, sensitivity, temporalRole | 볼 수 있는 유형의 속성. 민감(RESTRICTED) 속성은 그 유형의 민감 열람 권한이 있을 때만 |
-| `linkTypes` | id, code, sourceTypeId, targetTypeId, cardinality, description | 양 끝 유형을 모두 볼 수 있는 관계 유형 |
+| `linkTypes` | id, code, name, sourceTypeId, targetTypeId, cardinality, description | 양 끝 유형을 모두 볼 수 있는 관계 유형. `name`은 관계 유형 이름이다(S15P31C106-345, Agent 모델 요약 도구가 사용자 말과 관계를 맞추는 데 쓴다) |
 | `activeRules` | id, code, revision, linkTypeId, sourceFilter, targetFilter, conditions | ACTIVE 개정본만. 조건 형식은 API 047과 같다 |
 
 - 목록은 ID 순서다. 속성은 유형 ID, 속성 ID 순서다.
