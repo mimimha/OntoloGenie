@@ -33,9 +33,16 @@ export async function fetchObject(id: number) {
   return body.data
 }
 
+// 078 API의 size 최대값
+export const LINK_PAGE_SIZE = 100
+
 // 078 확정 관계·원천 근거 조회
-export function fetchObjectLinks(id: number) {
-  return apiGet<ObjectLink[]>(`/objects/${id}/links`)
+export function fetchObjectLinks(id: number, page = 0) {
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(LINK_PAGE_SIZE),
+  })
+  return apiGet<ObjectLink[]>(`/objects/${id}/links?${params}`)
 }
 
 // 042 객체 유형 관계도

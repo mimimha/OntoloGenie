@@ -1,10 +1,10 @@
 import StatusBadge from '../../components/StatusBadge'
 import DataTable from '../../components/DataTable'
+import Button from '../../components/Button'
 import { LoadingState, EmptyState, ErrorState } from '../../components/Feedback'
-import { useQuery } from '@tanstack/react-query'
-import { fetchObjectLinks } from './api'
 import { formatSourceKey } from './format'
 import type { ObjectLink } from './types'
+import { useObjectLinks } from './useObjectLinks'
 
 type LinkEvidenceProps = {
   link: ObjectLink
@@ -133,21 +133,23 @@ type ObjectLinksProps = {
 
 function ObjectLinks({ objectId }: ObjectLinksProps) {
   const {
-    data: linkPage,
+    links,
+    totalCount,
     isPending,
     isError,
     error,
     refetch,
-  } = useQuery({
-    queryKey: ['objects', objectId, 'links'],
-    queryFn: () => fetchObjectLinks(objectId),
-  })
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useObjectLinks(objectId)
 
   if (isPending) {
     return <LoadingState message="연결을 불러오는 중…" />
   }
 
-  if (isError) {
+  if (isError && links.length === 0) {
     return (
       <ErrorState
         error={error}
@@ -158,44 +160,64 @@ function ObjectLinks({ objectId }: ObjectLinksProps) {
     )
   }
 
-  if (linkPage.data.length === 0) {
+  if (links.length === 0) {
     return <EmptyState message="현재 연결된 정보가 없습니다." />
   }
 
   return (
-    <DataTable label="연결 근거" className="min-w-[480px] table-fixed">
-      <thead className="text-xs text-slate-500">
-        <tr>
-          <th className="w-[26%] px-3 py-2 font-normal">연결된 정보</th>
-          <th className="w-[24%] py-2 pr-3 font-normal">관계</th>
-          <th className="py-2 pr-3 font-normal">핵심 근거</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-slate-100 align-top">
-        {linkPage.data.map((link) => (
-          <tr key={link.id}>
-            <td className="px-3 py-2 [overflow-wrap:anywhere]">
-              {link.relatedObject.displayName}
-              <p className="text-xs text-slate-500">
-                {link.relatedObject.objectTypeName}
-              </p>
-            </td>
-            <td className="py-2 pr-3 [overflow-wrap:anywhere]">
-              {link.linkTypeName}
-              <p className="text-xs text-slate-500">
-                {link.sourceObjectId === objectId
-                  ? '나가는 연결'
-                  : '들어오는 연결'}
-              </p>
-            </td>
-            <td className="py-2 pr-3 [overflow-wrap:anywhere]">
-              <LinkSummary link={link} />
-              <LinkDetail link={link} />
-            </td>
+    <>
+      <DataTable label="연결 근거" className="min-w-[480px] table-fixed">
+        <thead className="text-xs text-slate-500">
+          <tr>
+            <th className="w-[26%] px-3 py-2 font-normal">연결된 정보</th>
+            <th className="w-[24%] py-2 pr-3 font-normal">관계</th>
+            <th className="py-2 pr-3 font-normal">핵심 근거</th>
           </tr>
-        ))}
-      </tbody>
-    </DataTable>
+        </thead>
+        <tbody className="divide-y divide-slate-100 align-top">
+          {links.map((link) => (
+            <tr key={link.id}>
+              <td className="px-3 py-2 [overflow-wrap:anywhere]">
+                {link.relatedObject.displayName}
+                <p className="text-xs text-slate-500">
+                  {link.relatedObject.objectTypeName}
+                </p>
+              </td>
+              <td className="py-2 pr-3 [overflow-wrap:anywhere]">
+                {link.linkTypeName}
+                <p className="text-xs text-slate-500">
+                  {link.sourceObjectId === objectId
+                    ? '나가는 연결'
+                    : '들어오는 연결'}
+                </p>
+              </td>
+              <td className="py-2 pr-3 [overflow-wrap:anywhere]">
+                <LinkSummary link={link} />
+                <LinkDetail link={link} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </DataTable>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+        <span>{`전체 ${totalCount}건 중 ${links.length}건`}</span>
+        {hasNextPage && (
+          <Button
+            variant="secondary"
+            className="px-2 py-1 text-xs"
+            pending={isFetchingNextPage}
+            onClick={() => {
+              void fetchNextPage()
+            }}
+          >
+            더 불러오기
+          </Button>
+        )}
+        {isFetchNextPageError && (
+          <span className="text-red-600">{error?.message}</span>
+        )}
+      </div>
+    </>
   )
 }
 
