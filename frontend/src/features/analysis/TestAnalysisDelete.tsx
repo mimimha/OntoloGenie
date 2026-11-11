@@ -26,7 +26,7 @@ export default function TestAnalysisDelete({
         onClick={() => {
           if (
             window.confirm(
-              '끝난 분석과 그 제안을 모두 지웁니다. 되돌릴 수 없습니다. 테스트 데이터만 있는 서버가 맞나요?',
+              '끝난 분석의 제안 중 반영되지 않고 쓰이지 않은 제안을 모두 지웁니다. 반영된 제안은 남깁니다. 되돌릴 수 없습니다. 테스트 데이터만 있는 서버가 맞나요?',
             )
           )
             remove.mutate()
