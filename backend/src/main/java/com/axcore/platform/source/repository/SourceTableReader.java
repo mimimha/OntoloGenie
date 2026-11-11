@@ -91,11 +91,30 @@ public class SourceTableReader {
                 Map<Long, List<SourceRow>> rows = new HashMap<>();
                 int total = 0;
                 for (Table table : tables) {
-                    List<SourceRow> tableRows = readTable(connection, table, maxRows - total);
+                    List<SourceRow> tableRows = readTable(connection, table, maxRows - total, null);
                     total += tableRows.size();
                     rows.put(table.resourceId(), tableRows);
                 }
                 return new Result(snapshot, lsn, rows);
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
+    /**
+     * 표 하나에서 앞 행 몇 개만 읽는다(매핑 미리보기 040). 순서는 정하지 않는다. 읽기 전용 트랜잭션에서 읽고 되돌린다. 접속·읽기 실패는 {@link
+     * SQLException}이다.
+     */
+    public List<SourceRow> sample(
+            SourceEndpoint endpoint, SourceAccount account, Table table, int limit)
+            throws SQLException {
+        try (Connection connection =
+                DriverManager.getConnection(endpoint.jdbcUrl(), properties(account))) {
+            connection.setAutoCommit(false);
+            connection.setReadOnly(true);
+            try {
+                return readTable(connection, table, limit, limit);
             } finally {
                 connection.rollback();
             }
@@ -121,11 +140,12 @@ public class SourceTableReader {
     /**
      * 표 하나를 읽는다. 표·컬럼 이름은 SQL 문법상 바인딩 변수로 넘길 수 없어 문자열로 만든다. 사용자 입력은 들어가지 않는다: 표 이름은 원천이 {@code
      * quote_ident}로 따옴표 처리한 값({@link #relation}, 카탈로그 키는 바인딩 변수로 넘김)이고, 컬럼 이름은 카탈로그 값을 {@link
-     * #quote}로 감싼 식별자다. 그래서 SonarQube java:S2077(동적 SQL)을 이 메서드에서만 끈다(Jira 332).
+     * #quote}로 감싼 식별자다. 행 수 제한(미리보기)은 바인딩 변수로 넘긴다. 그래서 SonarQube java:S2077(동적 SQL)을 이 메서드에서만
+     * 끈다(Jira 332).
      */
     @SuppressWarnings("java:S2077")
-    private List<SourceRow> readTable(Connection connection, Table table, int remaining)
-            throws SQLException {
+    private List<SourceRow> readTable(
+            Connection connection, Table table, int remaining, Integer limit) throws SQLException {
         String relation = relation(connection, table.resourceKey());
         String sql =
                 "select "
@@ -133,10 +153,14 @@ public class SourceTableReader {
                                 .map(SourceTableReader::quote)
                                 .collect(Collectors.joining(", "))
                         + " from "
-                        + relation;
+                        + relation
+                        + (limit == null ? "" : " limit ?");
         List<SourceRow> rows = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setFetchSize(FETCH_SIZE);
+            if (limit != null) {
+                statement.setInt(1, limit);
+            }
             try (ResultSet rs = statement.executeQuery()) {
                 ResultSetMetaData meta = rs.getMetaData();
                 while (rs.next()) {

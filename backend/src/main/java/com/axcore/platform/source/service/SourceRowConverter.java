@@ -148,6 +148,29 @@ public class SourceRowConverter {
         return text.substring(0, text.offsetByCodePoints(0, maxLength));
     }
 
+    /**
+     * 바꾸지 못한 속성 값의 이유(매핑 미리보기 040의 행별 오류). 변환 단계에서 실패했으면 그 함수 코드와 이유, 아니면 함수 없이 자료형 이유다. 미리보기 결과는
+     * 관리자에게만 1시간 보여 주므로 변환 함수의 이유에 원천 값이 들어 있어도 된다. 수집 실패 기록에는 쓰지 않는다.
+     */
+    public ValueFailure explainValueFailure(
+            Object value, List<TransformStep> steps, PropertyDataType type) {
+        if (value != null && !steps.isEmpty()) {
+            try {
+                transformer.transform(text(value), steps);
+            } catch (TransformException e) {
+                return new ValueFailure(e.operation().name(), e.getMessage());
+            } catch (ClassCastException e) {
+                return new ValueFailure(null, "변환 단계의 인자가 함수에 맞지 않습니다.");
+            }
+        }
+        return new ValueFailure(null, "값을 속성 자료형 %s(으)로 바꿀 수 없습니다.".formatted(type.name()));
+    }
+
+    /**
+     * @param transform 실패한 변환 함수 코드. 변환 뒤 자료형에서 실패했으면 null
+     */
+    public record ValueFailure(String transform, String message) {}
+
     public Object propertyValue(Object value, List<TransformStep> steps, PropertyDataType type) {
         if (value == null) {
             return null;
