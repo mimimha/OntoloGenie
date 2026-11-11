@@ -10,6 +10,7 @@ import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.ontology.dto.ObjectLinkEvidenceResponse;
 import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
 import java.time.Clock;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +26,13 @@ class AgentObjectEvidenceToolsTests {
     void returnsLinkEvidenceAsFound() {
         ObjectLinkEvidenceResponse found =
                 new ObjectLinkEvidenceResponse(
-                        Map.of("work_order_no", "WO-501"), "PR03", "PR-03", null, null, null);
+                        Map.of("work_order_no", "WO-501"),
+                        "PR03",
+                        "PR-03",
+                        null,
+                        null,
+                        null,
+                        List.of());
         when(evidence.linkEvidence(ASKER, 301L, 91L)).thenReturn(found);
 
         Map<String, Object> reply = tools.linkEvidence(301L, 91L);
