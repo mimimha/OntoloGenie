@@ -11,8 +11,6 @@ import com.axcore.platform.check.domain.IssueReverification;
 import com.axcore.platform.check.domain.IssueReverification.Verdict;
 import com.axcore.platform.check.service.IssueReverificationRecorder;
 import com.axcore.platform.global.security.LoginAccount;
-import com.axcore.platform.issue.dto.IssueStatusChangeRequest;
-import com.axcore.platform.issue.service.IssueStatusService;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,7 +44,6 @@ class IssueVerificationApiIntegrationTests {
     @Autowired MockMvc mvc;
     @Autowired JdbcClient jdbc;
     @Autowired ObjectProvider<IssueReverificationRecorder> recorders;
-    @Autowired IssueStatusService issueStatusService;
 
     private IssueTestFixtures fixtures;
     private long accountId;
@@ -62,7 +59,7 @@ class IssueVerificationApiIntegrationTests {
     }
 
     @Test
-    void recordsPassForManualResolution() throws Exception {
+    void returnsPassWithoutAutomaticallyResolvingIssue() throws Exception {
         long issueId = newIssue();
         fixtures.markFixedAt(issueId, accountId, FIXED_AT);
         long runId = newRun();
@@ -87,10 +84,6 @@ class IssueVerificationApiIntegrationTests {
                 .andExpect(jsonPath("$.data[0].detail.targetFound").value(true))
                 .andExpect(jsonPath("$.data[0].detail.linkMappingId").value(mappingId))
                 .andExpect(jsonPath("$.data[0].checkedAt").value(CHECKED_AT.toString()));
-
-        issueStatusService.change(
-                issueId, new IssueStatusChangeRequest("RESOLVED", "통과 확인", runId, 1L), accountId);
-        assertThat(issueStatus(issueId)).isEqualTo("RESOLVED");
     }
 
     @Test
