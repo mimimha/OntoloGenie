@@ -21,38 +21,47 @@ const EQUIPMENT_TYPE_NAME = '설비'
 const PLAN_CREATE_ROLES: readonly RoleCode[] = ['ADMIN', 'PLANNER']
 
 // 버튼에는 짧은 이름을 보여 한 줄에 들어가게 하고, 누르면 문장 전체를 입력란에 채운다.
-const STOPPED_EQUIPMENT: SuggestedQuestion = {
-  label: '정지 설비',
-  text: '현재 정지 중인 설비를 알려줘',
+// 문장은 배포한 시연 데이터(가상 프레스 데이터)의 코드로 쓰고, 지금 Agent가 답할 수 있는 질문만 둔다(2026-11-11 배포 사이트 확인).
+// - 종류 전체 목록("정지 중인 설비", "진행 중인 작업지시")은 목록 조회 도구가 없어 "아직 조회할 수 없습니다"로 답해 뺐다.
+// - "최근"처럼 범위가 정해지지 않은 기간은 매번 되묻게 되어 쓰지 않는다.
+// - "비가동 이력"이라고 하면 실행 이력을 조회해 "없음"으로 답해, 관계를 따라가도록 "연결된 비가동 기록"이라고 쓴다.
+const DOWNTIME_RECORDS: SuggestedQuestion = {
+  label: 'P103 비가동',
+  text: 'P103에 연결된 비가동 기록 보여줘',
 }
-const DOWNTIME_HISTORY: SuggestedQuestion = {
-  label: 'PR-03 비가동',
-  text: 'PR-03의 최근 비가동 이력을 보여줘',
+const LINKED_OBJECTS: SuggestedQuestion = {
+  label: 'P103 연결',
+  text: 'P103에 연결된 정보는 뭐가 있어?',
 }
-const ACTIVE_WORK_ORDERS: SuggestedQuestion = {
-  label: '진행 작업지시',
-  text: '현재 진행 중인 작업지시를 보여줘',
+const WORK_ORDER_PROGRESS: SuggestedQuestion = {
+  label: '작업지시 진행',
+  text: 'JB2610-0138 작업지시 진행 상황 알려줘',
 }
-const PRODUCTION_RESULTS: SuggestedQuestion = {
-  label: '생산 실적',
-  text: '설비별 최근 생산 실적을 알려줘',
+const EQUIPMENT_DETAIL: SuggestedQuestion = {
+  label: 'P101 상세',
+  text: 'P101 상세 정보 알려줘',
 }
-const CONSISTENCY_ISSUES: SuggestedQuestion = {
-  label: '정합성 문제',
-  text: '최근 정합성 문제 현황을 보여줘',
+const STOPPED_WORK_ORDER: SuggestedQuestion = {
+  label: 'JB2610-0141 상세',
+  text: 'JB2610-0141 작업지시 상세 알려줘',
+}
+// 고정자산은 재무(FINANCE) 데이터라 관리자만 본다(V13, 역할별 조회 범위). 다른 역할에는 추천하지 않는다.
+const FIXED_ASSET_VALUE: SuggestedQuestion = {
+  label: '고정자산 장부가',
+  text: 'FA-0006 장부가와 취득가 알려줘',
 }
 const REASSIGNMENT_PLAN: SuggestedQuestion = {
   label: '재배정 계획',
-  text: 'PR-03에 배정된 남은 작업을 다른 설비로 옮기는 재배정 계획을 만들어줘',
+  text: 'P103에 배정된 남은 작업을 다른 설비로 옮기는 재배정 계획을 만들어줘',
 }
 
-// 조회만 하는 역할의 문장. API 086 명세 예시와 같다.
+// 조회만 하는 역할의 문장. 생산(PRODUCTION) 데이터만 묻는다.
 const VIEW_ONLY_QUESTIONS = [
-  STOPPED_EQUIPMENT,
-  DOWNTIME_HISTORY,
-  ACTIVE_WORK_ORDERS,
-  PRODUCTION_RESULTS,
-  CONSISTENCY_ISSUES,
+  DOWNTIME_RECORDS,
+  LINKED_OBJECTS,
+  WORK_ORDER_PROGRESS,
+  EQUIPMENT_DETAIL,
+  STOPPED_WORK_ORDER,
 ]
 
 // 참고 객체가 없을 때 역할별 고정 문장 5개. 정비 담당은 MVP에서 조회 사용자와 권한이 같다(V10 주석).
@@ -60,17 +69,17 @@ const GENERAL_QUESTIONS: Record<RoleCode, SuggestedQuestion[]> = {
   VIEWER: VIEW_ONLY_QUESTIONS,
   MAINTENANCE: VIEW_ONLY_QUESTIONS,
   PLANNER: [
-    STOPPED_EQUIPMENT,
-    DOWNTIME_HISTORY,
-    ACTIVE_WORK_ORDERS,
-    PRODUCTION_RESULTS,
+    DOWNTIME_RECORDS,
+    LINKED_OBJECTS,
+    WORK_ORDER_PROGRESS,
+    EQUIPMENT_DETAIL,
     REASSIGNMENT_PLAN,
   ],
   ADMIN: [
-    STOPPED_EQUIPMENT,
-    DOWNTIME_HISTORY,
-    ACTIVE_WORK_ORDERS,
-    CONSISTENCY_ISSUES,
+    DOWNTIME_RECORDS,
+    LINKED_OBJECTS,
+    WORK_ORDER_PROGRESS,
+    FIXED_ASSET_VALUE,
     REASSIGNMENT_PLAN,
   ],
 }

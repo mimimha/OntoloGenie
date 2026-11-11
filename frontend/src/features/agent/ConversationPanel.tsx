@@ -147,7 +147,7 @@ function ConversationPanel({
     }
     if (messages.length === 0) {
       return (
-        <EmptyState message="업무에 대해 질문해 주세요. 예: PR-03의 상태를 알려줘" />
+        <EmptyState message="업무에 대해 질문해 주세요. 예: P103의 상태를 알려줘" />
       )
     }
     return messages.map((message) => (

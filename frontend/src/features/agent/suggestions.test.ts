@@ -3,41 +3,58 @@ import { suggestedQuestions } from './suggestions'
 
 const PRESS = { id: 301, name: '프레스 3호기', typeName: '설비' }
 const REASSIGNMENT_PLAN =
-  'PR-03에 배정된 남은 작업을 다른 설비로 옮기는 재배정 계획을 만들어줘'
+  'P103에 배정된 남은 작업을 다른 설비로 옮기는 재배정 계획을 만들어줘'
+// 역할과 관계없이 앞에 오는 세 문장. 배포 시연 데이터의 코드로 쓴다.
+const COMMON = [
+  'P103에 연결된 비가동 기록 보여줘',
+  'P103에 연결된 정보는 뭐가 있어?',
+  'JB2610-0138 작업지시 진행 상황 알려줘',
+]
 
-test('참고 객체가 없으면 조회만 하는 역할에는 086 예시 다섯 개를 문장 그대로 보여 준다', () => {
+test('참고 객체가 없으면 조회만 하는 역할에는 시연 데이터로 답할 수 있는 다섯 문장을 보여 준다', () => {
   for (const role of ['VIEWER', 'MAINTENANCE'] as const) {
     const questions = suggestedQuestions(null, role)
 
     expect(questions.map((question) => question.text)).toEqual([
-      '현재 정지 중인 설비를 알려줘',
-      'PR-03의 최근 비가동 이력을 보여줘',
-      '현재 진행 중인 작업지시를 보여줘',
-      '설비별 최근 생산 실적을 알려줘',
-      '최근 정합성 문제 현황을 보여줘',
+      ...COMMON,
+      'P101 상세 정보 알려줘',
+      'JB2610-0141 작업지시 상세 알려줘',
     ])
     expect(questions[0]).toEqual({
-      label: '정지 설비',
-      text: '현재 정지 중인 설비를 알려줘',
+      label: 'P103 비가동',
+      text: 'P103에 연결된 비가동 기록 보여줘',
     })
   }
 })
 
 test('참고 객체가 없으면 계획 권한이 있는 역할에는 재배정 계획 문장을 넣는다', () => {
   expect(suggestedQuestions(null, 'PLANNER').map((q) => q.text)).toEqual([
-    '현재 정지 중인 설비를 알려줘',
-    'PR-03의 최근 비가동 이력을 보여줘',
-    '현재 진행 중인 작업지시를 보여줘',
-    '설비별 최근 생산 실적을 알려줘',
+    ...COMMON,
+    'P101 상세 정보 알려줘',
     REASSIGNMENT_PLAN,
   ])
   expect(suggestedQuestions(null, 'ADMIN').map((q) => q.text)).toEqual([
-    '현재 정지 중인 설비를 알려줘',
-    'PR-03의 최근 비가동 이력을 보여줘',
-    '현재 진행 중인 작업지시를 보여줘',
-    '최근 정합성 문제 현황을 보여줘',
+    ...COMMON,
+    'FA-0006 장부가와 취득가 알려줘',
     REASSIGNMENT_PLAN,
   ])
+})
+
+test('고정자산(재무) 질문은 그 데이터를 볼 수 있는 관리자에게만 추천한다', () => {
+  for (const role of ['VIEWER', 'MAINTENANCE', 'PLANNER', null] as const) {
+    expect(suggestedQuestions(null, role).map((q) => q.text)).not.toContain(
+      'FA-0006 장부가와 취득가 알려줘',
+    )
+  }
+})
+
+test('기본 문장에는 답하지 못하는 질문(종류 전체 목록, 범위 없는 기간)을 넣지 않는다', () => {
+  // 2026-11-11 배포 확인: 종류 전체 목록은 "아직 조회할 수 없습니다", "최근"은 기간을 되묻는다.
+  for (const role of ['VIEWER', 'MAINTENANCE', 'PLANNER', 'ADMIN'] as const) {
+    for (const { text } of suggestedQuestions(null, role)) {
+      expect(text).not.toMatch(/최근|현재 .*중인|설비별/)
+    }
+  }
 })
 
 test('역할을 모르면 조회만 하는 문장을 보여 준다', () => {
