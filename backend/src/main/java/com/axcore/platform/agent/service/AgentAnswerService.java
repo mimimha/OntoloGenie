@@ -4,9 +4,13 @@ import com.axcore.platform.agent.domain.AgentMessage;
 import com.axcore.platform.agent.domain.AnswerStage;
 import com.axcore.platform.agent.repository.AgentMessageRepository;
 import com.axcore.platform.audit.domain.ExecutionStatus;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -66,21 +70,63 @@ public class AgentAnswerService {
                         });
     }
 
-    /** 대상·목적·기간이 부족하면 되묻는다(143). 지금까지 알아낸 조건은 conditions에 남겨 다음 답과 합친다. */
+    /**
+     * 대상·목적·기간이 부족하거나 대상을 객체 하나로 정하지 못하면 되묻는다(143·147). 지금까지 알아낸 조건은 conditions에 남겨 다음 답과 합친다. 정하지
+     * 못한 대상은 clarification.targets에 후보와 함께 남긴다. known은 대화에서 이미 다룬 객체(화면 참고 객체 포함)이며
+     * clarification.contextObjectIds로 남겨 다음 답에서 먼저 고르게 한다. 화면 참고 객체는 첫 질문에만 오므로 되물어도 잃지 않게 한다.
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void answerClarification(long answerId, QuestionInterpretation interpretation) {
+    public void answerClarification(
+            long answerId,
+            QuestionInterpretation interpretation,
+            List<AgentTargetResolver.TargetIssue> targetIssues,
+            List<AgentReferenceObject> known) {
         running(answerId)
                 .ifPresent(
                         answer ->
                                 answer.succeed(
-                                        clarifyingQuestion(interpretation),
+                                        clarifyingQuestion(interpretation, targetIssues),
                                         Map.of(
                                                 "syncStatus", "NONE",
                                                 "results", List.of(),
                                                 "conditions", interpretation.toConditions(),
                                                 "actions", List.of(),
                                                 "clarification",
-                                                        interpretation.toClarification())));
+                                                        clarification(
+                                                                interpretation,
+                                                                targetIssues,
+                                                                known))));
+    }
+
+    static Map<String, Object> clarification(
+            QuestionInterpretation interpretation,
+            List<AgentTargetResolver.TargetIssue> targetIssues,
+            List<AgentReferenceObject> known) {
+        Map<String, Object> clarification = new LinkedHashMap<>(interpretation.toClarification());
+        if (!targetIssues.isEmpty()) {
+            clarification.put(
+                    "missing",
+                    missing(interpretation, targetIssues).stream().map(Enum::name).toList());
+            clarification.put(
+                    "targets",
+                    targetIssues.stream().map(AgentTargetResolver.TargetIssue::toMap).toList());
+        }
+        if (!known.isEmpty()) {
+            clarification.put(
+                    "contextObjectIds", known.stream().map(AgentReferenceObject::id).toList());
+        }
+        return clarification;
+    }
+
+    /** 대상을 말했지만 객체로 정하지 못했으면 대상도 되물을 조건이다. */
+    private static List<MissingCondition> missing(
+            QuestionInterpretation interpretation,
+            List<AgentTargetResolver.TargetIssue> targetIssues) {
+        List<MissingCondition> missing = new ArrayList<>(interpretation.missing());
+        if (!targetIssues.isEmpty() && !missing.contains(MissingCondition.TARGET)) {
+            missing.addFirst(MissingCondition.TARGET);
+        }
+        return missing;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -143,9 +189,15 @@ public class AgentAnswerService {
         return actions.stream().map(AgentActionOutcome::toMap).toList();
     }
 
-    static String clarifyingQuestion(QuestionInterpretation interpretation) {
+    static String clarifyingQuestion(
+            QuestionInterpretation interpretation,
+            List<AgentTargetResolver.TargetIssue> targetIssues) {
         StringBuilder text = new StringBuilder(CLARIFY_INTRO);
-        for (MissingCondition missing : interpretation.missing()) {
+        for (MissingCondition missing : missing(interpretation, targetIssues)) {
+            if (missing == MissingCondition.TARGET && !targetIssues.isEmpty()) {
+                targetIssues.forEach(issue -> text.append('\n').append(targetLine(issue)));
+                continue;
+            }
             text.append('\n')
                     .append(
                             switch (missing) {
@@ -158,6 +210,47 @@ public class AgentAnswerService {
                             });
         }
         return text.toString();
+    }
+
+    private static String targetLine(AgentTargetResolver.TargetIssue issue) {
+        if (issue.candidates().isEmpty()) {
+            return "- '" + issue.target() + "'에 해당하는 대상을 찾지 못했습니다. 이름이나 코드를 다시 알려 주세요.";
+        }
+        List<AgentReferenceObject> candidates = issue.candidates();
+        return "- '"
+                + issue.target()
+                + "'에 해당하는 대상이 여러 개입니다: "
+                + candidates.stream()
+                        .map(candidate -> candidateLabel(candidate, candidates))
+                        .collect(Collectors.joining(", "))
+                + ". 어느 것인지 알려 주세요.";
+    }
+
+    /** 이름·유형이 같은 후보가 또 있으면 구별할 수 있게 객체 번호를 붙인다. 사용자는 "번호 N"으로 고를 수 있다(147). */
+    private static String candidateLabel(
+            AgentReferenceObject candidate, List<AgentReferenceObject> candidates) {
+        boolean sameLooking =
+                candidates.stream()
+                        .anyMatch(
+                                other ->
+                                        other.id() != candidate.id()
+                                                && Objects.equals(other.name(), candidate.name())
+                                                && Objects.equals(
+                                                        other.typeName(), candidate.typeName()));
+        StringBuilder label = new StringBuilder(String.valueOf(candidate.name()));
+        if (candidate.typeName() != null || sameLooking) {
+            label.append('(');
+            if (candidate.typeName() != null) {
+                label.append(candidate.typeName());
+            }
+            if (sameLooking) {
+                label.append(candidate.typeName() != null ? ", " : "")
+                        .append("번호 ")
+                        .append(candidate.id());
+            }
+            label.append(')');
+        }
+        return label.toString();
     }
 
     private Optional<AgentMessage> running(long answerId) {

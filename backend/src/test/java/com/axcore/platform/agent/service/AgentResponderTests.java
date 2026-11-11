@@ -38,8 +38,10 @@ class AgentResponderTests {
         assertThat(answer).isEqualTo("실행 이력이 없습니다.");
         assertThat(prompt.getOptions()).isInstanceOf(OpenAiChatOptions.class);
         OpenAiChatOptions options = (OpenAiChatOptions) prompt.getOptions();
-        assertThat(options.getReasoningEffort()).isEqualTo(AgentResponder.NO_REASONING);
-        assertThat(options.getModel()).isEqualTo("gpt-6-luna");
+        // GMS chat/completions는 도구와 추론을 함께 쓰는 것을 거절하므로 기본값으로 추론을 끈다(설정
+        // axcore.agent.reasoning-effort, 147).
+        assertThat(options.getReasoningEffort()).isEqualTo("none");
+        assertThat(options.getModel()).isEqualTo("gpt-5.6-sol");
         assertThat(((ToolCallingChatOptions) options).getToolCallbacks())
                 .extracting(callback -> callback.getToolDefinition().name())
                 .contains(AgentQueryTools.OBJECT_EXECUTIONS);
@@ -54,11 +56,34 @@ class AgentResponderTests {
         // 계획의 기준 시점은 현재 시각보다 조회한 데이터의 시점을 먼저 쓰게 한다(160).
         assertThat(prompt.getSystemMessage().getText())
                 .contains("기준 시점(dataAsOf)은 계획에 쓴 조회 결과의 기준 시점 중 가장 이른 값");
+        // 조회할 도구가 없는 정보를 다른 도구 결과로 "없다"고 답하지 않게 한다(147).
+        assertThat(prompt.getSystemMessage().getText())
+                .contains("\"참고 객체 ID\"가 비어 있으면 객체 하나를 조회하는 도구는 부르지 않는다")
+                .contains("\"아직 조회할 수 없다\"고 말한다");
+    }
+
+    @Test
+    void sendsConfiguredReasoningEffortForOtherModels() {
+        // 받는 값이 모델마다 달라 설정으로 바꿀 수 있어야 한다.
+        Prompt prompt = askAboutPr03("low");
+
+        assertThat(((OpenAiChatOptions) prompt.getOptions()).getReasoningEffort()).isEqualTo("low");
+    }
+
+    @Test
+    void leavesReasoningToModelWhenSettingIsBlank() {
+        Prompt prompt = askAboutPr03("");
+
+        assertThat(((OpenAiChatOptions) prompt.getOptions()).getReasoningEffort()).isNull();
     }
 
     private Prompt askAboutPr03() {
+        return askAboutPr03("none");
+    }
+
+    private Prompt askAboutPr03(String reasoningEffort) {
         when(chatModel.getOptions())
-                .thenReturn(OpenAiChatOptions.builder().model("gpt-6-luna").build());
+                .thenReturn(OpenAiChatOptions.builder().model("gpt-5.6-sol").build());
         when(chatModel.call(any(Prompt.class)))
                 .thenReturn(
                         new ChatResponse(
@@ -72,7 +97,8 @@ class AgentResponderTests {
                         beans.getBeanProvider(ChatModel.class),
                         mock(AuditExecutionQueryService.class),
                         actionTools,
-                        CLOCK);
+                        CLOCK,
+                        reasoningEffort);
 
         answer =
                 responder.answer(

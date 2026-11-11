@@ -19,6 +19,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class AgentQuerySessionTests {
     private static final LoginAccount ASKER = new LoginAccount(7L, "planner", "PLANNER", false);
@@ -156,5 +157,61 @@ class AgentQuerySessionTests {
                                                 List.of(),
                                                 null)));
         assertThat(session.allRecorded()).isFalse();
+    }
+
+    @Test
+    void numbersServerLookupAndToolCallsTogether() {
+        session.lookup(
+                "OBJECT_SEARCH",
+                "대상 찾기",
+                Map.of("q", "PR-03"),
+                () ->
+                        new AgentQuerySession.Outcome(
+                                null, AgentResultCategory.FOUND, List.of(), null));
+        session.run(
+                "OBJECT_EXECUTIONS",
+                "실행 이력",
+                Map.of("objectId", 301L),
+                "object_instance",
+                301L,
+                () ->
+                        new AgentQuerySession.Outcome(
+                                List.of(), AgentResultCategory.NO_DATA, List.of(), null));
+
+        // 서버 조회도 같은 순번으로 기록하지만, 정보별 결과에는 사용자가 물은 도구 조회만 남는다(147).
+        verify(recorder).record(eq(ASKER), eq(11L), eq(1), anyMap(), any(), any(), any(), any());
+        verify(recorder).record(eq(ASKER), eq(11L), eq(2), anyMap(), any(), eq(301L), any(), any());
+        assertThat(session.results())
+                .extracting(AgentQueryResult::toolCode)
+                .containsExactly("OBJECT_EXECUTIONS");
+    }
+
+    @Test
+    void recordsFailedLookupAndStopsAnswer() {
+        assertThatThrownBy(
+                        () ->
+                                session.lookup(
+                                        "OBJECT_SEARCH",
+                                        "대상 찾기",
+                                        Map.of("q", "PR-03"),
+                                        () -> {
+                                            throw new IllegalStateException("DB 오류");
+                                        }))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("DB 오류");
+
+        ArgumentCaptor<AgentQueryResult> recorded = ArgumentCaptor.forClass(AgentQueryResult.class);
+        verify(recorder)
+                .record(
+                        eq(ASKER),
+                        eq(11L),
+                        eq(1),
+                        anyMap(),
+                        any(),
+                        any(),
+                        recorded.capture(),
+                        any());
+        assertThat(recorded.getValue().succeeded()).isFalse();
+        assertThat(session.results()).isEmpty();
     }
 }

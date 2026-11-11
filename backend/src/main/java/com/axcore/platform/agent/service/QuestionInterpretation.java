@@ -5,27 +5,50 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 질문에서 뽑은 조회 조건(142). AI 출력을 서버에서 검사한 뒤의 값이다. 답변의 answerMeta.conditions로 저장해 다음 질문 때 읽는다(대화방 상태,
- * 2026-11-04 결정).
+ * 2026-11-04 결정). referenceObjects는 이 답변이 대상으로 삼은 객체다(147). kinds는 특정 대상이 아니라 "전체 설비"처럼 종류 전체를 물을
+ * 때의 종류 이름이다(147).
  */
 public record QuestionInterpretation(
         String purpose,
         List<String> targets,
         LocalDate from,
         LocalDate to,
-        List<Long> referenceObjectIds,
-        String vaguePeriod) {
+        List<AgentReferenceObject> referenceObjects,
+        String vaguePeriod,
+        List<String> kinds) {
+
+    /** 종류 전체를 묻지 않는 해석. */
+    public QuestionInterpretation(
+            String purpose,
+            List<String> targets,
+            LocalDate from,
+            LocalDate to,
+            List<AgentReferenceObject> referenceObjects,
+            String vaguePeriod) {
+        this(purpose, targets, from, to, referenceObjects, vaguePeriod, List.of());
+    }
+
+    /** 무엇을 묻는지(대상·객체·종류) 하나라도 말했는가. */
+    private boolean namesSubject() {
+        return !targets.isEmpty() || !referenceObjects.isEmpty() || !kinds.isEmpty();
+    }
 
     public boolean hasPeriod() {
         return from != null && to != null;
     }
 
+    public List<Long> referenceObjectIds() {
+        return referenceObjects.stream().map(AgentReferenceObject::id).toList();
+    }
+
     /** 되물어야 하는 조건(143). 기간은 모호한 표현만 있을 때 묻고, 기간을 말하지 않은 질문은 묻지 않는다. */
     public List<MissingCondition> missing() {
         List<MissingCondition> missing = new ArrayList<>();
-        if (targets.isEmpty() && referenceObjectIds.isEmpty()) {
+        if (!namesSubject()) {
             missing.add(MissingCondition.TARGET);
         }
         if (purpose == null) {
@@ -37,18 +60,57 @@ public record QuestionInterpretation(
         return missing;
     }
 
-    /** 되물은 뒤 받은 답과 합친다(143). 이번 답에서 새로 확인한 값만 이전 조건을 덮는다. */
+    /**
+     * 되물은 뒤 받은 답과 합친다(143). 이번 답에서 새로 확인한 값만 이전 조건을 덮는다. "전체 설비로"처럼 종류 전체로 답하면 이전 대상과 객체는 쓰지 않는다
+     * (147).
+     */
     public QuestionInterpretation fillFrom(QuestionInterpretation previous) {
+        boolean wholeKind = !kinds.isEmpty();
         return new QuestionInterpretation(
                 purpose != null ? purpose : previous.purpose,
-                !targets.isEmpty() ? targets : previous.targets,
+                !targets.isEmpty() || wholeKind ? targets : previous.targets,
                 hasPeriod() ? from : previous.from,
                 hasPeriod() ? to : previous.to,
-                !referenceObjectIds.isEmpty() ? referenceObjectIds : previous.referenceObjectIds,
-                vaguePeriod != null ? vaguePeriod : previous.vaguePeriod);
+                !referenceObjects.isEmpty() || wholeKind
+                        ? referenceObjects
+                        : previous.referenceObjects,
+                vaguePeriod != null ? vaguePeriod : previous.vaguePeriod,
+                namesSubject() ? kinds : previous.kinds);
     }
 
-    /** answerMeta.conditions 값. 확인하지 못한 조건은 null로 둔다. */
+    /**
+     * 같은 대화의 후속 질문을 직전 답변의 조건에 이어 붙인다(147). 이번 질문에서 새로 말한 값만 바꾸고 나머지는 이어 쓴다. 대상을 새로 말하면 이전 대상과 참고
+     * 객체를 함께 버린다. 다른 대상을 물었는데 이전 객체로 답하지 않게 하기 위해서다. "전체 설비"처럼 종류 전체를 물어도 이전 대상을 잇지 않는다. "최근"처럼 범위
+     * 없는 기간을 말하면 이전 기간을 쓰지 않고 되묻는다.
+     */
+    public QuestionInterpretation continueFrom(QuestionInterpretation previous) {
+        boolean newSubject = namesSubject();
+        boolean keepPeriod = !hasPeriod() && vaguePeriod == null;
+        return new QuestionInterpretation(
+                purpose != null ? purpose : previous.purpose,
+                newSubject ? targets : previous.targets,
+                keepPeriod ? previous.from : from,
+                keepPeriod ? previous.to : to,
+                newSubject ? referenceObjects : previous.referenceObjects,
+                vaguePeriod,
+                newSubject ? kinds : previous.kinds);
+    }
+
+    /** 서버가 찾은 대상 객체로 바꾼다(147). */
+    public QuestionInterpretation withReferenceObjects(List<AgentReferenceObject> found) {
+        return new QuestionInterpretation(purpose, targets, from, to, found, vaguePeriod, kinds);
+    }
+
+    /** 대상 이름과 객체를 함께 바꾼다. 되물은 대상만 채울 때 쓴다(147). */
+    public QuestionInterpretation withTargets(
+            List<String> newTargets, List<AgentReferenceObject> found) {
+        return new QuestionInterpretation(purpose, newTargets, from, to, found, vaguePeriod, kinds);
+    }
+
+    /**
+     * answerMeta.conditions 값. 확인하지 못한 조건은 null로 둔다. referenceObjectIds는 referenceObjects의 ID만 모은
+     * 것이다.
+     */
     public Map<String, Object> toConditions() {
         Map<String, Object> conditions = new LinkedHashMap<>();
         conditions.put("purpose", purpose);
@@ -56,7 +118,11 @@ public record QuestionInterpretation(
         conditions.put(
                 "period",
                 hasPeriod() ? Map.of("from", from.toString(), "to", to.toString()) : null);
-        conditions.put("referenceObjectIds", referenceObjectIds);
+        conditions.put("referenceObjectIds", referenceObjectIds());
+        conditions.put(
+                "referenceObjects",
+                referenceObjects.stream().map(AgentReferenceObject::toMap).toList());
+        conditions.put("kinds", kinds);
         return conditions;
     }
 
@@ -68,7 +134,10 @@ public record QuestionInterpretation(
         return clarification;
     }
 
-    /** 되묻기 답변의 answerMeta에서 그때까지 알아낸 조건을 다시 읽는다(143). */
+    /**
+     * 답변의 answerMeta에서 그때 확정한 조건을 다시 읽는다(143·147). referenceObjects가 없는 예전 답변은 referenceObjectIds로
+     * ID만 읽는다.
+     */
     public static QuestionInterpretation fromAnswerMeta(Map<String, Object> answerMeta) {
         Map<?, ?> conditions = map(answerMeta.get("conditions"));
         Map<?, ?> period = map(conditions.get("period"));
@@ -78,8 +147,21 @@ public record QuestionInterpretation(
                 strings(conditions.get("targets")),
                 date(period.get("from")),
                 date(period.get("to")),
-                ids(conditions.get("referenceObjectIds")),
-                text(clarification.get("vaguePeriod")));
+                references(conditions),
+                text(clarification.get("vaguePeriod")),
+                strings(conditions.get("kinds")));
+    }
+
+    private static List<AgentReferenceObject> references(Map<?, ?> conditions) {
+        if (conditions.get("referenceObjects") instanceof List<?> list) {
+            return list.stream()
+                    .map(AgentReferenceObject::fromMap)
+                    .filter(Objects::nonNull)
+                    .toList();
+        }
+        return ids(conditions.get("referenceObjectIds")).stream()
+                .map(AgentReferenceObject::idOnly)
+                .toList();
     }
 
     private static Map<?, ?> map(Object value) {

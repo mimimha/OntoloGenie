@@ -26,7 +26,7 @@ class QuestionInterpreterGmsTests {
         assertThat(interpreter.isConfigured()).isTrue();
 
         QuestionInterpretation result =
-                interpreter.interpret("PR-03 이번 달 비가동 이력 보여줘", Map.of(), null);
+                interpreter.interpret("PR-03 이번 달 비가동 이력 보여줘", Map.of(), null, null);
         log.info("GMS 해석 결과: {}", result);
 
         assertThat(result.targets()).contains("PR-03");

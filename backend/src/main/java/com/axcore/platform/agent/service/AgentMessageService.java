@@ -59,6 +59,7 @@ public class AgentMessageService {
                     CommonErrorCode.CONFLICT, "이 대화에서 처리 중인 답변이 있습니다.", Map.of());
         }
         PendingClarification pending = pendingClarification(conversationId);
+        QuestionInterpretation previous = previousConditions(conversationId);
         Instant now = Instant.now(clock).truncatedTo(ChronoUnit.MICROS);
         AgentMessage question =
                 messages.save(
@@ -73,7 +74,8 @@ public class AgentMessageService {
                         asker,
                         request.content(),
                         request.messageContext(),
-                        pending));
+                        pending,
+                        previous));
         return List.of(AgentMessageResponse.from(question), AgentMessageResponse.from(answer));
     }
 
@@ -84,10 +86,25 @@ public class AgentMessageService {
                 .filter(last -> last.getAnswerMeta().containsKey("clarification"))
                 .map(
                         last ->
-                                new PendingClarification(
-                                        last.getContent(),
-                                        QuestionInterpretation.fromAnswerMeta(
-                                                last.getAnswerMeta())))
+                                PendingClarification.fromAnswer(
+                                        last.getContent(), last.getAnswerMeta()))
+                .orElse(null);
+    }
+
+    /**
+     * 마지막으로 끝까지 답한 답변에서 확정한 조건(147). 후속 질문은 여기서 대상·기간·목적을 이어 쓴다. 실패한 답변과 되묻기 답변은 조건을 다 확정하지 못했으므로
+     * 건너뛴다. 최근 답변 몇 건 안에 없으면 null.
+     */
+    private QuestionInterpretation previousConditions(long conversationId) {
+        return messages
+                .findTop10ByConversationIdAndSenderAndStatusOrderByIdDesc(
+                        conversationId, MessageSender.AGENT, MessageStatus.SUCCEEDED)
+                .stream()
+                .map(AgentMessage::getAnswerMeta)
+                .filter(meta -> meta.containsKey("conditions"))
+                .filter(meta -> !meta.containsKey("clarification"))
+                .findFirst()
+                .map(QuestionInterpretation::fromAnswerMeta)
                 .orElse(null);
     }
 
