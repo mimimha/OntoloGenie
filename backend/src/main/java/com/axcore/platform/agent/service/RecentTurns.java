@@ -150,9 +150,14 @@ public class RecentTurns {
             if (question == null || message.getStatus() == MessageStatus.RUNNING) {
                 continue;
             }
-            // 실패한 답변은 안내 문구뿐이라 질문만 넣는다.
+            // 실패한 답변과 업무 외·사용 안내 답변(361)은 정해진 안내 문구뿐이라 질문만 넣는다. 안내 문구의 예시 질문이 해석에 섞이지 않고
+            // 최근 대화의 토큰도 차지하지 않는다.
             String answer =
-                    message.getStatus() == MessageStatus.SUCCEEDED ? message.getContent() : null;
+                    message.getStatus() == MessageStatus.SUCCEEDED
+                                    && !QuestionScope.answeredOutsideBusiness(
+                                            message.getAnswerMeta())
+                            ? message.getContent()
+                            : null;
             turns.add(
                     new StartedTurn(
                             question.getId(),

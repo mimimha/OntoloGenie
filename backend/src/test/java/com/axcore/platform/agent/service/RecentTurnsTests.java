@@ -113,6 +113,20 @@ class RecentTurnsTests {
     }
 
     @Test
+    void keepsOnlyQuestionForOutsideBusinessAnswer() {
+        AgentMessage asked = AgentMessage.question(1L, "오늘 날씨 어때?", Map.of(), NOW);
+        AgentMessage guided = AgentMessage.runningAnswer(1L, NOW);
+        guided.succeed(
+                "업무 데이터 조회만 도와드릴 수 있습니다. 예: P101 상세 정보 알려줘",
+                Map.of(QuestionScope.ANSWER_META_KEY, QuestionScope.OUT_OF_SCOPE.name()));
+
+        List<ConversationTurn> turns = new RecentTurns(4, 2000).pick(List.of(asked, guided));
+
+        // 정해진 안내 문구의 예시 질문이 해석에 섞이지 않게 질문만 넣는다(361).
+        assertThat(turns).containsExactly(new ConversationTurn("오늘 날씨 어때?", null));
+    }
+
+    @Test
     void keepsOnlyQuestionForFailedAnswerAndSkipsRunningAnswer() {
         List<AgentMessage> messages = new ArrayList<>();
         AgentMessage question = AgentMessage.question(1L, "PR-03 상태", Map.of(), NOW);

@@ -109,6 +109,16 @@ class AgentResponderTests {
     }
 
     @Test
+    void answersOnlyBusinessPartOfMixedRequest() {
+        Prompt prompt = askAboutPr03();
+
+        // 업무 질문에 섞인 업무 외 요청은 한 줄로 거절하고, 업무 데이터에 나오는 사람 질문은 막지 않는다(361).
+        assertThat(prompt.getSystemMessage().getText())
+                .contains("그 부분은 도와드릴 수 없다고 한 줄로 말하고 업무 질문에만 답한다")
+                .contains("업무 데이터에 나오는 사람(작업자·정비 기술자 등)에 대한 질문은 업무 질문이다");
+    }
+
+    @Test
     void writesQuestionAsIsWhenNotReplyingToClarification() {
         Prompt prompt = askAboutPr03();
 

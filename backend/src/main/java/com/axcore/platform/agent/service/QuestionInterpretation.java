@@ -10,7 +10,7 @@ import java.util.Objects;
 /**
  * 질문에서 뽑은 조회 조건(142). AI 출력을 서버에서 검사한 뒤의 값이다. 답변의 answerMeta.conditions로 저장해 다음 질문 때 읽는다(대화방 상태,
  * 2026-11-04 결정). referenceObjects는 이 답변이 대상으로 삼은 객체다(147). kinds는 특정 대상이 아니라 "전체 설비"처럼 종류 전체를 물을
- * 때의 종류 이름이다(147).
+ * 때의 종류 이름이다(147). scope는 질문이 Agent가 다루는 범위인가이며, 해석 직후에만 본다. 조건을 합치거나 바꾸면 업무(BUSINESS)로 둔다.
  */
 public record QuestionInterpretation(
         String purpose,
@@ -19,7 +19,32 @@ public record QuestionInterpretation(
         LocalDate to,
         List<AgentReferenceObject> referenceObjects,
         String vaguePeriod,
-        List<String> kinds) {
+        List<String> kinds,
+        QuestionScope scope) {
+
+    public QuestionInterpretation {
+        scope = scope == null ? QuestionScope.BUSINESS : scope;
+    }
+
+    /** 업무 질문의 해석. */
+    public QuestionInterpretation(
+            String purpose,
+            List<String> targets,
+            LocalDate from,
+            LocalDate to,
+            List<AgentReferenceObject> referenceObjects,
+            String vaguePeriod,
+            List<String> kinds) {
+        this(
+                purpose,
+                targets,
+                from,
+                to,
+                referenceObjects,
+                vaguePeriod,
+                kinds,
+                QuestionScope.BUSINESS);
+    }
 
     /** 종류 전체를 묻지 않는 해석. */
     public QuestionInterpretation(

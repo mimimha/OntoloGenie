@@ -67,9 +67,6 @@ public interface AgentMessageRepository extends JpaRepository<AgentMessage, Long
     @Query("select m from AgentMessage m where m.id = :id")
     Optional<AgentMessage> findForUpdateById(@Param("id") Long id);
 
-    Optional<AgentMessage> findFirstByConversationIdAndSenderOrderByIdDesc(
-            Long conversationId, MessageSender sender);
-
     List<AgentMessage> findTop10ByConversationIdAndSenderAndStatusOrderByIdDesc(
             Long conversationId, MessageSender sender, MessageStatus status);
 

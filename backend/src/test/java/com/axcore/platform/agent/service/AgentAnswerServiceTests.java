@@ -1,6 +1,7 @@
 package com.axcore.platform.agent.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -35,6 +36,44 @@ class AgentAnswerServiceTests {
 
     private final AgentMessageRepository messages = mock(AgentMessageRepository.class);
     private final AgentAnswerService answers = new AgentAnswerService(messages);
+
+    @Test
+    void answersOutOfScopeQuestionWithFixedGuideAndKeepsNoConditions() {
+        AgentMessage answer = runningAnswer();
+
+        answers.answerOutsideBusiness(900L, QuestionScope.OUT_OF_SCOPE);
+
+        // 정해진 안내로 끝낸다. 조건을 남기지 않아 다음 업무 질문이 그 전 업무 답변의 조건을 이어 쓴다(업무 외 질문 가드레일).
+        assertThat(answer.getStatus()).isEqualTo(MessageStatus.SUCCEEDED);
+        assertThat(answer.getContent()).isEqualTo(AgentAnswerService.OUT_OF_SCOPE_CONTENT);
+        assertThat(answer.getAnswerMeta())
+                .containsEntry("results", List.of())
+                .containsEntry("actions", List.of())
+                .containsEntry(QuestionScope.ANSWER_META_KEY, "OUT_OF_SCOPE")
+                .doesNotContainKeys("conditions", "clarification", "stage");
+        // 안내 답변은 범위를 남겨, 되묻기를 찾거나 최근 대화를 고를 때 건너뛸 수 있게 한다(361).
+        assertThat(QuestionScope.answeredOutsideBusiness(answer.getAnswerMeta())).isTrue();
+    }
+
+    @Test
+    void refusesFixedGuideForBusinessQuestion() {
+        assertThatThrownBy(() -> answers.answerOutsideBusiness(900L, QuestionScope.BUSINESS))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void answersHelpQuestionWithWhatTheAgentCanDo() {
+        AgentMessage answer = runningAnswer();
+
+        answers.answerOutsideBusiness(900L, QuestionScope.HELP);
+
+        assertThat(answer.getContent())
+                .isEqualTo(AgentAnswerService.HELP_CONTENT)
+                .contains("P101 상세 정보 알려줘", "재배정 계획");
+        assertThat(answer.getAnswerMeta())
+                .containsEntry(QuestionScope.ANSWER_META_KEY, "HELP")
+                .doesNotContainKey("conditions");
+    }
 
     @Test
     void numbersCandidatesThatLookTheSame() {

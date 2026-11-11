@@ -1,6 +1,7 @@
 package com.axcore.platform.agent.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
@@ -27,8 +28,10 @@ import com.axcore.platform.agent.service.AgentReferenceObject;
 import com.axcore.platform.agent.service.AgentResponder;
 import com.axcore.platform.agent.service.AgentTargetResolver;
 import com.axcore.platform.agent.service.ConversationTurn;
+import com.axcore.platform.agent.service.PendingClarification;
 import com.axcore.platform.agent.service.QuestionInterpretation;
 import com.axcore.platform.agent.service.QuestionInterpreter;
+import com.axcore.platform.agent.service.QuestionScope;
 import com.axcore.platform.audit.service.AuditExecutionQueryService;
 import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.ontology.service.ObjectSearchQuery;
@@ -346,6 +349,162 @@ class AgentMessageApiTests {
                 .andExpect(
                         jsonPath("$.data[7].answerMeta.conditions.referenceObjectIds[0]")
                                 .value(302));
+    }
+
+    @Test
+    void outOfScopeQuestionKeepsPreviousBusinessConditions() throws Exception {
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(responder.answer(anyString(), any(), any(), any())).thenReturn("비가동 이력 답변");
+        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                "비가동 이력",
+                                List.of("PR-03"),
+                                LocalDate.parse("2026-10-01"),
+                                LocalDate.parse("2026-10-31"),
+                                List.of(),
+                                null))
+                .thenReturn(outsideBusiness(QuestionScope.OUT_OF_SCOPE))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                null,
+                                List.of(),
+                                LocalDate.parse("2026-09-01"),
+                                LocalDate.parse("2026-09-30"),
+                                List.of(),
+                                null));
+
+        ask(conversation, "PR-03 10월 비가동 이력 알려줘").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        ask(conversation, "오늘 날씨 어때?").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        ask(conversation, "그럼 지난달은?").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+
+        // 업무 외 안내는 건너뛰고 첫 업무 답변의 조건을 이어 쓴다. 최근 대화에는 안내 문장 없이 질문만 들어간다(361).
+        ArgumentCaptor<QuestionInterpretation> previous =
+                ArgumentCaptor.forClass(QuestionInterpretation.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ConversationTurn>> turns = ArgumentCaptor.forClass(List.class);
+        verify(interpreter)
+                .interpret(
+                        eq("그럼 지난달은?"),
+                        anyMap(),
+                        isNull(),
+                        previous.capture(),
+                        turns.capture(),
+                        any());
+        assertThat(previous.getValue().from()).isEqualTo(LocalDate.parse("2026-10-01"));
+        assertThat(turns.getValue())
+                .extracting(ConversationTurn::question, ConversationTurn::answer)
+                .containsExactly(
+                        tuple("PR-03 10월 비가동 이력 알려줘", "비가동 이력 답변"), tuple("오늘 날씨 어때?", null));
+        mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
+                .andExpect(jsonPath("$.data[3].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data[3].answerMeta.scope").value("OUT_OF_SCOPE"))
+                .andExpect(jsonPath("$.data[3].answerMeta.conditions").doesNotExist())
+                .andExpect(
+                        jsonPath("$.data[5].answerMeta.conditions.period.from").value("2026-09-01"))
+                .andExpect(jsonPath("$.data[5].answerMeta.conditions.purpose").value("비가동 이력"));
+    }
+
+    @Test
+    void clarificationContinuesAfterOutOfScopeQuestion() throws Exception {
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(responder.answer(anyString(), any(), any(), any())).thenReturn("비가동 이력 답변");
+        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                "비가동 이력", List.of(), null, null, List.of(), null))
+                .thenReturn(outsideBusiness(QuestionScope.HELP))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                null, List.of("PR-03"), null, null, List.of(), null));
+
+        ask(conversation, "비가동 이력 보여줘").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        ask(conversation, "근데 너는 뭘 할 수 있어?").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        ask(conversation, "PR-03").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+
+        // 사용 안내를 끼워도 되묻기는 이어져, 마지막 말을 처음 되물은 질문(대상)에 대한 답으로 받는다(361).
+        ArgumentCaptor<PendingClarification> pending =
+                ArgumentCaptor.forClass(PendingClarification.class);
+        verify(interpreter)
+                .interpret(eq("PR-03"), anyMap(), pending.capture(), any(), any(), any());
+        assertThat(pending.getValue()).isNotNull();
+        assertThat(pending.getValue().previous().purpose()).isEqualTo("비가동 이력");
+        mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
+                .andExpect(jsonPath("$.data[1].answerMeta.clarification").exists())
+                .andExpect(jsonPath("$.data[3].answerMeta.scope").value("HELP"))
+                .andExpect(jsonPath("$.data[5].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data[5].content").value("비가동 이력 답변"))
+                .andExpect(jsonPath("$.data[5].answerMeta.clarification").doesNotExist())
+                .andExpect(jsonPath("$.data[5].answerMeta.conditions.purpose").value("비가동 이력"))
+                .andExpect(jsonPath("$.data[5].answerMeta.conditions.targets[0]").value("PR-03"));
+    }
+
+    @Test
+    void clarificationStopsWhenOutsideBusinessAnswersPushItOutOfRecentMessages() throws Exception {
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                "비가동 이력", List.of(), null, null, List.of(), null))
+                .thenReturn(outsideBusiness(QuestionScope.HELP))
+                .thenReturn(outsideBusiness(QuestionScope.HELP))
+                .thenReturn(outsideBusiness(QuestionScope.HELP))
+                .thenReturn(outsideBusiness(QuestionScope.HELP))
+                .thenReturn(outsideBusiness(QuestionScope.OUT_OF_SCOPE))
+                .thenThrow(new IllegalStateException("해석만 확인한다"));
+
+        ask(conversation, "비가동 이력 보여줘").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        for (int i = 1; i <= 5; i++) {
+            ask(conversation, "딴 얘기 " + i).andExpect(status().isAccepted());
+            awaitAnswered(conversation);
+        }
+        ask(conversation, "PR-03").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+
+        // 이번 질문을 저장하기 전 최근 메시지 10건 안에서만 되묻기를 찾는다(361). 안내 네 번 뒤에는 이어 가고,
+        // 다섯 번째 안내 뒤에는 되묻기가 10건 밖으로 밀려 새 질문으로 본다.
+        verify(interpreter).interpret(eq("딴 얘기 5"), anyMap(), notNull(), any(), any(), any());
+        verify(interpreter).interpret(eq("PR-03"), anyMap(), isNull(), any(), any(), any());
+    }
+
+    @Test
+    void clarificationDoesNotContinueAfterFailedAnswer() throws Exception {
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(responder.answer(anyString(), any(), any(), any()))
+                .thenThrow(new IllegalStateException("GMS 시간 초과"));
+        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                "비가동 이력", List.of(), null, null, List.of(), null))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                null, List.of("PR-03"), null, null, List.of(), null))
+                .thenThrow(new IllegalStateException("해석만 확인한다"));
+
+        ask(conversation, "비가동 이력 보여줘").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        ask(conversation, "PR-03").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        ask(conversation, "다시 PR-03").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+
+        // 실패 답변은 안내 답변과 달리 건너뛰지 않는다. 되묻기에 답했다가 실패했으면 다음 말은 새 질문이다.
+        verify(interpreter).interpret(eq("PR-03"), anyMap(), notNull(), any(), any(), any());
+        verify(interpreter).interpret(eq("다시 PR-03"), anyMap(), isNull(), any(), any(), any());
+        mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
+                .andExpect(jsonPath("$.data[3].status").value("FAILED"));
+    }
+
+    private static QuestionInterpretation outsideBusiness(QuestionScope scope) {
+        return new QuestionInterpretation(
+                null, List.of(), null, null, List.of(), null, List.of(), scope);
     }
 
     @Test

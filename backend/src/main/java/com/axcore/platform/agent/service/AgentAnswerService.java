@@ -34,7 +34,55 @@ public class AgentAnswerService {
 
     private static final String CLARIFY_INTRO = "질문을 정확히 이해하려면 몇 가지를 더 알려 주세요.";
 
+    /** 업무 데이터와 관계없는 질문에 대한 답. AI가 문장을 만들지 않는다(업무 외 질문 가드레일). */
+    // 답변은 화면에서 마크다운으로 그린다(150). 문단은 빈 줄로 나누고, 목록 앞뒤에도 빈 줄을 둔다.
+    static final String OUT_OF_SCOPE_CONTENT =
+            """
+            이 Agent는 업무 데이터 조회와 재배정 계획만 도와드려요. 그 밖의 질문은 도와드리기 어려워요.
+
+            설비·작업지시·비가동·자산을 물어봐 주세요. 예: "P103에 연결된 비가동 기록 보여줘\"""";
+
+    /** 인사나 사용법 질문에 대한 답. 할 수 있는 일과 예시를 보여 준다. */
+    static final String HELP_CONTENT =
+            """
+            안녕하세요. 설비·작업지시·자산 같은 업무 데이터를 찾아 드려요. 이렇게 물어보세요.
+
+            - 대상 정보: "P101 상세 정보 알려줘"
+            - 연결된 기록: "P103에 연결된 비가동 기록 보여줘"
+            - 실행 이력: "P101 11월 실행 이력 보여줘"
+            - 재배정 계획: "P103 남은 작업 재배정 계획 만들어줘" (권한이 있을 때)
+
+            설비 코드나 이름을 함께 말하면 더 정확하게 찾아요.""";
+
     private final AgentMessageRepository messages;
+
+    /**
+     * 업무가 아닌 질문(사용 안내·업무 외)에 정해진 문장으로 답한다. 조회하지 않으므로 결과가 없고, 이번 답변의 조건(conditions)도 남기지 않는다.
+     * answerMeta.scope로 이 답변이 업무 외 안내임을 남겨, 다음 질문은 이 답변을 건너뛰고 그 전 대화(되묻기나 업무 답변)를 이어 간다.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void answerOutsideBusiness(long answerId, QuestionScope scope) {
+        String content =
+                switch (scope) {
+                    case HELP -> HELP_CONTENT;
+                    case OUT_OF_SCOPE -> OUT_OF_SCOPE_CONTENT;
+                    case BUSINESS -> throw new IllegalArgumentException("업무 질문은 정해진 문장으로 답하지 않는다");
+                };
+        running(answerId)
+                .ifPresent(
+                        answer ->
+                                answer.succeed(
+                                        content,
+                                        Map.of(
+                                                "syncStatus",
+                                                "NONE",
+                                                "results",
+                                                List.of(),
+                                                "actions",
+                                                List.of(),
+                                                QuestionScope.ANSWER_META_KEY,
+                                                scope.name())));
+    }
 
     /** 처리 중 단계를 바꾼다. 화면은 084를 다시 읽어 단계 문구를 보여 준다(정책 문서 3.3). */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
