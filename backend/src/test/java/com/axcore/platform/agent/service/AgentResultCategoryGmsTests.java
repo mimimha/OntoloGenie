@@ -10,11 +10,13 @@ import static org.mockito.Mockito.mock;
 import com.axcore.platform.TestcontainersConfiguration;
 import com.axcore.platform.audit.domain.AgentResultCategory;
 import com.axcore.platform.audit.service.AuditExecutionQueryService;
+import com.axcore.platform.auth.service.DataAccessPolicy;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.ontology.dto.ObjectDetailResponse;
 import com.axcore.platform.ontology.dto.ObjectSearchRequest;
+import com.axcore.platform.ontology.service.ModelSummaryService;
 import com.axcore.platform.ontology.service.ObjectDetailQuery;
 import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
 import com.axcore.platform.ontology.service.ObjectSearchQuery;
@@ -60,6 +62,8 @@ class AgentResultCategoryGmsTests {
     private static final int RUNS = 3;
 
     @Autowired ObjectProvider<ChatModel> chatModels;
+    @Autowired ModelSummaryService modelSummary;
+    @Autowired DataAccessPolicy dataAccess;
     @MockitoBean AgentActionTools actionTools;
 
     @Value("${axcore.agent.reasoning-effort:none}")
@@ -219,6 +223,8 @@ class AgentResultCategoryGmsTests {
                 objectSearch,
                 beans.getBeanProvider(ObjectDetailQuery.class),
                 beans.getBeanProvider(ObjectEvidenceQuery.class),
+                modelSummary,
+                dataAccess,
                 actionTools,
                 Clock.systemUTC(),
                 reasoningEffort);
