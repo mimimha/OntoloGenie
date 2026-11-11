@@ -4,13 +4,18 @@ import com.axcore.platform.check.dto.CheckRunCreateRequest;
 import com.axcore.platform.check.dto.CheckRunRequestResponse;
 import com.axcore.platform.check.dto.CheckRunResponse;
 import com.axcore.platform.check.dto.CheckRunSearchRequest;
+import com.axcore.platform.check.dto.ReverificationComparisonResponse;
 import com.axcore.platform.check.service.CheckRunQueryService;
 import com.axcore.platform.check.service.CheckRunRequestService;
+import com.axcore.platform.check.service.ReverificationComparisonService;
+import com.axcore.platform.check.service.ReverificationComparisonService.Comparison;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.response.ApiResponse;
+import com.axcore.platform.global.response.PageMeta;
 import com.axcore.platform.global.security.LoginAccount;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +31,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 검사 실행 목록 059, 수동 검사·재검증 요청 060, 검사 상태 조회 061. 모두 ADMIN만 쓸 수 있다. */
@@ -37,6 +43,7 @@ public class CheckRunController {
 
     private final CheckRunQueryService checkRunQueryService;
     private final CheckRunRequestService checkRunRequestService;
+    private final ReverificationComparisonService comparisons;
 
     @GetMapping
     public ApiResponse<List<CheckRunResponse>> search(
@@ -54,6 +61,23 @@ public class CheckRunController {
             @AuthenticationPrincipal LoginAccount account) {
         requireAdmin(account);
         return ApiResponse.of(checkRunQueryService.get(id));
+    }
+
+    @GetMapping("/{id}/comparison")
+    public ApiResponse<ReverificationComparisonResponse> comparison(
+            @PathVariable("id") @Min(value = 1, message = "id는 1 이상이어야 합니다.") long id,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @AuthenticationPrincipal LoginAccount account) {
+        requireAdmin(account);
+        Comparison comparison = comparisons.get(id, PageRequest.of(page, size));
+        return new ApiResponse<>(
+                new ReverificationComparisonResponse(
+                        comparison.comparedToRunId(),
+                        comparison.coverage(),
+                        comparison.hasBaselinePassEvidence(),
+                        comparison.rows().getContent()),
+                PageMeta.from(comparison.rows()));
     }
 
     /** 새로 접수하거나 진행 중인 같은 검사에 합류하면 202, 같은 기준의 성공 결과를 다시 쓰면 200이다. */

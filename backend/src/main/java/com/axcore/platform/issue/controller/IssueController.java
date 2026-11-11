@@ -10,10 +10,13 @@ import com.axcore.platform.issue.dto.IssueHistorySearchRequest;
 import com.axcore.platform.issue.dto.IssueResponse;
 import com.axcore.platform.issue.dto.IssueSearchRequest;
 import com.axcore.platform.issue.dto.IssueStatusChangeRequest;
+import com.axcore.platform.issue.dto.IssueVerificationResponse;
+import com.axcore.platform.issue.dto.IssueVerificationSearchRequest;
 import com.axcore.platform.issue.service.IssueForwardService;
 import com.axcore.platform.issue.service.IssueHistoryService;
 import com.axcore.platform.issue.service.IssueQueryService;
 import com.axcore.platform.issue.service.IssueStatusService;
+import com.axcore.platform.issue.service.IssueVerificationQueryService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import java.util.List;
@@ -31,7 +34,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 정합성 문제 목록 065, 문제·원본 근거 조회 066, 처리 상태 변경 067, 원천 담당자 전달 기록 068, 상태 이력 069. 모두 ADMIN만 쓸 수 있다. */
+/** 정합성 문제 조회·처리 및 상태·재검증 이력 API(065~070). 모두 ADMIN만 쓸 수 있다. */
 @RestController
 @RequestMapping("/api/v1/issues")
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -42,6 +45,7 @@ public class IssueController {
     private final IssueStatusService issueStatusService;
     private final IssueForwardService issueForwardService;
     private final IssueHistoryService issueHistoryService;
+    private final IssueVerificationQueryService issueVerificationQueryService;
 
     @GetMapping
     public ApiResponse<List<IssueResponse>> search(
@@ -88,6 +92,18 @@ public class IssueController {
         int page = request.page() == null ? 0 : request.page();
         int size = request.size() == null ? 20 : request.size();
         return ApiResponse.ofPage(issueHistoryService.search(id, PageRequest.of(page, size)));
+    }
+
+    @GetMapping("/{id}/verifications")
+    public ApiResponse<List<IssueVerificationResponse>> verifications(
+            @PathVariable("id") @Min(value = 1, message = "id는 1 이상이어야 합니다.") long id,
+            @Valid @ModelAttribute IssueVerificationSearchRequest request,
+            @AuthenticationPrincipal LoginAccount account) {
+        requireAdmin(account);
+        int page = request.page() == null ? 0 : request.page();
+        int size = request.size() == null ? 20 : request.size();
+        return ApiResponse.ofPage(
+                issueVerificationQueryService.search(id, PageRequest.of(page, size)));
     }
 
     private static void requireAdmin(LoginAccount account) {

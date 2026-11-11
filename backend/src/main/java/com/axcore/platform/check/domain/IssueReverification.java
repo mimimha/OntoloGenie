@@ -14,7 +14,8 @@ import java.util.Objects;
  *
  * @param linkMappingId 판정에 쓴 규칙 개정본. 같은 코드의 반영 중인 개정본이 없으면 null
  * @param detail PASSED·FAILED일 때 070 {@code detail}에 넣을 값: {@code rawValue}, {@code
- *     transformedValue}, {@code targetFound}, {@code classification}. NOT_EVALUATED면 비어 있다
+ *     transformedValue}, {@code targetFound}, {@code classification}, {@code reason}.
+ *     NOT_EVALUATED면 비어 있다
  * @param reason NOT_EVALUATED인 이유. 그 밖에는 null
  */
 public record IssueReverification(
@@ -42,8 +43,8 @@ public record IssueReverification(
         /** 출발 행이 여전히 정상이 아니다(미연결·중복·조건 위반). */
         FAILED,
         /**
-         * 판정하지 못했다: 문제에 객체가 없음, 같은 코드의 규칙을 판정하지 못함(반영 중 아님·건너뜀), 객체가 판정 대상에 없음(원천 삭제·행 조건 밖). 기록할지는
-         * 135가 정한다.
+         * 판정하지 못했다: 문제에 객체가 없음, 같은 코드의 규칙을 판정하지 못함(반영 중 아님·건너뜀), 객체가 판정 대상에 없음(원천 삭제·행 조건 밖). 검사 감사
+         * 집계에 포함한다.
          */
         NOT_EVALUATED
     }

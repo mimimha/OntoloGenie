@@ -8,11 +8,19 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.axcore.platform.TestcontainersConfiguration;
 import com.axcore.platform.batch.service.QueuedJobPoller;
 import com.axcore.platform.batch.service.QueuedJobRunner;
 import com.axcore.platform.check.CheckRunTestFixtures;
+import com.axcore.platform.check.domain.CheckDataBasis;
 import com.axcore.platform.check.domain.CheckResult;
 import com.axcore.platform.check.domain.IssueReverification;
 import com.axcore.platform.check.domain.IssueReverification.Verdict;
@@ -27,6 +35,7 @@ import com.axcore.platform.check.service.CheckRunJob.Outcome;
 import com.axcore.platform.check.service.CheckRunJob.SkippedRule;
 import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.issue.IssueTestFixtures;
+import com.axcore.platform.issue.service.IssueVerificationRecorder;
 import com.axcore.platform.source.service.CdcReloadJob;
 import java.time.Duration;
 import java.time.Instant;
@@ -41,12 +50,21 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.util.AopTestUtils;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * 검사 실행기(191-2)를 실제 PostgreSQL로 확인한다. 작업 표에서 가져가 객체로 판정하고 규칙별 결과를 저장하기까지를 {@link QueuedJobRunner}로
@@ -55,8 +73,14 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>기본 장면: 작업지시(WO, 출발)의 eq_code가 설비(EQ, 도착)의 code와 같으면 연결되는 MANY_TO_ONE 규칙. WO1은 E1 하나와 맞고(정상),
  * WO2는 맞는 설비가 없고(미연결), WO3은 E3이 둘이라 중복이다.
  */
-@SpringBootTest(properties = "spring.main.keep-alive=false")
-@ActiveProfiles("batch")
+@SpringBootTest(
+        properties = {
+            "spring.main.keep-alive=false",
+            "spring.main.web-application-type=servlet",
+            "axcore.check.sync.enabled=false"
+        })
+@AutoConfigureMockMvc
+@ActiveProfiles({"api", "batch"})
 @Import(TestcontainersConfiguration.class)
 class CheckRunJobTests {
 
@@ -64,8 +88,7 @@ class CheckRunJobTests {
     @MockitoBean QueuedJobPoller queuedJobPoller;
     // 감시 작업이 시험 데이터에 다시 읽기를 넣지 않게 막는다.
     @MockitoBean CdcReloadJob cdcReloadJob;
-    // 문제별 재검증 결과를 받는 확장 지점(135가 구현). 넘긴 값을 확인한다.
-    @MockitoBean IssueReverificationRecorder reverificationRecorder;
+    @MockitoSpyBean IssueVerificationRecorder reverificationRecorder;
 
     @Autowired QueuedJobRunner runner;
     @Autowired CheckRunJob job;
@@ -74,6 +97,8 @@ class CheckRunJobTests {
     @Autowired CheckResultRepository results;
     @Autowired JdbcClient jdbc;
     @Autowired PlatformTransactionManager transactionManager;
+    @Autowired MockMvc mvc;
+    @Autowired JsonMapper json;
 
     private CheckRunTestFixtures fixtures;
     private long accountId;
@@ -139,7 +164,7 @@ class CheckRunJobTests {
 
         assertThat(runner.runNext(job)).isTrue();
 
-        assertThat(status(runId)).isEqualTo("SUCCEEDED");
+        assertThat(runStatus(runId)).isEqualTo("SUCCEEDED");
         List<CheckResult> saved = resultsOf(runId);
         assertThat(saved).hasSize(1);
         CheckResult result = saved.getFirst();
@@ -210,7 +235,7 @@ class CheckRunJobTests {
 
         runner.runNext(job);
 
-        assertThat(status(second)).isEqualTo("SUCCEEDED");
+        assertThat(runStatus(second)).isEqualTo("SUCCEEDED");
         assertThat(resultsOf(second).getFirst().getPreviousResultId())
                 .isEqualTo(resultsOf(first).getFirst().getId());
     }
@@ -240,7 +265,7 @@ class CheckRunJobTests {
 
         assertThat(runner.runNext(job)).isTrue();
 
-        assertThat(status(runId)).isEqualTo("SUCCEEDED");
+        assertThat(runStatus(runId)).isEqualTo("SUCCEEDED");
         ArgumentCaptor<List<IssueReverification>> captured = ArgumentCaptor.captor();
         verify(reverificationRecorder).record(eq(runId), captured.capture(), any());
         assertThat(captured.getValue())
@@ -301,7 +326,7 @@ class CheckRunJobTests {
         assertThat(joined.joined()).isTrue();
         assertThat(joined.run().id()).isEqualTo(queued.id());
         assertThat(runner.runNext(job)).isTrue();
-        assertThat(status(queued.id())).isEqualTo("SUCCEEDED");
+        assertThat(runStatus(queued.id())).isEqualTo("SUCCEEDED");
         assertThat(resultsOf(queued.id()))
                 .singleElement()
                 .satisfies(
@@ -323,6 +348,195 @@ class CheckRunJobTests {
         assertThat(reused.run().dataBasis().resources())
                 .contains(new Resource(eqResource, updatedSync));
         assertThat(runner.runNext(job)).isFalse();
+    }
+
+    @Test
+    void requestsReverificationAndResolvesUsingTheRecordedPass() throws Exception {
+        long previousRule = rule("{}");
+        long baseline = queue("MANUAL", previousRule);
+        assertThat(runner.runNext(job)).isTrue();
+        IssueTestFixtures issueFixtures = new IssueTestFixtures(jdbc);
+        long issue = issueOn(issueFixtures, baseline, previousRule, woObject("WO2"));
+        issueFixtures.markFixedAt(issue, accountId, Instant.EPOCH);
+        long activeRule = revise(previousRule);
+
+        String body =
+                """
+                {"triggerKind":"REVERIFY","scope":{"kind":"ISSUES","issueIds":[%d]},"comparedToRunId":%d}
+                """
+                        .formatted(issue, baseline);
+        String accepted =
+                mvc.perform(
+                                post("/api/v1/checks/runs")
+                                        .with(admin())
+                                        .with(csrf())
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(body))
+                        .andExpect(status().isAccepted())
+                        .andExpect(jsonPath("$.data.status").value("QUEUED"))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        long run = json.readTree(accepted).path("data").path("id").asLong();
+
+        fixtures.insertObject(eqMapping, eqType, "EQ2", "{\"code\": \"E2\"}", "ACTIVE");
+        fixtures.insertSync(dataSource, eqResource, accountId, "SUCCEEDED", Instant.now());
+        assertThat(runner.runNext(job)).isTrue();
+
+        mvc.perform(get("/api/v1/checks/runs/{id}", run).with(admin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data.comparedToRunId").value(baseline));
+        mvc.perform(get("/api/v1/issues/{id}/verifications", issue).with(admin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].checkRunId").value(run))
+                .andExpect(jsonPath("$.data[0].outcome").value("PASSED"))
+                .andExpect(jsonPath("$.data[0].detail.linkMappingId").value(activeRule));
+        mvc.perform(get("/api/v1/checks/runs/{id}/comparison", run).with(admin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.comparedToRunId").value(baseline))
+                .andExpect(jsonPath("$.data.coverage").value("PARTIAL"))
+                .andExpect(
+                        jsonPath("$.data.rows[?(@.category == 'RESOLVED')].objectInstanceId")
+                                .value(org.hamcrest.Matchers.contains((int) woObject("WO2"))))
+                .andExpect(
+                        jsonPath("$.data.rows[?(@.category == 'REMAINING')].objectInstanceId")
+                                .value(org.hamcrest.Matchers.contains((int) woObject("WO3"))));
+
+        mvc.perform(
+                        patch("/api/v1/issues/{id}/status", issue)
+                                .with(admin())
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                {"status":"RESOLVED","reason":"재검증 통과","resolvedCheckRunId":%d,"rowVersion":1}
+                                """
+                                                .formatted(run)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("RESOLVED"))
+                .andExpect(jsonPath("$.data.resolvedCheckRunId").value(run));
+    }
+
+    @Test
+    void classifiesNewOnlyWhenTheSelectedRunRecordedAPass() throws Exception {
+        long rule = rule("{}");
+        long initial = queue("MANUAL", rule);
+        assertThat(runner.runNext(job)).isTrue();
+        IssueTestFixtures issueFixtures = new IssueTestFixtures(jdbc);
+        long objectId = woObject("WO1");
+        long issueId = issueOn(issueFixtures, initial, rule, objectId);
+        issueFixtures.markFixedAt(issueId, accountId, Instant.EPOCH);
+        LoginAccount account = new LoginAccount(accountId, "admin", "ADMIN", false);
+        Scope scope = new Scope("ISSUES", null, List.of(issueId));
+        long previous =
+                requests.request(new CheckRunCreateRequest("REVERIFY", scope, initial), account)
+                        .run()
+                        .id();
+        assertThat(runner.runNext(job)).isTrue();
+        assertThat(verificationCount(previous)).isEqualTo(1);
+
+        jdbc.sql("update object_instance set properties = '{\"eq_code\": \"E9\"}' where id = :id")
+                .param("id", objectId)
+                .update();
+        fixtures.insertSync(dataSource, woResource, accountId, "SUCCEEDED", Instant.now());
+        long current =
+                requests.request(new CheckRunCreateRequest("REVERIFY", scope, previous), account)
+                        .run()
+                        .id();
+
+        mvc.perform(get("/api/v1/checks/runs/{id}/comparison", current).with(admin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.coverage").value("UNAVAILABLE"));
+        assertThat(runner.runNext(job)).isTrue();
+        String comparison = "/api/v1/checks/runs/{id}/comparison";
+        mvc.perform(get(comparison, current)).andExpect(status().isUnauthorized());
+        mvc.perform(get(comparison, current).with(accountWithRole("VIEWER")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get(comparison, current).with(admin()).param("size", "101"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get(comparison, Long.MAX_VALUE).with(admin())).andExpect(status().isNotFound());
+        mvc.perform(get(comparison, initial).with(admin()))
+                .andExpect(status().is(422))
+                .andExpect(jsonPath("$.error.code").value("BUSINESS_RULE_VIOLATION"));
+        mvc.perform(get(comparison, current).with(admin()).param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.comparedToRunId").value(previous))
+                .andExpect(jsonPath("$.data.hasBaselinePassEvidence").value(true))
+                .andExpect(jsonPath("$.meta.totalElements").value(3))
+                .andExpect(jsonPath("$.data.rows[0].category").value("NEW"))
+                .andExpect(jsonPath("$.data.rows[0].objectInstanceId").value(objectId))
+                .andExpect(jsonPath("$.data.rows[0].before.classification").value("MATCHED"))
+                .andExpect(jsonPath("$.data.rows[0].after.rawValue").value("E9"));
+        mvc.perform(get(comparison, current).with(admin()).param("size", "1").param("page", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rows[0].category").value("REMAINING"));
+
+        long comparedToSampleOnly =
+                requests.request(new CheckRunCreateRequest("REVERIFY", scope, initial), account)
+                        .run()
+                        .id();
+        assertThat(runner.runNext(job)).isTrue();
+        mvc.perform(get(comparison, comparedToSampleOnly).with(admin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.coverage").value("PARTIAL"))
+                .andExpect(jsonPath("$.data.hasBaselinePassEvidence").value(false))
+                .andExpect(jsonPath("$.data.rows[?(@.category == 'NEW')]").isEmpty());
+    }
+
+    @Test
+    void doesNotReuseAReverificationFromBeforeHistoryWasRecorded() {
+        long rule = rule("{}");
+        long baseline =
+                fixtures.insertRun(
+                        "MANUAL", "SUCCEEDED", accountId, "detected-" + UUID.randomUUID());
+        long issue = issueOn(new IssueTestFixtures(jdbc), baseline, rule, woObject("WO1"));
+        var request =
+                new CheckRunCreateRequest(
+                        "REVERIFY", new Scope("ISSUES", null, List.of(issue)), baseline);
+        var account = new LoginAccount(accountId, "admin", "ADMIN", false);
+        long legacy = requests.request(request, account).run().id();
+        String scopeJson =
+                "{\"kind\":\"ISSUES\",\"linkMappingIds\":[%d],\"issueIds\":[%d]}"
+                        .formatted(rule, issue);
+        String basisJson =
+                json.writeValueAsString(
+                        new CheckDataBasis(runs.loadCheckpoints(List.of(woResource, eqResource))));
+        String legacyKey =
+                "REVERIFY:"
+                        + baseline
+                        + ":"
+                        + CheckRunRequestService.sha256(scopeJson + "|" + basisJson);
+        jdbc.sql(
+                        """
+                        update check_run set status = 'SUCCEEDED', started_at = now(),
+                            finished_at = now(), work_key = :key where id = :id
+                        """)
+                .param("key", legacyKey)
+                .param("id", legacy)
+                .update();
+
+        CheckRunRequestResponse accepted = requests.request(request, account);
+        assertThat(accepted.reused()).isFalse();
+        assertThat(accepted.run().id()).isNotEqualTo(legacy);
+        assertThat(runner.runNext(job)).isTrue();
+        assertThat(verificationCount(legacy)).isZero();
+        assertThat(verificationCount(accepted.run().id())).isEqualTo(1);
+        CheckRunRequestResponse repeated = requests.request(request, account);
+        assertThat(repeated.reused()).isTrue();
+        assertThat(repeated.run().id()).isEqualTo(accepted.run().id());
+    }
+
+    private RequestPostProcessor admin() {
+        return accountWithRole("ADMIN");
+    }
+
+    private RequestPostProcessor accountWithRole(String role) {
+        return authentication(
+                new UsernamePasswordAuthenticationToken(
+                        new LoginAccount(accountId, "admin", role, false),
+                        null,
+                        List.of(new SimpleGrantedAuthority("ROLE_" + role))));
     }
 
     @Test
@@ -393,26 +607,35 @@ class CheckRunJobTests {
         long detected =
                 fixtures.insertRun(
                         "MANUAL", "SUCCEEDED", accountId, "detected-" + UUID.randomUUID());
-        long issue = issueOn(new IssueTestFixtures(jdbc), detected, rule, woObject("WO2"));
+        IssueTestFixtures issueFixtures = new IssueTestFixtures(jdbc);
+        long issue = issueOn(issueFixtures, detected, rule, woObject("WO2"));
+        issueFixtures.markFixedAt(issue, accountId, Instant.EPOCH);
         CheckRunCreateRequest request =
                 new CheckRunCreateRequest(
                         "REVERIFY", new Scope("ISSUES", null, List.of(issue)), detected);
         LoginAccount admin = new LoginAccount(accountId, "admin", "ADMIN", false);
         CheckRunResponse queued = requests.request(request, admin).run();
+        IssueVerificationRecorder spy =
+                AopTestUtils.getUltimateTargetObject(reverificationRecorder);
         doAnswer(
                         invocation -> {
                             results.flush();
                             assertThat(resultsOf(queued.id())).hasSize(1);
+                            invocation.callRealMethod();
+                            assertThat(verificationCount(queued.id())).isEqualTo(1);
+                            assertThat(issueStatus(issue)).isEqualTo("CHECKING");
                             throw new IllegalStateException("시험용 재검증 기록 실패");
                         })
-                .when(reverificationRecorder)
+                .when(spy)
                 .record(eq(queued.id()), any(), any());
 
         assertThat(runner.runNext(job)).isTrue();
 
         verify(reverificationRecorder).record(eq(queued.id()), any(), any());
-        assertThat(status(queued.id())).isEqualTo("FAILED");
+        assertThat(runStatus(queued.id())).isEqualTo("FAILED");
         assertThat(resultsOf(queued.id())).isEmpty();
+        assertThat(verificationCount(queued.id())).isZero();
+        assertThat(issueStatus(issue)).isEqualTo("FIXED_PENDING_REVERIFY");
         CheckRunResponse retry = requests.request(request, admin).run();
         assertThat(retry.id()).isNotEqualTo(queued.id());
         assertThat(retry.status()).isEqualTo("QUEUED");
@@ -426,7 +649,7 @@ class CheckRunJobTests {
 
         runner.runNext(job);
 
-        assertThat(status(runId)).isEqualTo("SUCCEEDED");
+        assertThat(runStatus(runId)).isEqualTo("SUCCEEDED");
         verifyNoInteractions(reverificationRecorder);
     }
 
@@ -463,7 +686,7 @@ class CheckRunJobTests {
 
         runner.runNext(job);
 
-        assertThat(status(runId)).isEqualTo("FAILED");
+        assertThat(runStatus(runId)).isEqualTo("FAILED");
         assertThat(errorMessage(runId)).startsWith("검사할 수 있는 규칙이 없습니다.");
         assertThat(resultsOf(runId)).isEmpty();
     }
@@ -474,7 +697,7 @@ class CheckRunJobTests {
 
         assertThat(runner.runNext(job)).isFalse();
 
-        assertThat(status(candidate)).isEqualTo("QUEUED");
+        assertThat(runStatus(candidate)).isEqualTo("QUEUED");
     }
 
     /** 활성 규칙: WO.eq_code = EQ.code, 변환 없음. */
@@ -569,9 +792,23 @@ class CheckRunJobTests {
         return results.findAll().stream().filter(r -> r.getCheckRunId() == runId).toList();
     }
 
-    private String status(long runId) {
+    private String runStatus(long runId) {
         return jdbc.sql("select status from check_run where id = :id")
                 .param("id", runId)
+                .query(String.class)
+                .single();
+    }
+
+    private long verificationCount(long runId) {
+        return jdbc.sql("select count(*) from issue_verification where check_run_id = :id")
+                .param("id", runId)
+                .query(Long.class)
+                .single();
+    }
+
+    private String issueStatus(long issueId) {
+        return jdbc.sql("select status from issue where id = :id")
+                .param("id", issueId)
                 .query(String.class)
                 .single();
     }

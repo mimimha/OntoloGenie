@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, useNavigate } from 'react-router'
@@ -84,6 +84,192 @@ function HistoryControl() {
     </button>
   )
 }
+
+test('재검증 결과와 상태 변경 이력을 함께 표시하고 해결 후 갱신한다', async () => {
+  let requested = false
+  let resolved = false
+  const run = {
+    id: 42,
+    triggerKind: 'REVERIFY',
+    scope: { kind: 'ISSUES', issueIds: [1], linkMappingIds: [12] },
+    comparedToRunId: issueFixture.detectedCheckRunId,
+    requestedAt: '2026-11-11T05:59:00Z',
+    startedAt: '2026-11-11T05:59:30Z',
+    finishedAt: '2026-11-11T06:00:00Z',
+    errorMessage: null,
+    dataBasis: { resources: [] },
+  }
+  const stateHistory = vi.fn(() => {
+    const entries = [
+      {
+        id: 1,
+        issueId: 1,
+        beforeStatus: 'CHECKING',
+        afterStatus: 'FIXED_PENDING_REVERIFY',
+        changedAt: '2026-11-11T05:00:00Z',
+        changedBy: 5,
+        checkRunId: null,
+        note: '원천 수정 완료',
+      },
+    ]
+    if (resolved) {
+      entries.push({
+        ...entries[0],
+        id: 2,
+        beforeStatus: 'FIXED_PENDING_REVERIFY',
+        afterStatus: 'RESOLVED',
+        changedAt: '2026-11-11T06:01:00Z',
+        note: '해결 근거 확인',
+      })
+    }
+    return HttpResponse.json({
+      data: entries,
+      meta: {
+        page: 0,
+        size: 20,
+        totalElements: entries.length,
+        hasNext: false,
+      },
+    })
+  })
+  server.use(
+    http.get('/api/v1/issues/1/history', stateHistory),
+    http.get('/api/v1/issues/1', () =>
+      HttpResponse.json({
+        data: {
+          ...issueFixture,
+          status: resolved ? 'RESOLVED' : 'FIXED_PENDING_REVERIFY',
+          resolvedCheckRunId: resolved ? 42 : null,
+        },
+      }),
+    ),
+    http.post('/api/v1/checks/runs', async ({ request }) => {
+      expect(await request.json()).toEqual({
+        triggerKind: 'REVERIFY',
+        scope: { kind: 'ISSUES', issueIds: [1] },
+        comparedToRunId: issueFixture.detectedCheckRunId,
+      })
+      requested = true
+      return HttpResponse.json(
+        {
+          data: {
+            ...run,
+            status: 'QUEUED',
+            startedAt: null,
+            finishedAt: null,
+            joined: false,
+            reused: false,
+          },
+        },
+        { status: 202 },
+      )
+    }),
+    http.get('/api/v1/checks/runs/42', () =>
+      HttpResponse.json({ data: { ...run, status: 'SUCCEEDED' } }),
+    ),
+    http.get('/api/v1/issues/1/verifications', () =>
+      HttpResponse.json({
+        data: requested
+          ? [
+              {
+                issueId: 1,
+                checkRunId: 42,
+                triggerKind: 'REVERIFY',
+                status: 'SUCCEEDED',
+                outcome: 'PASSED',
+                detail: { rawValue: 'E023' },
+                checkedAt: '2026-11-11T06:00:00Z',
+              },
+            ]
+          : [],
+        meta: {
+          page: 0,
+          size: 20,
+          totalElements: requested ? 1 : 0,
+          hasNext: false,
+        },
+      }),
+    ),
+    http.get('/api/v1/checks/runs/42/comparison', () =>
+      HttpResponse.json({
+        data: {
+          comparedToRunId: issueFixture.detectedCheckRunId,
+          coverage: 'PARTIAL',
+          hasBaselinePassEvidence: false,
+          rows: [
+            {
+              category: 'RESOLVED',
+              ruleCode: 'W2E',
+              objectInstanceId: 12,
+              before: { classification: 'UNMATCHED', reason: '수정 전 근거' },
+              after: { classification: 'MATCHED' },
+            },
+          ],
+        },
+        meta: { page: 0, size: 20, totalElements: 1, hasNext: false },
+      }),
+    ),
+    http.patch('/api/v1/issues/1/status', async ({ request }) => {
+      expect(await request.json()).toEqual({
+        status: 'RESOLVED',
+        reason: '통과 확인',
+        rowVersion: issueFixture.rowVersion,
+        resolvedCheckRunId: 42,
+      })
+      resolved = true
+      return HttpResponse.json({
+        data: {
+          ...issueFixture,
+          status: 'RESOLVED',
+          rowVersion: issueFixture.rowVersion + 1,
+          resolvedCheckRunId: 42,
+        },
+      })
+    }),
+  )
+  const user = userEvent.setup()
+  open('?view=issues&issue=1')
+  const dialog = within(await screen.findByRole('dialog'))
+  const stateHistoryRegion = within(
+    await dialog.findByRole('region', { name: '상태 변경 이력' }),
+  )
+  expect(
+    await stateHistoryRegion.findByText('원천 수정 완료'),
+  ).toBeInTheDocument()
+  const initialHistoryRequests = stateHistory.mock.calls.length
+  await user.click(await dialog.findByRole('button', { name: '재검증 실행' }))
+  expect(await dialog.findByText('재검증 실행 #42 · 완료')).toBeInTheDocument()
+  await user.click(dialog.getByText('검사 결과 비교'))
+  const verificationHistoryRegion = within(
+    await dialog.findByRole('region', { name: '문제 재검증 이력' }),
+  )
+  expect(
+    await verificationHistoryRegion.findByText('실행 #42 · 통과'),
+  ).toBeInTheDocument()
+  await waitFor(() =>
+    expect(stateHistory.mock.calls.length).toBeGreaterThan(
+      initialHistoryRequests,
+    ),
+  )
+  expect(stateHistoryRegion.getByText('원천 수정 완료')).toBeInTheDocument()
+  expect(await dialog.findByText(/수정 전 근거/)).toBeInTheDocument()
+  expect(
+    dialog.getByRole('heading', { name: '신규 문제 확인 불가' }),
+  ).toBeInTheDocument()
+  await user.selectOptions(dialog.getByLabelText('변경할 상태'), 'RESOLVED')
+  await user.type(dialog.getByLabelText('변경 사유'), '통과 확인')
+  await user.type(dialog.getByLabelText('통과한 재검증 실행 ID'), '42')
+  await user.click(dialog.getByRole('button', { name: '상태 변경' }))
+  expect(
+    await dialog.findByText('처리 상태를 변경했습니다.'),
+  ).toBeInTheDocument()
+  expect(
+    await stateHistoryRegion.findByText('해결 근거 확인'),
+  ).toBeInTheDocument()
+  expect(
+    verificationHistoryRegion.getByText('실행 #42 · 통과'),
+  ).toBeInTheDocument()
+})
 
 function open(
   search = '',

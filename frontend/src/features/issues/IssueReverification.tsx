@@ -8,6 +8,7 @@ import Pagination from '../../components/Pagination'
 import { fetchRunResults } from '../review/checkApi'
 import { Result } from '../review/CheckResults'
 import type { Issue } from './api'
+import ReverificationHistory from './ReverificationHistory'
 import {
   fetchReverificationRun,
   requestReverification,
@@ -124,6 +125,12 @@ export default function IssueReverification({ issue }: { issue: Issue }) {
       client.invalidateQueries({ queryKey: ['issues', 'detail', issue.id] }),
       client.invalidateQueries({ queryKey: ['issues', 'list'] }),
       client.invalidateQueries({ queryKey: ['issues', 'history', issue.id] }),
+      client.invalidateQueries({
+        queryKey: ['issues', 'verifications', issue.id],
+      }),
+      client.invalidateQueries({
+        queryKey: ['issues', 'reverification-comparison', run.id],
+      }),
       client.invalidateQueries({
         queryKey: ['issues', 'check-results', run.id],
       }),
@@ -302,7 +309,12 @@ export default function IssueReverification({ issue }: { issue: Issue }) {
                     key={resolvedCheckRunId}
                     title="해결 처리에 사용한 재검증 결과"
                     runId={resolvedCheckRunId}
-                    filter={filter}
+                    filter={
+                      run?.id === resolvedCheckRunId &&
+                      run.status === 'SUCCEEDED'
+                        ? { linkMappingId: run.scope.linkMappingIds[0]! }
+                        : filter
+                    }
                   />
                 ) : (
                   <p className="text-sm text-slate-500">
@@ -315,18 +327,22 @@ export default function IssueReverification({ issue }: { issue: Issue }) {
                 이 문제에서 조회할 수 있는 검사 기록이 없습니다.
               </p>
             )}
-            {execution.isSuccess && run?.status === 'SUCCEEDED' && (
-              <RunResults
-                key={run.id}
-                title="이번 재검증 검사 결과"
-                runId={run.id}
-                filter={{ linkMappingId: run.scope.linkMappingIds[0]! }}
-              />
-            )}
-            <p className="text-sm text-slate-500">
-              문제별 재검증 판정은 아직 조회할 수 없습니다. 표시된 검사 건수와
-              표본은 규칙 전체의 결과입니다.
-            </p>
+            {execution.isSuccess &&
+              run?.status === 'SUCCEEDED' &&
+              run.id !== resolvedCheckRunId && (
+                <RunResults
+                  key={run.id}
+                  title="이번 재검증 검사 결과"
+                  runId={run.id}
+                  filter={{ linkMappingId: run.scope.linkMappingIds[0]! }}
+                />
+              )}
+            <ReverificationHistory
+              key={runId}
+              issueId={issue.id}
+              completedRunId={run?.status === 'SUCCEEDED' ? run.id : undefined}
+              resolvedRunId={resolvedCheckRunId}
+            />
           </div>
         )}
       </details>
