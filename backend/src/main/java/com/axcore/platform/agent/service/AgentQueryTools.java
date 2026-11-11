@@ -66,7 +66,7 @@ public class AgentQueryTools {
     /**
      * 검색 결과 한 건. 속성은 076이 권한에 따라 가린 값이다. 가린 속성은 키를 남기고 값만 null이라, restrictedPropertyCodes로 "값 없음"과
      * "볼 권한 없음"을 구분한다(076과 같은 정보이며 질문한 사용자에게 이미 보이는 값이다). dataAsOf는 객체 속성의 업무 기준일이고, 답변 결과의 기준
-     * 시점(테이블 확인 시각)과 다르다(정책 문서 4.1).
+     * 시점(테이블 확인 시각)과 다르다(정책 문서 4.1). 날짜가 하루 틀어지지 않게 한국 시간 오프셋으로 적는다(145).
      */
     public record ObjectSummary(
             long id,
@@ -76,7 +76,7 @@ public class AgentQueryTools {
             Map<String, Object> properties,
             List<String> restrictedPropertyCodes,
             ObjectSearchRequest.Status status,
-            Instant dataAsOf) {
+            String dataAsOf) {
 
         static ObjectSummary from(ObjectSearchResponse response) {
             return new ObjectSummary(
@@ -89,7 +89,7 @@ public class AgentQueryTools {
                             ? List.of()
                             : response.restrictedPropertyCodes(),
                     response.status(),
-                    response.dataAsOf());
+                    AgentQuerySession.inUserZone(response.dataAsOf()));
         }
     }
 
@@ -146,7 +146,7 @@ public class AgentQueryTools {
 
     /**
      * API 076. 볼 수 있는 객체 유형만 찾고 민감 속성은 가린다(205). 원천에서 삭제된 객체는 관리자만 찾을 수 있고, 그 밖의 사용자는 DENIED다. 기준
-     * 시점(테이블 확인 시각)은 S15P31C106-145에서 채운다.
+     * 시점(테이블 확인 시각)은 찾은 객체들이 나온 원천 표 기준이다(145).
      */
     @Tool(
             name = OBJECT_SEARCH,
@@ -187,15 +187,17 @@ public class AgentQueryTools {
                         Map<String, Object> data = new LinkedHashMap<>();
                         data.put("total", page.getTotalElements());
                         data.put("objects", rows);
+                        List<Long> found = rows.stream().map(ObjectSummary::id).toList();
+                        // 결과가 없으면 어느 표를 봤는지 객체로 알 수 없어 기준 시점을 비운다(정책 문서 4.2).
                         return new AgentQuerySession.Outcome(
                                 data,
                                 rows.isEmpty()
                                         ? AgentResultCategory.NO_DATA
                                         : AgentResultCategory.FOUND,
-                                rows.stream()
-                                        .map(row -> Map.<String, Object>of("objectId", row.id()))
+                                found.stream()
+                                        .map(id -> Map.<String, Object>of("objectId", id))
                                         .toList(),
-                                null);
+                                session.dataAsOfObjects(found));
                     } catch (BusinessException ex) {
                         if (ex.getErrorCode() != CommonErrorCode.FORBIDDEN) {
                             throw ex;

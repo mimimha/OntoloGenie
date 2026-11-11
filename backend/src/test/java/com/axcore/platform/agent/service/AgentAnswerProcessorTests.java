@@ -55,7 +55,8 @@ class AgentAnswerProcessorTests {
                     recorder,
                     targetResolver,
                     Clock.systemUTC(),
-                    new SyncTaskExecutor());
+                    new SyncTaskExecutor(),
+                    mock(DataAsOfResolver.class));
 
     @Test
     void keepsActionAlreadyRunWhenAiFailsAfterward() {

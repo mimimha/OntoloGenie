@@ -43,16 +43,15 @@ public class AgentObjectEvidenceTools {
                         AgentQueryTools.noDataIfMissing(
                                 () -> {
                                     long id = AgentQueryTools.required(objectId, "objectId");
+                                    long link = AgentQueryTools.required(linkId, "linkId");
                                     ObjectLinkEvidenceResponse found =
-                                            evidence.linkEvidence(
-                                                    session.asker(),
-                                                    id,
-                                                    AgentQueryTools.required(linkId, "linkId"));
+                                            evidence.linkEvidence(session.asker(), id, link);
+                                    // 근거는 관계 양 끝 객체의 원천 값이라 두 객체의 표 기준으로 구한다(145).
                                     return new AgentQuerySession.Outcome(
                                             found,
                                             AgentResultCategory.FOUND,
                                             List.of(Map.of("objectId", id)),
-                                            null);
+                                            session.dataAsOfLink(link));
                                 }));
     }
 }

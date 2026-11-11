@@ -132,7 +132,8 @@ class AgentQuerySessionTests {
                                         Instant.parse("2026-11-09T00:40:00Z")));
 
         // 재배정 계획의 기준 시점을 조회한 데이터의 시점으로 채울 수 있게 AI에게도 알려 준다(160).
-        assertThat(reply).containsEntry("dataAsOf", "2026-11-09T00:40:00Z");
+        // 답변에 한국 시간으로 말하게 같은 순간을 한국 시간 오프셋으로 적는다(145).
+        assertThat(reply).containsEntry("dataAsOf", "2026-11-09T09:40+09:00");
     }
 
     @Test

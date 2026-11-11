@@ -4,6 +4,7 @@ import com.axcore.platform.audit.domain.AgentResultCategory;
 import com.axcore.platform.global.security.LoginAccount;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -27,6 +28,9 @@ public class AgentQuerySession {
     /** 객체 하나를 조회하는 도구의 대상 종류. */
     static final String OBJECT_INSTANCE = "object_instance";
 
+    /** AI에게 알려 주는 기준 시점의 시간대. 답변은 한국 시간으로 말한다. */
+    private static final ZoneId USER_ZONE = ZoneId.of("Asia/Seoul");
+
     private final LoginAccount asker;
     private final long questionId;
     private final AgentQueryRecorder recorder;
@@ -41,12 +45,56 @@ public class AgentQuerySession {
     // 도구 결과에 나온 객체도 조회를 허용하는가. 종류 전체 질문이면 허용하지 않는다(326).
     private boolean allowFoundObjects;
 
+    // 조회 결과의 기준 시점을 구한다(145). null이면 구하지 않고 기준 시점을 비운다.
+    private final DataAsOfResolver dataAsOf;
+
+    /** 기준 시점을 구하지 않는 세션. 기준 시점과 관계없는 도구·기록 테스트가 쓴다. */
     public AgentQuerySession(
             LoginAccount asker, long questionId, AgentQueryRecorder recorder, Clock clock) {
+        this(asker, questionId, recorder, clock, null);
+    }
+
+    public AgentQuerySession(
+            LoginAccount asker,
+            long questionId,
+            AgentQueryRecorder recorder,
+            Clock clock,
+            DataAsOfResolver dataAsOf) {
         this.asker = asker;
         this.questionId = questionId;
         this.recorder = recorder;
         this.clock = clock;
+        this.dataAsOf = dataAsOf;
+    }
+
+    /**
+     * AI에게 넘기는 시각을 한국 시간 오프셋으로 적는다(예: 2026-11-11T10:00+09:00). UTC로 넘기면 AI가 날짜·시각을 9시간 틀리게 말할 수 있다.
+     * null이면 null이다.
+     */
+    static String inUserZone(Instant instant) {
+        return instant == null ? null : instant.atZone(USER_ZONE).toOffsetDateTime().toString();
+    }
+
+    /** 객체들이 나온 원천 표 기준의 기준 시점(145). 구하다 실패해도 조회 결과까지 실패로 만들지 않고 기준 시점만 비운다("기준 시점 확인 불가"). */
+    Instant dataAsOfObjects(Collection<Long> objectIds) {
+        return safely(() -> dataAsOf.forObjects(objectIds));
+    }
+
+    /** 관계 한 건의 양 끝 객체가 나온 원천 표 기준의 기준 시점(145). */
+    Instant dataAsOfLink(long linkId) {
+        return safely(() -> dataAsOf.forLink(linkId));
+    }
+
+    private Instant safely(Supplier<Instant> query) {
+        if (dataAsOf == null) {
+            return null;
+        }
+        try {
+            return query.get();
+        } catch (RuntimeException ex) {
+            log.warn("질문 {}의 조회 결과 기준 시점을 구하지 못했습니다. 기준 시점을 비웁니다.", questionId, ex);
+            return null;
+        }
     }
 
     /** 조회 결과. data는 AI에게 넘길 값이다. */
@@ -126,8 +174,8 @@ public class AgentQuerySession {
             reply.put("resultCategory", outcome.category().name());
             reply.put("data", outcome.data());
             // AI가 계획의 기준 시점(dataAsOf)을 조회한 데이터의 시점으로 채울 수 있게 함께 알려 준다. 모르면 null이다(160).
-            reply.put(
-                    "dataAsOf", outcome.dataAsOf() == null ? null : outcome.dataAsOf().toString());
+            // 답변에 기준 시점을 한국 시간으로 말하게, 같은 순간을 한국 시간 오프셋으로 적어 준다(145).
+            reply.put("dataAsOf", inUserZone(outcome.dataAsOf()));
         } catch (RuntimeException ex) {
             log.error("Agent 조회 도구 {} 실패 question={}", toolCode, questionId, ex);
             result =
