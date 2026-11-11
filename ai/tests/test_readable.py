@@ -295,3 +295,34 @@ def test_via_table_hold_keeps_its_confidence_cap():
         "mes.work_order 경유 관계라 연결 규칙 생성 불가. 관계 유형만 제안"
     )
     assert cap == 0.4
+
+
+def test_fingerprint_ignores_llm_wording_but_not_content():
+    from app.proposers.api_format import fingerprint_payload
+
+    base = {
+        "code": "DEPARTMENT",
+        "name": "부서",
+        "description": "부서 기준 정보",
+        "category": "master",
+        "properties": [
+            {"code": "dept_code", "name": "부서 코드", "description": "부서 식별 코드"}
+        ],
+    }
+    reworded = {
+        **base,
+        "description": "조직 단위 기준 정보",
+        "properties": [
+            {
+                "code": "dept_code",
+                "name": "부서코드",
+                "description": "부서를 가리키는 코드",
+            }
+        ],
+    }
+    added = {**base, "properties": [*base["properties"], {"code": "manager_emp_no"}]}
+    assert fingerprint_payload(base) == fingerprint_payload(reworded)
+    assert fingerprint_payload(base) != fingerprint_payload(added)
+    assert fingerprint_payload(base) != fingerprint_payload(
+        {**base, "category": "history"}
+    )
