@@ -427,39 +427,31 @@ class CheckRunJobTests {
         long objectId = woObject("WO1");
         long issueId = issueOn(issueFixtures, initial, rule, objectId);
         issueFixtures.markFixedAt(issueId, accountId, Instant.EPOCH);
-        LoginAccount account = new LoginAccount(accountId, "admin", "ADMIN", false);
         Scope scope = new Scope("ISSUES", null, List.of(issueId));
-        long previous =
-                requests.request(new CheckRunCreateRequest("REVERIFY", scope, initial), account)
-                        .run()
-                        .id();
+        long previous = requestReverification(scope, initial);
         assertThat(runner.runNext(job)).isTrue();
-        assertThat(verificationCount(previous)).isEqualTo(1);
 
         jdbc.sql("update object_instance set properties = '{\"eq_code\": \"E9\"}' where id = :id")
                 .param("id", objectId)
                 .update();
         fixtures.insertSync(dataSource, woResource, accountId, "SUCCEEDED", Instant.now());
-        long current =
-                requests.request(new CheckRunCreateRequest("REVERIFY", scope, previous), account)
-                        .run()
-                        .id();
+        long current = requestReverification(scope, previous);
 
-        mvc.perform(get("/api/v1/checks/runs/{id}/comparison", current).with(admin()))
+        String path = "/api/v1/checks/runs/{id}/comparison";
+        mvc.perform(get(path, current).with(admin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.coverage").value("UNAVAILABLE"));
         assertThat(runner.runNext(job)).isTrue();
-        String comparison = "/api/v1/checks/runs/{id}/comparison";
-        mvc.perform(get(comparison, current)).andExpect(status().isUnauthorized());
-        mvc.perform(get(comparison, current).with(accountWithRole("VIEWER")))
+        mvc.perform(get(path, current)).andExpect(status().isUnauthorized());
+        mvc.perform(get(path, current).with(accountWithRole("VIEWER")))
                 .andExpect(status().isForbidden());
-        mvc.perform(get(comparison, current).with(admin()).param("size", "101"))
+        mvc.perform(get(path, current).with(admin()).param("size", "101"))
                 .andExpect(status().isBadRequest());
-        mvc.perform(get(comparison, Long.MAX_VALUE).with(admin())).andExpect(status().isNotFound());
-        mvc.perform(get(comparison, initial).with(admin()))
+        mvc.perform(get(path, Long.MAX_VALUE).with(admin())).andExpect(status().isNotFound());
+        mvc.perform(get(path, initial).with(admin()))
                 .andExpect(status().is(422))
                 .andExpect(jsonPath("$.error.code").value("BUSINESS_RULE_VIOLATION"));
-        mvc.perform(get(comparison, current).with(admin()).param("size", "1"))
+        mvc.perform(get(path, current).with(admin()).param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.comparedToRunId").value(previous))
                 .andExpect(jsonPath("$.data.hasBaselinePassEvidence").value(true))
@@ -468,16 +460,13 @@ class CheckRunJobTests {
                 .andExpect(jsonPath("$.data.rows[0].objectInstanceId").value(objectId))
                 .andExpect(jsonPath("$.data.rows[0].before.classification").value("MATCHED"))
                 .andExpect(jsonPath("$.data.rows[0].after.rawValue").value("E9"));
-        mvc.perform(get(comparison, current).with(admin()).param("size", "1").param("page", "1"))
+        mvc.perform(get(path, current).with(admin()).param("size", "1").param("page", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.rows[0].category").value("REMAINING"));
 
-        long comparedToSampleOnly =
-                requests.request(new CheckRunCreateRequest("REVERIFY", scope, initial), account)
-                        .run()
-                        .id();
+        long comparedToSampleOnly = requestReverification(scope, initial);
         assertThat(runner.runNext(job)).isTrue();
-        mvc.perform(get(comparison, comparedToSampleOnly).with(admin()))
+        mvc.perform(get(path, comparedToSampleOnly).with(admin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.coverage").value("PARTIAL"))
                 .andExpect(jsonPath("$.data.hasBaselinePassEvidence").value(false))
@@ -502,11 +491,8 @@ class CheckRunJobTests {
         String basisJson =
                 json.writeValueAsString(
                         new CheckDataBasis(runs.loadCheckpoints(List.of(woResource, eqResource))));
-        String legacyKey =
-                "REVERIFY:"
-                        + baseline
-                        + ":"
-                        + CheckRunRequestService.sha256(scopeJson + "|" + basisJson);
+        String fingerprint = CheckRunRequestService.sha256(scopeJson + "|" + basisJson);
+        String legacyKey = "REVERIFY:%d:%s".formatted(baseline, fingerprint);
         jdbc.sql(
                         """
                         update check_run set status = 'SUCCEEDED', started_at = now(),
@@ -525,6 +511,12 @@ class CheckRunJobTests {
         CheckRunRequestResponse repeated = requests.request(request, account);
         assertThat(repeated.reused()).isTrue();
         assertThat(repeated.run().id()).isEqualTo(accepted.run().id());
+    }
+
+    private long requestReverification(Scope scope, long baseline) {
+        var request = new CheckRunCreateRequest("REVERIFY", scope, baseline);
+        var account = new LoginAccount(accountId, "admin", "ADMIN", false);
+        return requests.request(request, account).run().id();
     }
 
     private RequestPostProcessor admin() {

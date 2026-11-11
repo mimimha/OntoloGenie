@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -27,6 +26,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,7 +43,7 @@ class IssueVerificationApiIntegrationTests {
 
     @Autowired MockMvc mvc;
     @Autowired JdbcClient jdbc;
-    @Autowired ObjectProvider<IssueReverificationRecorder> recorders;
+    @Autowired IssueReverificationRecorder recorder;
 
     private IssueTestFixtures fixtures;
     private long accountId;
@@ -72,7 +72,7 @@ class IssueVerificationApiIntegrationTests {
         record(runId, new IssueReverification(issueId, mappingId, Verdict.PASSED, detail, null));
 
         assertThat(issueStatus(issueId)).isEqualTo("FIXED_PENDING_REVERIFY");
-        mvc.perform(get(PATH, issueId).with(loggedIn("ADMIN")))
+        mvc.perform(adminHistory(issueId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].issueId").value(issueId))
                 .andExpect(jsonPath("$.data[0].checkRunId").value(runId))
@@ -113,7 +113,7 @@ class IssueVerificationApiIntegrationTests {
                 new IssueReverification(
                         issueId, mappingId, Verdict.NOT_EVALUATED, Map.of(), "대상 없음"));
 
-        mvc.perform(get(PATH, issueId).with(loggedIn("ADMIN")))
+        mvc.perform(adminHistory(issueId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isEmpty())
                 .andExpect(jsonPath("$.meta.totalElements").value(0));
@@ -130,16 +130,12 @@ class IssueVerificationApiIntegrationTests {
         record(second, verdict);
         fixtures.insertVerification(newIssue(), second, "FAILED");
 
-        mvc.perform(get(PATH, issueId).param("size", "1").with(loggedIn("ADMIN")))
+        mvc.perform(adminHistory(issueId).param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].checkRunId").value(second))
                 .andExpect(jsonPath("$.meta.totalElements").value(2))
                 .andExpect(jsonPath("$.meta.hasNext").value(true));
-        mvc.perform(
-                        get(PATH, issueId)
-                                .param("page", "1")
-                                .param("size", "1")
-                                .with(loggedIn("ADMIN")))
+        mvc.perform(adminHistory(issueId).param("page", "1").param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].checkRunId").value(first))
                 .andExpect(jsonPath("$.meta.hasNext").value(false));
@@ -150,18 +146,17 @@ class IssueVerificationApiIntegrationTests {
         long issueId = newIssue();
         mvc.perform(get(PATH, issueId)).andExpect(status().isUnauthorized());
         mvc.perform(get(PATH, issueId).with(loggedIn("USER"))).andExpect(status().isForbidden());
-        mvc.perform(get(PATH, Long.MAX_VALUE).with(loggedIn("ADMIN")))
-                .andExpect(status().isNotFound());
-        mvc.perform(get(PATH, 0).with(loggedIn("ADMIN"))).andExpect(status().isBadRequest());
-        mvc.perform(get(PATH, issueId).param("page", "-1").with(loggedIn("ADMIN")))
-                .andExpect(status().isBadRequest());
-        mvc.perform(get(PATH, issueId).param("size", "0").with(loggedIn("ADMIN")))
-                .andExpect(status().isBadRequest());
+        mvc.perform(adminHistory(Long.MAX_VALUE)).andExpect(status().isNotFound());
+        mvc.perform(adminHistory(0)).andExpect(status().isBadRequest());
+        mvc.perform(adminHistory(issueId).param("page", "-1")).andExpect(status().isBadRequest());
+        mvc.perform(adminHistory(issueId).param("size", "0")).andExpect(status().isBadRequest());
+    }
+
+    private MockHttpServletRequestBuilder adminHistory(long issueId) {
+        return get(PATH, issueId).with(loggedIn("ADMIN"));
     }
 
     private void record(long runId, IssueReverification verdict) {
-        IssueReverificationRecorder recorder = recorders.getIfAvailable();
-        assertThat(recorder).isNotNull();
         recorder.record(runId, List.of(verdict), CHECKED_AT);
     }
 
