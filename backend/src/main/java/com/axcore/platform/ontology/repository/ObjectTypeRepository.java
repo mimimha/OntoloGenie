@@ -1,6 +1,7 @@
 package com.axcore.platform.ontology.repository;
 
 import com.axcore.platform.ontology.domain.ObjectType;
+import com.axcore.platform.ontology.dto.ModelGraphNodeResponse;
 import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
@@ -20,6 +21,11 @@ public interface ObjectTypeRepository extends JpaRepository<ObjectType, Long> {
 
     /** 객체 검색 유형 선택지(347). 볼 수 있는 유형 ID로 거르고 이름, 같으면 ID 순서로 돌려준다. */
     List<ObjectType> findByIdInOrderByNameAscIdAsc(Collection<Long> ids);
+
+    @Query(
+            "select new com.axcore.platform.ontology.dto.ModelGraphNodeResponse(t.id, t.code, t.name)"
+                    + " from ObjectType t order by t.id")
+    List<ModelGraphNodeResponse> findModelGraphNodes();
 
     /** 코드·이름·동의어 중 하나가 pattern(ILIKE)과 맞는 유형. 등록 순서로 돌려준다 (API 021). */
     @Query(
