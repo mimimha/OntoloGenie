@@ -63,6 +63,34 @@ class AgentAnswerProcessorTests {
                     summaries);
 
     @Test
+    void answersOutsideBusinessWithoutLookingUpOrAskingBack() {
+        when(interpreter.isConfigured()).thenReturn(true);
+        for (QuestionScope scope : List.of(QuestionScope.OUT_OF_SCOPE, QuestionScope.HELP)) {
+            // 업무 외 질문에서 AI가 대상 같은 값을 잘못 뽑아도 찾거나 되묻지 않는다.
+            when(interpreter.interpret(any(), any(), any(), any(), any(), any()))
+                    .thenReturn(
+                            new QuestionInterpretation(
+                                    null,
+                                    List.of("서울"),
+                                    null,
+                                    null,
+                                    List.of(),
+                                    null,
+                                    List.of(),
+                                    scope));
+
+            processor.onRequested(EVENT);
+
+            verify(answers).answerOutsideBusiness(900L, scope);
+        }
+        // 업무 외 질문은 정해진 문장으로 끝내 조회 도구와 답변 AI를 부르지 않는다(업무 외 질문 가드레일).
+        verify(targetResolver, never()).resolve(any(), any(), any());
+        verify(responder, never()).answer(any(), any(), any(), any());
+        verify(answers, never()).answerClarification(anyLong(), any(), any(), any());
+        verify(answers, never()).answerWithResults(anyLong(), any(), any(), any(), any());
+    }
+
+    @Test
     void passesOlderSummaryToInterpreterAndRefreshesItAfterAnswering() {
         when(summaries.enabled()).thenReturn(true);
         when(interpreter.isConfigured()).thenReturn(true);

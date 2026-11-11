@@ -79,6 +79,11 @@ public class AgentAnswerProcessor {
                             event.previous(),
                             event.recentTurns(),
                             summaries.enabled() ? event.olderSummary() : null);
+            if (asked.scope() != QuestionScope.BUSINESS) {
+                // 업무 외 질문과 사용 안내는 대상을 되묻거나 조회하지 않고 정해진 문장으로 답한다(업무 외 질문 가드레일).
+                answers.answerOutsideBusiness(answerId, asked.scope());
+                return;
+            }
             boolean newQuestionAfterClarification =
                     event.pending() != null && !repliesToClarification(asked, event.pending());
             PendingClarification pending = newQuestionAfterClarification ? null : event.pending();

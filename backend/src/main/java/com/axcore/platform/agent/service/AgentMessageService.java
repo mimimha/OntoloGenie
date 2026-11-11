@@ -36,6 +36,9 @@ public class AgentMessageService {
     static final String STALE_CONTENT = "답변을 끝내지 못했습니다. 다시 질문해 주세요.";
     static final String STALE_REASON = "처리 시간 초과";
 
+    /** 되묻기를 찾을 때 읽는 최근 메시지 수(이번 질문 저장 전). 질문·답변이 번갈아 있어 업무 외 안내를 네 번까지 건너뛴다(361). */
+    private static final int RECENT_MESSAGES = 10;
+
     private final AgentConversationRepository conversations;
     private final AgentMessageRepository messages;
     private final ApplicationEventPublisher events;
@@ -109,10 +112,18 @@ public class AgentMessageService {
         return recentTurns.pick(oldestFirst, (int) firstOrder);
     }
 
-    /** 마지막 답변이 되묻기였으면 이번 질문을 그 답으로 본다(143). 아니면 null. */
+    /**
+     * 마지막 답변이 되묻기였으면 이번 질문을 그 답으로 본다(143). 아니면 null. 업무 외·사용 안내 답변은 대화 중 "잠깐 딴 얘기"라 건너뛴다. 그래서 되묻기
+     * 뒤에 업무 외 질문을 한 번 끼워도 다음 말을 그 되묻기의 답으로 받는다(361). 최근 답변 몇 건이 모두 업무 외 안내면 되묻기를 이어 가지 않는다.
+     */
     private PendingClarification pendingClarification(long conversationId) {
-        return messages.findFirstByConversationIdAndSenderOrderByIdDesc(
-                        conversationId, MessageSender.AGENT)
+        return messages
+                .findByConversationIdOrderByIdDesc(
+                        conversationId, PageRequest.of(0, RECENT_MESSAGES))
+                .stream()
+                .filter(message -> message.getSender() == MessageSender.AGENT)
+                .filter(answer -> !QuestionScope.answeredOutsideBusiness(answer.getAnswerMeta()))
+                .findFirst()
                 .filter(last -> last.getAnswerMeta().containsKey("clarification"))
                 .map(
                         last ->
