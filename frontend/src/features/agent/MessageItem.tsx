@@ -1,4 +1,6 @@
+import Markdown, { type Components, type Options } from 'react-markdown'
 import { Link } from 'react-router'
+import remarkGfm from 'remark-gfm'
 import DataTable from '../../components/DataTable'
 import { formatObjectCode } from '../explorer/format'
 import ActionResultList from './ActionResultList'
@@ -14,6 +16,58 @@ import type { AgentMessage, AgentResult } from './types'
 
 // 실행 이력 도구의 결과면 그 객체의 실행 이력으로도 이동한다(080).
 const EXECUTION_TOOL_CODE = 'OBJECT_EXECUTIONS'
+
+// 표·취소선(~~)은 GFM으로 그린다. 물결표 하나는 취소선으로 보지 않는다. "3~5건", "11/03~11/09"처럼 범위를 쓴 답변이
+// 취소선으로 그어지지 않게 하기 위해서다.
+const answerPlugins: Options['remarkPlugins'] = [
+  [remarkGfm, { singleTilde: false }],
+]
+
+// AI 답변은 마크다운으로 온다. Tailwind가 목록 기호 같은 기본 모양을 지우므로 태그마다 모양을 정한다.
+// 문단 안의 한 줄 바꿈도 줄을 나누도록 문단에만 pre-line을 준다. 목록에 주면 항목 사이 줄바꿈 글자가 빈 줄이 된다.
+// 원본 HTML은 react-markdown 기본대로 요소로 만들지 않고 글자로 보인다.
+const answerMarkdown: Components = {
+  p: ({ children }) => <p className="my-1 whitespace-pre-line">{children}</p>,
+  ul: ({ children }) => <ul className="my-1 list-disc pl-5">{children}</ul>,
+  ol: ({ children }) => <ol className="my-1 list-decimal pl-5">{children}</ol>,
+  strong: ({ children }) => (
+    <strong className="font-semibold">{children}</strong>
+  ),
+  // 앱 안 주소("/"로 시작)만 링크로 만든다. 외부 주소는 글자만 보인다. 원천 데이터에 섞인 지시를 AI가 따라
+  // 조회 값을 실은 외부 주소를 쓰면, 누르는 것만으로 그 값이 밖으로 나가기 때문이다. 위험한 주소가 지워져 비어도 글자로 둔다.
+  a: ({ href, title, children }) =>
+    href && href.startsWith('/') && !href.startsWith('//') ? (
+      <Link to={href} title={title} className="text-blue-700 hover:underline">
+        {children}
+      </Link>
+    ) : (
+      <span>{children}</span>
+    ),
+  // 이미지는 그리지 않고 대체 글자만 보인다. 그리면 답변이 화면에 뜨는 것만으로 브라우저가 이미지 주소로 요청을 보낸다.
+  // 원천 데이터에 섞인 지시를 AI가 따라 조회 값을 실은 주소를 쓰면 그 값이 밖으로 나간다.
+  img: ({ alt }) => <span>{alt}</span>,
+  // 긴 코드 블록이 답변 상자 밖으로 넘치지 않게 가로 스크롤을 준다.
+  pre: ({ children }) => <pre className="my-2 overflow-x-auto">{children}</pre>,
+  table: ({ children }) => (
+    <div className="my-2 overflow-x-auto">
+      <table className="text-left">{children}</table>
+    </div>
+  ),
+  // 표의 열 정렬(:---:)은 style로 넘어온다.
+  th: ({ style, children }) => (
+    <th
+      style={style}
+      className="border-b border-slate-200 px-2 py-1 font-medium"
+    >
+      {children}
+    </th>
+  ),
+  td: ({ style, children }) => (
+    <td style={style} className="border-b border-slate-100 px-2 py-1">
+      {children}
+    </td>
+  ),
+}
 
 function formatAsOf(value: string) {
   return new Date(value).toLocaleString('ko-KR', {
@@ -82,7 +136,11 @@ function MessageItem({ message }: { message: AgentMessage }) {
           답변을 끝내지 못했어요. {message.errorMessage}
         </p>
       )}
-      <p className="whitespace-pre-wrap">{message.content}</p>
+      <div className="break-words">
+        <Markdown remarkPlugins={answerPlugins} components={answerMarkdown}>
+          {message.content}
+        </Markdown>
+      </div>
       {syncNotice && (
         <p className="mt-1 text-xs text-amber-700">{syncNotice}</p>
       )}
