@@ -1,11 +1,14 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { fetchObjectLinks } from './api'
+import { fetchObjectLinks, type LinkGroupFilter } from './api'
 
-// 관계도와 근거 팝업이 같은 캐시를 쓰도록 078을 쪽 단위로 이어 불러온다.
-export function useObjectLinks(objectId: number) {
+// 078을 쪽 단위로 이어 불러온다. filter가 없으면 근거 팝업이 쓰는 전체 목록이고,
+// 있으면 관계도의 묶음 하나(관계 유형·방향)만 받는다.
+export function useObjectLinks(objectId: number, filter?: LinkGroupFilter) {
   const query = useInfiniteQuery({
-    queryKey: ['objects', objectId, 'links'],
-    queryFn: ({ pageParam }) => fetchObjectLinks(objectId, pageParam),
+    queryKey: filter
+      ? ['objects', objectId, 'links', filter.linkTypeId, filter.direction]
+      : ['objects', objectId, 'links'],
+    queryFn: ({ pageParam }) => fetchObjectLinks(objectId, pageParam, filter),
     initialPageParam: 0,
     getNextPageParam: (lastPage) =>
       lastPage.meta?.hasNext ? lastPage.meta.page + 1 : undefined,
@@ -24,10 +27,10 @@ export function useObjectLinks(objectId: number) {
       return true
     })
   // 건수는 가장 최근에 받은 쪽 기준이다. 다 받았으면 받은 연결 수가 곧 전체다.
-  const lastTotal = pages[pages.length - 1]?.meta?.totalElements ?? 0
+  const latestTotal = pages[pages.length - 1]?.meta?.totalElements
   const totalCount = query.hasNextPage
-    ? Math.max(lastTotal, links.length)
+    ? Math.max(latestTotal ?? 0, links.length)
     : links.length
 
-  return { ...query, links, totalCount }
+  return { ...query, links, totalCount, latestTotal }
 }

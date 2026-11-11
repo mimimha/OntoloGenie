@@ -1,13 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { formatObjectCode, withAndParticle } from './format'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import Button from '../../components/Button'
-import { fetchObject } from './api'
+import { fetchObject, fetchObjectLinkGroups } from './api'
 import {
   arrowLine,
-  groupLinks,
   labelStyle,
   placeGroups,
+  toLinkGroups,
   type LinkGroup,
 } from './graphLayout'
 import { useObjectLinks } from './useObjectLinks'
@@ -39,14 +39,17 @@ type ObjectGraphContentProps = {
 }
 
 function ObjectGraphContent({ objectId, onSelect }: ObjectGraphContentProps) {
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [pinnedGroup, setPinnedGroup] = useState<LinkGroup | null>(null)
   const objectQuery = useQuery({
     queryKey: ['objects', objectId],
     queryFn: () => fetchObject(objectId),
   })
-  const linksQuery = useObjectLinks(objectId)
+  const groupsQuery = useQuery({
+    queryKey: ['objects', objectId, 'link-groups'],
+    queryFn: () => fetchObjectLinkGroups(objectId),
+  })
 
-  if (objectQuery.isPending || linksQuery.isPending) {
+  if (objectQuery.isPending || groupsQuery.isPending) {
     return <p className="text-slate-500">관계도를 불러오는 중…</p>
   }
 
@@ -54,16 +57,23 @@ function ObjectGraphContent({ objectId, onSelect }: ObjectGraphContentProps) {
     return <p className="text-red-600">{objectQuery.error.message}</p>
   }
 
-  if (linksQuery.isError && !linksQuery.data) {
-    return <p className="text-red-600">{linksQuery.error.message}</p>
+  if (groupsQuery.isError && !groupsQuery.data) {
+    return <p className="text-red-600">{groupsQuery.error.message}</p>
   }
 
   const object = objectQuery.data
-  const { links, totalCount } = linksQuery
-  const groups = groupLinks(links, objectId)
+  const groups = toLinkGroups(groupsQuery.data)
+  const totalCount = groups.reduce((sum, group) => sum + group.linkCount, 0)
   const nodes = placeGroups(groups)
-  const selectedGroup =
-    groups.find((group) => group.key === selectedKey) ?? groups[0]
+  // 처음 보인 묶음이나 사용자가 고른 묶음을 고정한다. 묶음 건수를 다시 받아 순서가 바뀌어도
+  // 보던 목록이 다른 묶음으로 넘어가지 않게 한다.
+  if (pinnedGroup === null && groups.length > 0) {
+    setPinnedGroup(groups[0])
+  }
+  const pinned = pinnedGroup ?? groups[0]
+  const selectedGroup = groups.find((group) => group.key === pinned?.key)
+  // 고른 묶음의 연결이 그 사이 모두 없어져 묶음 목록에서 빠진 경우
+  const vanishedGroup = pinned && !selectedGroup ? pinned : undefined
 
   return (
     <div>
@@ -128,7 +138,7 @@ function ObjectGraphContent({ objectId, onSelect }: ObjectGraphContentProps) {
             <button
               key={node.group.key}
               type="button"
-              onClick={() => setSelectedKey(node.group.key)}
+              onClick={() => setPinnedGroup(node.group)}
               aria-pressed={selected}
               className={`absolute w-28 -translate-x-1/2 -translate-y-1/2 rounded-lg border px-2 py-2 text-center text-xs ${
                 selected
@@ -141,7 +151,7 @@ function ObjectGraphContent({ objectId, onSelect }: ObjectGraphContentProps) {
                 {node.group.relatedTypeName}
               </strong>
               <span className="text-slate-500">
-                {`${node.group.links.length}건`}
+                {`${node.group.linkCount}건`}
               </span>
             </button>
           )
@@ -151,11 +161,101 @@ function ObjectGraphContent({ objectId, onSelect }: ObjectGraphContentProps) {
       <p className="mt-2 text-xs text-slate-700">
         {`연결된 정보 · ${totalCount}건`}
       </p>
+      <p className="text-xs text-slate-500">
+        {groups.length > 0
+          ? '화살표는 저장된 관계 방향입니다. 유형 카드를 고르면 아래에 그 유형의 객체를 보여 줍니다.'
+          : '이 객체에는 연결된 관계가 없습니다.'}
+      </p>
+
+      {selectedGroup && (
+        <GroupObjectList
+          key={selectedGroup.key}
+          objectId={objectId}
+          group={selectedGroup}
+          onSelect={onSelect}
+        />
+      )}
+      {vanishedGroup && (
+        <section
+          aria-label={`${vanishedGroup.relatedTypeName} 연결 목록`}
+          className="mt-4"
+        >
+          <h3 className="text-sm font-semibold text-slate-900">
+            {`${vanishedGroup.linkTypeName} · ${vanishedGroup.relatedTypeName} 0건`}
+          </h3>
+          <p className="mt-2 text-sm text-slate-500">
+            지금은 이 묶음에 연결이 없습니다.
+          </p>
+        </section>
+      )}
+    </div>
+  )
+}
+
+type GroupObjectListProps = {
+  objectId: number
+  group: LinkGroup
+  onSelect: (id: number) => void
+}
+
+// 고른 묶음의 연결만 078로 쪽 단위로 받아, 묶음 안에서 더 불러온다.
+function GroupObjectList({ objectId, group, onSelect }: GroupObjectListProps) {
+  const queryClient = useQueryClient()
+  const linksQuery = useObjectLinks(objectId, {
+    linkTypeId: group.linkTypeId,
+    direction: group.direction,
+  })
+  const { links, latestTotal } = linksQuery
+
+  // 묶음 건수와 목록은 다른 요청이라 그 사이 연결이 바뀌면 건수가 어긋난다.
+  // 어긋나면 묶음 건수를 다시 받아 카드와 머리글을 목록에 맞춘다.
+  useEffect(() => {
+    if (latestTotal !== undefined && latestTotal !== group.linkCount) {
+      void queryClient.invalidateQueries({
+        queryKey: ['objects', objectId, 'link-groups'],
+      })
+    }
+  }, [latestTotal, group.linkCount, objectId, queryClient])
+
+  return (
+    <section aria-label={`${group.relatedTypeName} 연결 목록`} className="mt-4">
+      <h3 className="text-sm font-semibold text-slate-900">
+        {`${group.linkTypeName} · ${group.relatedTypeName} ${group.linkCount}건`}
+      </h3>
+      {linksQuery.isPending && (
+        <p className="mt-2 text-sm text-slate-500">연결을 불러오는 중…</p>
+      )}
+      {linksQuery.isError && !linksQuery.data && (
+        <p className="mt-2 text-sm text-red-600">{linksQuery.error.message}</p>
+      )}
+      {linksQuery.isSuccess && links.length === 0 && (
+        <p className="mt-2 text-sm text-slate-500">
+          지금은 이 묶음에 연결이 없습니다.
+        </p>
+      )}
+      {links.length > 0 && (
+        <ul className="mt-2 max-h-64 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
+          {links.map((link) => (
+            <li key={link.id}>
+              <button
+                type="button"
+                onClick={() => onSelect(link.relatedObject.id)}
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50"
+              >
+                <span className="truncate text-slate-900">
+                  {link.relatedObject.displayName}
+                </span>
+                <span className="shrink-0 text-xs text-slate-500">
+                  {formatObjectCode(link.relatedObject.id)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       {linksQuery.hasNextPage && (
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-          <span>
-            {`지금은 불러온 ${links.length}건만 유형별로 묶어 보여 줍니다.`}
-          </span>
+          <span>{`전체 ${linksQuery.totalCount}건 중 ${links.length}건`}</span>
           <Button
             variant="secondary"
             className="px-2 py-1 text-xs"
@@ -173,48 +273,6 @@ function ObjectGraphContent({ objectId, onSelect }: ObjectGraphContentProps) {
           {linksQuery.error?.message ?? '연결을 더 불러오지 못했습니다.'}
         </p>
       )}
-      <p className="text-xs text-slate-500">
-        {groups.length > 0
-          ? '화살표는 저장된 관계 방향입니다. 유형 카드를 고르면 아래에 그 유형의 객체를 보여 줍니다.'
-          : '이 객체에는 연결된 관계가 없습니다.'}
-      </p>
-
-      {selectedGroup && (
-        <GroupObjectList group={selectedGroup} onSelect={onSelect} />
-      )}
-    </div>
-  )
-}
-
-type GroupObjectListProps = {
-  group: LinkGroup
-  onSelect: (id: number) => void
-}
-
-function GroupObjectList({ group, onSelect }: GroupObjectListProps) {
-  return (
-    <section aria-label={`${group.relatedTypeName} 연결 목록`} className="mt-4">
-      <h3 className="text-sm font-semibold text-slate-900">
-        {`${group.linkTypeName} · ${group.relatedTypeName} ${group.links.length}건`}
-      </h3>
-      <ul className="mt-2 max-h-64 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
-        {group.links.map((link) => (
-          <li key={link.id}>
-            <button
-              type="button"
-              onClick={() => onSelect(link.relatedObject.id)}
-              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50"
-            >
-              <span className="truncate text-slate-900">
-                {link.relatedObject.displayName}
-              </span>
-              <span className="shrink-0 text-xs text-slate-500">
-                {formatObjectCode(link.relatedObject.id)}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
     </section>
   )
 }

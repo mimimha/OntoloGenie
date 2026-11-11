@@ -18,6 +18,7 @@ import type {
   ModelGraph,
   ObjectInstance,
   ObjectLink,
+  ObjectLinkGroup,
 } from '../features/explorer/types'
 
 const objects: ObjectInstance[] = [
@@ -820,9 +821,16 @@ export const handlers = [
     const url = new URL(request.url)
     const page = Number(url.searchParams.get('page') ?? 0)
     const size = Number(url.searchParams.get('size') ?? 20)
+    const linkTypeId = url.searchParams.get('linkTypeId')
+    const direction = url.searchParams.get('direction') ?? 'BOTH'
     const matched = links
       .filter(
-        (link) => link.sourceObjectId === id || link.targetObjectId === id,
+        (link) =>
+          (direction !== 'IN' && link.sourceObjectId === id) ||
+          (direction !== 'OUT' && link.targetObjectId === id),
+      )
+      .filter(
+        (link) => linkTypeId === null || link.linkTypeId === Number(linkTypeId),
       )
       .map((link) => {
         const relatedId =
@@ -837,6 +845,39 @@ export const handlers = [
         totalElements: matched.length,
         hasNext: (page + 1) * size < matched.length,
       },
+    })
+  }),
+
+  // 관계 유형·방향별 연결 건수 (관계도 첫 화면)
+  http.get('/api/v1/objects/:id/link-groups', async ({ params }) => {
+    await delay()
+    const id = Number(params.id)
+    const groups = new Map<string, ObjectLinkGroup>()
+    for (const link of links) {
+      if (link.sourceObjectId !== id && link.targetObjectId !== id) {
+        continue
+      }
+      const outgoing = link.sourceObjectId === id
+      const related = objectSummary(
+        outgoing ? link.targetObjectId : link.sourceObjectId,
+      )
+      const key = `${link.linkTypeId}:${outgoing}`
+      const group = groups.get(key)
+      if (group) {
+        group.linkCount += 1
+      } else {
+        groups.set(key, {
+          linkTypeId: link.linkTypeId,
+          linkTypeName: link.linkTypeName,
+          direction: outgoing ? 'OUT' : 'IN',
+          relatedObjectTypeId: related.objectTypeId,
+          relatedObjectTypeName: related.objectTypeName,
+          linkCount: 1,
+        })
+      }
+    }
+    return HttpResponse.json({
+      data: [...groups.values()].sort((a, b) => b.linkCount - a.linkCount),
     })
   }),
 

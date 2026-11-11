@@ -1,12 +1,14 @@
-import type { ObjectLink } from './types'
+import type { LinkDirection, ObjectLinkGroup } from './types'
 
 // 같은 관계 유형·같은 방향의 연결 묶음. 관계도에는 묶음 하나를 카드 하나로 그린다.
 export type LinkGroup = {
   key: string
+  linkTypeId: number
   linkTypeName: string
   relatedTypeName: string
+  direction: LinkDirection
   outgoing: boolean
-  links: ObjectLink[]
+  linkCount: number
 }
 
 export type GroupNode = {
@@ -15,26 +17,19 @@ export type GroupNode = {
   y: number
 }
 
-// 연결이 많은 묶음부터 놓고, 건수가 같으면 처음 받은 순서를 지킨다.
-export function groupLinks(links: ObjectLink[], objectId: number): LinkGroup[] {
-  const groups = new Map<string, LinkGroup>()
-  for (const link of links) {
-    const outgoing = link.sourceObjectId === objectId
-    const key = `${link.linkTypeId}:${outgoing ? 'out' : 'in'}`
-    const group = groups.get(key)
-    if (group) {
-      group.links.push(link)
-    } else {
-      groups.set(key, {
-        key,
-        linkTypeName: link.linkTypeName,
-        relatedTypeName: link.relatedObject.objectTypeName,
-        outgoing,
-        links: [link],
-      })
-    }
-  }
-  return [...groups.values()].sort((a, b) => b.links.length - a.links.length)
+// 연결이 많은 묶음부터 놓고, 건수가 같으면 받은 순서를 지킨다.
+export function toLinkGroups(groups: ObjectLinkGroup[]): LinkGroup[] {
+  return groups
+    .map((group) => ({
+      key: `${group.linkTypeId}:${group.direction.toLowerCase()}`,
+      linkTypeId: group.linkTypeId,
+      linkTypeName: group.linkTypeName,
+      relatedTypeName: group.relatedObjectTypeName,
+      direction: group.direction,
+      outgoing: group.direction === 'OUT',
+      linkCount: group.linkCount,
+    }))
+    .sort((a, b) => b.linkCount - a.linkCount)
 }
 
 // 관계도에서 묶음 카드의 자리(%)를 정한다. 가운데(50, 50)는 선택한 객체 자리다.
