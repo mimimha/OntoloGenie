@@ -12,6 +12,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -140,8 +141,10 @@ public class SourceTableReader {
     /**
      * 표 하나를 읽는다. 표·컬럼 이름은 SQL 문법상 바인딩 변수로 넘길 수 없어 문자열로 만든다. 사용자 입력은 들어가지 않는다: 표 이름은 원천이 {@code
      * quote_ident}로 따옴표 처리한 값({@link #relation}, 카탈로그 키는 바인딩 변수로 넘김)이고, 컬럼 이름은 카탈로그 값을 {@link
-     * #quote}로 감싼 식별자다. 행 수 제한(미리보기)은 바인딩 변수로 넘긴다. 그래서 SonarQube java:S2077(동적 SQL)을 이 메서드에서만
-     * 끈다(Jira 332).
+     * #quote}로 감싼 식별자다. 그래서 SonarQube java:S2077(동적 SQL)을 이 메서드에서만 끈다(Jira 332).
+     *
+     * <p>행 수 제한은 늘 바인딩 변수 하나({@code limit ?})로 넘긴다. 전체 읽기는 NULL을 넘기고, PostgreSQL은 {@code LIMIT
+     * NULL}을 제한 없음으로 처리한다. 전체 읽기와 미리보기가 같은 SQL 모양이라 매개변수 수가 경로마다 달라지지 않는다(java:S2695).
      */
     @SuppressWarnings("java:S2077")
     private List<SourceRow> readTable(
@@ -154,13 +157,11 @@ public class SourceTableReader {
                                 .collect(Collectors.joining(", "))
                         + " from "
                         + relation
-                        + (limit == null ? "" : " limit ?");
+                        + " limit ?";
         List<SourceRow> rows = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setFetchSize(FETCH_SIZE);
-            if (limit != null) {
-                statement.setInt(1, limit);
-            }
+            statement.setObject(1, limit, Types.INTEGER);
             try (ResultSet rs = statement.executeQuery()) {
                 ResultSetMetaData meta = rs.getMetaData();
                 while (rs.next()) {
