@@ -438,7 +438,7 @@ test('참고 객체 없이 시작하면 역할에 맞는 기본 추천 질문을
   ).toBeNull()
   await user.click(
     await screen.findByRole('button', {
-      name: '중단 작업지시',
+      name: 'JB2610-0141 상세',
     }),
   )
 

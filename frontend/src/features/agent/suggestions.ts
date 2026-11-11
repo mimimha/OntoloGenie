@@ -42,7 +42,7 @@ const EQUIPMENT_DETAIL: SuggestedQuestion = {
   text: 'P101 상세 정보 알려줘',
 }
 const STOPPED_WORK_ORDER: SuggestedQuestion = {
-  label: '중단 작업지시',
+  label: 'JB2610-0141 상세',
   text: 'JB2610-0141 작업지시 상세 알려줘',
 }
 // 고정자산은 재무(FINANCE) 데이터라 관리자만 본다(V13, 역할별 조회 범위). 다른 역할에는 추천하지 않는다.
