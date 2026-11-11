@@ -89,7 +89,7 @@ public class AgentMessageService {
 
     /**
      * 이번 질문 앞의 최근 대화 원문(147). 이 대화의 메시지만 읽으므로 다른 사용자·다른 대화 내용은 섞이지 않는다. 이번 질문을 저장하기 전에 읽어 이번 질문은
-     * 들어가지 않는다. 설정으로 껐으면 읽지 않는다.
+     * 들어가지 않는다. 설정으로 껐으면 읽지 않는다. 턴마다 대화 전체 기준 순번을 붙여 오래된 대화 요약과 같은 기준으로 질문 순서를 세게 한다(333).
      */
     private List<ConversationTurn> recentTurns(long conversationId) {
         if (!recentTurns.enabled()) {
@@ -100,7 +100,13 @@ public class AgentMessageService {
                         conversationId, PageRequest.of(0, recentTurns.messagesToRead()));
         List<AgentMessage> oldestFirst = new ArrayList<>(newestFirst);
         Collections.reverse(oldestFirst);
-        return recentTurns.pick(oldestFirst);
+        Long firstQuestionId = recentTurns.firstPickedMessageId(oldestFirst);
+        if (firstQuestionId == null) {
+            return List.of();
+        }
+        // 첫 턴까지 센 질문 수가 첫 턴의 순번이다. 첫 턴이 되묻기에 대한 답이면 되물은 질문의 순번과 같다.
+        long firstOrder = messages.countQuestionsUpTo(conversationId, firstQuestionId);
+        return recentTurns.pick(oldestFirst, (int) firstOrder);
     }
 
     /** 마지막 답변이 되묻기였으면 이번 질문을 그 답으로 본다(143). 아니면 null. */

@@ -95,11 +95,16 @@ public class ConversationSummaries {
         Long summarizedUntil = conversation.getSummarizedUntilMessageId();
         long after = summarizedUntil == null ? 0 : summarizedUntil;
         List<AgentMessage> added = toSummarize(conversationId, after, before);
-        List<ConversationTurn> turns =
-                RecentTurns.turnsOf(added).stream().map(ConversationSummaries::shortened).toList();
-        if (turns.isEmpty()) {
+        Long firstQuestionId = RecentTurns.firstQuestionId(added);
+        if (firstQuestionId == null) {
             return;
         }
+        // 요약에 "N번째 질문"으로 남겨, 최근 대화 원문과 같은 기준으로 질문 순서를 세게 한다.
+        int firstOrder = (int) messages.countQuestionsUpTo(conversationId, firstQuestionId);
+        List<ConversationTurn> turns =
+                RecentTurns.turnsOf(added, firstOrder).stream()
+                        .map(ConversationSummaries::shortened)
+                        .toList();
         String summary = summarized(conversation.getSummary(), turns);
         if (summary == null) {
             log.warn("대화 {}의 요약이 비었거나 상한을 넘어 이전 요약을 그대로 둡니다. 다음 답변 뒤에 다시 만듭니다.", conversationId);
@@ -179,7 +184,8 @@ public class ConversationSummaries {
     }
 
     private static ConversationTurn shortened(ConversationTurn turn) {
-        return new ConversationTurn(turn.question(), limit(turn.answer(), MAX_ANSWER_LENGTH));
+        return new ConversationTurn(
+                turn.question(), limit(turn.answer(), MAX_ANSWER_LENGTH), turn.order());
     }
 
     /** 요약에 넘기는 답변을 앞에서 maxLength 글자까지 남기고 생략 표시를 붙인다. 비었으면 null. */

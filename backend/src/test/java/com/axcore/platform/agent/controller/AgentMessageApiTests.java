@@ -275,7 +275,7 @@ class AgentMessageApiTests {
         verify(interpreter)
                 .interpret(eq("그럼 지난달은?"), anyMap(), isNull(), notNull(), turns.capture(), any());
         assertThat(turns.getValue())
-                .containsExactly(new ConversationTurn("PR-03 10월 비가동 이력 알려줘", "비가동 이력 답변"));
+                .containsExactly(new ConversationTurn("PR-03 10월 비가동 이력 알려줘", "비가동 이력 답변", 1));
         verify(targetResolver, times(1)).resolve(any(), any(), any());
         mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
                 .andExpect(
@@ -401,6 +401,69 @@ class AgentMessageApiTests {
                         any(),
                         any(),
                         eq("처음에 PR-06 비가동 이력을 물었다."));
+    }
+
+    @Test
+    void numbersRecentTurnsByQuestionsOfWholeConversation() throws Exception {
+        // 1 P101 → 2 P103(되묻기) → "번호 306"(2번째 질문의 답) → 3 B101 → 4 I101 → 5 W201
+        turn(conversation, "P101 상세", "P101 답변", false);
+        turn(conversation, "P103 상태", "P103이 여러 개입니다.", true);
+        turn(conversation, "번호 306", "P103 상태 답변", false);
+        turn(conversation, "B101 상세", "B101 답변", false);
+        turn(conversation, "I101 상세", "I101 답변", false);
+        turn(conversation, "W201 상세", "W201 답변", false);
+
+        // 원문 4턴은 "번호 306"부터다. 첫 턴이 되묻기에 대한 답이라 되물은 질문과 같은 2번째다(333).
+        assertThat(recentTurnOrdersOfNextQuestion()).containsExactly(2, 3, 4, 5);
+    }
+
+    @Test
+    void keepsSameOrderForClarifyingReplyInsideRecentTurns() throws Exception {
+        // 1 P101 → 2 P103 → 3 B101 → 4 I101(되묻기) → "번호 4"(4번째 질문의 답) → 5 W201
+        turn(conversation, "P101 상세", "P101 답변", false);
+        turn(conversation, "P103 상세", "P103 답변", false);
+        turn(conversation, "B101 상세", "B101 답변", false);
+        turn(conversation, "I101 상세", "I101이 여러 개입니다.", true);
+        turn(conversation, "번호 4", "I101 답변", false);
+        turn(conversation, "W201 상세", "W201 답변", false);
+
+        assertThat(recentTurnOrdersOfNextQuestion()).containsExactly(3, 4, 4, 5);
+    }
+
+    /** 다음 질문의 해석에 넘긴 최근 대화 원문의 순번. 해석에서 멈추게 해 답변은 만들지 않는다. */
+    private List<Integer> recentTurnOrdersOfNextQuestion() throws Exception {
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
+                .thenThrow(new IllegalStateException("해석만 확인한다"));
+        ask(conversation, "두 번째로 물어본 설비는?").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ConversationTurn>> turns = ArgumentCaptor.forClass(List.class);
+        verify(interpreter)
+                .interpret(eq("두 번째로 물어본 설비는?"), anyMap(), any(), any(), turns.capture(), any());
+        return turns.getValue().stream().map(ConversationTurn::order).toList();
+    }
+
+    /** 끝난 질문·답변 한 턴을 넣는다. clarified면 답변이 되묻기다(답변 메타에 clarification). */
+    private void turn(long conversationId, String question, String answer, boolean clarified) {
+        jdbc.sql(
+                        """
+                        insert into agent_message(conversation_id, sender, content, created_at)
+                        values (:conversation, 'USER', :question, now())
+                        """)
+                .param("conversation", conversationId)
+                .param("question", question)
+                .update();
+        jdbc.sql(
+                        """
+                        insert into agent_message(conversation_id, sender, content, status, answer_meta,
+                                                  created_at)
+                        values (:conversation, 'AGENT', :answer, 'SUCCEEDED', cast(:meta as jsonb), now())
+                        """)
+                .param("conversation", conversationId)
+                .param("answer", answer)
+                .param("meta", clarified ? "{\"clarification\":{\"missing\":[\"TARGET\"]}}" : "{}")
+                .update();
     }
 
     @Test

@@ -53,6 +53,12 @@ public class QuestionInterpreter {
               targets에 쓴다(예: 앞서 되물은 후보 중 첫 번째). 그 대상이 되물은 후보이고 "번호 N"이 붙어 있으면 "번호 N"을 쓴다.
               "이전 답변의 조건"에 있는 대상을 가리키면 위 규칙대로 targets를 빈 배열로 둔다.
             - 요약이 "이전 답변의 조건", "이미 확인한 조건", 최근 대화와 다르면 요약을 따르지 않는다.
+            - <turn>의 order와 요약의 "N번째 질문"은 그 질문이 이 대화 전체에서 몇 번째 질문인지다. 이번 질문은 가장 큰 순번 다음이다.
+              "처음에 물어본", "두 번째로 질문한"처럼 질문 순서로 가리키면 요약과 최근 대화를 합쳐 이 순번으로 센다. 최근 대화 안에서만 세지
+              않는다. 되물은 후보 중 "두 번째 거"처럼 후보를 고르는 말은 질문 순서가 아니라 후보 순서다.
+              order가 같은 턴은 되물은 질문과 그 답이라 한 질문으로 센다. 답변의 표·목록 안의 순서(예: "표의 두 번째 설비")도 질문 순서가 아니다.
+              그 순번의 질문이 요약과 최근 대화 어디에도 없으면 다른 대상으로 짐작하지 않고, 가리킨 말을 그대로 targets에 쓴다
+              (예: "두 번째로 물어본 설비").
             - 건수·수량·금액·시각 같은 조회 결과 숫자는 어느 조건에도 옮겨 쓰지 않는다. 기간은 질문이 가리킬 때만 쓴다.
             - 이번 질문과 관계없는 최근 대화·요약의 조건은 가져오지 않는다.
             """;
@@ -183,14 +189,21 @@ public class QuestionInterpreter {
      */
     static String describeTurns(List<ConversationTurn> recentTurns) {
         StringBuilder text = new StringBuilder("<recent_turns>\n");
-        for (ConversationTurn turn : recentTurns) {
-            text.append("<turn>\n<user>").append(escape(turn.question())).append("</user>\n");
-            if (turn.answer() != null) {
-                text.append("<agent>").append(escape(turn.answer())).append("</agent>\n");
-            }
-            text.append("</turn>\n");
-        }
+        recentTurns.forEach(turn -> text.append(describeTurn(turn)));
         return text.append("</recent_turns>\n").toString();
+    }
+
+    /** 턴 하나를 태그로 감싼다. 순번을 알면 order 속성으로 적는다(333). 오래된 대화 요약에 넘길 턴도 같은 모양으로 적는다. */
+    static String describeTurn(ConversationTurn turn) {
+        StringBuilder text = new StringBuilder("<turn");
+        if (turn.order() != null) {
+            text.append(" order=\"").append(turn.order()).append('"');
+        }
+        text.append(">\n<user>").append(escape(turn.question())).append("</user>\n");
+        if (turn.answer() != null) {
+            text.append("<agent>").append(escape(turn.answer())).append("</agent>\n");
+        }
+        return text.append("</turn>\n").toString();
     }
 
     static String escape(String text) {

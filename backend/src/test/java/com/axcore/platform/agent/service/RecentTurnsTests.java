@@ -34,12 +34,12 @@ class RecentTurnsTests {
         messages.addAll(answered("다".repeat(10), "라".repeat(40)));
         messages.addAll(answered("마".repeat(10), "바".repeat(40)));
 
-        // 한 턴이 본문 50글자와 태그 45글자라 상한 200이면 최근 두 턴만 들어간다.
-        List<ConversationTurn> turns = new RecentTurns(4, 200).pick(messages);
+        // 한 턴이 본문 50글자와 태그 57글자(107)라 상한 230이면 최근 두 턴만 들어간다.
+        List<ConversationTurn> turns = new RecentTurns(4, 230).pick(messages);
 
         assertThat(turns).hasSize(2);
         assertThat(turns.getFirst().question()).startsWith("다");
-        assertThat(turns).allMatch(turn -> RecentTurns.tokens(turn) == 95);
+        assertThat(turns).allMatch(turn -> RecentTurns.tokens(turn) == 107);
     }
 
     @Test
@@ -58,8 +58,8 @@ class RecentTurnsTests {
 
         List<ConversationTurn> turns = new RecentTurns(4, 100).pick(messages);
 
-        // 본문 몫 55 - 질문 2 = 답변 53, 생략 표시 8글자를 빼면 이모지 45개가 남는다.
-        assertThat(turns.getFirst().answer()).isEqualTo("😀".repeat(45) + RecentTurns.CUT_MARK);
+        // 본문 몫 43(100 - 태그 57) - 질문 2 = 답변 41, 생략 표시 8글자를 빼면 이모지 33개가 남는다.
+        assertThat(turns.getFirst().answer()).isEqualTo("😀".repeat(33) + RecentTurns.CUT_MARK);
     }
 
     @Test
@@ -143,8 +143,31 @@ class RecentTurnsTests {
         // 4턴이면 질문 3(메시지 15)부터 원문이다. 요약은 그 앞(메시지 11~14)까지 다룬다(333).
         assertThat(new RecentTurns(4, 2000).firstPickedMessageId(messages)).isEqualTo(15L);
         // 토큰 상한에 걸려 2턴만 원문이면 질문 5(메시지 19)부터다. 원문과 요약 사이에 빠지는 턴이 없다.
-        assertThat(new RecentTurns(4, 2 * (45 + 8)).firstPickedMessageId(messages)).isEqualTo(19L);
+        assertThat(
+                        new RecentTurns(4, 2 * (RecentTurns.TURN_OVERHEAD + 8))
+                                .firstPickedMessageId(messages))
+                .isEqualTo(19L);
         assertThat(new RecentTurns(0, 2000).firstPickedMessageId(messages)).isNull();
+    }
+
+    @Test
+    void givesClarifyingReplyTheSameOrderAsTheQuestionItAnswers() {
+        List<AgentMessage> messages = new ArrayList<>(answered("P101 상세", "P101 답변"));
+        AgentMessage clarifying = AgentMessage.question(1L, "P103 상태", Map.of(), NOW);
+        AgentMessage askedBack = AgentMessage.runningAnswer(1L, NOW);
+        askedBack.succeed("P103이 여러 개입니다.", Map.of("clarification", Map.of()));
+        messages.add(clarifying);
+        messages.add(askedBack);
+        messages.addAll(answered("번호 306", "P103 상태 답변"));
+        messages.addAll(answered("B101 상세", "B101 답변"));
+
+        // 첫 턴이 7번째 질문이면 되묻기와 그 답("번호 306")은 같은 8번째, B101은 9번째다(333).
+        assertThat(new RecentTurns(4, 2000).pick(messages, 7))
+                .extracting(ConversationTurn::order)
+                .containsExactly(7, 8, 8, 9);
+        assertThat(RecentTurns.turnsOf(messages, 7))
+                .extracting(ConversationTurn::order)
+                .containsExactly(7, 8, 8, 9);
     }
 
     @Test

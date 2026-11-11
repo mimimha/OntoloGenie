@@ -257,11 +257,32 @@ class QuestionInterpreterTests {
 
     @Test
     void recentTurnTagOverheadMatchesWrittenTags() {
-        ConversationTurn turn = new ConversationTurn("질문", "답변");
         String wrapper = "<recent_turns>\n</recent_turns>\n";
+        ConversationTurn longestOrder = new ConversationTurn("질문", "답변", 999);
 
-        // 토큰 어림에 넣는 태그 글자 수가 실제로 적는 태그와 같아야 상한을 넘지 않는다.
-        assertThat(QuestionInterpreter.describeTurns(List.of(turn)).length() - wrapper.length())
-                .isEqualTo(RecentTurns.tokens(turn));
+        // 토큰 어림에 넣는 태그 글자 수는 순번 세 자리까지 실제로 적는 태그와 같고, 순번이 짧으면 그보다 작아 상한을 넘지 않는다.
+        assertThat(
+                        QuestionInterpreter.describeTurns(List.of(longestOrder)).length()
+                                - wrapper.length())
+                .isEqualTo(RecentTurns.tokens(longestOrder));
+        for (ConversationTurn turn :
+                List.of(new ConversationTurn("질문", "답변", 5), new ConversationTurn("질문", "답변"))) {
+            assertThat(QuestionInterpreter.describeTurns(List.of(turn)).length() - wrapper.length())
+                    .isLessThan(RecentTurns.tokens(turn));
+        }
+    }
+
+    @Test
+    void writesTurnOrderSoQuestionsAreCountedAcrossSummaryAndRecentTurns() {
+        assertThat(QuestionInterpreter.describeTurn(new ConversationTurn("P103 상세", "답변", 6)))
+                .startsWith("<turn order=\"6\">\n<user>P103 상세</user>");
+        assertThat(QuestionInterpreter.describeTurn(new ConversationTurn("질문", null)))
+                .isEqualTo("<turn>\n<user>질문</user>\n</turn>\n");
+        // "두 번째로 질문한"은 최근 대화 안에서가 아니라 요약까지 합친 대화 전체 순번으로 센다(333 배포 확인에서 틀린 경우).
+        assertThat(QuestionInterpreter.SYSTEM_PROMPT)
+                .contains("요약과 최근 대화를 합쳐 이 순번으로 센다. 최근 대화 안에서만 세지")
+                .contains("후보를 고르는 말은 질문 순서가 아니라 후보 순서다")
+                // 그 순번의 질문이 어디에도 없으면 짐작하지 않는다. 대상 찾기가 실패해 되묻게 된다(GMS 확인에서 B101로 지어냄).
+                .contains("다른 대상으로 짐작하지 않고, 가리킨 말을 그대로 targets에 쓴다");
     }
 }

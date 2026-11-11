@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import com.axcore.platform.agent.domain.AgentConversation;
 import com.axcore.platform.agent.domain.AgentMessage;
+import com.axcore.platform.agent.domain.MessageSender;
 import com.axcore.platform.agent.repository.AgentConversationRepository;
 import com.axcore.platform.agent.repository.AgentMessageRepository;
 import java.time.Instant;
@@ -75,6 +76,25 @@ class ConversationSummariesTests {
                                     .limit(page.getPageSize())
                                     .toList();
                         });
+        // 저장소의 native 질의와 같은 기준: id까지의 사용자 말 중 되묻기 바로 다음 말은 세지 않는다.
+        when(messages.countQuestionsUpTo(eq(CONVERSATION), anyLong()))
+                .thenAnswer(
+                        invocation -> {
+                            long id = invocation.getArgument(1);
+                            long count = 0;
+                            AgentMessage previous = null;
+                            for (AgentMessage m : conversationMessages) {
+                                if (m.getId() <= id
+                                        && m.getSender() == MessageSender.USER
+                                        && !(previous != null
+                                                && previous.getAnswerMeta()
+                                                        .containsKey("clarification"))) {
+                                    count++;
+                                }
+                                previous = m;
+                            }
+                            return count;
+                        });
         when(summarizer.isConfigured()).thenReturn(true);
         when(conversations.saveSummary(anyLong(), anyLong(), anyString(), anyLong())).thenReturn(1);
     }
@@ -90,8 +110,8 @@ class ConversationSummariesTests {
                 .summarize(
                         null,
                         List.of(
-                                new ConversationTurn("질문 1", "답변 1"),
-                                new ConversationTurn("질문 2", "답변 2")),
+                                new ConversationTurn("질문 1", "답변 1", 1),
+                                new ConversationTurn("질문 2", "답변 2", 2)),
                         TARGET);
         verify(conversations).saveSummary(CONVERSATION, 0L, "질문 1·2에서 물은 것", 14L);
     }
@@ -104,7 +124,7 @@ class ConversationSummariesTests {
         summaries(500).refreshAfter(ANSWER);
 
         verify(summarizer)
-                .summarize("질문 1에서 물은 것", List.of(new ConversationTurn("질문 2", "답변 2")), TARGET);
+                .summarize("질문 1에서 물은 것", List.of(new ConversationTurn("질문 2", "답변 2", 2)), TARGET);
         verify(conversations).saveSummary(CONVERSATION, 12L, "질문 1·2에서 물은 것", 14L);
     }
 
@@ -114,7 +134,11 @@ class ConversationSummariesTests {
 
         // 원문 상한에 걸려 2턴(질문 5·6)만 원문이면 질문 1~4까지 요약해 빠지는 턴이 없다.
         new ConversationSummaries(
-                        conversations, messages, new RecentTurns(4, 2 * (45 + 8)), summarizer, 500)
+                        conversations,
+                        messages,
+                        new RecentTurns(4, 2 * (RecentTurns.TURN_OVERHEAD + 8)),
+                        summarizer,
+                        500)
                 .refreshAfter(ANSWER);
 
         verify(conversations).saveSummary(CONVERSATION, 0L, "질문 1~4에서 물은 것", 18L);
@@ -166,6 +190,8 @@ class ConversationSummariesTests {
         assertThat(turns.getValue()).hasSize(ConversationSummaries.MAX_MESSAGES / 2);
         assertThat(turns.getValue().getFirst().question()).isEqualTo("질문 2");
         assertThat(turns.getValue().getLast().question()).isEqualTo("질문 21");
+        // 요약에 남길 순번은 대화 전체 기준이다(질문 2는 2번째 질문).
+        assertThat(turns.getValue()).extracting(ConversationTurn::order).startsWith(2).endsWith(21);
         verify(conversations).saveSummary(CONVERSATION, 12L, "질문 1~21에서 물은 것", 52L);
     }
 
@@ -183,7 +209,8 @@ class ConversationSummariesTests {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<ConversationTurn>> turns = ArgumentCaptor.forClass(List.class);
         verify(summarizer).summarize(any(), turns.capture(), anyInt());
-        assertThat(turns.getValue().getLast()).isEqualTo(new ConversationTurn("질문 20", "답변 20"));
+        assertThat(turns.getValue().getLast())
+                .isEqualTo(new ConversationTurn("질문 20", "답변 20", 20));
         verify(conversations).saveSummary(CONVERSATION, 11L, "질문 1~20을 물었다.", 50L);
     }
 
