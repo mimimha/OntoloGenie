@@ -25,8 +25,11 @@ import org.springframework.stereotype.Component;
 public class RecentTurns {
     static final String CUT_MARK = "…(이하 생략)";
 
-    /** 한 턴을 감싸는 태그 글자 수(QuestionInterpreter.describeTurns의 turn·user·agent 태그와 줄바꿈 45자). */
-    static final int TURN_OVERHEAD = 45;
+    /**
+     * 한 턴을 감싸는 태그 글자 수의 상한. QuestionInterpreter.describeTurns의 turn·user·agent 태그와 줄바꿈 45자에, 턴 순번
+     * 속성(` order="999"`, 세 자리까지 12자)을 더했다(333).
+     */
+    static final int TURN_OVERHEAD = 57;
 
     private final int maxTurns;
     private final int maxTokens;
@@ -53,6 +56,11 @@ public class RecentTurns {
         return picked(oldestFirst).stream().map(StartedTurn::turn).toList();
     }
 
+    /** pick과 같고, 첫 턴을 firstOrder로 삼아 대화 전체 기준 질문 순번을 붙인다(333, {@link #numbered}). */
+    public List<ConversationTurn> pick(List<AgentMessage> oldestFirst, int firstOrder) {
+        return numbered(picked(oldestFirst), firstOrder);
+    }
+
     /**
      * pick이 원문으로 넘길 턴 중 가장 오래된 턴의 질문 메시지 ID. 오래된 대화 요약은 이 앞의 메시지만 다뤄 원문과 요약 사이에 빠지는 턴이 없게 한다(333).
      * 원문으로 넘길 턴이 없으면 null이다.
@@ -67,8 +75,36 @@ public class RecentTurns {
         return toTurns(oldestFirst).stream().map(StartedTurn::turn).toList();
     }
 
-    /** 턴과 그 턴을 시작한 질문 메시지 ID. */
-    private record StartedTurn(Long questionId, ConversationTurn turn) {}
+    /** turnsOf와 같고, 첫 턴을 firstOrder로 삼아 대화 전체 기준 질문 순번을 붙인다(333, {@link #numbered}). */
+    static List<ConversationTurn> turnsOf(List<AgentMessage> oldestFirst, int firstOrder) {
+        return numbered(toTurns(oldestFirst), firstOrder);
+    }
+
+    /**
+     * 연이은 턴에 대화 전체 기준 질문 순번을 붙인다(333). 첫 턴은 firstOrder이고, 그 뒤로는 새 질문에서만 1씩 늘린다. 되묻기 바로 다음 말은 그 되묻기에
+     * 대한 답으로 보고 되물은 질문과 같은 순번을 준다(사용자는 "번호 306" 같은 답을 질문으로 세지 않는다). firstOrder는
+     * AgentMessageRepository.countQuestionsUpTo로 같은 기준으로 센 첫 턴의 순번이다.
+     */
+    private static List<ConversationTurn> numbered(List<StartedTurn> turns, int firstOrder) {
+        List<ConversationTurn> numbered = new ArrayList<>(turns.size());
+        int order = firstOrder;
+        for (int i = 0; i < turns.size(); i++) {
+            if (i > 0 && !turns.get(i).reply()) {
+                order++;
+            }
+            numbered.add(turns.get(i).turn().numbered(order));
+        }
+        return numbered;
+    }
+
+    /** 첫 턴을 시작한 질문 메시지 ID. 턴이 없으면(질문 없이 답변만 있으면) null이다. */
+    static Long firstQuestionId(List<AgentMessage> oldestFirst) {
+        List<StartedTurn> turns = toTurns(oldestFirst);
+        return turns.isEmpty() ? null : turns.getFirst().questionId();
+    }
+
+    /** 턴과 그 턴을 시작한 질문 메시지 ID. reply는 그 질문이 바로 앞 되묻기에 대한 답인가다(앞 메시지를 읽지 못했으면 false). */
+    private record StartedTurn(Long questionId, boolean reply, ConversationTurn turn) {}
 
     private List<StartedTurn> picked(List<AgentMessage> oldestFirst) {
         List<StartedTurn> turns = toTurns(oldestFirst);
@@ -86,7 +122,7 @@ public class RecentTurns {
                 // 가장 최근 턴만으로도 상한을 넘으면 잘라서라도 넣는다. 질문은 최대한 남기고 답변부터 자른다.
                 ConversationTurn cut = cut(turn.turn(), maxTokens);
                 if (cut != null) {
-                    picked.add(new StartedTurn(turn.questionId(), cut));
+                    picked.add(new StartedTurn(turn.questionId(), turn.reply(), cut));
                 }
             }
             break;
@@ -98,14 +134,19 @@ public class RecentTurns {
     private static List<StartedTurn> toTurns(List<AgentMessage> oldestFirst) {
         List<StartedTurn> turns = new ArrayList<>();
         AgentMessage question = null;
+        boolean reply = false;
+        AgentMessage previous = null;
         for (AgentMessage message : oldestFirst) {
             if (message.getSender() == MessageSender.USER) {
                 if (question != null) {
-                    turns.add(questionOnly(question));
+                    turns.add(questionOnly(question, reply));
                 }
                 question = message;
+                reply = clarification(previous);
+                previous = message;
                 continue;
             }
+            previous = message;
             if (question == null || message.getStatus() == MessageStatus.RUNNING) {
                 continue;
             }
@@ -114,17 +155,28 @@ public class RecentTurns {
                     message.getStatus() == MessageStatus.SUCCEEDED ? message.getContent() : null;
             turns.add(
                     new StartedTurn(
-                            question.getId(), new ConversationTurn(question.getContent(), answer)));
+                            question.getId(),
+                            reply,
+                            new ConversationTurn(question.getContent(), answer)));
             question = null;
         }
         if (question != null) {
-            turns.add(questionOnly(question));
+            turns.add(questionOnly(question, reply));
         }
         return turns;
     }
 
-    private static StartedTurn questionOnly(AgentMessage question) {
-        return new StartedTurn(question.getId(), new ConversationTurn(question.getContent(), null));
+    /** 되묻기 답변인가. 되묻기는 답변 메타에 clarification을 남긴다(143). */
+    private static boolean clarification(AgentMessage message) {
+        return message != null
+                && message.getSender() == MessageSender.AGENT
+                && message.getAnswerMeta() != null
+                && message.getAnswerMeta().containsKey("clarification");
+    }
+
+    private static StartedTurn questionOnly(AgentMessage question, boolean reply) {
+        return new StartedTurn(
+                question.getId(), reply, new ConversationTurn(question.getContent(), null));
     }
 
     static int tokens(ConversationTurn turn) {
@@ -137,10 +189,10 @@ public class RecentTurns {
         int questionLength = length(turn.question());
         if (questionLength >= budget) {
             String question = shorten(turn.question(), budget);
-            return question == null ? null : new ConversationTurn(question, null);
+            return question == null ? null : new ConversationTurn(question, null, turn.order());
         }
         String answer = shorten(turn.answer(), budget - questionLength);
-        return new ConversationTurn(turn.question(), answer);
+        return new ConversationTurn(turn.question(), answer, turn.order());
     }
 
     /** 글자 수가 budget 이하가 되게 앞부분만 남기고 생략 표시를 붙인다. 남길 수 없으면 null. */

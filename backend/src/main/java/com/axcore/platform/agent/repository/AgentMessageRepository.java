@@ -29,6 +29,29 @@ public interface AgentMessageRepository extends JpaRepository<AgentMessage, Long
     List<AgentMessage> findByConversationIdAndIdGreaterThanAndIdLessThanOrderByIdAsc(
             Long conversationId, Long afterId, Long beforeId, Pageable pageable);
 
+    /**
+     * 대화에서 이 메시지(id)까지 사용자가 한 질문 수. 턴에 대화 전체 기준 순번을 붙일 때 쓴다(333). 되묻기 바로 다음 사용자 말은 그 되묻기에 대한 답이라 세지
+     * 않는다(RecentTurns의 순번과 같은 기준). 바로 앞 메시지의 답변 메타(jsonb)에 clarification이 있는지 봐야 해 JPQL로 쓸 수 없어
+     * native로 쓴다.
+     */
+    @Query(
+            nativeQuery = true,
+            value =
+                    """
+                    select count(*)
+                      from agent_message m
+                     where m.conversation_id = :conversationId
+                       and m.sender = 'USER'
+                       and m.id <= :id
+                       and not coalesce((select (p.answer_meta -> 'clarification') is not null
+                                           from agent_message p
+                                          where p.conversation_id = m.conversation_id
+                                            and p.id < m.id
+                                          order by p.id desc
+                                          limit 1), false)
+                    """)
+    long countQuestionsUpTo(@Param("conversationId") Long conversationId, @Param("id") Long id);
+
     boolean existsByConversationIdAndStatus(Long conversationId, MessageStatus status);
 
     /**

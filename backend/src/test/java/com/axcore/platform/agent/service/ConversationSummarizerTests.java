@@ -54,7 +54,7 @@ class ConversationSummarizerTests {
                 summarizer("PR-03 비가동 이력을 물었다.")
                         .summarize(
                                 "처음에 PR-06 상태를 물었다.",
-                                List.of(new ConversationTurn("PR-03 비가동 이력은?", "2건입니다.")),
+                                List.of(new ConversationTurn("PR-03 비가동 이력은?", "2건입니다.", 2)),
                                 500);
 
         assertThat(summary).isEqualTo("PR-03 비가동 이력을 물었다.");
@@ -63,10 +63,14 @@ class ConversationSummarizerTests {
         assertThat(prompt.getValue().getSystemMessage().getText())
                 .contains("500자 이내")
                 // 조회 결과 숫자는 요약에 남기지 않는다. 값은 질문할 때마다 다시 조회한다.
-                .contains("조회 결과 숫자는 쓰지 않는다");
+                .contains("조회 결과 숫자는 쓰지 않는다")
+                // 질문 순서로 가리키는 말을 세도록 대화 전체 순번을 남긴다.
+                .contains("\"1번째 질문: FA-0002 장부가\"처럼 적는다. 앞의 순번은 <turn>의 order다")
+                // 이전 요약 줄은 남기고 새 질문은 빠짐없이 덧붙인다(GMS 확인 뒤 지시를 분명히 함).
+                .contains("<old_turns>의 질문은 하나도 빼지 않고 그 아래에 한 줄씩 덧붙인다");
         assertThat(prompt.getValue().getUserMessage().getText())
                 .startsWith("<previous_summary>처음에 PR-06 상태를 물었다.</previous_summary>\n<old_turns>")
-                .contains("<user>PR-03 비가동 이력은?</user>");
+                .contains("<turn order=\"2\">\n<user>PR-03 비가동 이력은?</user>");
     }
 
     @Test
