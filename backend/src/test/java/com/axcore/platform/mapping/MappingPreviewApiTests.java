@@ -303,6 +303,7 @@ class MappingPreviewApiTests {
                 .andExpect(jsonPath("$.data.result.rowErrors[0].transform").value(nullValue()));
         mvc.perform(get(RESULT_PATH, failed).with(actor("ADMIN")))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("FAILED"))
                 .andExpect(jsonPath("$.data.result").value(nullValue()))
                 .andExpect(jsonPath("$.data.errorMessage").value("원천에 접속하지 못했습니다."));
         mvc.perform(get(RESULT_PATH, expired).with(actor("ADMIN")))

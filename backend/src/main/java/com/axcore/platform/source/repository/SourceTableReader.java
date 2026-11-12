@@ -104,8 +104,8 @@ public class SourceTableReader {
     }
 
     /**
-     * 표 하나에서 앞 행 몇 개만 읽는다(매핑 미리보기 040). 순서는 정하지 않는다. 읽기 전용 트랜잭션에서 읽고 되돌린다. 접속·읽기 실패는 {@link
-     * SQLException}이다.
+     * 표 하나에서 앞 행 몇 개만 읽는다(원천 표본 016, 매핑 미리보기 040). 순서는 정하지 않는다. 읽기 전용 트랜잭션에서 읽고 되돌린다. 접속·읽기 실패는
+     * {@link SQLException}이다.
      */
     public List<SourceRow> sample(
             SourceEndpoint endpoint, SourceAccount account, Table table, int limit)

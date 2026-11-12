@@ -31,20 +31,40 @@ public class SourcePreviewRepository {
                 .singleRow();
     }
 
+    public Optional<Accepted> findActiveSample(
+            long resourceId, long accountId, int rowLimit, Instant now) {
+        return findActive("SAMPLE", resourceId, accountId, "{}", rowLimit, now);
+    }
+
+    public Accepted insertSample(long resourceId, long accountId, int rowLimit, Instant now) {
+        return insert("SAMPLE", resourceId, accountId, "{}", rowLimit, now);
+    }
+
     /** 같은 관리자가 같은 테이블에 같은 초안·같은 행 수로 넣은, 대기·실행 중인 매핑 미리보기. */
     public Optional<Accepted> findActiveMappingPreview(
             long resourceId, long accountId, String requestJson, int rowLimit, Instant now) {
+        return findActive("MAPPING_PREVIEW", resourceId, accountId, requestJson, rowLimit, now);
+    }
+
+    private Optional<Accepted> findActive(
+            String kind,
+            long resourceId,
+            long accountId,
+            String requestJson,
+            int rowLimit,
+            Instant now) {
         return jdbc.sql(
                         """
                         select id, status, requested_at, expires_at
                         from source_preview
-                        where preview_kind = 'MAPPING_PREVIEW' and source_resource_id = :resource
+                        where preview_kind = :kind and source_resource_id = :resource
                           and requested_by = :account and request = cast(:request as jsonb)
                           and row_limit = :rowLimit and status in ('QUEUED', 'RUNNING')
                           and expires_at > :now
                         order by id
                         limit 1
                         """)
+                .param("kind", kind)
                 .param("resource", resourceId)
                 .param("account", accountId)
                 .param("request", requestJson)
@@ -56,14 +76,25 @@ public class SourcePreviewRepository {
 
     public Accepted insertMappingPreview(
             long resourceId, long accountId, String requestJson, int rowLimit, Instant now) {
+        return insert("MAPPING_PREVIEW", resourceId, accountId, requestJson, rowLimit, now);
+    }
+
+    private Accepted insert(
+            String kind,
+            long resourceId,
+            long accountId,
+            String requestJson,
+            int rowLimit,
+            Instant now) {
         return jdbc.sql(
                         """
                         insert into source_preview (source_resource_id, preview_kind, request, row_limit,
                                                     requested_by, requested_at, expires_at)
-                        values (:resource, 'MAPPING_PREVIEW', cast(:request as jsonb), :rowLimit,
+                        values (:resource, :kind, cast(:request as jsonb), :rowLimit,
                                 :account, :now, :expiresAt)
                         returning id, status, requested_at, expires_at
                         """)
+                .param("kind", kind)
                 .param("resource", resourceId)
                 .param("request", requestJson)
                 .param("rowLimit", rowLimit)

@@ -1,7 +1,7 @@
 # 원천 연결 API·서비스 연동 계약
 
-- 이슈: S15P31C106-175 · 기능: FN-SRC-01·02·03 · API: 009~015, 100 (016은 아래 "남은 것")
-- 기준: develop `8ad8991`의 코드. 코드와 이 문서가 다르면 코드가 맞고, 이 문서를 고칩니다.
+- 이슈: S15P31C106-175·224 · 기능: FN-SRC-01·02·03 · API: 009~016, 100, 102
+- 기준: 원천 연결은 develop `8ad8991`, 원천 표본 조회는 224의 코드. 코드와 이 문서가 다르면 코드가 맞고, 이 문서를 고칩니다.
 - 관련 문서: AI 쪽 분석 시작·결과 계약은 [ai/docs/api-internal.md](../ai/docs/api-internal.md), 원천 서버 설정은 [infra/source-db/README.md](../infra/source-db/README.md)
 
 ## 1. 누가 무엇을 하는지
@@ -11,6 +11,8 @@
 | 원천 등록·수정·조회(009~012), 비밀번호 암호화 저장 | Spring api |
 | 연결 검사 실행(013·100), 읽을 수 있는 표·컬럼 목록(카탈로그) 갱신 | Spring batch (`SourceConnectionCheckJob`, `batch` 프로필에서만 돎) |
 | 표·컬럼 목록 조회(014·015) | Spring api (batch가 채운 카탈로그를 읽음) |
+| 원천 표본 요청·결과 조회(016·102) | Spring api (작업 등록 및 저장된 결과 조회) |
+| 원천 표본 읽기 | Spring batch (`SourceSampleJob`, 대기 중인 작업을 주기적으로 조회) |
 | 분석 시작 때 AI 계정 복호화, 접속 정보 전달(018) | Spring api (`AnalysisStartService`) |
 | 원천 접속, 고른 컬럼·행만 읽기, 분석 | FastAPI (`ai/app/sources/postgres_reader.py`) |
 
@@ -19,7 +21,7 @@
 
 ## 2. API
 
-모두 관리자(ADMIN)만 쓸 수 있습니다(`DataSourceController`).
+모두 관리자(ADMIN)만 쓸 수 있습니다.
 
 | 번호 | 경로 | 하는 일 |
 | --- | --- | --- |
@@ -31,6 +33,8 @@
 | 100 | `GET /api/v1/sources/{id}/connection-checks/{checkId}` | 연결 검사 결과 |
 | 014 | `GET /api/v1/sources/{id}/resources` | 읽을 수 있는 표·뷰 목록 |
 | 015 | `GET /api/v1/sources/{id}/resources/{resourceId}/columns` | 표의 컬럼 목록 |
+| 016 | `POST /api/v1/sources/{id}/resources/{resourceId}/samples` | 원천 표본 작업 접수. 202와 `previewId` 반환 |
+| 102 | `GET /api/v1/ontology/source-previews/{previewId}` | 미리보기 상태 및 결과. 표본 결과는 `columns`·`rows` |
 | (번호 없음, 199) | `POST /api/v1/sources/{id}/cdc/reconnected` | 원천 교체 뒤 커넥터를 새 DB에 맞췄다고 알림. 202 `{dataSourceId, recoveryReason: "SLOT_LOST", reloadTables}`. 원천 교체 중이 아니면 409(`details.expected = SOURCE_CHANGED`) |
 
 **010 요청 본문**
@@ -75,8 +79,10 @@
 4. 관리자가 분석할 표·컬럼을 고르면(018) Spring이 `AI` 계정을 복호화해 FastAPI에 보냅니다.
 5. FastAPI가 원천을 읽고 분석해 결과를 105로 보냅니다.
 
+원천 표본을 요청하면(016) API 서버는 `source_preview`에 `SAMPLE` 작업을 등록합니다. 배치는 작업 큐를 주기적으로 조회해 대기 중인 작업을 가져오고, 합의한 개인정보 컬럼 4개를 SELECT 목록에서 제외한 뒤 원천을 읽습니다. 화면은 `previewId`로 상태와 결과를 조회합니다(102).
+
 ## 7. 남은 것·확인할 것
 
-- **016 원천 행 표본 조회:** 배치 작업 종류(`SOURCE_PREVIEW`)와 표(`source_preview`)는 있지만, 016 접수 API와 SAMPLE 처리기는 아직 없습니다(미구현). 결과 조회 102(`GET /api/v1/ontology/source-previews/{previewId}`)는 매핑 미리보기(S15P31C106-185, [mapping-preview.md](mapping-preview.md))와 함께 들어왔고 SAMPLE 결과(`columns`·`rows`)도 그대로 돌려줍니다. 화면(원천 표본 탭, S15P31C106-225)은 develop `119d85d`에 들어왔지만 실제 요청 함수를 주입하지 않아 서버와 연결되지 않습니다(`docs/source-samples-225.md`). 016 형식과 가림 정책이 정해져야 연결합니다.
+- **225 원천 표본 탭:** 화면은 develop `119d85d`에 들어왔고, 016·102 실제 요청 함수를 화면에 연결하는 작업이 남았습니다. [화면 연동 안내](source-samples-225.md)를 참고합니다.
 - **CSV·DOCUMENT 원천:** 연결 검사는 "지원하지 않음"으로 실패합니다. 원천 목록도 PostgreSQL 카탈로그에서 TABLE·VIEW만 만듭니다(`SourceCatalogReader`).
 - **로컬 시험:** 연결 검사가 batch에서만 돌아서, api와 batch를 같은 플랫폼 DB로 함께 띄워야 표 목록이 채워집니다.
