@@ -1,4 +1,6 @@
 import type { ApiResponse } from '../../api/types'
+import { INTERNAL_EVIDENCE_KEYS, isRow } from './bundle'
+import { proposalTitle } from './labels'
 import type { Proposal } from './types'
 
 // Counts and search include candidates beyond the first server page.
@@ -24,8 +26,20 @@ export function isObjectProposal(item: Proposal) {
   ].includes(item.itemKind)
 }
 
+// 화면에 보이는 글자(이름·코드·원천 표·컬럼·설명·근거)만 모은다. 내부 대조용 값은 뺀다.
+function shownText(value: unknown, out: string[]) {
+  if (typeof value === 'string') out.push(value)
+  else if (Array.isArray(value)) for (const item of value) shownText(item, out)
+  else if (isRow(value))
+    for (const [key, item] of Object.entries(value))
+      if (!INTERNAL_EVIDENCE_KEYS.includes(key)) shownText(item, out)
+  return out
+}
+
 export function matchesProposal(item: Proposal, query: string) {
-  return JSON.stringify([item.payload, item.evidence, item.id])
-    .toLocaleLowerCase()
-    .includes(query.trim().toLocaleLowerCase())
+  const keyword = query.trim().toLocaleLowerCase()
+  if (!keyword) return true
+  return shownText([item.payload, item.evidence], [proposalTitle(item)]).some(
+    (text) => text.toLocaleLowerCase().includes(keyword),
+  )
 }

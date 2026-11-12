@@ -238,39 +238,143 @@ test('잘못된 상세 ID는 요청하지 않는다', async () => {
   expect(request).not.toHaveBeenCalled()
 })
 
-test('서버의 다음 페이지 후보도 집계·검색하고 화면 페이지를 이동한다', async () => {
-  const items = Array.from({ length: 21 }, (_, index) => ({
+test('서버에서는 100건씩 모든 쪽을 받아 집계·검색하고 화면은 20건씩 넘긴다', async () => {
+  const items = Array.from({ length: 101 }, (_, index) => ({
     ...proposalFixtures[0],
     id: 1000 + index,
     payload: { name: '후보 ' + index },
   }))
-  const pages: string[] = []
+  const requests: string[] = []
   server.use(
     http.get('/api/v1/proposals', ({ request }) => {
-      const page = Number(new URL(request.url).searchParams.get('page') ?? 0)
-      pages.push(String(page))
+      const params = new URL(request.url).searchParams
+      const page = Number(params.get('page') ?? 0)
+      const size = Number(params.get('size'))
+      requests.push(`${page}:${size}`)
       return HttpResponse.json({
-        data: items.slice(page * 20, (page + 1) * 20),
-        meta: { page, size: 20, totalElements: 21, hasNext: page === 0 },
+        data: items.slice(page * size, (page + 1) * size),
+        meta: {
+          page,
+          size,
+          totalElements: items.length,
+          hasNext: (page + 1) * size < items.length,
+        },
       })
     }),
   )
   const user = userEvent.setup()
   open()
-  await screen.findByText('후보 21건')
+  await screen.findByText('후보 101건')
+  expect(requests).toEqual(['0:100', '1:100'])
   const list = within(screen.getByRole('complementary'))
   expect(list.getByText('후보 0')).toBeInTheDocument()
+  expect(list.queryByText('후보 20')).not.toBeInTheDocument()
   await user.click(list.getByRole('button', { name: '다음 페이지' }))
   expect(list.getByText('후보 20')).toBeInTheDocument()
-  expect(list.getByRole('button', { name: '다음 페이지' })).toBeDisabled()
-  expect(pages).toEqual(['0', '1'])
   await user.type(
     screen.getByRole('searchbox', { name: '후보 검색' }),
-    '후보 20',
+    '후보 100',
   )
   expect(await screen.findByText('후보 1건')).toBeInTheDocument()
-  expect(list.getByText('후보 20')).toBeInTheDocument()
+  expect(list.getByText('후보 100')).toBeInTheDocument()
 })
+
+function serveProposals(items: typeof proposalFixtures) {
+  server.use(
+    http.get('/api/v1/proposals', () =>
+      HttpResponse.json({
+        data: items,
+        meta: {
+          page: 0,
+          size: 100,
+          totalElements: items.length,
+          hasNext: false,
+        },
+      }),
+    ),
+  )
+}
+
+const approvedObject = {
+  ...proposalFixtures[0],
+  id: 910,
+  itemKind: 'OBJECT_TYPE',
+  reviewStatus: 'APPROVED',
+  payload: {
+    name: '작업지시 객체 정의',
+    objectMapping: { sourceId: 'MES', resourceKey: 'mes.work_order' },
+    properties: [],
+  },
+  evidence: {
+    reason: '작업지시 표를 객체로 둡니다.',
+    fingerprint: 'fp-9f3a',
+    candidateId: 'cand-77',
+  },
+}
+
+test('검토 대기에 객체 후보가 없으면 매핑 유형을 먼저 연다', async () => {
+  serveProposals([approvedObject, ...proposalFixtures])
+  open('/admin/rules?reviewStatus=PENDING')
+  expect(await screen.findByText('후보 1건')).toBeInTheDocument()
+  const types = within(screen.getByRole('group', { name: '후보 유형 필터' }))
+  expect(types.getByRole('button', { name: '매핑 1' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(types.getByRole('button', { name: '객체 속성 0' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  )
+  expect(
+    within(screen.getByRole('complementary')).getByText(
+      '작업지시 설비 코드 연결',
+    ),
+  ).toBeInTheDocument()
+})
+
+test('유형 탭 개수는 출처·반영 상태·검색을 적용한 목록 개수와 같다', async () => {
+  serveProposals([approvedObject, ...proposalFixtures])
+  const user = userEvent.setup()
+  open('/admin/rules?origin=AI&group=mappings')
+  expect(await screen.findByText('후보 2건')).toBeInTheDocument()
+  const types = within(screen.getByRole('group', { name: '후보 유형 필터' }))
+  // 직접 추가(MANUAL) 후보는 출처 조건에서 빠진다
+  expect(types.getByRole('button', { name: '매핑 2' })).toBeInTheDocument()
+  expect(types.getByRole('button', { name: '객체 속성 1' })).toBeInTheDocument()
+  await user.type(
+    screen.getByRole('searchbox', { name: '후보 검색' }),
+    '인수인계',
+  )
+  expect(
+    await types.findByRole('button', { name: '매핑 1' }),
+  ).toBeInTheDocument()
+  expect(types.getByRole('button', { name: '객체 속성 0' })).toBeInTheDocument()
+  expect(screen.getByText('후보 1건')).toBeInTheDocument()
+})
+
+test('검색은 보이는 칸만 찾고 내부 대조용 값은 찾지 않는다', async () => {
+  serveProposals([approvedObject, ...proposalFixtures])
+  const user = userEvent.setup()
+  open('/admin/rules?group=objects')
+  await screen.findByText('후보 1건')
+  const search = screen.getByRole('searchbox', { name: '후보 검색' })
+  await user.type(search, 'fp-9f3a')
+  expect(
+    await screen.findByText(
+      '선택한 상태·유형·검색어에 해당하는 후보가 없습니다.',
+    ),
+  ).toBeVisible()
+  await user.clear(search)
+  await user.type(search, 'cand-77')
+  expect(screen.getByText('후보 0건')).toBeInTheDocument()
+  await user.clear(search)
+  await user.type(search, 'mes.work_order')
+  expect(await screen.findByText('후보 1건')).toBeInTheDocument()
+  await user.clear(search)
+  await user.type(search, '객체로 둡니다')
+  expect(await screen.findByText('후보 1건')).toBeInTheDocument()
+})
+
 test('조회 사용자가 상세 주소로 진입해도 제안 API를 호출하지 않는다', async () => {
   const request = vi.fn(() => HttpResponse.json({ data: proposalFixtures[0] }))
   server.use(http.get('/api/v1/proposals/:id', request))

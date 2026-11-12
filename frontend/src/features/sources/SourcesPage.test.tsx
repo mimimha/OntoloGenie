@@ -1,14 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { server } from '../../mocks/node'
 import { resetSourceMocks } from '../../mocks/sourceHandlers'
+import { CHECK_POLL_LIMIT_MS, CHECK_POLL_MS } from './ConnectionInfo'
 import { parseEndpoint } from './endpoint'
 import SourcesPage from './SourcesPage'
-import type { ConnectionCheck } from './types'
+import type {
+  ConnectionCheck,
+  SourceDetail,
+  SourceUpdateRequest,
+} from './types'
 import type { SyncRun } from './syncApi'
 
 afterEach(() => {
@@ -217,7 +222,7 @@ test('등록된 원천을 표로 보여주고 첫 원천의 접속 정보를 연
   const rows = within(table).getAllByRole('row')
   expect(rows[1]).toHaveTextContent('ERP 운영 DB')
   expect(rows[1]).toHaveTextContent('구조화 데이터')
-  expect(rows[1]).toHaveTextContent('읽기 전용 확인됨')
+  expect(rows[1]).toHaveTextContent('읽기 접속 확인됨')
   expect(rows[2]).toHaveTextContent('확인 필요')
   expect(
     screen.getByRole('heading', { name: '등록된 원천' }),
@@ -232,7 +237,9 @@ test('등록된 원천을 표로 보여주고 첫 원천의 접속 정보를 연
   expect(
     screen.getByText('수집 계정 platform_ro · AI 분석 계정 platform_ai'),
   ).toBeInTheDocument()
-  expect(screen.getByText('SELECT only · 검증됨')).toBeInTheDocument()
+  // 연결 검사는 쓰기 권한을 검사하지 않으므로 읽기 전용이라고 단정하지 않는다
+  expect(screen.getByText('읽기 전용으로 접속됨')).toBeInTheDocument()
+  expect(screen.queryByText(/SELECT only/)).not.toBeInTheDocument()
   // 가장 최근 검사의 계정별 결과
   const results = await screen.findByRole('list', { name: '계정별 결과' })
   expect(results).toHaveTextContent('수집 계정: 읽을 수 있는 표 18개 · 컬럼')
@@ -541,7 +548,7 @@ test('이미 있는 원천 코드면 서버가 준 안내를 보여준다', asyn
 test('접속 대상을 바꾸면 미검증으로 돌아가고 다시 확인하라고 안내한다', async () => {
   const user = userEvent.setup()
   renderSourcesPage()
-  await screen.findByText('SELECT only · 검증됨')
+  await screen.findByText('읽기 전용으로 접속됨')
 
   await user.click(screen.getByRole('button', { name: '정보 수정' }))
   const dialog = screen.getByRole('dialog', { name: '원천 정보 수정' })
@@ -551,9 +558,10 @@ test('접속 대상을 바꾸면 미검증으로 돌아가고 다시 확인하�
   await user.type(endpoint, 'erp-db2.internal:5432/erp')
   await user.click(within(dialog).getByRole('button', { name: '저장' }))
 
+  // 접속 대상이 바뀌면 서버가 이 원천의 CDC 반영을 멈춘다(SOURCE_CHANGED)
   expect(
     await screen.findByText(
-      '접속 정보가 바뀌었습니다. 연결 다시 확인을 눌러 주세요.',
+      '접속 대상이 바뀌었습니다. CDC로 반영하던 표는 CDC 재연결 전까지 반영을 멈춥니다. 연결 다시 확인을 눌러 주세요.',
     ),
   ).toBeInTheDocument()
   expect(
@@ -565,7 +573,7 @@ test('접속 대상을 바꾸면 미검증으로 돌아가고 다시 확인하�
 test('계정 이름만 바꾸고 비밀번호를 넣지 않으면 저장하지 않는다', async () => {
   const user = userEvent.setup()
   renderSourcesPage()
-  await screen.findByText('SELECT only · 검증됨')
+  await screen.findByText('읽기 전용으로 접속됨')
 
   await user.click(screen.getByRole('button', { name: '정보 수정' }))
   const dialog = screen.getByRole('dialog', { name: '원천 정보 수정' })
@@ -597,7 +605,7 @@ test('다른 사람이 먼저 수정했으면 최신 상태를 확인하라고 �
     ),
   )
   renderSourcesPage()
-  await screen.findByText('SELECT only · 검증됨')
+  await screen.findByText('읽기 전용으로 접속됨')
 
   await user.click(screen.getByRole('button', { name: '정보 수정' }))
   const dialog = screen.getByRole('dialog', { name: '원천 정보 수정' })
@@ -607,4 +615,317 @@ test('다른 사람이 먼저 수정했으면 최신 상태를 확인하라고 �
   expect(await within(dialog).findByRole('alert')).toHaveTextContent(
     '최신 상태를 확인해 주세요.',
   )
+})
+
+function sourceDetail(overrides: Partial<SourceDetail> = {}): SourceDetail {
+  return {
+    id: 1,
+    code: 'ERP_MAIN',
+    name: 'ERP 운영 DB',
+    sourceKind: 'POSTGRES',
+    connectionStatus: 'CONNECTED',
+    lastCheckedAt: null,
+    syncEnabled: true,
+    syncIntervalMinutes: null,
+    rowVersion: 1,
+    connectionConfig: { host: 'erp-db.internal', port: 5432, database: 'erp' },
+    credentials: [
+      { purpose: 'SYNC', username: 'platform_ro' },
+      { purpose: 'AI', username: 'platform_ai' },
+    ],
+    latestConnectionCheck: null,
+    ...overrides,
+  }
+}
+
+test('다른 곳에서 먼저 저장해 409가 나면 최신 내용을 불러와 같은 창에서 다시 저장할 수 있다', async () => {
+  const user = userEvent.setup()
+  let version = 1
+  const sentVersions: number[] = []
+  server.use(
+    http.get('/api/v1/sources/1', () =>
+      HttpResponse.json({ data: sourceDetail({ rowVersion: version }) }),
+    ),
+    http.patch('/api/v1/sources/1', async ({ request }) => {
+      const body = (await request.json()) as SourceUpdateRequest
+      sentVersions.push(body.rowVersion)
+      if (body.rowVersion !== version)
+        return HttpResponse.json(
+          {
+            error: {
+              code: 'VERSION_CONFLICT',
+              message: '다른 사용자가 먼저 수정했습니다.',
+              details: {},
+              requestId: 'mock-request-id',
+            },
+          },
+          { status: 409 },
+        )
+      version += 1
+      return HttpResponse.json({
+        data: sourceDetail({ rowVersion: version, name: body.name }),
+      })
+    }),
+  )
+  renderSourcesPage()
+  await screen.findByText('읽기 전용으로 접속됨')
+
+  await user.click(screen.getByRole('button', { name: '정보 수정' }))
+  const dialog = screen.getByRole('dialog', { name: '원천 정보 수정' })
+  await user.type(within(dialog).getByLabelText('원천 이름'), ' 2')
+  // 창을 연 사이 다른 사람이 저장했다
+  version = 2
+  await user.click(within(dialog).getByRole('button', { name: '저장' }))
+
+  expect(
+    await within(dialog).findByText(
+      '다른 곳에서 바뀐 내용을 불러왔습니다. 입력한 내용을 확인하고 다시 저장해 주세요.',
+    ),
+  ).toBeInTheDocument()
+  expect(within(dialog).getByLabelText('원천 이름')).toHaveValue(
+    'ERP 운영 DB 2',
+  )
+  await user.click(within(dialog).getByRole('button', { name: '저장' }))
+
+  expect(await screen.findByText('저장했습니다.')).toBeInTheDocument()
+  expect(sentVersions).toEqual([1, 2])
+})
+
+test('409 뒤 다시 저장해도 다른 곳에서 바꾼 접속 대상을 옛 값으로 되돌리지 않는다', async () => {
+  const user = userEvent.setup()
+  let latest = sourceDetail()
+  const sent: SourceUpdateRequest[] = []
+  server.use(
+    http.get('/api/v1/sources/1', () => HttpResponse.json({ data: latest })),
+    http.patch('/api/v1/sources/1', async ({ request }) => {
+      const body = (await request.json()) as SourceUpdateRequest
+      sent.push(body)
+      if (body.rowVersion !== latest.rowVersion)
+        return HttpResponse.json(
+          {
+            error: {
+              code: 'VERSION_CONFLICT',
+              message: '다른 사용자가 먼저 수정했습니다.',
+              details: {},
+              requestId: 'mock-request-id',
+            },
+          },
+          { status: 409 },
+        )
+      latest = sourceDetail({
+        ...latest,
+        rowVersion: latest.rowVersion + 1,
+        name: body.name ?? latest.name,
+      })
+      return HttpResponse.json({ data: latest })
+    }),
+  )
+  renderSourcesPage()
+  await screen.findByText('읽기 전용으로 접속됨')
+
+  await user.click(screen.getByRole('button', { name: '정보 수정' }))
+  const dialog = screen.getByRole('dialog', { name: '원천 정보 수정' })
+  await user.type(within(dialog).getByLabelText('원천 이름'), ' 2')
+  // 창을 연 사이 다른 사람이 접속 대상을 바꿨다
+  latest = sourceDetail({
+    rowVersion: 2,
+    connectionConfig: { host: 'erp-db2.internal', port: 5432, database: 'erp' },
+  })
+  await user.click(within(dialog).getByRole('button', { name: '저장' }))
+  await within(dialog).findByText(
+    '다른 곳에서 바뀐 내용을 불러왔습니다. 입력한 내용을 확인하고 다시 저장해 주세요.',
+  )
+
+  // 손대지 않은 칸은 최신 값, 고친 칸은 입력한 값
+  expect(within(dialog).getByLabelText('접속 대상')).toHaveValue(
+    'erp-db2.internal:5432/erp',
+  )
+  expect(within(dialog).getByLabelText('원천 이름')).toHaveValue(
+    'ERP 운영 DB 2',
+  )
+  await user.click(within(dialog).getByRole('button', { name: '저장' }))
+
+  expect(await screen.findByText('저장했습니다.')).toBeInTheDocument()
+  expect(sent.at(-1)).toEqual({ rowVersion: 2, name: 'ERP 운영 DB 2' })
+})
+
+test('계정 이름은 앞뒤 공백을 빼고 보낸다', async () => {
+  const user = userEvent.setup()
+  let sent: SourceUpdateRequest | undefined
+  server.events.on('request:start', async ({ request }) => {
+    if (request.method === 'PATCH')
+      sent = (await request.clone().json()) as SourceUpdateRequest
+  })
+  renderSourcesPage()
+  await screen.findByText('읽기 전용으로 접속됨')
+
+  await user.click(screen.getByRole('button', { name: '정보 수정' }))
+  const dialog = screen.getByRole('dialog', { name: '원천 정보 수정' })
+  const username = within(dialog).getByLabelText('AI 분석 계정 이름')
+  await user.clear(username)
+  await user.type(username, '  platform_ai2  ')
+  await user.type(
+    within(dialog).getByLabelText('AI 분석 계정 비밀번호'),
+    'new-pw',
+  )
+  await user.click(within(dialog).getByRole('button', { name: '저장' }))
+
+  expect(
+    await screen.findByText(
+      '접속 정보가 바뀌었습니다. 연결 다시 확인을 눌러 주세요.',
+    ),
+  ).toBeInTheDocument()
+  expect(sent?.credentials).toEqual([
+    { purpose: 'AI', username: 'platform_ai2', password: 'new-pw' },
+  ])
+  server.events.removeAllListeners()
+})
+
+test('다른 곳에서 요청한 검사가 끝나도 원천 상태를 다시 불러온다', async () => {
+  let finished = false
+  let checkCalls = 0
+  server.use(
+    http.get('/api/v1/sources/1', () =>
+      HttpResponse.json({
+        data: sourceDetail({
+          connectionStatus: finished ? 'CONNECTED' : 'UNVERIFIED',
+          latestConnectionCheck: {
+            checkId: 120,
+            status: finished ? 'SUCCEEDED' : 'RUNNING',
+            finishedAt: null,
+            errorMessage: null,
+          },
+        }),
+      }),
+    ),
+    http.get('/api/v1/sources/1/connection-checks/120', () => {
+      checkCalls += 1
+      if (checkCalls >= 2) finished = true
+      return HttpResponse.json({
+        data: checkResult({
+          checkId: 120,
+          status: finished ? 'SUCCEEDED' : 'RUNNING',
+        }),
+      })
+    }),
+  )
+  renderSourcesPage()
+
+  expect(await screen.findByText('미검증')).toBeInTheDocument()
+  expect(await screen.findByText('검사 중')).toBeInTheDocument()
+  expect(
+    await screen.findByText('읽기 전용으로 접속됨', {}, { timeout: 5000 }),
+  ).toBeInTheDocument()
+})
+
+test('검사 결과를 불러오지 못하면 확인 중 상태로 막아 두지 않는다', async () => {
+  const user = userEvent.setup()
+  server.use(
+    http.get('/api/v1/sources/:id/connection-checks/:checkId', () =>
+      HttpResponse.json(
+        {
+          error: {
+            code: 'RESOURCE_NOT_FOUND',
+            message: '연결 검사를 찾을 수 없습니다.',
+            details: {},
+            requestId: 'mock-request-id',
+          },
+        },
+        { status: 404 },
+      ),
+    ),
+  )
+  renderSourcesPage('/admin/sources?source=2')
+  await screen.findByText('미검증')
+
+  await user.click(screen.getByRole('button', { name: '연결 다시 확인' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    '연결 검사를 찾을 수 없습니다.',
+  )
+  expect(screen.getByRole('button', { name: '연결 다시 확인' })).toBeEnabled()
+})
+
+test('검사가 시간 상한까지 끝나지 않으면 다시 불러오기를 멈추고 버튼을 푼다', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  try {
+    let calls = 0
+    server.use(
+      http.get('/api/v1/sources/:id/connection-checks/:checkId', () => {
+        calls += 1
+        return HttpResponse.json({
+          data: checkResult({ status: 'RUNNING', finishedAt: null }),
+        })
+      }),
+    )
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    renderSourcesPage('/admin/sources?source=2')
+    await screen.findByText('미검증')
+
+    await user.click(screen.getByRole('button', { name: '연결 다시 확인' }))
+    expect(
+      await screen.findByRole('button', { name: '확인 중…' }),
+    ).toBeDisabled()
+
+    await act(() => vi.advanceTimersByTimeAsync(CHECK_POLL_LIMIT_MS))
+    expect(
+      await screen.findByRole('button', { name: '연결 다시 확인' }),
+    ).toBeEnabled()
+    expect(
+      screen.getByText(
+        '검사 결과를 아직 받지 못해 더 기다리지 않습니다. 잠시 뒤 연결 다시 확인을 눌러 주세요.',
+      ),
+    ).toBeInTheDocument()
+    const stopped = calls
+    await act(() => vi.advanceTimersByTimeAsync(CHECK_POLL_MS * 3))
+    expect(calls).toBe(stopped)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('원천이 100개가 넘어도 모든 쪽을 받아 목록과 선택에 쓴다', async () => {
+  const many = Array.from({ length: 120 }, (_, index) =>
+    sourceDetail({
+      id: index + 1,
+      code: `SRC_${index + 1}`,
+      name: `원천 ${index + 1}`,
+    }),
+  )
+  const pages: string[] = []
+  server.use(
+    http.get('/api/v1/sources', ({ request }) => {
+      const params = new URL(request.url).searchParams
+      const page = Number(params.get('page'))
+      const size = Number(params.get('size'))
+      pages.push(`${page}:${size}`)
+      return HttpResponse.json({
+        data: many.slice(page * size, (page + 1) * size),
+        meta: {
+          page,
+          size,
+          totalElements: many.length,
+          hasNext: (page + 1) * size < many.length,
+        },
+      })
+    }),
+  )
+  renderSourcesPage('/admin/sources?source=110')
+
+  expect(
+    await screen.findByRole('heading', { name: '원천 110 상세' }),
+  ).toBeInTheDocument()
+  expect(screen.getByText('120개')).toBeInTheDocument()
+  expect(pages).toEqual(['0:100', '1:100'])
+})
+
+test('주소에 register=1이 있으면 원천 등록 창을 바로 연다', async () => {
+  const user = userEvent.setup()
+  renderSourcesPage('/admin/sources?register=1')
+
+  const dialog = await screen.findByRole('dialog', { name: '원천 등록' })
+  await user.click(within(dialog).getByRole('button', { name: '취소' }))
+  expect(
+    screen.queryByRole('dialog', { name: '원천 등록' }),
+  ).not.toBeInTheDocument()
 })

@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { ApiError } from '../../api/errors'
 import Button from '../../components/Button'
 import DataTable from '../../components/DataTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
@@ -14,10 +15,24 @@ import {
   summaryNotices,
 } from './labels'
 import TestAnalysisDelete from './TestAnalysisDelete'
-import type { Analysis, AnalysisKind, AnalysisRun } from './types'
+import type {
+  Analysis,
+  AnalysisKind,
+  AnalysisRun,
+  AnalysisStatus,
+} from './types'
 
 // 분석이 끝날 때까지 019를 다시 부르는 간격
 export const ANALYSIS_POLL_MS = 2000
+// 서버·네트워크 오류일 때 한 번의 확인에서 다시 묻는 횟수
+const ANALYSIS_RETRY_COUNT = 2
+
+function isTransientError(error: Error) {
+  return (
+    error instanceof ApiError &&
+    (error.kind === 'server' || error.kind === 'network')
+  )
+}
 
 function formatTime(value: string | null) {
   return value ? new Date(value).toLocaleString('ko-KR') : '-'
@@ -40,37 +55,50 @@ function CurrentAnalysis({
   const query = useQuery({
     queryKey: ['analyses', id],
     queryFn: ({ signal }) => fetchAnalysis(id, signal),
-    refetchInterval: (current) =>
-      current.state.error ||
-      (current.state.data && !isAnalysisRunning(current.state.data.status))
-        ? false
-        : ANALYSIS_POLL_MS,
-    retry: false,
+    // 서버·네트워크 오류 한 번으로 진행 확인을 멈추지 않는다. 몇 번 다시 묻고, 그래도 실패하면 다음 간격에 또 묻는다.
+    refetchInterval: (current) => {
+      const { data, error } = current.state
+      if (data && !isAnalysisRunning(data.status)) return false
+      if (error && !isTransientError(error)) return false
+      return ANALYSIS_POLL_MS
+    },
+    retry: (count, error) =>
+      isTransientError(error) && count < ANALYSIS_RETRY_COUNT,
   })
   const status = query.data?.status
+  const previousStatus = useRef<AnalysisStatus>(undefined)
 
-  // 분석이 끝나면 새 후보와 최근 분석 목록을 다시 불러온다.
+  // 진행 중이던 분석이 끝나면 새 후보와 최근 분석 목록을 다시 불러온다.
+  // 이미 끝난 분석을 열 때는 불러오던 목록을 다시 시작하지 않는다.
   useEffect(() => {
-    if (status && !isAnalysisRunning(status)) {
+    const before = previousStatus.current
+    previousStatus.current = status
+    if (
+      before !== undefined &&
+      isAnalysisRunning(before) &&
+      status !== undefined &&
+      !isAnalysisRunning(status)
+    ) {
       void queryClient.invalidateQueries({ queryKey: ['proposals'] })
       void queryClient.invalidateQueries({ queryKey: ['analyses', 'recent'] })
     }
   }, [status, queryClient])
 
+  // 받은 결과가 있으면 그 뒤의 조회 오류는 결과 아래 안내 줄로만 보인다.
   let body
-  if (query.isPending)
-    body = <LoadingState message="분석 상태를 불러오는 중…" />
-  else if (query.isError)
-    body = (
+  const run = query.data
+  if (run === undefined)
+    body = query.isError ? (
       <ErrorState
         error={query.error}
         onRetry={() => {
           void query.refetch()
         }}
       />
+    ) : (
+      <LoadingState message="분석 상태를 불러오는 중…" />
     )
   else {
-    const run = query.data
     body = (
       <>
         <div className="flex flex-wrap items-center gap-2">
@@ -130,6 +158,14 @@ function CurrentAnalysis({
         {run.status === 'FAILED' && (
           <p role="alert" className="text-red-700">
             {run.errorMessage ?? '실패 사유를 받지 못했습니다.'}
+          </p>
+        )}
+        {query.isError && (
+          <p className="text-xs text-amber-700">
+            {`진행 상태를 새로 확인하지 못했습니다. ${query.error.message}`}
+            {isTransientError(query.error) && isAnalysisRunning(run.status)
+              ? ' 잠시 뒤 다시 확인합니다.'
+              : ''}
           </p>
         )}
       </>
@@ -330,7 +366,7 @@ function AnalysisPanel({
           onEditScope={(sourceId) =>
             void navigate(`/admin/sources?source=${sourceId}&tab=scope`)
           }
-          onRegister={() => void navigate('/admin/sources')}
+          onRegister={() => void navigate('/admin/sources?register=1')}
         />
       )}
     </section>
