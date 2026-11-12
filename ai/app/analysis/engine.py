@@ -23,7 +23,7 @@ from app.models.candidate import Candidate
 from app.proposers.api_format import to_api_proposals
 from app.proposers.evidence import verify
 from app.proposers.existing import change_counts, filter_existing, skip_past_decisions
-from app.proposers.links import Tables
+from app.proposers.links import Tables, business_cardinality
 from app.proposers.llm_links import estimate_credits as estimate_cross_links
 from app.proposers.llm_links import prepare as prepare_cross_links
 from app.proposers.llm_links import propose as cross_links
@@ -246,6 +246,7 @@ def _analyze(
     kept += notes_kept
     dropped += notes_dropped
 
+    kept = business_cardinality(kept)
     codes = {_prefix(t.resource_key): t.data_source_code for t in request.targets}
     proposals = [_with_source_codes(p, codes) for p in to_api_proposals(kept)]
     summary = {
