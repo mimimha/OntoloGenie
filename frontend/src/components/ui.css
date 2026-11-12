@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'Pretendard Variable';
+  font-style: normal;
+  font-weight: 45 920;
+  font-display: swap;
+  src: url('/fonts/pretendard/PretendardVariable.woff2') format('woff2');
+}
+
 :root {
   color-scheme: light;
   --ui-brand: #8975f6;
@@ -13,7 +21,9 @@
   --ui-input-border: #8a8a8a;
   --ui-radius: 4px;
   --ui-panel-radius: 8px;
-  --ui-font: Pretendard, 'Noto Sans KR', 'Malgun Gothic', Arial, sans-serif;
+  --ui-font:
+    'Pretendard Variable', Pretendard, 'Noto Sans KR', 'Malgun Gothic', Arial,
+    sans-serif;
 }
 
 body {

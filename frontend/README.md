@@ -26,6 +26,8 @@ npm run dev
 
 브라우저에서 `http://localhost:5173`을 엽니다. 개발 서버에서는 MSW가 켜져서 백엔드 없이도 `/api/...` 요청에 가짜 응답을 돌려줍니다.
 
+개발용 로그인은 ID `demo-user`, 비밀번호 `demo-only`를 사용합니다. 실제 서버 인증과 구분되는 UI 확인용 계정입니다.
+
 ## 명령어
 
 | 명령                   | 하는 일                                   |
@@ -284,7 +286,7 @@ npm test -- --run src/api/client.test.ts
 - 공통 색상·타이포·입력·버튼·표·배지·피드백·다이얼로그·페이지네이션은 `src/components/ui.css`, 헤더·메뉴는 `src/components/workspace.css`에서 관리한다. 기존 화면 CSS에서 공통 컴포넌트를 다시 덮어쓰지 않는다.
 - 업무 데이터는 `src/features/explorer/explorer.css`에서 검색·목록·관계도·우측 상세를 구성한다. 좁은 창에서는 패널을 재배치하고 그래프만 내부에서 스크롤한다.
 - 페이지네이션은 처음·이전·현재 주변 최대 5개 번호·다음·마지막을 제공한다. API 페이지는 0부터 시작하며 빈 결과·1쪽·조회 중·결과 축소를 처리한다.
-- 별도 웹폰트 파일은 추가하지 않았다. Pretendard → Noto Sans KR → Malgun Gothic → Arial → sans-serif 순으로 사용 가능한 글꼴을 선택한다.
+- Pretendard Variable 1.3.9를 `public/fonts/pretendard/`에서 직접 제공한다. 공통 `--ui-font`는 Pretendard Variable → Pretendard → Noto Sans KR → Malgun Gothic → Arial → sans-serif 순서이며 `font-display: swap`으로 로딩 중에도 본문을 표시한다. 원본 파일의 SIL OFL 1.1 라이선스를 함께 보관한다.
 - 확인 명령: `npm run lint`, `npm run build`, `npx vitest run --maxWorkers=2`. 테스트는 모의 API를 사용하며 실제 운영 데이터 연동 검증을 대신하지 않는다.
 
 ## AI 업무 도우미 가독성 적용
@@ -306,7 +308,7 @@ npm test -- --run src/api/client.test.ts
 
 - `src/components/management.css`에서 Action 정의·계정·권한의 목록과 편집 폼, 실행 이력·정의 변경·규칙 개정·제안 이력의 공통 배치를 관리한다. 제목·검색·결과를 구분하고 관리 폼은 최대 1100px, 계정 폼은 최대 880px로 제한한다.
 - 이력과 비교·입력 형식 표는 14px / 21px를 사용한다. 변경 전후 비교와 넓은 입력 표는 공통 DataTable로 표시하며 표 영역 안에서 스크롤한다. 종류·개정 선택은 동일한 보라색 상태 표현을 사용한다.
-- 로그인은 `src/features/auth/login.css`, 비밀번호 변경·권한 및 없는 주소 안내는 공통 토큰과 컴포넌트를 사용한다. 로그인 왼쪽 장식 오브젝트는 표시하지 않으며 인증·권한·저장 및 충돌 처리 동작을 유지한다.
+- 로그인은 `src/features/auth/login.css`, 비밀번호 변경·권한 및 없는 주소 안내는 공통 토큰과 컴포넌트를 사용한다. 로그인은 Pretendard와 heading-32·label-14·input-14·control-14, 높이 40px·모서리 4px 컨트롤을 사용한다. WELCOME·소개 문구는 제거하고, 사용자가 요청한 반응형 오브를 배경 없이 왼쪽에 배치한다. 좁은 창에서는 오브를 폼 위로 옮기며 인증·권한·저장 및 충돌 처리 동작을 유지한다.
 - 관련 회귀 검증: `npx vitest run src/features/actions src/features/accounts src/features/audit src/features/history src/features/auth src/features/review src/features/issues --maxWorkers=2`.
 
 ## 팀 결정이 필요한 항목
