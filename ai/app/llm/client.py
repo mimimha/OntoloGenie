@@ -204,6 +204,11 @@ def _post_json(url: str, headers: dict, body: dict, timeout: float) -> dict:
         raise LLMError(f"요청 실패 (HTTP {error.code}): {detail}") from error
     except urllib.error.URLError as error:
         raise LLMError(f"접속하지 못했습니다: {error.reason}") from error
+    except (TimeoutError, OSError) as error:
+        # 응답을 기다리다 시간이 지나면 URLError가 아니라 TimeoutError가 난다. 표 하나만 건너뛰게 LLMError로 바꾼다
+        raise LLMError(f"응답이 없습니다: {type(error).__name__}") from error
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise LLMError("JSON이 아닌 응답을 받았습니다") from error
 
 
 # provider: (클라이언트, 오류 메시지에 쓸 이름). 기본 주소·모델과 키 필수 여부는 config.py에 있다.

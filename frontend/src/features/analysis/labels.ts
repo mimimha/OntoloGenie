@@ -17,6 +17,19 @@ export const analysisStatusLabels: Record<
   FAILED: { label: '실패', tone: 'danger' },
 }
 
+// 서버가 새 상태값을 보내도 화면이 깨지지 않게 모르는 값은 받은 그대로 보여 준다
+export function analysisStatusLabel(status: string): {
+  label: string
+  tone: Tone
+} {
+  return (
+    analysisStatusLabels[status as AnalysisStatus] ?? {
+      label: status,
+      tone: 'neutral',
+    }
+  )
+}
+
 export function isAnalysisRunning(status: AnalysisStatus) {
   return status === 'QUEUED' || status === 'RUNNING'
 }

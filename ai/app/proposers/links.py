@@ -6,7 +6,7 @@
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from functools import cache
+from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
@@ -333,7 +333,7 @@ def _digit_strings(col: Column) -> dict[str, str]:
     )
 
 
-@cache
+@lru_cache(maxsize=200_000)
 def _groups(value: str) -> tuple[int, ...]:
     """값 속 숫자 묶음. 'SO26-0020' → (26, 20), 'pl354' → (354,)"""
     return tuple(int(x) for x in re.findall(r"\d+", value))

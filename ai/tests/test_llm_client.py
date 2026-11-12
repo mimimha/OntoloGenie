@@ -216,3 +216,41 @@ def test_credits_follow_model_and_unknown_model_counts_as_most_expensive():
     assert token_credits("gpt-6-astra", 1000, 200) == pytest.approx(200.0)
     # 표에 없는 모델은 적게 세지 않도록 가장 비싼 단가로 센다
     assert token_credits("gpt-new", 1000, 200) == pytest.approx(200.0)
+
+
+def test_timeout_and_broken_body_become_llm_error(monkeypatch):
+    # 응답을 기다리다 시간이 지나면 분석 전체가 아니라 그 호출만 실패해야 한다
+    import io
+
+    import pytest
+
+    from app.llm import client
+    from app.llm.client import LLMError
+
+    def slow(*_args, **_kwargs):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(client.urllib.request, "urlopen", slow)
+    with pytest.raises(LLMError, match="응답이 없습니다"):
+        client._post_json("http://llm", {}, {}, 1)
+
+    class Body(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(
+        client.urllib.request, "urlopen", lambda *a, **k: Body(b"<html>")
+    )
+    with pytest.raises(LLMError, match="JSON이 아닌"):
+        client._post_json("http://llm", {}, {}, 1)
+
+
+def test_none_provider_is_reported_as_turned_off():
+    from app.config import Settings
+
+    settings = Settings(llm_provider="none")
+    assert not settings.llm_ready
+    assert "LLM 사용 안 함" in settings.llm_missing

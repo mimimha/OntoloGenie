@@ -9,7 +9,7 @@ import { fetchAnalysis, fetchRecentAnalyses } from './api'
 import AnalysisTargetDialog from './AnalysisTargetDialog'
 import {
   analysisCode,
-  analysisStatusLabels,
+  analysisStatusLabel,
   isAnalysisRunning,
   summaryNotices,
 } from './labels'
@@ -74,8 +74,8 @@ function CurrentAnalysis({
     body = (
       <>
         <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge tone={analysisStatusLabels[run.status].tone}>
-            {analysisStatusLabels[run.status].label}
+          <StatusBadge tone={analysisStatusLabel(run.status).tone}>
+            {analysisStatusLabel(run.status).label}
           </StatusBadge>
           <span className="font-medium text-slate-900">
             {run.status === 'SUCCEEDED'
@@ -193,8 +193,8 @@ function RecentAnalyses({
               {run.runKind === 'REANALYSIS' ? '재분석' : '최초 분석'}
             </td>
             <td className="px-4 py-2">
-              <StatusBadge tone={analysisStatusLabels[run.status].tone}>
-                {analysisStatusLabels[run.status].label}
+              <StatusBadge tone={analysisStatusLabel(run.status).tone}>
+                {analysisStatusLabel(run.status).label}
               </StatusBadge>
             </td>
             <td className="px-4 py-2 text-slate-600">
