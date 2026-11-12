@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -164,27 +165,13 @@ class LinkRuleApplierTests {
     }
 
     @Test
-    void sourceDroppedByAnotherRuleOfSameLinkTypeIsRelinkedWhenRulesAgree() {
-        // 규칙 A(equipment_code)로 WO1→EQ-1이 이어진 뒤, 규칙 B(alt_code)는 WO1→EQ-2를 원한다. MANY_TO_ONE이라 둘 다
-        // 빠진다.
+    void secondRuleCodeOnTheSameLinkTypeIsRejected() {
+        long wo = workOrder("EQ-1");
+        long eq = equipment("EQ-1", "프레스");
+        apply(proposal(), rulePayload(List.of()));
         property(workOrderTypeId, "alt_code");
-        long wo =
-                jdbc.sql(
-                                """
-                                insert into object_instance (object_type_id, display_name, properties)
-                                values (:type, 'WO', '{"equipment_code": "EQ-1", "alt_code": "EQ-2"}'::jsonb) returning id
-                                """)
-                        .param("type", workOrderTypeId)
-                        .query(Long.class)
-                        .single();
-        long eq1 = equipment("EQ-1", "프레스");
-        equipment("EQ-2", "프레스");
-        ApplyResult ruleA = apply(proposal(), rulePayload(List.of()));
-        assertThat(activeTargets(wo)).hasSize(1);
-
-        String ruleB = "RULE_B_" + suffix();
         Map<String, Object> other = rulePayload(List.of());
-        other.put("code", ruleB);
+        other.put("code", "RULE_B_" + suffix());
         other.put(
                 "conditions",
                 List.of(
@@ -193,25 +180,30 @@ class LinkRuleApplierTests {
                                 workOrderType + ".alt_code",
                                 "targetProperty",
                                 "code")));
-        ApplyResult result = apply(proposal(), other);
 
-        assertThat(activeTargets(wo)).isEmpty();
-        assertThat(result.summary()).containsEntry("linksInactivated", 1);
-
-        // 규칙 B 개정본 2가 A와 같은 쌍(WO1→EQ-1)을 원하면 다시 이어진다. 근거는 기존 연결의 규칙(A)을 우선해 A로 남는다.
-        Map<String, Object> sameAsA = rulePayload(List.of());
-        sameAsA.put("code", ruleB);
-        apply(proposal(), sameAsA);
-
-        assertThat(activeTargets(wo)).containsExactly(eq1);
-        assertThat(
-                        count(
-                                "object_link",
-                                "source_object_id = "
-                                        + wo
-                                        + " and status = 'ACTIVE' and link_mapping_id = "
-                                        + ruleA.targetId()))
+        // 관계 유형마다 반영 중인 규칙은 하나다(367). 둘이면 한 출발을 다른 도착으로 이으려 할 때 연결이 빠진다(규칙 충돌).
+        assertApplyError(other, ApplyErrorCode.APPLY_PAYLOAD_INVALID, "payload.code");
+        assertThat(count("link_mapping", "link_type_id = " + linkTypeId + " and status = 'ACTIVE'"))
                 .isEqualTo(1);
+        assertThat(activeTargets(wo)).containsExactly(eq);
+
+        // 같은 코드의 개정본은 그대로 받는다.
+        assertThat(apply(proposal(), rulePayload(List.of(Map.of("op", "UPPER")))).summary())
+                .containsEntry("revision", 2);
+
+        // 승인 반영을 거치지 않는 저장도 DB가 막는다(V17 uq_link_mapping_active_link_type).
+        assertThatThrownBy(
+                        () ->
+                                jdbc.sql(
+                                                """
+                                                insert into link_mapping (link_type_id, code, revision)
+                                                values (:type, :code, 1)
+                                                """)
+                                        .param("type", linkTypeId)
+                                        .param("code", "RULE_C_" + suffix())
+                                        .update())
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("uq_link_mapping_active_link_type");
     }
 
     @Test

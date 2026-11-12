@@ -48,6 +48,8 @@ class SyncCheckRequesterTests {
     private long rule;
     private long woMapping;
     private long woType;
+    private long eqType;
+    private long linkType;
 
     @BeforeEach
     void setUp() {
@@ -72,10 +74,10 @@ class SyncCheckRequesterTests {
         fixtures.retireAllRules();
         accountId = fixtures.insertAdmin();
         woType = fixtures.insertObjectType("WO");
-        long eqType = fixtures.insertObjectType("EQ");
+        eqType = fixtures.insertObjectType("EQ");
         long woEqCode = fixtures.insertProperty(woType, "eq_code");
         long eqCode = fixtures.insertProperty(eqType, "code");
-        long linkType = fixtures.insertLinkType(woType, eqType, "MANY_TO_ONE");
+        linkType = fixtures.insertLinkType(woType, eqType, "MANY_TO_ONE");
         dataSource = fixtures.insertDataSource();
         woResource = fixtures.insertResource(dataSource, "erp.work_order");
         long eqResource = fixtures.insertResource(dataSource, "erp.equipment");
@@ -142,6 +144,41 @@ class SyncCheckRequesterTests {
         assertThat(unchanged.checkRunId()).isEqualTo(first);
         assertThat(changed.result()).isEqualTo(Result.QUEUED);
         assertThat(changed.checkRunId()).isNotEqualTo(first);
+    }
+
+    @Test
+    void manualLinkChangeQueuesNewSyncInsteadOfReusingOrJoining() {
+        long first = requester.request().orElseThrow().checkRunId();
+        long wo =
+                fixtures.insertObject(woMapping, woType, "WO9", "{\"eq_code\": \"E9\"}", "ACTIVE");
+        long eq = fixtures.insertObject(null, eqType, "EQ9", "{\"code\": \"X9\"}", "ACTIVE");
+
+        // 수동 연결을 만들면 수집 실행이 없어도 기준이 바뀐다(367). 대기 중인 SYNC에 합류하지 않는다.
+        long link =
+                jdbc.sql(
+                                """
+                                insert into object_link (link_type_id, source_object_id, target_object_id, origin, confirmed_by)
+                                values (:type, :source, :target, 'MANUAL', :account) returning id
+                                """)
+                        .param("type", linkType)
+                        .param("source", wo)
+                        .param("target", eq)
+                        .param("account", accountId)
+                        .query(Long.class)
+                        .single();
+        SyncRequest afterLink = requester.request().orElseThrow();
+
+        // 수동 연결을 끄면 다시 바뀐다.
+        jdbc.sql(
+                        "update object_link set status = 'INACTIVE', inactivated_at = now(), updated_at = now() where id = :id")
+                .param("id", link)
+                .update();
+        SyncRequest afterInactivate = requester.request().orElseThrow();
+
+        assertThat(afterLink.result()).isEqualTo(Result.QUEUED);
+        assertThat(afterLink.checkRunId()).isNotEqualTo(first);
+        assertThat(afterInactivate.result()).isEqualTo(Result.QUEUED);
+        assertThat(afterInactivate.checkRunId()).isNotIn(first, afterLink.checkRunId());
     }
 
     @Test

@@ -27,7 +27,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <ul>
  *   <li>범위는 반영 중인 규칙 전부(ALL)다. 요청자와 {@code sync_run_id}는 없다(V12). 반영 중인 규칙이 없으면 넣지 않는다.
  *   <li>데이터 기준은 060과 같다(원천 테이블별 마지막 성공 수집). CDC 반영도 원천 트랜잭션마다 성공 수집을 남기므로 데이터가 바뀌면 기준도 바뀐다.
- *   <li>같은 검사 판단도 060과 같다. 같은 기준으로 성공한 SYNC가 있으면 넣지 않고(A4), 대기·실행 중이면 합류한다.
+ *   <li>같은 검사 판단도 060과 같다. 같은 기준(수집 기준과 연결 상태, 367)으로 성공한 SYNC가 있으면 넣지 않고(A4), 대기·실행 중이면 합류한다.
  *   <li>확인 대기(WAITING)가 있으면 데이터가 그대로여도 시간이 지나면 승격돼야 하므로, {@code work_key}에 주기 구간을 섞어 주기마다 새로 넣는다.
  * </ul>
  */
@@ -81,7 +81,12 @@ public class SyncCheckRequester {
         String scopeJson = json.writeValueAsString(scope);
         String basisJson = json.writeValueAsString(basis);
         Instant now = Instant.now(clock);
-        String workKey = "SYNC:-:" + CheckRunRequestService.sha256(scopeJson + "|" + basisJson);
+        String linkState =
+                runs.linkState(CheckRunRequestService.linkTypeIds(linkMappings, ruleIds));
+        String workKey =
+                "SYNC:-:"
+                        + CheckRunRequestService.sha256(
+                                scopeJson + "|" + basisJson + "|" + linkState);
         if (pendings.existsByStatus(Status.WAITING)) {
             workKey += ":t" + now.toEpochMilli() / interval.toMillis();
         }
