@@ -11,8 +11,8 @@ import java.util.List;
  * IssueStatusService.reopenAfterFailedReverification}으로 문제를 확인중으로 되돌린다. 구현이 없으면 검사 실행기는 규칙별 결과만
  * 저장한다.
  *
- * <p>검사 실행기가 규칙별 결과를 저장하고 검사를 SUCCEEDED로 바꾸는 <b>같은 트랜잭션</b>(complete)에서 부른다. 예외를 던지면 결과 저장도 함께 롤백되고
- * 검사는 실패로 끝난다.
+ * <p>검사 실행기가 규칙별 결과와 검사 상태·실제로 읽은 데이터 기준을 저장한 뒤, <b>같은 트랜잭션</b>(complete)에서 부른다(376: 되돌리기 판단이 그 데이터
+ * 기준을 읽는다). 예외를 던지면 결과·상태 저장도 함께 롤백되고 검사는 실패로 끝난다.
  */
 public interface IssueReverificationRecorder {
 

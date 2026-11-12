@@ -81,7 +81,7 @@ FN-ISS-01~04의 정합성 문제 목록·근거 조회, 처리 상태 변경, �
 | (등록) → NEW                      | 검사(SYNC·MANUAL)                    | 같은 `dedupeKey`의 열린 문제가 없을 때                                                     |
 | NEW → CHECKING                    | 관리자(067)                          | 없음                                                                                       |
 | CHECKING → FIXED_PENDING_REVERIFY | 관리자(067)                          | 없음. 이 시각이 "원천을 고쳤다"는 기준이 된다                                              |
-| FIXED_PENDING_REVERIFY → CHECKING | 관리자(067) 또는 재검증 실패 시 검사 | 검사는 조치완료 표시 뒤에 시작한 재검증에서 FAILED일 때만                                  |
+| FIXED_PENDING_REVERIFY → CHECKING | 관리자(067) 또는 재검증 실패 시 검사 | 검사는 조치완료 표시 뒤의 자료를 읽은 재검증에서 FAILED일 때만(376)                                  |
 | FIXED_PENDING_REVERIFY → RESOLVED | **관리자만**(067)                    | 아래 해결 조건. 재검증이 통과해도 자동으로 해결하지 않는다(2026-10-27 결정, 시나리오 S5-6) |
 | RESOLVED → (없음)                 | —                                    | 끝 상태. 같은 문제가 다시 나오면 새 문제로 등록된다                                        |
 
@@ -107,7 +107,7 @@ FN-ISS-01~04의 정합성 문제 목록·근거 조회, 처리 상태 변경, �
 
 검사가 바꾸는 상태는 하나다. 재검증(135)이 문제의 `issue_verification`에 FAILED를 넣은 같은 트랜잭션에서 `IssueStatusService.reopenAfterFailedReverification(issueId, checkRunId)`를 부른다.
 
-- 문제가 FIXED_PENDING_REVERIFY이고, 그 재검증이 마지막 조치완료 표시 뒤에 시작했으면 CHECKING으로 되돌리고 `true`를 준다. `row_version`을 올리고 이력에 `changed_by=null`, `check_run_id`=그 재검증, `note=null`인 행을 남긴다(069의 "검사가 바꾼 행").
+- 문제가 FIXED_PENDING_REVERIFY이고, 그 재검증이 마지막 조치완료 표시 뒤의 자료를 읽었으면(검사가 표시 뒤에 시작했고, 데이터 기준의 FULL_COMPARE 표마다 기준 수집이 표시 뒤에 시작함, 376) CHECKING으로 되돌리고 `true`를 준다. `row_version`을 올리고 이력에 `changed_by=null`, `check_run_id`=그 재검증, `note=null`인 행을 남긴다(069의 "검사가 바꾼 행").
 - 그 밖에는 바꾸지 않고 `false`를 준다. NEW·CHECKING(관리자가 아직 고쳤다고 하지 않음), RESOLVED(해결된 문제는 열지 않음), 조치완료 표시 전에 시작한 재검증(고치기 전 자료).
 - 이 재검증에 이 문제의 FAILED 기록이 없거나 REVERIFY 검사가 아니면 `IllegalStateException`이다(호출 순서 오류).
 - 재검증이 PASSED면 아무것도 바꾸지 않는다. 해결은 관리자가 067로 한다. 수집 중 분류(SYNC)가 같은 문제를 다시 찾아도 상태를 바꾸지 않는다. 수집이 늦게 따라와 고치기 전 자료로 판단할 수 있어서다.

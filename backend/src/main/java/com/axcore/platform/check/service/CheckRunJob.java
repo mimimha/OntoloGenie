@@ -447,11 +447,6 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         if (judges(outcome.triggerKind())) {
             outcome.judgment().addRetiredClosed(judge.closeRetiredRules(jobId, now));
         }
-        if (!outcome.reverifications().isEmpty()) {
-            reverificationRecorders
-                    .orderedStream()
-                    .forEach(recorder -> recorder.record(jobId, outcome.reverifications(), now));
-        }
         if (scope == null) {
             runs.markSucceeded(jobId, now);
         } else {
@@ -464,6 +459,13 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                             basisJson,
                             outcome.linkState());
             runs.markReverificationSucceeded(jobId, now, workKey, basisJson);
+        }
+        // 문제별 판정은 실제로 읽은 데이터 기준을 저장한 뒤에 넘긴다. 문제를 확인중으로 되돌릴지 그 기준으로 판단한다(376). 같은 트랜잭션이라
+        // 기록이 실패하면 결과·상태 저장도 함께 롤백된다.
+        if (!outcome.reverifications().isEmpty()) {
+            reverificationRecorders
+                    .orderedStream()
+                    .forEach(recorder -> recorder.record(jobId, outcome.reverifications(), now));
         }
     }
 

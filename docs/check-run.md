@@ -100,7 +100,7 @@ FN-CHK-01·02의 검사 실행 목록·상태 조회, 수동 검사·재검증 �
 
 거절된 요청은 검사를 만들지 않는다.
 
-REVERIFY 요청은 수정 자료의 수집 완료를 확인한 뒤 보낸다. 067은 조치완료 표시 뒤에 시작한 재검증의 통과 기록을 해결 조건으로 사용한다. 비교 대상 실행은 규칙 일치 여부와 관계없이, 존재하는 MANUAL·SYNC·REVERIFY 실행이며 상태가 SUCCEEDED이면 유효하다.
+REVERIFY 요청은 수정 자료의 수집 완료를 확인한 뒤 보낸다. 재검증이 FAILED여도, 데이터 기준의 FULL_COMPARE 표가 조치완료 표시 전에 시작한 전체 읽기의 자료면 문제를 확인중으로 되돌리지 않는다(376, 수동 다시 읽기가 이미 읽고 저장 중인 실행에 합류한 경우). 067은 조치완료 표시 뒤에 시작한 재검증의 통과 기록을 해결 조건으로 사용한다. 비교 대상 실행은 규칙 일치 여부와 관계없이, 존재하는 MANUAL·SYNC·REVERIFY 실행이며 상태가 SUCCEEDED이면 유효하다.
 
 ## 059 목록 조건
 
@@ -164,7 +164,7 @@ batch 프로필의 작업 표 처리기(`QueuedJobHandler`, `CHECK_RUN`)다. `tr
 | FAILED | 출발 행이 미연결·중복·조건 위반 | 같음 |
 | NOT_EVALUATED | 문제에 객체가 없음, 같은 코드의 규칙을 판정하지 못함(실행 때 반영 중 아님·건너뜀), 객체가 판정 대상에 없음(원천 삭제·행 조건 밖) | 비어 있음. `reason`에 이유 |
 
-- 결과를 저장하는 complete 트랜잭션에서, 검사를 SUCCEEDED로 바꾸기 전에 `IssueReverificationRecorder.record(checkRunId, 판정 목록, 시각)`을 부른다. 구현이 예외를 던지면 결과 저장도 함께 롤백되고 검사는 실패한다.
+- 결과를 저장하는 complete 트랜잭션에서, 검사 상태와 실제로 읽은 데이터 기준(`data_basis`)을 저장한 뒤(376) `IssueReverificationRecorder.record(checkRunId, 판정 목록, 시각)`을 부른다. 구현이 예외를 던지면 결과 저장도 함께 롤백되고 검사는 실패한다.
 - `IssueVerificationRecorder`가 `issue_verification`에 PASSED·FAILED를 기록한다. 새 FAILED를 저장하면 `IssueStatusService.reopenAfterFailedReverification`을 부른다. NOT_EVALUATED는 검사 감사 집계에 남는다.
 
 ### 이전 검사와의 비교 (135)

@@ -102,7 +102,8 @@ public class IssueStatusService {
      *
      * <ul>
      *   <li>문제가 조치완료·재검증대기가 아니다. 관리자가 아직 고쳤다고 하지 않았거나 이미 다른 상태다.
-     *   <li>재검증이 조치완료 표시 전에 시작했다. 고치기 전 자료를 읽은 결과라 되돌릴 근거가 아니다.
+     *   <li>재검증이 조치완료 표시 뒤의 자료를 읽었다고 확인할 수 없다: 조치완료 전에 시작했거나, 데이터 기준의 FULL_COMPARE 표가 조치완료 전에 시작한
+     *       전체 읽기의 자료다(376). 고치기 전 자료를 읽은 결과라 되돌릴 근거가 아니다. FAILED 검증 기록은 그대로 남는다.
      * </ul>
      *
      * <p>호출 조건: 같은 트랜잭션에서 이 메서드보다 먼저 Issue Entity를 읽었거나 issue 행을 SQL로 바꿨다면, 부르기 전에 flush하고 영속성
@@ -122,7 +123,7 @@ public class IssueStatusService {
                         .findForUpdate(issueId)
                         .orElseThrow(() -> new IllegalStateException("문제가 없습니다: " + issueId));
         if (issue.getStatus() != IssueStatus.FIXED_PENDING_REVERIFY
-                || !issueStatusRepository.startedAfterLastFix(issueId, checkRunId)) {
+                || !issueStatusRepository.readDataAfterLastFix(issueId, checkRunId)) {
             return false;
         }
 

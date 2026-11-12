@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.axcore.platform.TestcontainersConfiguration;
+import com.axcore.platform.check.CheckRunTestFixtures;
 import com.axcore.platform.issue.dto.IssueStatusChangeRequest;
 import com.axcore.platform.issue.service.IssueStatusService;
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +36,8 @@ class IssueReopenServiceTests {
     @Autowired JdbcClient jdbcClient;
 
     private IssueTestFixtures fixtures;
+    private CheckRunTestFixtures syncFixtures;
+    private long dataSourceId;
     private long accountId;
     private long detectedRunId;
     private long mappingId;
@@ -41,6 +45,7 @@ class IssueReopenServiceTests {
     @BeforeEach
     void prepare() {
         fixtures = new IssueTestFixtures(jdbcClient);
+        syncFixtures = new CheckRunTestFixtures(jdbcClient);
         accountId = fixtures.insertAdmin();
         detectedRunId = fixtures.insertCandidateRun();
         mappingId = fixtures.insertLinkMapping();
@@ -77,6 +82,59 @@ class IssueReopenServiceTests {
                 .containsEntry("status", "FIXED_PENDING_REVERIFY")
                 .containsEntry("row_version", 1);
         assertThat(historyCount(issueId)).isEqualTo(1);
+    }
+
+    @Test
+    void ignoresFullCompareDataReadBeforeFixEvenIfTheCheckStartedAfter() {
+        // 수동 다시 읽기가 이미 읽고 저장 중이던 전체 읽기에 합류한 경우: 수집은 조치완료 뒤에 끝났어도 읽기는 그 전에 시작했다.
+        long issueId = fixedIssue();
+        long runId = failedReverification(issueId, AFTER_FIX);
+        basedOn(runId, resource("FULL_COMPARE"), BEFORE_FIX);
+
+        assertThat(statusService.reopenAfterFailedReverification(issueId, runId)).isFalse();
+
+        assertThat(issueRow(issueId)).containsEntry("status", "FIXED_PENDING_REVERIFY");
+        assertThat(historyCount(issueId)).isEqualTo(1);
+    }
+
+    @Test
+    void reopensWhenFullCompareDataWasReadAfterFix() {
+        long issueId = fixedIssue();
+        long runId = failedReverification(issueId, AFTER_FIX.plusSeconds(60));
+        basedOn(runId, resource("FULL_COMPARE"), AFTER_FIX);
+
+        assertThat(statusService.reopenAfterFailedReverification(issueId, runId)).isTrue();
+        assertThat(issueRow(issueId)).containsEntry("status", "CHECKING");
+    }
+
+    @Test
+    void ignoresFullCompareTableWithoutAnySuccessfulLoad() {
+        long issueId = fixedIssue();
+        long runId = failedReverification(issueId, AFTER_FIX);
+        long resourceId = resource("FULL_COMPARE");
+        jdbcClient
+                .sql(
+                        """
+                        update check_run set data_basis = jsonb_build_object('resources',
+                            jsonb_build_array(jsonb_build_object(
+                                'sourceResourceId', :resource, 'lastSuccessfulSyncRunId', null)))
+                        where id = :run
+                        """)
+                .param("resource", resourceId)
+                .param("run", runId)
+                .update();
+
+        assertThat(statusService.reopenAfterFailedReverification(issueId, runId)).isFalse();
+    }
+
+    @Test
+    void cdcTablesOnlyNeedTheCheckToStartAfterFix() {
+        // CDC 표는 첫 적재가 조치완료 한참 전이어도 이후 변경이 계속 반영된다.
+        long issueId = fixedIssue();
+        long runId = failedReverification(issueId, AFTER_FIX);
+        basedOn(runId, resource("CDC"), BEFORE_FIX.minusSeconds(86_400));
+
+        assertThat(statusService.reopenAfterFailedReverification(issueId, runId)).isTrue();
     }
 
     @Test
@@ -176,6 +234,40 @@ class IssueReopenServiceTests {
         long runId = fixtures.insertRun("REVERIFY", "RUNNING", startedAt, detectedRunId, accountId);
         fixtures.insertVerification(issueId, runId, "FAILED");
         return runId;
+    }
+
+    /** 수집 전략이 strategy인 원천 표. */
+    private long resource(String strategy) {
+        if (dataSourceId == 0) {
+            dataSourceId = syncFixtures.insertDataSource();
+        }
+        long resourceId =
+                syncFixtures.insertResource(dataSourceId, "mes.table_" + UUID.randomUUID());
+        jdbcClient
+                .sql("update source_resource set sync_strategy = :strategy where id = :id")
+                .param("strategy", strategy)
+                .param("id", resourceId)
+                .update();
+        return resourceId;
+    }
+
+    /** 재검증의 데이터 기준을 "그 표의 마지막 성공 수집 = readStartedAt에 시작한 전체 읽기"로 둔다. */
+    private void basedOn(long checkRunId, long resourceId, Instant readStartedAt) {
+        long syncRunId =
+                syncFixtures.insertSync(
+                        dataSourceId, resourceId, accountId, "SUCCEEDED", readStartedAt);
+        jdbcClient
+                .sql(
+                        """
+                        update check_run set data_basis = jsonb_build_object('resources',
+                            jsonb_build_array(jsonb_build_object(
+                                'sourceResourceId', :resource, 'lastSuccessfulSyncRunId', :sync)))
+                        where id = :run
+                        """)
+                .param("resource", resourceId)
+                .param("sync", syncRunId)
+                .param("run", checkRunId)
+                .update();
     }
 
     private Map<String, Object> issueRow(long issueId) {
