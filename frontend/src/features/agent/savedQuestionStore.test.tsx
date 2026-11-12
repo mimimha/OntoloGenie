@@ -165,6 +165,8 @@ test('저장 공간에 쓸 수 없어도 화면은 깨지지 않고 이번 화�
       await user.type(input, question)
       await user.click(screen.getByRole('button', { name: '내 질문 저장' }))
     }
+    expect(screen.getByRole('status')).toHaveTextContent('현재 화면에서만')
+    expect(screen.getByRole('button', { name: '임시 보관 중' })).toBeDisabled()
     const saved = screen.getByRole('list', { name: '내 질문' })
     expect(
       within(saved)
@@ -190,6 +192,179 @@ test('저장 공간에 쓸 수 없어도 화면은 깨지지 않고 이번 화�
   } finally {
     setItem.mockRestore()
   }
+})
+
+test('저장이 복구되면 임시 추가·삭제와 다른 탭의 질문을 함께 보관한다', async () => {
+  const user = userEvent.setup()
+  const key = `axcore.agent.savedQuestions.${demoAccount.id}`
+  window.localStorage.setItem(key, JSON.stringify(['기존 질문']))
+  const first = renderComposer()
+  const input = screen.getByLabelText('업무 질문')
+  const setItem = vi
+    .spyOn(Storage.prototype, 'setItem')
+    .mockImplementation(() => {
+      throw new Error('저장 공간이 가득 참')
+    })
+  try {
+    for (const question of ['임시 질문 1', '임시 질문 2']) {
+      await user.clear(input)
+      await user.type(input, question)
+      await user.click(screen.getByRole('button', { name: '내 질문 저장' }))
+    }
+    for (const question of ['기존 질문', '임시 질문 1']) {
+      await user.click(
+        screen.getByRole('button', {
+          name: `'${question}' 내 질문에서 지우기`,
+        }),
+      )
+    }
+    expect(screen.getByRole('status')).toBeVisible()
+  } finally {
+    setItem.mockRestore()
+  }
+
+  window.localStorage.setItem(
+    key,
+    JSON.stringify(['기존 질문', '다른 탭 질문']),
+  )
+  await user.clear(input)
+  await user.type(input, '새 질문')
+  await user.click(screen.getByRole('button', { name: '내 질문 저장' }))
+
+  expect(screen.queryByRole('status')).toBeNull()
+  expect(screen.getByRole('button', { name: '저장됨' })).toBeDisabled()
+  expect(readSavedQuestions(demoAccount.id)).toEqual([
+    '다른 탭 질문',
+    '임시 질문 2',
+    '새 질문',
+  ])
+  first.view.unmount()
+  renderComposer()
+  expect(
+    screen.getByRole('button', { name: '임시 질문 2' }),
+  ).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '임시 질문 1' })).toBeNull()
+})
+
+test('다른 탭이 목록을 채워도 삭제로 공간을 확보하면 임시 질문까지 저장한다', async () => {
+  const user = userEvent.setup()
+  const key = `axcore.agent.savedQuestions.${demoAccount.id}`
+  const original = Array.from({ length: 9 }, (_, i) => `기존 질문 ${i + 1}`)
+  window.localStorage.setItem(key, JSON.stringify(original))
+  renderComposer()
+  const setItem = vi
+    .spyOn(Storage.prototype, 'setItem')
+    .mockImplementation(() => {
+      throw new Error('저장 공간이 가득 참')
+    })
+  try {
+    await user.type(screen.getByLabelText('업무 질문'), '임시 질문')
+    await user.click(screen.getByRole('button', { name: '내 질문 저장' }))
+  } finally {
+    setItem.mockRestore()
+  }
+  window.localStorage.setItem(
+    key,
+    JSON.stringify([...original, '다른 탭 질문']),
+  )
+  await user.click(
+    screen.getByRole('button', { name: "'기존 질문 1' 내 질문에서 지우기" }),
+  )
+
+  expect(readSavedQuestions(demoAccount.id)).toEqual([
+    ...original.slice(1),
+    '다른 탭 질문',
+    '임시 질문',
+  ])
+  expect(screen.getByRole('button', { name: '임시 질문' })).toBeInTheDocument()
+  expect(screen.queryByRole('status')).toBeNull()
+})
+
+test('합친 목록이 한도를 넘으면 임시 질문을 유지하고 공간을 더 확보한 뒤 저장한다', async () => {
+  const user = userEvent.setup()
+  const key = `axcore.agent.savedQuestions.${demoAccount.id}`
+  const original = Array.from({ length: 8 }, (_, i) => `기존 질문 ${i + 1}`)
+  window.localStorage.setItem(key, JSON.stringify(original))
+  const { view } = renderComposer()
+  const input = screen.getByLabelText('업무 질문')
+  const setItem = vi
+    .spyOn(Storage.prototype, 'setItem')
+    .mockImplementation(() => {
+      throw new Error('저장 공간이 가득 참')
+    })
+  try {
+    for (const question of ['임시 질문 1', '임시 질문 2']) {
+      await user.clear(input)
+      await user.type(input, question)
+      await user.click(screen.getByRole('button', { name: '내 질문 저장' }))
+    }
+  } finally {
+    setItem.mockRestore()
+  }
+  const otherTab = [...original, '다른 탭 질문 1', '다른 탭 질문 2']
+  window.localStorage.setItem(key, JSON.stringify(otherTab))
+  await user.click(
+    screen.getByRole('button', { name: "'기존 질문 1' 내 질문에서 지우기" }),
+  )
+
+  expect(screen.getByRole('status')).toHaveTextContent('10개를 넘습니다')
+  expect(
+    screen.getByRole('button', { name: '임시 질문 1' }),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: '임시 질문 2' }),
+  ).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '임시 보관 중' })).toBeDisabled()
+  expect(readSavedQuestions(demoAccount.id)).toEqual(otherTab)
+
+  await user.click(
+    screen.getByRole('button', { name: "'기존 질문 2' 내 질문에서 지우기" }),
+  )
+  expect(screen.queryByRole('status')).toBeNull()
+  expect(readSavedQuestions(demoAccount.id)).toEqual([
+    ...original.slice(2),
+    '다른 탭 질문 1',
+    '다른 탭 질문 2',
+    '임시 질문 1',
+    '임시 질문 2',
+  ])
+  view.unmount()
+  renderComposer()
+  expect(
+    screen.getByRole('button', { name: '임시 질문 1' }),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: '임시 질문 2' }),
+  ).toBeInTheDocument()
+})
+
+test('계정을 바꾸면 이전 계정의 임시 질문과 저장 실패 안내를 가져오지 않는다', async () => {
+  const user = userEvent.setup()
+  const { view, onSend } = renderComposer()
+  const setItem = vi
+    .spyOn(Storage.prototype, 'setItem')
+    .mockImplementation(() => {
+      throw new Error('저장 공간이 가득 참')
+    })
+  try {
+    await user.type(screen.getByLabelText('업무 질문'), '첫 계정 임시 질문')
+    await user.click(screen.getByRole('button', { name: '내 질문 저장' }))
+    expect(screen.getByRole('status')).toBeVisible()
+  } finally {
+    setItem.mockRestore()
+  }
+
+  const other = { ...demoAccount, id: demoAccount.id + 1 }
+  view.rerender(
+    signedIn(other, <ChatComposer disabled={false} onSend={onSend} />),
+  )
+  expect(screen.queryByRole('status')).toBeNull()
+  expect(screen.queryByRole('list', { name: '내 질문' })).toBeNull()
+  await user.clear(screen.getByLabelText('업무 질문'))
+  await user.type(screen.getByLabelText('업무 질문'), '두 번째 계정 질문')
+  await user.click(screen.getByRole('button', { name: '내 질문 저장' }))
+  expect(readSavedQuestions(other.id)).toEqual(['두 번째 계정 질문'])
+  expect(readSavedQuestions(demoAccount.id)).toEqual([])
 })
 
 test('로그인 전에는 내 질문을 저장할 수 없다', async () => {

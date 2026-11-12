@@ -1,5 +1,6 @@
 package com.axcore.platform.ontology.repository;
 
+import com.axcore.platform.ontology.domain.PropertyDataType;
 import com.axcore.platform.ontology.dto.ObjectLinkEvidenceResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkGroupResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkResponse;
@@ -14,6 +15,7 @@ import java.sql.Types;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -258,12 +260,13 @@ public class ObjectQueryRepository {
             Collection<Long> maskedTypeIds,
             Status status,
             String exactPattern,
+            SearchFilters filters,
             Pageable page) {
         if (exactPattern == null) {
-            return searchPage(visibleTypeIds, maskedTypeIds, status, null, page);
+            return searchPage(visibleTypeIds, maskedTypeIds, status, null, filters, page);
         }
         try (var jitScope = disableJitForSearch()) {
-            return searchPage(visibleTypeIds, maskedTypeIds, status, exactPattern, page);
+            return searchPage(visibleTypeIds, maskedTypeIds, status, exactPattern, filters, page);
         }
     }
 
@@ -272,10 +275,16 @@ public class ObjectQueryRepository {
             Collection<Long> maskedTypeIds,
             Status status,
             String exactPattern,
+            SearchFilters filters,
             Pageable page) {
         String pattern = exactPattern == null ? null : "%" + exactPattern + "%";
+        SearchClause conditions = searchConditions(filters);
         String matches =
-                OBJECTS + DISPLAY_JOINS + FILTERS + (pattern == null ? "" : SEARCH_CONDITION);
+                OBJECTS
+                        + DISPLAY_JOINS
+                        + FILTERS
+                        + (pattern == null ? "" : SEARCH_CONDITION)
+                        + conditions.sql();
         String order = exactPattern == null ? "order by oi.id " : SEARCH_ORDER;
         JdbcClient.StatementSpec pageQuery =
                 displayQuery(
@@ -289,6 +298,7 @@ public class ObjectQueryRepository {
         }
         List<ObjectRow> rows =
                 pageQuery
+                        .params(conditions.parameters())
                         .param("limit", page.getPageSize())
                         .param("offset", page.getOffset())
                         .query((rs, rowNum) -> row(rs))
@@ -296,16 +306,95 @@ public class ObjectQueryRepository {
         JdbcClient.StatementSpec count =
                 pattern == null
                         ? scopedQuery(
-                                "select count(*) " + OBJECTS + FILTERS, visibleTypeIds, status)
+                                "select count(*) " + OBJECTS + FILTERS + conditions.sql(),
+                                visibleTypeIds,
+                                status)
                         : displayQuery(
                                 "select count(*) " + matches,
                                 visibleTypeIds,
                                 maskedTypeIds,
                                 status,
                                 pattern);
-        long total = count.query(Long.class).single();
+        long total = count.params(conditions.parameters()).query(Long.class).single();
         return new PageImpl<>(rows, page, total);
     }
+
+    // JSON의 속성 키와 값은 바인딩한다. SQL에 더하는 자료형은 검증된 enum에서만 고른다.
+    private static SearchClause searchConditions(SearchFilters filters) {
+        StringBuilder sql = new StringBuilder();
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        for (int index = 0; index < filters.values().size(); index++) {
+            PropertyFilter filter = filters.values().get(index);
+            String key = "filterProperty" + index;
+            String value = "filterValue" + index;
+            sql.append(" and ")
+                    .append(propertyExpression(key, filter.type()))
+                    .append(" = cast(:")
+                    .append(value)
+                    .append(" as ")
+                    .append(sqlType(filter.type()))
+                    .append(")\n");
+            parameters.put(key, filter.code());
+            parameters.put(value, filter.value());
+        }
+        PeriodFilter period = filters.period();
+        if (period != null) {
+            parameters.put("dateProperty", period.code());
+            if (period.from() != null) {
+                sql.append(" and ")
+                        .append(propertyExpression("dateProperty", period.type()))
+                        .append(" >= cast(:periodFrom as ")
+                        .append(sqlType(period.type()))
+                        .append(")\n");
+                parameters.put("periodFrom", period.from());
+            }
+            if (period.to() != null) {
+                sql.append(" and ")
+                        .append(propertyExpression("dateProperty", period.type()))
+                        .append(" <= cast(:periodTo as ")
+                        .append(sqlType(period.type()))
+                        .append(")\n");
+                parameters.put("periodTo", period.to());
+            }
+        }
+        return new SearchClause(sql.toString(), parameters);
+    }
+
+    private static String propertyExpression(String keyParameter, PropertyDataType type) {
+        String value = "(oi.properties ->> :" + keyParameter + ")";
+        if (type == PropertyDataType.STRING) return value;
+        String sqlType = sqlType(type);
+        // 정의 변경 전의 값이나 잘못 저장된 값이 있어도 검색 전체를 500으로 끝내지 않는다.
+        return "(case when pg_input_is_valid("
+                + value
+                + ", '"
+                + sqlType
+                + "') then cast("
+                + value
+                + " as "
+                + sqlType
+                + ") end)";
+    }
+
+    private static String sqlType(PropertyDataType type) {
+        return switch (type) {
+            case STRING -> "text";
+            case INTEGER, DECIMAL -> "numeric";
+            case DATE -> "date";
+            case TIME -> "time";
+            case DATETIME -> "timestamptz";
+            case BOOLEAN -> "boolean";
+            case JSON -> throw new IllegalArgumentException("JSON 조건은 지원하지 않습니다.");
+        };
+    }
+
+    private record SearchClause(String sql, Map<String, Object> parameters) {}
+
+    public record PropertyFilter(String code, PropertyDataType type, String value) {}
+
+    public record PeriodFilter(String code, PropertyDataType type, String from, String to) {}
+
+    public record SearchFilters(List<PropertyFilter> values, PeriodFilter period) {}
 
     private JitScope disableJitForSearch() {
         if ("off".equals(jdbc.sql("show jit").query(String.class).single())) {

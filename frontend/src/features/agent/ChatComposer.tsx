@@ -105,17 +105,30 @@ function ChatComposer({
           title={
             saved.isFull
               ? `내 질문은 ${MAX_SAVED_QUESTIONS}개까지 저장할 수 있습니다. 하나를 지운 뒤 저장하세요.`
-              : '지금 입력한 질문을 내 질문으로 저장합니다.'
+              : '지금 입력한 질문을 이 브라우저에 계정별로 저장합니다.'
           }
           className="shrink-0 rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-700 hover:border-slate-900 disabled:opacity-40"
         >
           <span aria-hidden="true">{alreadySaved ? '★ ' : '☆ '}</span>
-          {alreadySaved ? '저장됨' : '내 질문 저장'}
+          {alreadySaved
+            ? saved.storageFailed
+              ? '임시 보관 중'
+              : '저장됨'
+            : '내 질문 저장'}
         </button>
         <Button type="submit" disabled={disabled || !content}>
           {disabled ? '처리 중…' : '보내기 ↑'}
         </Button>
       </div>
+      {saved.storageFailed && (
+        <p role="status" className="mt-2 text-xs text-amber-700">
+          {saved.capacityConflict
+            ? `다른 탭의 내 질문과 합치면 ${MAX_SAVED_QUESTIONS}개를 넘습니다. 기존 질문을 더 지운 뒤 저장해 주세요. `
+            : '브라우저에 저장하지 못했습니다. '}
+          내 질문의 변경 내용은 현재 화면에서만 유지되며, 새로고침하면
+          사라지거나 이전 내용으로 돌아갑니다.
+        </p>
+      )}
     </form>
   )
 }

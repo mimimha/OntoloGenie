@@ -46,6 +46,342 @@ class ObjectSearchApiTests {
     @Autowired ObjectProvider<ObjectEvidenceQuery> evidenceQuery;
 
     @Test
+    void combinesPropertyValuesAndDatesBeforeCountingAndPagination() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long visible = type(tag, tag);
+        long hidden = type(tag + "-hidden", tag + "-private");
+        allowViewer(tag);
+        for (long typeId : new long[] {visible, hidden}) {
+            property(typeId, "state", "STRING", "NORMAL", null);
+            property(typeId, "line", "STRING", "NORMAL", null);
+            property(typeId, "planned_start", "DATE", "NORMAL", null);
+        }
+        long first =
+                object(
+                        visible,
+                        tag + " first",
+                        """
+                {"state":"진행","line":"1라인","planned_start":"2026-10-01"}
+                """);
+        long last =
+                object(
+                        visible,
+                        tag,
+                        """
+                {"state":"진행","line":"1라인","planned_start":"2026-10-31"}
+                """);
+        object(
+                visible,
+                tag + " other state",
+                """
+                {"state":"완료","line":"1라인","planned_start":"2026-10-15"}
+                """);
+        object(
+                visible,
+                tag + " other line",
+                """
+                {"state":"진행","line":"2라인","planned_start":"2026-10-15"}
+                """);
+        object(
+                visible,
+                tag + " outside",
+                """
+                {"state":"진행","line":"1라인","planned_start":"2026-11-01"}
+                """);
+        object(
+                hidden,
+                tag + " hidden",
+                """
+                {"state":"진행","line":"1라인","planned_start":"2026-10-01"}
+                """);
+        for (int page = 0; page < 2; page++) {
+            mvc.perform(
+                            get(PATH)
+                                    .param("q", tag)
+                                    .param("objectTypeId", Long.toString(visible))
+                                    .param("propertyValues[state]", "진행")
+                                    .param("propertyValues[line]", "1라인")
+                                    .param("dateProperty", "planned_start")
+                                    .param("from", "2026-10-01")
+                                    .param("to", "2026-10-31")
+                                    .param("page", Integer.toString(page))
+                                    .param("size", "1")
+                                    .with(actor("VIEWER")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.length()").value(1))
+                    .andExpect(jsonPath("$.data[0].id").value((int) (page == 0 ? last : first)))
+                    .andExpect(jsonPath("$.meta.totalElements").value(2))
+                    .andExpect(jsonPath("$.meta.hasNext").value(page == 0));
+        }
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(visible))
+                                .param("dateProperty", "planned_start")
+                                .param("from", "2026-11-01")
+                                .with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.totalElements").value(1));
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(visible))
+                                .param("dateProperty", "planned_start")
+                                .param("to", "2026-10-01")
+                                .with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value((int) first))
+                .andExpect(jsonPath("$.meta.totalElements").value(1));
+    }
+
+    @Test
+    void comparesDatetimesByInstantAndIgnoresMissingOrMalformedStoredDates() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long typeId = type(tag, null);
+        property(typeId, "started_at", "DATETIME", "NORMAL", null);
+        long first = object(typeId, "KST", "{\"started_at\":\"2026-10-01T09:00:00+09:00\"}");
+        object(typeId, "UTC", "{\"started_at\":\"2026-10-01T00:00:00Z\"}");
+        object(typeId, "earlier", "{\"started_at\":\"2026-09-30T23:59:59Z\"}");
+        object(typeId, "missing", "{}");
+        object(typeId, "null", "{\"started_at\":null}");
+        object(typeId, "malformed", "{\"started_at\":\"not-a-date\"}");
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(typeId))
+                                .param("dateProperty", "started_at")
+                                .param("from", "2026-10-01T09:00:00+09:00")
+                                .param("to", "2026-10-01T00:00:00Z")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value((int) first))
+                .andExpect(jsonPath("$.meta.totalElements").value(2));
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(typeId))
+                                .param("propertyValues[started_at]", "2026-10-01T09:00:00+09:00")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.totalElements").value(2));
+    }
+
+    @Test
+    void comparesScalarValuesUsingTheirDefinedTypesAndBindsLiteralText() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long typeId = type(tag, null);
+        property(typeId, "count", "INTEGER", "NORMAL", null);
+        property(typeId, "cost", "DECIMAL", "NORMAL", null);
+        property(typeId, "enabled", "BOOLEAN", "NORMAL", null);
+        property(typeId, "time", "TIME", "NORMAL", null);
+        property(typeId, "text", "STRING", "NORMAL", null);
+        long match =
+                object(
+                        typeId,
+                        "literal",
+                        """
+                {"count":2,"cost":"1200.00","enabled":true,"time":"09:00:00","text":"' OR true --"}
+                """);
+        object(
+                typeId,
+                "different",
+                """
+                {"count":2,"cost":1200,"enabled":false,"time":"09:00:00","text":"other"}
+                """);
+        object(typeId, "malformed number", "{\"count\":\"bad\",\"cost\":null}");
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(typeId))
+                                .param("propertyValues[count]", "2")
+                                .param("propertyValues[cost]", "1200")
+                                .param("propertyValues[enabled]", "true")
+                                .param("propertyValues[time]", "09:00")
+                                .param("propertyValues[text]", "' OR true --")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value((int) match))
+                .andExpect(jsonPath("$.meta.totalElements").value(1));
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(typeId))
+                                .param("propertyValues[cost]", "1200.0")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.totalElements").value(2));
+    }
+
+    @Test
+    void rejectsRestrictedFiltersBeforeLookingAtRowsAndAllowsAuthorizedActors() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long typeId = type(tag, tag);
+        allowViewer(tag);
+        property(typeId, "cost", "INTEGER", "RESTRICTED", null);
+        property(typeId, "paid_on", "DATE", "RESTRICTED", null);
+        object(typeId, tag, "{\"cost\":1200,\"paid_on\":\"2026-10-01\"}");
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(typeId))
+                                .param("q", "no matches")
+                                .param("propertyValues[cost]", "1200")
+                                .with(actor("VIEWER")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.details.field").value("propertyValues[cost]"));
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(typeId))
+                                .param("dateProperty", "paid_on")
+                                .param("from", "2026-10-01")
+                                .with(actor("VIEWER")))
+                .andExpect(status().isForbidden());
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(typeId))
+                                .param("propertyValues[cost]", "1200")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.totalElements").value(1));
+        jdbc.sql(
+                        "update role_data_scope set can_view_restricted = true where access_group = :group")
+                .param("group", tag)
+                .update();
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(typeId))
+                                .param("propertyValues[cost]", "1200")
+                                .with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.totalElements").value(1));
+    }
+
+    @Test
+    void rejectsUnknownPropertiesInvalidValuesAndIncompleteOrReversedPeriods() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long typeId = type(tag, null);
+        property(typeId, "state", "STRING", "NORMAL", null);
+        property(typeId, "count", "INTEGER", "NORMAL", null);
+        property(typeId, "day", "DATE", "NORMAL", null);
+        property(typeId, "timestamp", "DATETIME", "NORMAL", null);
+        property(typeId, "flag", "BOOLEAN", "NORMAL", null);
+        property(typeId, "payload", "JSON", "NORMAL", null);
+        mvc.perform(get(PATH).param("propertyValues[state]", "진행").with(actor("ADMIN")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.details.field").value("objectTypeId"));
+        for (Map.Entry<String, String> value :
+                Map.of(
+                                "unknown",
+                                "a",
+                                "count",
+                                "1.5",
+                                "day",
+                                "2026-02-30",
+                                "timestamp",
+                                "2026-10-01T09:00:00",
+                                "flag",
+                                "yes",
+                                "payload",
+                                "{}")
+                        .entrySet()) {
+            mvc.perform(
+                            get(PATH)
+                                    .param("objectTypeId", Long.toString(typeId))
+                                    .param(
+                                            "propertyValues[" + value.getKey() + "]",
+                                            value.getValue())
+                                    .with(actor("ADMIN")))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+        }
+        for (String dateProperty : new String[] {"unknown", "state", ""}) {
+            mvc.perform(
+                            get(PATH)
+                                    .param("objectTypeId", Long.toString(typeId))
+                                    .param("dateProperty", dateProperty)
+                                    .param("from", "2026-10-01")
+                                    .with(actor("ADMIN")))
+                    .andExpect(status().isBadRequest());
+        }
+        for (String value : new String[] {"0000-01-01", "-0001-01-01", "+999999999-01-01"}) {
+            mvc.perform(
+                            get(PATH)
+                                    .param("objectTypeId", Long.toString(typeId))
+                                    .param("propertyValues[day]", value)
+                                    .with(actor("ADMIN")))
+                    .andExpect(status().isBadRequest());
+            mvc.perform(
+                            get(PATH)
+                                    .param("objectTypeId", Long.toString(typeId))
+                                    .param("dateProperty", "day")
+                                    .param("from", value)
+                                    .with(actor("ADMIN")))
+                    .andExpect(status().isBadRequest());
+        }
+        for (String value :
+                new String[] {
+                    "0000-01-01T00:00:00Z",
+                    "+999999999-01-01T00:00:00Z",
+                    "0001-01-01T00:00:00+09:00",
+                    "+999999999-12-31T23:59:59-18:00"
+                }) {
+            mvc.perform(
+                            get(PATH)
+                                    .param("objectTypeId", Long.toString(typeId))
+                                    .param("propertyValues[timestamp]", value)
+                                    .with(actor("ADMIN")))
+                    .andExpect(status().isBadRequest());
+        }
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(typeId))
+                                .param("from", "2026-10-01")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isBadRequest());
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(typeId))
+                                .param("dateProperty", "day")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isBadRequest());
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(typeId))
+                                .param("dateProperty", "day")
+                                .param("from", "2026-11-01")
+                                .param("to", "2026-10-01")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.details.field").value("to"));
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(typeId))
+                                .param("dateProperty", "timestamp")
+                                .param("from", "2026-10-01T10:00:00Z")
+                                .param("to", "2026-10-01T09:00:00Z")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void filtersDoNotRevealPropertiesOfHiddenOrNonexistentTypes() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long hidden = type(tag, tag + "-private");
+        property(hidden, "secret", "INTEGER", "RESTRICTED", null);
+        long visible = type(tag + "-visible", tag);
+        allowViewer(tag);
+        for (long typeId : new long[] {hidden, Long.MAX_VALUE}) {
+            mvc.perform(
+                            get(PATH)
+                                    .param("objectTypeId", Long.toString(typeId))
+                                    .param("propertyValues[secret]", "1")
+                                    .with(actor("VIEWER")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data").isEmpty())
+                    .andExpect(jsonPath("$.meta.totalElements").value(0));
+        }
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(visible))
+                                .param("propertyValues[secret]", "1")
+                                .with(actor("VIEWER")))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @Transactional
     void turnsOffJitOnlyWhileSearchingWithAKeyword() throws Exception {
         String tag = UUID.randomUUID().toString();

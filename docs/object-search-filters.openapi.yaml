@@ -1,0 +1,93 @@
+openapi: 3.1.0
+info:
+  title: API 076 객체 검색 — 속성·기간 조건 추가안
+  version: "358"
+paths:
+  /api/v1/objects:
+    get:
+      summary: 권한 범위 객체 검색
+      description: >-
+        기존 검색에 속성 일치 및 기간 조건을 선택적으로 추가한다.
+        propertyValues, dateProperty, from, to 중 하나라도 사용하면 objectTypeId가 필수다.
+        모든 조건은 AND이다. 검색어가 있으면 정확 일치 우선, 각 그룹 안에서는 ID 오름차순이며 검색어가 없으면 ID 오름차순이다.
+        dateProperty는 DATE 또는 DATETIME이고 from/to 중 하나 이상이 필요하다.
+        DATE에는 날짜, DATETIME에는 UTC 오프셋을 포함한 시각을 사용하며 양쪽 경계를 포함한다.
+        날짜는 0001~9999년 범위이며 DATETIME은 UTC로 환산한 날짜에 적용한다.
+        볼 수 없는 유형은 빈 목록을 반환한다. 볼 수 없는 민감 속성으로는 검색할 수 없다.
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - {
+            name: objectTypeId,
+            in: query,
+            schema: { type: integer, format: int64, minimum: 1 },
+          }
+        - name: status
+          in: query
+          description: 객체의 사용 상태. 업무 상태 조건은 propertyValues로 전달한다.
+          schema:
+            { type: string, enum: [ACTIVE, DELETED_AT_SOURCE], default: ACTIVE }
+        - {
+            name: page,
+            in: query,
+            schema: { type: integer, minimum: 0, default: 0 },
+          }
+        - {
+            name: size,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 20 },
+          }
+        - name: propertyValues
+          in: query
+          style: deepObject
+          explode: true
+          description: >-
+            속성 코드와 일치 값. propertyValues[status]=진행 형태로 전달한다.
+            JSON 속성은 지원하지 않는다. 숫자는 숫자 값으로, DATETIME은 순간으로 비교한다.
+          schema: { type: object, additionalProperties: { type: string } }
+          example: { status: 진행, line: 1라인 }
+        - name: dateProperty
+          in: query
+          description: DATE 또는 DATETIME 속성 코드
+          schema: { type: string }
+        - name: from
+          in: query
+          description: 포함하는 시작 경계. DATE는 날짜, DATETIME은 시간대 포함 시각
+          schema:
+            oneOf:
+              - { type: string, format: date }
+              - { type: string, format: date-time }
+        - name: to
+          in: query
+          description: 포함하는 끝 경계. DATE는 날짜, DATETIME은 시간대 포함 시각
+          schema:
+            oneOf:
+              - { type: string, format: date }
+              - { type: string, format: date-time }
+      responses:
+        "200":
+          description: 기존 응답 형식 유지. totalElements는 권한과 모든 검색 조건 적용 후의 전체 건수
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: 기존 ObjectSearchResponse
+                  meta:
+                    type: object
+                    required: [page, size, totalElements, hasNext]
+                    properties:
+                      page: { type: integer }
+                      size: { type: integer }
+                      totalElements: { type: integer, format: int64 }
+                      hasNext: { type: boolean }
+        "400":
+          description: VALIDATION_FAILED — 유형·속성·자료형·기간 조건 오류. details.field와 reason 제공
+        "401":
+          description: 인증 필요
+        "403":
+          description: FORBIDDEN — 민감 속성 조건, 비관리자의 삭제 객체 조회 또는 사용 불가 세션

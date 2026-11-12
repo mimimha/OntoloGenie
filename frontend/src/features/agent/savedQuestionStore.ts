@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 
 // 사용자가 자주 쓰는 질문(257, 1단계). 서버에 저장하지 않고 이 브라우저(localStorage)에 계정별로 보관한다.
 // 다른 PC·브라우저에서는 보이지 않고, 브라우저 저장 공간을 지우면 사라진다. 저장 공간을 쓸 수 없으면(사생활 보호 모드 등)
-// 저장하지 않고 빈 목록으로 둔다. 서버 저장과 질문 관리 정책은 필요해지면 따로 정한다.
+// 변경 내용은 현재 화면에서만 유지하며 안내한다. 서버 저장과 질문 관리 정책은 필요해지면 따로 정한다.
 
 // 한 계정이 저장할 수 있는 질문 수. 추천 질문과 한 화면에 보이도록 둔다.
 export const MAX_SAVED_QUESTIONS = 10
@@ -14,6 +14,17 @@ const MAX_QUESTION_LENGTH = 2000
 const LABEL_LENGTH = 16
 
 const KEY_PREFIX = 'axcore.agent.savedQuestions.'
+
+type QuestionChange = { type: 'save' | 'remove'; question: string }
+
+// 복구 중에는 중간 개수가 아니라 모든 추가·삭제를 적용한 최종 개수를 검사한다.
+function applyChange(questions: string[], change: QuestionChange): string[] {
+  if (change.type === 'remove') {
+    return questions.filter((question) => question !== change.question)
+  }
+  if (!change.question || questions.includes(change.question)) return questions
+  return [...questions, change.question]
+}
 
 function storageKey(accountId: number) {
   return `${KEY_PREFIX}${accountId}`
@@ -79,9 +90,13 @@ export function useSavedQuestions(accountId: number | null) {
   const [loaded, setLoaded] = useState<{
     accountId: number | null
     questions: string[]
+    pendingChanges: QuestionChange[]
+    capacityConflict: boolean
   }>(() => ({
     accountId,
     questions: accountId === null ? [] : readSavedQuestions(accountId),
+    pendingChanges: [],
+    capacityConflict: false,
   }))
   // 계정이 바뀌면 그 계정의 목록을 다시 읽는다.
   let current = loaded
@@ -89,44 +104,75 @@ export function useSavedQuestions(accountId: number | null) {
     current = {
       accountId,
       questions: accountId === null ? [] : readSavedQuestions(accountId),
+      pendingChanges: [],
+      capacityConflict: false,
     }
     setLoaded(current)
   }
   const questions = current.questions
 
   // 저장·삭제할 때마다 저장소를 새로 읽어 고친다. 다른 탭에서 그사이 저장한 질문을 이 화면이 처음 읽은 목록으로 덮지 않는다.
-  // 저장소에 쓸 수 없으면 읽어도 늘 비어 있으므로, 그때는 화면의 목록을 기준으로 고쳐 이번 화면에서만 보인다.
+  // 실패한 변경도 함께 적용해, 저장이 다시 가능해졌을 때 임시 질문이나 다른 탭의 변경을 잃지 않는다.
   const change = useCallback(
-    (edit: (questions: string[]) => string[]) => {
+    (edit: QuestionChange) => {
       if (accountId === null) return
       const stored = readSavedQuestions(accountId)
-      const next = edit(stored)
-      if (next === stored || writeSavedQuestions(accountId, next)) {
-        setLoaded({ accountId, questions: next })
+      const pendingChanges = [...current.pendingChanges, edit]
+      const next = pendingChanges.reduce(
+        (questions, change) => applyChange(questions, change),
+        stored,
+      )
+      const capacityConflict = next.length > MAX_SAVED_QUESTIONS
+      if (
+        !capacityConflict &&
+        (next === stored || writeSavedQuestions(accountId, next))
+      ) {
+        setLoaded({
+          accountId,
+          questions: next,
+          pendingChanges: [],
+          capacityConflict: false,
+        })
         return
       }
-      setLoaded((previous) => ({
+      setLoaded({
         accountId,
-        questions: edit(previous.questions),
-      }))
+        questions:
+          edit.type === 'save'
+            ? withQuestion(current.questions, edit.question)
+            : applyChange(current.questions, edit),
+        pendingChanges,
+        capacityConflict,
+      })
     },
-    [accountId],
+    [accountId, current.pendingChanges, current.questions],
   )
 
   const save = useCallback(
     (question: string) =>
-      change((questions) => withQuestion(questions, question)),
+      change({
+        type: 'save',
+        question: question.trim().slice(0, MAX_QUESTION_LENGTH),
+      }),
     [change],
   )
 
   const remove = useCallback(
-    (question: string) =>
-      change((questions) => questions.filter((saved) => saved !== question)),
+    (question: string) => change({ type: 'remove', question }),
     [change],
   )
 
   const isFull = questions.length >= MAX_SAVED_QUESTIONS
   // 로그인 전에는 저장할 계정이 없다.
   const canSave = accountId !== null
-  return { questions, save, remove, isFull, canSave }
+  const storageFailed = current.pendingChanges.length > 0
+  return {
+    questions,
+    save,
+    remove,
+    isFull,
+    canSave,
+    storageFailed,
+    capacityConflict: current.capacityConflict,
+  }
 }

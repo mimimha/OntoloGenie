@@ -1,0 +1,151 @@
+package com.axcore.platform.ontology.service;
+
+import com.axcore.platform.auth.service.DataAccess;
+import com.axcore.platform.global.error.BusinessException;
+import com.axcore.platform.global.error.CommonErrorCode;
+import com.axcore.platform.ontology.domain.PropertyDataType;
+import com.axcore.platform.ontology.domain.PropertyDefinition;
+import com.axcore.platform.ontology.domain.PropertySensitivity;
+import com.axcore.platform.ontology.dto.ObjectSearchRequest;
+import com.axcore.platform.ontology.repository.ObjectQueryRepository.PeriodFilter;
+import com.axcore.platform.ontology.repository.ObjectQueryRepository.PropertyFilter;
+import com.axcore.platform.ontology.repository.ObjectQueryRepository.SearchFilters;
+import com.axcore.platform.ontology.repository.PropertyDefinitionRepository;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.time.DateTimeException;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
+/** 076의 선택 조건을 유형의 실제 속성 정의와 사용자 조회 범위로 검증한다. */
+@Component
+@RequiredArgsConstructor
+public class ObjectSearchFilterValidator {
+    private final PropertyDefinitionRepository properties;
+
+    public SearchFilters validate(ObjectSearchRequest request, DataAccess access) {
+        if (!request.hasFilters()) {
+            return new SearchFilters(List.of(), null);
+        }
+        long typeId = request.objectTypeId();
+        Map<String, PropertyDefinition> definitions =
+                properties.findByObjectTypeIdOrderById(typeId).stream()
+                        .collect(
+                                Collectors.toMap(PropertyDefinition::getCode, Function.identity()));
+        var values = new ArrayList<PropertyFilter>();
+        request.propertyValues()
+                .forEach(
+                        (code, value) -> {
+                            String field = "propertyValues[" + code + "]";
+                            PropertyDefinition property =
+                                    requireProperty(definitions, code, typeId, access, field);
+                            values.add(
+                                    new PropertyFilter(
+                                            code,
+                                            property.getDataType(),
+                                            normalize(property.getDataType(), value, field)));
+                        });
+
+        PeriodFilter period = null;
+        if (request.dateProperty() != null || request.from() != null || request.to() != null) {
+            PropertyDefinition property =
+                    requireProperty(
+                            definitions, request.dateProperty(), typeId, access, "dateProperty");
+            PropertyDataType type = property.getDataType();
+            if (type != PropertyDataType.DATE && type != PropertyDataType.DATETIME) {
+                throw BusinessException.invalidField(
+                        "dateProperty", "DATE 또는 DATETIME 속성만 기간으로 검색할 수 있습니다.");
+            }
+            if (request.from() == null && request.to() == null) {
+                throw BusinessException.invalidField("from", "기간의 시작 또는 끝을 지정해 주세요.");
+            }
+            String from = request.from() == null ? null : normalize(type, request.from(), "from");
+            String to = request.to() == null ? null : normalize(type, request.to(), "to");
+            if (from != null && to != null && after(type, from, to)) {
+                throw BusinessException.invalidField("to", "기간의 끝은 시작보다 빠를 수 없습니다.");
+            }
+            period = new PeriodFilter(property.getCode(), type, from, to);
+        }
+        return new SearchFilters(List.copyOf(values), period);
+    }
+
+    private static PropertyDefinition requireProperty(
+            Map<String, PropertyDefinition> definitions,
+            String code,
+            long typeId,
+            DataAccess access,
+            String field) {
+        PropertyDefinition property = definitions.get(code);
+        if (code == null || code.isBlank() || property == null) {
+            throw BusinessException.invalidField(field, "선택한 객체 유형에 정의된 속성 코드를 지정해 주세요.");
+        }
+        if (property.getSensitivity() == PropertySensitivity.RESTRICTED
+                && !access.canViewRestricted(typeId)) {
+            throw new BusinessException(
+                    CommonErrorCode.FORBIDDEN, "이 속성으로 검색할 권한이 없습니다.", Map.of("field", field));
+        }
+        return property;
+    }
+
+    private static String normalize(PropertyDataType type, String value, String field) {
+        if (value == null) {
+            throw BusinessException.invalidField(field, "검색할 값을 지정해 주세요.");
+        }
+        if (type == PropertyDataType.JSON) {
+            throw BusinessException.invalidField(field, "JSON 속성의 같은 값 검색은 지원하지 않습니다.");
+        }
+        try {
+            return switch (type) {
+                case STRING -> value;
+                case INTEGER -> new BigInteger(value).toString();
+                case DECIMAL -> decimal(value);
+                case DATE -> date(LocalDate.parse(value));
+                case TIME -> LocalTime.parse(value).toString();
+                case DATETIME -> {
+                    Instant instant = OffsetDateTime.parse(value).toInstant();
+                    date(instant.atOffset(ZoneOffset.UTC).toLocalDate());
+                    yield instant.toString();
+                }
+                case BOOLEAN -> {
+                    if (!value.equals("true") && !value.equals("false"))
+                        throw new IllegalArgumentException();
+                    yield value;
+                }
+                case JSON -> throw new IllegalArgumentException();
+            };
+        } catch (IllegalArgumentException | DateTimeException ex) {
+            throw BusinessException.invalidField(field, type + " 자료형에 맞는 값을 지정해 주세요.");
+        }
+    }
+
+    private static String date(LocalDate value) {
+        if (value.getYear() < 1 || value.getYear() > 9999) {
+            throw new IllegalArgumentException("검색 날짜는 0001~9999년 범위여야 합니다.");
+        }
+        return value.toString();
+    }
+
+    private static String decimal(String value) {
+        BigDecimal number = new BigDecimal(value);
+        if (number.precision() - (long) number.scale() > 131072 || number.scale() > 16383) {
+            throw new IllegalArgumentException("PostgreSQL numeric 범위를 벗어났습니다.");
+        }
+        return number.toString();
+    }
+
+    private static boolean after(PropertyDataType type, String from, String to) {
+        return type == PropertyDataType.DATE
+                ? LocalDate.parse(from).isAfter(LocalDate.parse(to))
+                : Instant.parse(from).isAfter(Instant.parse(to));
+    }
+}
