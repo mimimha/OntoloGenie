@@ -27,6 +27,7 @@ public class HandlerRequestNotifier {
 
     private final MattermostWebhookClient client;
     private final TaskExecutor applicationTaskExecutor;
+    private final ActionNotifyProperties properties;
 
     @TransactionalEventListener
     public void onRequested(HandlerRequested event) {
@@ -45,7 +46,9 @@ public class HandlerRequestNotifier {
 
     private void send(HandlerRequested event) {
         try {
-            client.send(event.code(), message(event));
+            client.send(
+                    event.code(),
+                    message(event, properties.definitionLink(event.code()).orElse(null)));
         } catch (RuntimeException ex) {
             // 예외 메시지에 Webhook 주소가 들어갈 수 있어 종류만 남긴다.
             log.warn(
@@ -57,9 +60,9 @@ public class HandlerRequestNotifier {
 
     /**
      * 관리자가 입력한 값은 코드 서식으로 감싸 Mattermost 서식·멘션(@channel 등)으로 해석되지 않게 한다. 설명은 개발자가 Handler가 할 일을 아는
-     * 유일한 글이라 500자까지 넣는다.
+     * 유일한 글이라 500자까지 넣는다. definitionLink가 있으면 정의 화면으로 가는 링크를 넣는다(317). 설정이 없으면 null이다.
      */
-    static String message(HandlerRequested event) {
+    static String message(HandlerRequested event, String definitionLink) {
         String reason =
                 event.reason() == HandlerRequested.Reason.CREATED
                         ? "관리자가 Handler가 없는 업무 Action을 등록했습니다."
@@ -69,6 +72,9 @@ public class HandlerRequestNotifier {
         lines.add(reason + " Handler가 배포되기 전까지 이 Action은 실행되지 않습니다(BLOCKED).");
         lines.add("");
         lines.add("- Action: " + literal(event.code()) + " " + literal(event.name()));
+        if (definitionLink != null) {
+            lines.add("- 정의 화면: [정의 화면 열기](" + definitionLink + ") (관리자 계정으로 열림)");
+        }
         lines.add("- 설명: " + literal(event.description(), MAX_DESCRIPTION_LENGTH));
         lines.add("- handlerKey: " + literal(event.handlerKey()));
         lines.add(

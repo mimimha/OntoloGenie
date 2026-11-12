@@ -44,7 +44,11 @@ import tools.jackson.databind.json.JsonMapper;
  * Handler 구현 요청 알림(Jira 288, Action 정의서 4-3). 가짜 Mattermost Webhook으로 보낸 횟수·본문과, 알림이 실패해도 088·090
  * 결과와 감사 기록이 그대로인지 확인한다. Webhook 주소의 비밀 경로는 시험용 값이다.
  */
-@SpringBootTest(properties = "axcore.action-notify.read-timeout=3s")
+@SpringBootTest(
+        properties = {
+            "axcore.action-notify.read-timeout=3s",
+            "axcore.action-notify.screen-base-url=https://ontologenie.test/"
+        })
 @AutoConfigureMockMvc
 @ActiveProfiles("api")
 @Import({TestcontainersConfiguration.class, ActionDefinitionApiTests.HandlerConfig.class})
@@ -133,7 +137,10 @@ class HandlerRequestNotifyApiTests {
                 .contains("위 관리자에게 확인해 주세요")
                 .contains("- 설명: `점검 사유를 받아 설비 점검 요청을 만든다`")
                 .contains("Jira 이슈는 자동으로 만들어지지 않습니다")
-                .contains("[BE][Action] " + code + " Handler 구현");
+                .contains("[BE][Action] " + code + " Handler 구현")
+                // 317: 알림을 받은 개발자가 바로 정의 화면(363)으로 간다.
+                .contains(
+                        "- 정의 화면: [정의 화면 열기](https://ontologenie.test/admin/actions/" + code + ")");
         assertThat(MATTERMOST.requests).hasSize(1);
         assertThat(MATTERMOST.requests.peek().path()).isEqualTo("/hooks/" + HOOK_SECRET);
         assertThat(MATTERMOST.requests.peek().contentType()).startsWith("application/json");

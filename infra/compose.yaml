@@ -95,6 +95,8 @@ services:
       AXCORE_SOURCE_CREDENTIAL_KEY_VERSION: ${AXCORE_SOURCE_CREDENTIAL_KEY_VERSION:-1}
       # Handler 구현 요청 알림(288)의 Mattermost 팀 채널 Incoming Webhook. 주소 자체가 비밀값이라 Credentials에서만 넣는다. batch에는 넣지 않는다.
       AXCORE_ACTION_NOTIFY_WEBHOOK_URL: ${AXCORE_ACTION_NOTIFY_WEBHOOK_URL:-}
+      # 알림에 넣을 Action 정의 화면의 서비스 주소(317). 비밀값이 아니라 .env.config에 둔다. 비우면 링크 없이 보낸다.
+      AXCORE_ACTION_NOTIFY_SCREEN_BASE_URL: ${AXCORE_ACTION_NOTIFY_SCREEN_BASE_URL:-}
     ports:
       - "127.0.0.1:18080:8080"
     depends_on:
