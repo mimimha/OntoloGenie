@@ -853,3 +853,24 @@ def test_map_value_table_keeps_source_values_as_is():
     out = camel_keys({"transform_steps": [step]})
     assert out == {"transformSteps": [step]}
     assert not has_snake_keys(out)
+
+
+def test_column_that_is_only_part_of_its_own_key_points_many_to_one(result):
+    types = {
+        c["candidate_id"].removeprefix("LT-"): c["payload"]
+        for c in result["candidates"]
+        if c["payload"]["kind"] == "LINK_TYPE"
+    }
+    # 발주 상세의 발주 번호·창고별 재고의 품번은 데이터에서 겹치지 않아도 업무상 여러 행이 한 대상을 가리킨다
+    assert (
+        types["purchase_order_line_po_no_to_purchase_order"]["cardinality"]
+        == "MANY_TO_ONE"
+    )
+    assert types["stock_item_code_to_item"]["cardinality"] == "MANY_TO_ONE"
+
+
+def test_unmatched_examples_that_are_all_hidden_names_are_not_shown_as_stars(result):
+    rules = _rules(result)
+    reason = rules["maintenance_order_technician_to_department"]["reason"]
+    assert "***" not in reason
+    assert "불일치 값은 개인정보라 표시하지 않음" in reason
