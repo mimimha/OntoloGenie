@@ -20,6 +20,7 @@ import com.axcore.platform.ontology.service.ModelSummaryService;
 import com.axcore.platform.ontology.service.ObjectDetailQuery;
 import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
 import com.axcore.platform.ontology.service.ObjectSearchQuery;
+import com.axcore.platform.ontology.service.PropertyValueSampleService;
 import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -64,6 +65,7 @@ class AgentResultCategoryGmsTests {
     @Autowired ObjectProvider<ChatModel> chatModels;
     @Autowired ModelSummaryService modelSummary;
     @Autowired DataAccessPolicy dataAccess;
+    @Autowired PropertyValueSampleService propertyValues;
     @MockitoBean AgentActionTools actionTools;
     @Autowired CompletionEstimator completionEstimator;
 
@@ -228,6 +230,7 @@ class AgentResultCategoryGmsTests {
                 dataAccess,
                 actionTools,
                 completionEstimator,
+                propertyValues,
                 Clock.systemUTC(),
                 reasoningEffort);
     }

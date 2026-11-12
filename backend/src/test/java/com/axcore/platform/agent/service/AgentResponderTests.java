@@ -13,6 +13,7 @@ import com.axcore.platform.ontology.service.ModelSummaryService;
 import com.axcore.platform.ontology.service.ObjectDetailQuery;
 import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
 import com.axcore.platform.ontology.service.ObjectSearchQuery;
+import com.axcore.platform.ontology.service.PropertyValueSampleService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -50,7 +51,7 @@ class AgentResponderTests {
         assertThat(options.getModel()).isEqualTo("gpt-5.6-sol");
         assertThat(((ToolCallingChatOptions) options).getToolCallbacks())
                 .extracting(callback -> callback.getToolDefinition().name())
-                .contains(AgentQueryTools.OBJECT_EXECUTIONS);
+                .contains(AgentQueryTools.OBJECT_EXECUTIONS, AgentObjectListTools.OBJECT_LIST);
     }
 
     @Test
@@ -70,6 +71,13 @@ class AgentResponderTests {
                 .contains("\"아직 조회할 수 없다\"고 말한다")
                 // 위 예시 때문에 관계로 찾을 수 있는 작업지시도 "조회할 수 없다"고 답했다(326 GMS 확인).
                 .contains("관계 조회로 찾을 수 있으면 \"아직 조회할 수 없다\"고 말하지 않는다");
+        // 종류 전체·조건 질문은 목록 도구로 답하고, 일부만 받았으면 전체 건수와 일부임을 말하게 한다(359).
+        assertThat(prompt.getSystemMessage().getText())
+                .contains("조건에 맞는 목록·건수를 물으면 객체 목록 조회로 답한다")
+                // "현재"를 오늘 하루 기간으로 걸러 진행 중 작업지시를 0건으로 답했다(359 GMS).
+                .contains("\"현재\", \"지금\"은 목록을 거를 기간이 아니라")
+                .contains("말했을 때만 객체 목록 조회에 기간 조건을 넣는다")
+                .contains("objects가 total보다 적으면 \"전체 N건 중 M건\"처럼 일부만 보여 준다는 것을 함께 말한다");
         // 데이터가 많으면 실행 이력으로 비가동을 찾거나 관계 20건만 보고 멈췄다. 업무 기록은 관계로 찾고, 관계 유형으로 좁혀
         // 쪽을 넘기며, 관계를 보지 않고 "없다"고 하지 않게 한다(342 시나리오 GMS, 350).
         assertThat(prompt.getSystemMessage().getText())
@@ -162,6 +170,7 @@ class AgentResponderTests {
                         AgentQueryTools.OBJECT_EXECUTIONS,
                         AgentQueryTools.OBJECT_SEARCH,
                         AgentModelSummaryTools.MODEL_SUMMARY,
+                        AgentObjectListTools.OBJECT_LIST,
                         AgentCompletionEstimateTools.ESTIMATE_COMPLETION);
     }
 
@@ -177,6 +186,7 @@ class AgentResponderTests {
                         AgentQueryTools.OBJECT_EXECUTIONS,
                         AgentQueryTools.OBJECT_SEARCH,
                         AgentModelSummaryTools.MODEL_SUMMARY,
+                        AgentObjectListTools.OBJECT_LIST,
                         AgentObjectDetailTools.OBJECT_DETAIL,
                         AgentObjectDetailTools.OBJECT_LINKS,
                         AgentObjectEvidenceTools.OBJECT_LINK_EVIDENCE,
@@ -219,6 +229,7 @@ class AgentResponderTests {
                         mock(DataAccessPolicy.class),
                         actionTools,
                         mock(CompletionEstimator.class),
+                        mock(PropertyValueSampleService.class),
                         CLOCK,
                         reasoningEffort);
 

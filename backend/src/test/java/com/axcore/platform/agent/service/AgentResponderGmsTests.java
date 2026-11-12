@@ -20,6 +20,7 @@ import com.axcore.platform.ontology.service.ModelSummaryService;
 import com.axcore.platform.ontology.service.ObjectDetailQuery;
 import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
 import com.axcore.platform.ontology.service.ObjectSearchQuery;
+import com.axcore.platform.ontology.service.PropertyValueSampleService;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -60,6 +61,7 @@ class AgentResponderGmsTests {
     @Autowired ObjectProvider<ObjectEvidenceQuery> objectEvidence;
     @Autowired ModelSummaryService modelSummary;
     @Autowired DataAccessPolicy dataAccess;
+    @Autowired PropertyValueSampleService propertyValues;
     @Autowired JdbcClient jdbc;
     @MockitoBean AgentActionTools actionTools;
     @Autowired CompletionEstimator completionEstimator;
@@ -197,6 +199,7 @@ class AgentResponderGmsTests {
                 dataAccess,
                 actionTools,
                 completionEstimator,
+                propertyValues,
                 Clock.systemUTC(),
                 reasoningEffort);
     }

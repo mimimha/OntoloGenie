@@ -198,6 +198,51 @@ class AgentScenarioGmsTests {
         run.verify();
     }
 
+    /**
+     * L1(359): 종류 전체·조건 질문을 객체 목록 조회로 답한다. 진행 중인 작업지시는 JB2610-0138·0141·0142 세 건이다. 값("진행")은 AI가 목록
+     * 결과에서 골라야 한다.
+     */
+    @Test
+    void l1ListsWorkOrdersInProgress() {
+        Run run = ask("현재 진행 중인 작업지시 목록 보여줘", null);
+
+        run.expectInput(AgentObjectListTools.OBJECT_LIST, "objectTypeId", typeId("WorkOrder"));
+        for (String woNo : List.of("JB2610-0138", "JB2610-0141", "JB2610-0142")) {
+            run.expectReached(data.object("WorkOrder", Map.of("wo_no", woNo)));
+        }
+        run.log("진행 중 작업지시 3건: JB2610-0138, JB2610-0141, JB2610-0142");
+        run.verify();
+    }
+
+    /** L2(359): "정지 중인 설비"는 저장 값이 "정비중"이라 그대로 거르면 0건이다. 목록 값과 비교해 P103(정비중)을 찾아야 한다. */
+    @Test
+    void l2FindsStoppedEquipmentByStoredStatusValue() {
+        Run run = ask("지금 정지 중인 설비 있어?", null);
+
+        run.expectInput(AgentObjectListTools.OBJECT_LIST, "objectTypeId", typeId("Equipment"));
+        run.expectReached(press());
+        run.log("가동이 아닌 설비는 P103(1라인 3호 프레스, 상태 정비중) 1대");
+        run.verify();
+    }
+
+    /** L3(359): 10월 계획 시작 작업지시는 42건이다. 20건만 받으므로 전체 건수와 일부임을 함께 말해야 한다. */
+    @Test
+    void l3CountsWorkOrdersPlannedInOctober() {
+        Run run = ask("10월에 시작 예정이었던 작업지시는 몇 건이야?", null);
+
+        run.expectInput(AgentObjectListTools.OBJECT_LIST, "objectTypeId", typeId("WorkOrder"));
+        run.expectInput(AgentObjectListTools.OBJECT_LIST, "dateProperty", "planned_start");
+        run.log("42건 (planned_start 2026-10-01~10-31, 20건만 보여 주면 일부임을 말함)");
+        run.verify();
+    }
+
+    private long typeId(String code) {
+        return jdbc.sql("select id from object_type where code = :code")
+                .param("code", code)
+                .query(Long.class)
+                .single();
+    }
+
     private long press() {
         return data.object("Equipment", Map.of("code", "P103"));
     }
