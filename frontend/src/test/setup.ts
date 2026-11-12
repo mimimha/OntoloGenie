@@ -5,6 +5,7 @@ import { demoAccount, setMockAccount } from '../mocks/auth'
 import { server } from '../mocks/node'
 import { resetProposalMocks } from '../mocks/proposalHandlers'
 import { resetAccountMocks } from '../mocks/accountHandlers'
+import { resetActionMocks } from '../mocks/actionHandlers'
 import { mockReactFlow } from './reactFlow'
 
 mockReactFlow()
@@ -16,6 +17,7 @@ configure({ asyncUtilTimeout: 15000 })
 
 beforeEach(() => {
   resetAccountMocks()
+  resetActionMocks()
   resetProposalMocks()
   setMockAccount({ ...demoAccount })
 })

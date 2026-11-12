@@ -17,6 +17,8 @@ import ProposalHistoryPage from './features/review/ProposalHistoryPage'
 import RuleEditorPage from './features/review/RuleEditorPage'
 import AccountsPage from './features/accounts/AccountsPage'
 import AccountEditorPage from './features/accounts/AccountEditorPage'
+import ActionDefinitionsPage from './features/actions/ActionDefinitionsPage'
+import ActionDefinitionEditorPage from './features/actions/ActionDefinitionEditorPage'
 
 function App() {
   return (
@@ -56,6 +58,15 @@ function App() {
                 <Route path="accounts" element={<AccountsPage />} />
                 <Route path="accounts/new" element={<AccountEditorPage />} />
                 <Route path="accounts/:id" element={<AccountEditorPage />} />
+                <Route path="actions" element={<ActionDefinitionsPage />} />
+                <Route
+                  path="actions/new"
+                  element={<ActionDefinitionEditorPage />}
+                />
+                <Route
+                  path="actions/:code"
+                  element={<ActionDefinitionEditorPage />}
+                />
                 <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Route>

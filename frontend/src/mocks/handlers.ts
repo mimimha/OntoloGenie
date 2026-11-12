@@ -1,4 +1,5 @@
 import { delay, http, HttpResponse } from 'msw'
+import { actionHandlers } from './actionHandlers'
 import { agentHandlers } from './agentHandlers'
 import { analysisHandlers } from './analysisHandlers'
 import { authHandlers, getMockAccount } from './auth'
@@ -696,6 +697,7 @@ function ruleSummaries(): RuleSummary[] {
 
 export const handlers = [
   ...accountHandlers,
+  ...actionHandlers,
   ...proposalHandlers,
   ...issueHandlers,
   ...authHandlers,
