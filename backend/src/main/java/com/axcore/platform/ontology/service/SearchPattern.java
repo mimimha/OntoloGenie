@@ -1,6 +1,6 @@
 package com.axcore.platform.ontology.service;
 
-/** 정의 목록 검색어를 ILIKE 부분 일치 패턴으로 바꾼다. 사용자가 입력한 %·_는 글자 그대로 찾는다. */
+/** 검색어를 ILIKE 패턴으로 바꾼다. 사용자가 입력한 %·_는 글자 그대로 찾는다. */
 public final class SearchPattern {
 
     private SearchPattern() {}
@@ -10,7 +10,10 @@ public final class SearchPattern {
         if (q == null || q.isBlank()) {
             return "%";
         }
-        String escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
-        return "%" + escaped + "%";
+        return "%" + exact(q) + "%";
+    }
+
+    public static String exact(String q) {
+        return q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 }

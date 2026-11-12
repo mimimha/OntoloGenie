@@ -2,6 +2,7 @@ package com.axcore.platform.ontology;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -15,6 +16,7 @@ import com.axcore.platform.global.security.LoginAccount;
 import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
 import com.jayway.jsonpath.JsonPath;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,34 @@ class ObjectSearchApiTests {
     @Autowired MockMvc mvc;
     @Autowired JdbcClient jdbc;
     @Autowired ObjectProvider<ObjectEvidenceQuery> evidenceQuery;
+
+    @Test
+    @Transactional
+    void turnsOffJitOnlyWhileSearchingWithAKeyword() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long type = type(tag, null);
+        object(type, tag, "{}");
+        jdbc.sql("set local jit = on").update();
+        // 검색 결과에 조회 시점의 PostgreSQL 설정을 넣어 실제 조회 연결에서 읽는다.
+        jdbc.sql(
+                        """
+                        create temporary view object_instance as
+                        select id, object_type_id, source_mapping_id, source_key, display_name,
+                               properties || jsonb_build_object('test_jit', current_setting('jit'))
+                                   as properties,
+                               status, first_collected_at, last_synced_at
+                        from platform.object_instance
+                        """)
+                .update();
+
+        mvc.perform(get(PATH).param("q", tag).with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].properties.test_jit").value("off"));
+
+        mvc.perform(get(PATH).param("objectTypeId", Long.toString(type)).with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].properties.test_jit").value("on"));
+    }
 
     @Test
     void scopesListAndCountBeforePaginationAndMasksOnlyRestrictedProperties() throws Exception {
@@ -98,8 +128,8 @@ class ObjectSearchApiTests {
         mvc.perform(get(PATH).param("q", tag + " press").with(actor("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.totalElements").value(4))
-                .andExpect(jsonPath("$.data[2].properties.cost").value(1200))
-                .andExpect(jsonPath("$.data[2].restrictedPropertyCodes").isEmpty());
+                .andExpect(jsonPath("$.data[0].properties.cost").value(1200))
+                .andExpect(jsonPath("$.data[0].restrictedPropertyCodes").isEmpty());
     }
 
     @Test
@@ -216,6 +246,78 @@ class ObjectSearchApiTests {
     }
 
     @Test
+    void ranksExactNamesAndIdentifiersBeforePartialMatchesAcrossPages() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        String query = tag + "_%";
+        String firstPartial = query + " first";
+        String partialPrefix = query + " partial ";
+        long type = type(tag, null);
+        identifierProperty(type, "equipment_code", "NORMAL");
+        object(type, firstPartial, "{}");
+        List<Integer> partialIds =
+                jdbc.sql(
+                                """
+                                insert into object_instance (object_type_id, display_name, properties)
+                                select :type, :prefix || n, '{}'::jsonb
+                                from generate_series(1, 100) n
+                                returning id
+                                """)
+                        .param("type", type)
+                        .param("prefix", partialPrefix)
+                        .query(Integer.class)
+                        .list();
+        Integer[] lastPartialIds =
+                partialIds.stream().sorted().skip(partialIds.size() - 3L).toArray(Integer[]::new);
+        object(type, query, "{}");
+        object(type, "Press", "{\"equipment_code\":\"%s\"}".formatted(query));
+        object(type, tag + "XY", "{}");
+
+        mvc.perform(
+                        get(PATH)
+                                .param("q", "  " + query.toUpperCase(Locale.ROOT) + "  ")
+                                .param("size", "100")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.data[0:3].displayName", contains(query, "Press", firstPartial)))
+                .andExpect(jsonPath("$.data.length()").value(100))
+                .andExpect(jsonPath("$.meta.totalElements").value(103))
+                .andExpect(jsonPath("$.meta.hasNext").value(true));
+
+        mvc.perform(
+                        get(PATH)
+                                .param("q", query)
+                                .param("size", "100")
+                                .param("page", "1")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].id", contains(lastPartialIds)))
+                .andExpect(jsonPath("$.meta.totalElements").value(103))
+                .andExpect(jsonPath("$.meta.hasNext").value(false));
+    }
+
+    @Test
+    void restrictedIdentifierDoesNotRankAVisiblePartialMatchAsExact() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long type = type(tag, tag);
+        allowViewer(tag);
+        identifierProperty(type, "serial", "RESTRICTED");
+        String firstPartial = tag + " first";
+        String restrictedExact = tag + " second";
+        object(type, firstPartial, "{}");
+        object(type, restrictedExact, "{\"serial\":\"%s\"}".formatted(tag));
+
+        mvc.perform(get(PATH).param("q", tag).with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.data[*].displayName", contains(firstPartial, restrictedExact)));
+        mvc.perform(get(PATH).param("q", tag).with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.data[*].displayName", contains(restrictedExact, firstPartial)));
+    }
+
+    @Test
     void masksRestrictedSourceKeyAndNameBeforeSearchingForTheValue() throws Exception {
         String tag = UUID.randomUUID().toString();
         long type = type(tag, tag);
@@ -290,11 +392,8 @@ class ObjectSearchApiTests {
         String tag = UUID.randomUUID().toString();
         long type = type(tag, tag);
         allowViewer(tag);
-        property(type, "equipment_code", "STRING", "NORMAL", null);
-        property(type, "serial", "STRING", "RESTRICTED", null);
-        jdbc.sql("update property_definition set is_identifier = true where object_type_id = :type")
-                .param("type", type)
-                .update();
+        identifierProperty(type, "equipment_code", "NORMAL");
+        identifierProperty(type, "serial", "RESTRICTED");
         object(
                 type,
                 "Press",
@@ -834,6 +933,13 @@ class ObjectSearchApiTests {
                 .param("temporalRole", temporalRole)
                 .query(Long.class)
                 .single();
+    }
+
+    private void identifierProperty(long type, String code, String sensitivity) {
+        long id = property(type, code, "STRING", sensitivity, null);
+        jdbc.sql("update property_definition set is_identifier = true where id = :id")
+                .param("id", id)
+                .update();
     }
 
     private long restrictedKeyMapping(long type, long property, String code) {
