@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router'
 import Button from '../../components/Button'
 import { ErrorState, LoadingState } from '../../components/Feedback'
+import { VoicePoweredOrb } from '../../components/ui/voice-powered-orb'
 import { useAuth } from './auth-context'
 import './login.css'
 
@@ -57,29 +58,22 @@ function LoginPage() {
     )
   return (
     <main className="auth-page">
-      <header className="auth-brand">
-        <img
-          src="/ontologenie-logo.svg"
-          alt="OntoloGenie"
-          width="250"
-          height="32"
-        />
-      </header>
       <div className="auth-columns">
-        <section className="auth-introduction" aria-label="서비스 소개">
-          <p className="auth-eyebrow">CONNECTED DATA. CLEARER DECISIONS.</p>
-          <h1>
-            데이터를 연결하고,
-            <br />
-            업무의 가능성을 넓히세요<span>.</span>
-          </h1>
-        </section>
+        <div className="auth-introduction" aria-hidden="true">
+          <div className="auth-orb">
+            <VoicePoweredOrb enableVoiceControl={false} />
+          </div>
+        </div>
         <section className="auth-card" aria-labelledby="login-heading">
-          <p className="auth-eyebrow">WELCOME TO OntoloGenie</p>
-          <h2 id="login-heading">워크스페이스에 로그인</h2>
-          <p className="auth-description">
-            연결된 데이터로 더 명확한 업무를 시작하세요.
-          </p>
+          <header className="auth-brand">
+            <img
+              src="/ontologenie-logo.svg"
+              alt="OntoloGenie"
+              width="250"
+              height="32"
+            />
+          </header>
+          <h1 id="login-heading">워크스페이스에 로그인</h1>
           {restoring ? (
             <LoadingState message="인증 상태를 확인하는 중…" />
           ) : restoreError ? (
@@ -96,34 +90,39 @@ function LoginPage() {
               }}
               className="auth-form"
             >
-              <label htmlFor="login-id">계정 ID</label>
-              <input
-                id="login-id"
-                name="username"
-                autoComplete="username"
-                required
-                maxLength={100}
-                value={loginId}
-                onChange={(event) => setLoginId(event.target.value)}
-                disabled={pending}
-              />
-              <label htmlFor="login-password">비밀번호</label>
-              <input
-                id="login-password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                disabled={pending}
-              />
+              <div className="auth-field">
+                <label htmlFor="login-id">계정 ID</label>
+                <input
+                  id="login-id"
+                  name="username"
+                  autoComplete="username"
+                  placeholder="계정 ID를 입력하세요"
+                  required
+                  maxLength={100}
+                  value={loginId}
+                  onChange={(event) => setLoginId(event.target.value)}
+                  disabled={pending}
+                />
+              </div>
+              <div className="auth-field">
+                <label htmlFor="login-password">비밀번호</label>
+                <input
+                  id="login-password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="비밀번호를 입력하세요"
+                  required
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  disabled={pending}
+                />
+              </div>
               {error && (
                 <ErrorState error={error} title="로그인하지 못했습니다." />
               )}
               <Button type="submit" pending={pending} className="auth-submit">
                 {pending ? '로그인 중…' : '로그인'}
-                <span aria-hidden="true">→</span>
               </Button>
             </form>
           )}
