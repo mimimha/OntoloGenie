@@ -4,3 +4,7 @@ axcore:
   check:
     sync:
       enabled: false
+  # FULL_COMPARE 주기 수집(ScheduledSyncJob)이 다른 시험의 원천에 실행을 넣지 않게 끈다. 넣는 로직은 ScheduledSyncService를 직접 불러 시험한다.
+  source-load:
+    schedule-watch:
+      enabled: false

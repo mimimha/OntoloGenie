@@ -79,6 +79,11 @@ axcore:
       delay: 10s
       retry-delay: 5m
       max-failures: 3
+    # 자동 수집이 켜진 원천(API 072)의 FULL_COMPARE 테이블에 주기마다 전체 읽기(SCHEDULED)를 넣는 작업(batch, S15P31C106-318).
+    # 주기가 됐는지 delay마다 확인한다. 주기의 최소값이 1분이라 그보다 짧게 둔다. 끄려면 배포 설정 AXCORE_SOURCE_SCHEDULE_ENABLED=false.
+    schedule-watch:
+      enabled: ${AXCORE_SOURCE_SCHEDULE_ENABLED:true}
+      delay: 30s
   # 끝나지 않고 남은 분석 실행을 FAILED로 정리하는 기준(batch, S15P31C106-273). QUEUED는 요청 시각, RUNNING은 시작 시각부터 잰다.
   # AI 분석 소요 시간 측정(S15P31C106-55) 전 임시값이며, RUNNING 기준은 최대 소요 시간보다 길게 둔다.
   analysis:

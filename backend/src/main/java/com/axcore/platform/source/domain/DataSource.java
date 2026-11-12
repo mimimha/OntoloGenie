@@ -80,6 +80,15 @@ public class DataSource extends BaseAuditEntity {
                 code, name, sourceKind, connectionConfig, syncEnabled, syncIntervalMinutes);
     }
 
+    /** API 072. 이 주기는 FULL_COMPARE 테이블에만 쓴다. 켜면 주기가 있어야 한다(ck_data_source_sync). */
+    public void changeSyncSchedule(boolean syncEnabled, Integer syncIntervalMinutes) {
+        if (syncEnabled && syncIntervalMinutes == null) {
+            throw new IllegalArgumentException("자동 수집을 켜려면 수집 주기가 필요합니다.");
+        }
+        this.syncEnabled = syncEnabled;
+        this.syncIntervalMinutes = syncIntervalMinutes;
+    }
+
     public void rename(String name) {
         this.name = name;
     }
