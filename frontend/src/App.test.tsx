@@ -60,6 +60,7 @@ test.each([
   expect(
     await screen.findByRole('heading', { name: title }),
   ).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: '메뉴 패널 열기' }))
   expect(screen.getByRole('link', { name: title })).toHaveAttribute(
     'aria-current',
     'page',

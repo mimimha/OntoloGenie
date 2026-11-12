@@ -189,12 +189,16 @@ test('보호 API의 403은 권한 안내를 유지하며 로그아웃하지 않�
     '요청이 허용되지 않았습니다.',
   )
   expect(window.location.pathname).toBe('/audit')
+  await userEvent.click(screen.getByRole('button', { name: '메뉴 패널 열기' }))
   expect(screen.getByRole('button', { name: '로그아웃' })).toBeInTheDocument()
 })
 
 test('로그아웃의 204 처리 후 캐시를 비우고 보호 주소 재진입을 막는다', async () => {
   setMockAccount({ ...demoAccount })
   const client = openAt('/explorer')
+  await userEvent.click(
+    await screen.findByRole('button', { name: '메뉴 패널 열기' }),
+  )
   const button = await screen.findByRole('button', { name: '로그아웃' })
   await userEvent.click(button)
   await screen.findByRole('textbox', { name: '계정 ID' })
@@ -213,6 +217,9 @@ test('로그아웃 요청이 403이면 세션을 종료했다고 표시하지 �
     ),
   )
   openAt('/explorer')
+  await userEvent.click(
+    await screen.findByRole('button', { name: '메뉴 패널 열기' }),
+  )
   await userEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
   await screen.findByRole('alert')
   expect(window.location.pathname).toBe('/explorer')

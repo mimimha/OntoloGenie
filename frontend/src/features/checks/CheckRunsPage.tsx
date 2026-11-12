@@ -52,8 +52,8 @@ export default function CheckRunsPage() {
   }
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">정합성 검사</h1>
+      <h1 className="ui-page-title">정합성 검사</h1>
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <Link to="/admin/rules" className="text-sm underline">
           연결 규칙으로 돌아가기
         </Link>
