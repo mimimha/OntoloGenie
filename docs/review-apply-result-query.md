@@ -9,10 +9,11 @@ FN-REV-06·07의 결과는 기존 후보 상세(049), 결정 이력(055), 실행
 | 049 | `GET /api/v1/proposals/{id}` | 현재 `revision`, `reviewStatus`, `applyStatus`, `applyError`, `appliedAt` |
 | 055 | `GET /api/v1/proposals/{id}/decisions` | 커밋된 결정 ID·대상 revision·선택지·결정자·시각·사유 |
 | 096 | `GET /api/v1/audit/actions` | 성공·실패·차단된 실행, 대상 후보, 요청 `input`, 처리 `result`, 변경 내역 |
-| 097 | `GET /api/v1/audit/actions/{id}` | 실행 하나의 입력·결과·변경 내역 |
+| 097 | `GET /api/v1/audit/actions/{id}` | 실행 하나의 입력·결과·막힌 이유·실패 이유 |
+| 098 | `GET /api/v1/audit/actions/{id}/changes` | 실행 하나의 변경 내역 전체 |
 | 056·057 | `GET /api/v1/held-items`, `GET /api/v1/held-items/{id}` | 승인 과정에서 생성된 개별 보류 건의 현재 상태와 근거 |
 
-후보 검토 화면(049·055)은 ADMIN이다. 감사 목록(096)은 ADMIN에게 전체, 그 밖의 역할에게 본인 실행만 제공한다. 감사 상세(097)는 ADMIN이다. 기존 인증·임시 비밀번호 제한을 그대로 따른다.
+후보 검토 화면(049·055)은 ADMIN이다. 감사 목록(096)은 ADMIN에게 전체, 그 밖의 역할에게 본인 실행만 제공한다. 감사 상세(097)와 변경 전후(098)는 096과 같은 범위를 따른다. 범위 밖 기록은 없는 기록과 같은 404다. 기존 인증·임시 비밀번호 제한을 그대로 따른다.
 
 ## 기존 프론트에서 확인하는 방법
 

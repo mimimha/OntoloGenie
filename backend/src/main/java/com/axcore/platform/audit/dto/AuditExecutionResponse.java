@@ -14,7 +14,7 @@ import java.util.UUID;
 /**
  * 실행·감사 이력 한 줄 (API 096·080). 표시 이름(actionCode·actionName·actorName·targetLabel)과 종류(category)는 서버가
  * 채운다. input·result·변경 내용은 기록할 때 이미 비밀값을 뺀 값이다. restrictedPropertyCodes는 사용자가 볼 수 없어 값을 가린 민감 속성
- * 코드다(S15P31C106-205). 가린 것이 없으면 빈 목록이다.
+ * 코드다(S15P31C106-205). 가린 것이 없으면 빈 목록이다. changeCount는 그 실행이 바꾼 행 수다(가림과 무관).
  */
 public record AuditExecutionResponse(
         Long id,
@@ -40,6 +40,7 @@ public record AuditExecutionResponse(
         Instant requestedAt,
         Instant finishedAt,
         List<EntityChangeResponse> entityChanges,
+        int changeCount,
         List<String> restrictedPropertyCodes) {
 
     public AuditExecutionResponse withMaskedValues(
@@ -70,6 +71,7 @@ public record AuditExecutionResponse(
                 requestedAt,
                 finishedAt,
                 maskedChanges,
+                changeCount,
                 maskedPropertyCodes);
     }
 
@@ -98,6 +100,7 @@ public record AuditExecutionResponse(
                 requestedAt,
                 finishedAt,
                 changes,
+                changes.size(),
                 restrictedPropertyCodes);
     }
 }

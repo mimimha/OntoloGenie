@@ -3,6 +3,7 @@ package com.axcore.platform.action;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -425,20 +426,32 @@ class ActionExecutionApiTests {
                 .andExpect(jsonPath("$.data[0].id").value(executionId))
                 .andExpect(jsonPath("$.data[0].status").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.data[0].entryPoint").value("WEB"))
-                .andExpect(jsonPath("$.data[0].checkedPermissionCode").value("PLAN_CREATE"));
+                .andExpect(jsonPath("$.data[0].checkedPermissionCode").value("PLAN_CREATE"))
+                .andExpect(jsonPath("$.data[0].actorType").value("USER"))
+                .andExpect(jsonPath("$.data[0].targetId").value(s4.p103))
+                .andExpect(jsonPath("$.data[0].changeCount").value(3));
         mockMvc.perform(get("/api/v1/audit/actions/" + executionId).cookie(admin.session()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.actorType").value("USER"))
-                .andExpect(jsonPath("$.data.targetId").value(s4.p103))
-                .andExpect(jsonPath("$.data.result.planId").value(planId));
+                .andExpect(jsonPath("$.data.status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data.result.planId").value(planId))
+                .andExpect(jsonPath("$.data.failureReason").value(nullValue()));
         mockMvc.perform(
                         get("/api/v1/audit/actions/" + executionId + "/changes")
                                 .cookie(admin.session()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.entityChanges.length()").value(3))
-                .andExpect(jsonPath("$.data.entityChanges[0].tableName").value("reassignment_plan"))
-                .andExpect(jsonPath("$.data.entityChanges[0].rowKey.id").value(planId))
-                .andExpect(jsonPath("$.data.entityChanges[0].afterData.status").value("CREATED"));
+                .andExpect(jsonPath("$.data.changes.length()").value(3))
+                .andExpect(jsonPath("$.data.changes[0].tableName").value("reassignment_plan"))
+                .andExpect(jsonPath("$.data.changes[0].rowKey.id").value(planId))
+                .andExpect(jsonPath("$.data.changes[0].afterData.status").value("CREATED"));
+        // 097·098: 실행자 본인도 같은 기록의 내용과 변경 전후를 연다.
+        mockMvc.perform(get("/api/v1/audit/actions/" + executionId).cookie(planner.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.result.planId").value(planId));
+        mockMvc.perform(
+                        get("/api/v1/audit/actions/" + executionId + "/changes")
+                                .cookie(planner.session()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.changes.length()").value(3));
         // 080: 정지 설비의 실행 이력에서 이 계획 실행을 찾는다. 080은 역할의 객체 조회 범위를 따른다.
         allowPlannerToSeeType("EQUIPMENT");
         mockMvc.perform(get("/api/v1/objects/" + s4.p103 + "/executions").cookie(planner.session()))
@@ -476,6 +489,29 @@ class ActionExecutionApiTests {
             JsonNode adminRow = historyRowOf(admin);
             assertThat(adminRow.get("restrictedPropertyCodes").isEmpty()).isTrue();
             assertThat(snapshotIn(adminRow).get("workOrderNo").asString()).isEqualTo(s4.orderNo);
+
+            // 097은 입력값 기준이라 가린 것이 없고, 098은 변경 내역 기준으로 가린다.
+            long executionId = plannerRow.get("id").asLong();
+            JsonNode plannerDetail = auditData("/api/v1/audit/actions/" + executionId, planner);
+            assertThat(plannerDetail.get("restrictedPropertyCodes").isEmpty()).isTrue();
+            JsonNode plannerChanges =
+                    auditData("/api/v1/audit/actions/" + executionId + "/changes", planner);
+            assertThat(plannerChanges.get("restrictedPropertyCodes").toString())
+                    .isEqualTo("[\"wo_no\"]");
+            JsonNode changedSnapshot =
+                    itemChangeIn(plannerChanges.get("changes")).get("source_snapshot");
+            assertThat(changedSnapshot.has("workOrderNo")).isTrue();
+            assertThat(changedSnapshot.get("workOrderNo").isNull()).isTrue();
+            assertThat(changedSnapshot.get("workOrderStatus").asString()).isEqualTo("진행");
+            JsonNode adminChanges =
+                    auditData("/api/v1/audit/actions/" + executionId + "/changes", admin);
+            assertThat(adminChanges.get("restrictedPropertyCodes").isEmpty()).isTrue();
+            assertThat(
+                            itemChangeIn(adminChanges.get("changes"))
+                                    .get("source_snapshot")
+                                    .get("workOrderNo")
+                                    .asString())
+                    .isEqualTo(s4.orderNo);
         } finally {
             jdbcClient
                     .sql("delete from property_definition where id = :id")
@@ -513,11 +549,28 @@ class ActionExecutionApiTests {
 
             assertThat(row.get("restrictedPropertyCodes").toString()).isEqualTo("[\"op_seq\"]");
             assertThat(row.get("input").get("items").get(0).get("operationCode").isNull()).isTrue();
-            JsonNode item = itemChangeIn(row);
+            JsonNode item = itemChangeIn(row.get("entityChanges"));
             assertThat(item.get("operation_code").isNull()).isTrue();
             for (JsonNode operation : item.get("source_snapshot").get("operations")) {
                 assertThat(operation.get("sequence").isNull()).isTrue();
                 assertThat(operation.get("equipmentCode").asString()).isEqualTo(s4.p103Code);
+            }
+
+            // 097은 입력값만, 098은 변경 내역만 가리고 각자 가린 코드를 준다.
+            long executionId = row.get("id").asLong();
+            JsonNode detail = auditData("/api/v1/audit/actions/" + executionId, planner);
+            assertThat(detail.get("restrictedPropertyCodes").toString()).isEqualTo("[\"op_seq\"]");
+            assertThat(detail.get("input").get("items").get(0).get("operationCode").isNull())
+                    .isTrue();
+            assertThat(detail.get("input").get("items").get(0).get("workOrderId").asLong())
+                    .isEqualTo(s4.order);
+            JsonNode changes =
+                    auditData("/api/v1/audit/actions/" + executionId + "/changes", planner);
+            assertThat(changes.get("restrictedPropertyCodes").toString()).isEqualTo("[\"op_seq\"]");
+            JsonNode changedItem = itemChangeIn(changes.get("changes"));
+            assertThat(changedItem.get("operation_code").isNull()).isTrue();
+            for (JsonNode operation : changedItem.get("source_snapshot").get("operations")) {
+                assertThat(operation.get("sequence").isNull()).isTrue();
             }
         } finally {
             jdbcClient
@@ -589,11 +642,15 @@ class ActionExecutionApiTests {
         assertThat(sourceObjectsOf()).isEqualTo(sourceBefore);
         mockMvc.perform(get("/api/v1/audit/actions/" + permissionRun).cookie(admin.session()))
                 .andExpect(jsonPath("$.data.status").value("BLOCKED"))
-                .andExpect(jsonPath("$.data.blockedReason").value("PLAN_CREATE 권한이 없습니다."))
-                .andExpect(jsonPath("$.data.entityChanges.length()").value(0));
+                .andExpect(jsonPath("$.data.blockedReason").value("PLAN_CREATE 권한이 없습니다."));
         mockMvc.perform(get("/api/v1/audit/actions/" + businessRun).cookie(admin.session()))
-                .andExpect(jsonPath("$.data.status").value("BLOCKED"))
-                .andExpect(jsonPath("$.data.entityChanges.length()").value(0));
+                .andExpect(jsonPath("$.data.status").value("BLOCKED"));
+        for (long blocked : List.of(permissionRun, businessRun)) {
+            mockMvc.perform(
+                            get("/api/v1/audit/actions/" + blocked + "/changes")
+                                    .cookie(admin.session()))
+                    .andExpect(jsonPath("$.data.changes.length()").value(0));
+        }
         mockMvc.perform(
                         get("/api/v1/objects/" + s4.p103 + "/executions")
                                 .cookie(admin.session())
@@ -1312,16 +1369,25 @@ class ActionExecutionApiTests {
     }
 
     private static JsonNode snapshotIn(JsonNode row) {
-        return itemChangeIn(row).get("source_snapshot");
+        return itemChangeIn(row.get("entityChanges")).get("source_snapshot");
     }
 
-    private static JsonNode itemChangeIn(JsonNode row) {
-        for (JsonNode change : row.get("entityChanges")) {
+    private static JsonNode itemChangeIn(JsonNode changes) {
+        for (JsonNode change : changes) {
             if ("reassignment_plan_item".equals(change.get("tableName").asString())) {
                 return change.get("afterData");
             }
         }
-        throw new AssertionError("재배정 항목 변경 기록이 없습니다: " + row);
+        throw new AssertionError("재배정 항목 변경 기록이 없습니다: " + changes);
+    }
+
+    /** 097·098 응답의 data. */
+    private JsonNode auditData(String path, LoginSession session) throws Exception {
+        MvcResult result =
+                mockMvc.perform(get(path).cookie(session.session()))
+                        .andExpect(status().isOk())
+                        .andReturn();
+        return json.readTree(result.getResponse().getContentAsString()).get("data");
     }
 
     private void allowPlannerToSeeType(String typeCode) {
