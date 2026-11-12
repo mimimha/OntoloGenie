@@ -4,9 +4,13 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.ontology.domain.LinkMapping;
 import com.axcore.platform.ontology.domain.LinkMappingCondition;
+import com.axcore.platform.ontology.domain.LinkType;
+import com.axcore.platform.ontology.dto.RuleListRequest;
 import com.axcore.platform.ontology.dto.RuleRevisionResponse;
+import com.axcore.platform.ontology.dto.RuleSummaryResponse;
 import com.axcore.platform.ontology.repository.LinkMappingConditionRepository;
 import com.axcore.platform.ontology.repository.LinkMappingRepository;
+import com.axcore.platform.ontology.repository.LinkTypeRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -29,6 +33,24 @@ public class RuleRevisionService {
 
     private final LinkMappingRepository linkMappingRepository;
     private final LinkMappingConditionRepository conditionRepository;
+    private final LinkTypeRepository linkTypeRepository;
+
+    /**
+     * 연결 규칙 목록. 규칙 코드마다 최신 개정본 하나를 코드 순으로 돌려준다. 규칙 수는 관계 유형 수 정도라 페이지를 나누지 않는다. 관계 유형 이름은 지금 이름이다.
+     */
+    public List<RuleSummaryResponse> rules(RuleListRequest request) {
+        List<LinkMapping> latest =
+                linkMappingRepository.findLatestRevisions(request.linkTypeId(), request.status());
+        Map<Long, String> names =
+                linkTypeRepository
+                        .findAllById(
+                                latest.stream().map(LinkMapping::getLinkTypeId).distinct().toList())
+                        .stream()
+                        .collect(Collectors.toMap(LinkType::getId, LinkType::getName, (a, b) -> a));
+        return latest.stream()
+                .map(rule -> RuleSummaryResponse.of(rule, names.get(rule.getLinkTypeId())))
+                .toList();
+    }
 
     /** API 046. 그 코드의 개정본이 하나도 없으면 404다. */
     public Page<RuleRevisionResponse> revisions(String code, Pageable pageable) {

@@ -31,7 +31,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Import(TestcontainersConfiguration.class)
 class RuleRevisionApiTests {
 
-    private static final String PATH = "/api/v1/ontology/rules/{code}/revisions";
+    private static final String RULES = "/api/v1/ontology/rules";
+    private static final String PATH = RULES + "/{code}/revisions";
 
     @Autowired MockMvc mvc;
     @Autowired JdbcClient jdbc;
@@ -149,6 +150,68 @@ class RuleRevisionApiTests {
                 .andExpect(jsonPath("$.error.details.field").value("size"));
         mvc.perform(get(PATH, code).param("page", "-1").with(actor("ADMIN")))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void listsTheLatestRevisionOfEachRuleWithFilters() throws Exception {
+        // 관계 유형마다 반영 중인 규칙은 하나다(V17). 다른 코드의 규칙은 폐기된 뒤에 같은 관계 유형에 남는다.
+        long first = revision(1, "SEED", "초판", "{}");
+        retire(first);
+        String retiredCode = code;
+        code = "WO_EQ_OLD_" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String onlyRetired = code;
+        retire(revision(1, "SEED", "대체 없이 폐기된 규칙", "{}"));
+        code = retiredCode;
+        revision(2, "MANUAL", "둘째", "{}");
+
+        mvc.perform(get(RULES).param("linkTypeId", String.valueOf(linkType)).with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(
+                        jsonPath(
+                                "$.data[*].code",
+                                contains(
+                                        retiredCode.compareTo(onlyRetired) < 0
+                                                ? new String[] {retiredCode, onlyRetired}
+                                                : new String[] {onlyRetired, retiredCode})))
+                .andExpect(
+                        jsonPath(
+                                "$.data[?(@.code == '" + retiredCode + "')].revision", contains(2)))
+                .andExpect(
+                        jsonPath(
+                                "$.data[?(@.code == '" + retiredCode + "')].status",
+                                contains("ACTIVE")))
+                .andExpect(
+                        jsonPath(
+                                "$.data[?(@.code == '" + retiredCode + "')].description",
+                                contains("둘째")))
+                .andExpect(
+                        jsonPath(
+                                "$.data[?(@.code == '" + retiredCode + "')].linkTypeName",
+                                contains("검사 테스트 관계")))
+                .andExpect(
+                        jsonPath(
+                                "$.data[?(@.code == '" + onlyRetired + "')].status",
+                                contains("RETIRED")))
+                .andExpect(jsonPath("$.meta").doesNotExist());
+        mvc.perform(
+                        get(RULES)
+                                .param("linkTypeId", String.valueOf(linkType))
+                                .param("status", "ACTIVE")
+                                .with(actor("ADMIN")))
+                .andExpect(jsonPath("$.data[*].code", contains(retiredCode)));
+        mvc.perform(
+                        get(RULES)
+                                .param("linkTypeId", String.valueOf(linkType))
+                                .param("status", "RETIRED")
+                                .with(actor("ADMIN")))
+                .andExpect(jsonPath("$.data[*].code", contains(onlyRetired)));
+        mvc.perform(get(RULES).param("linkTypeId", "0").with(actor("ADMIN")))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get(RULES).param("status", "UNKNOWN").with(actor("ADMIN")))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get(RULES).with(actor("VIEWER"))).andExpect(status().isForbidden());
+        mvc.perform(get(RULES)).andExpect(status().isUnauthorized());
     }
 
     @Test
