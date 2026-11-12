@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import Button from '../../components/Button'
 import DataTable from '../../components/DataTable'
@@ -105,8 +105,11 @@ function ColumnPicker({
     )
   } else {
     const present = columns.filter((column) => column.isPresent)
+    const keyword = query.trim().toLowerCase()
     const shown = present.filter((column) =>
-      column.columnName.toLowerCase().includes(query.trim().toLowerCase()),
+      `${column.columnName} ${column.sourceComment ?? ''}`
+        .toLowerCase()
+        .includes(keyword),
     )
     const page = Math.min(
       columnPage,
@@ -148,8 +151,8 @@ function ColumnPicker({
             setQuery(event.target.value)
             setColumnPage(0)
           }}
-          placeholder="컬럼 이름 검색"
-          aria-label="컬럼 이름 검색"
+          placeholder="컬럼 이름·설명 검색"
+          aria-label="컬럼 이름·설명 검색"
           className={inputClass}
         />
         {shown.length === 0 ? (
@@ -168,7 +171,7 @@ function ColumnPicker({
                     전체
                   </label>
                 </th>
-                <th className="px-3 py-2 font-normal">컬럼</th>
+                <th className="px-3 py-2 font-normal">컬럼 · 설명</th>
                 <th className="px-3 py-2 font-normal">형식</th>
               </tr>
             </thead>
@@ -188,6 +191,11 @@ function ColumnPicker({
                     {column.isKeyPart && (
                       <span className="ml-2 font-sans text-slate-500">
                         기본키
+                      </span>
+                    )}
+                    {column.sourceComment && (
+                      <span className="block font-sans text-slate-500">
+                        {column.sourceComment}
                       </span>
                     )}
                   </td>
@@ -278,6 +286,14 @@ function AnalysisTargetDialog({
     enabled: sourceId !== undefined,
   })
 
+  // 목업처럼 선택칸에 원천별 자료 수를 보여 준다. 표 목록과 같은 캐시를 쓴다.
+  const sourceResources = useQueries({
+    queries: (sources.data ?? []).map((item) => ({
+      queryKey: ['sources', item.id, 'resources'],
+      queryFn: () => fetchResources(item.id),
+    })),
+  })
+
   const start = useMutation({
     mutationFn: () => {
       const targets: AnalysisTarget[] = Object.values(selection).map(
@@ -322,6 +338,14 @@ function AnalysisTargetDialog({
   const active =
     resources.data?.find((resource) => resource.id === activeId) ??
     pageResources[0]
+  // 목록에 보이는 표의 컬럼 수. 컬럼 선택과 같은 캐시를 써서 표를 열 때 다시 부르지 않는다.
+  const pageColumns = useQueries({
+    queries: pageResources.map((resource) => ({
+      queryKey: ['sources', sourceId, 'resources', resource.id, 'columns'],
+      queryFn: () => fetchColumns(sourceId!, resource.id),
+      enabled: sourceId !== undefined && !isDocument(resource),
+    })),
+  })
 
   function pickColumns(
     resource: SourceResource,
@@ -382,8 +406,11 @@ function AnalysisTargetDialog({
   } else {
     resourceList = (
       <ul aria-label="표·자료 목록" className="space-y-2">
-        {pageResources.map((resource) => {
+        {pageResources.map((resource, index) => {
           const chosen = selection[resource.id]
+          const columnCount = pageColumns[index]?.data?.filter(
+            (column) => column.isPresent,
+          ).length
           return (
             <li key={resource.id}>
               <button
@@ -401,6 +428,7 @@ function AnalysisTargetDialog({
                 </span>
                 <span className="text-xs text-slate-500">
                   {isDocument(resource) ? '문서·자료' : '테이블'}
+                  {columnCount !== undefined && ` · ${columnCount}개 컬럼`}
                   {chosen
                     ? chosen.whole
                       ? ' · 자료 전체 선택'
@@ -441,11 +469,16 @@ function AnalysisTargetDialog({
               }}
               className={inputClass}
             >
-              {(sources.data ?? []).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
+              {(sources.data ?? []).map((item, index) => {
+                const count = sourceResources[index]?.data?.length
+                return (
+                  <option key={item.id} value={item.id}>
+                    {count === undefined
+                      ? item.name
+                      : `${item.name} · ${count}개 자료`}
+                  </option>
+                )
+              })}
             </select>
           </label>
           <div className="ml-auto flex gap-2">

@@ -90,6 +90,8 @@ export type SourceColumn = {
   isKeyPart: boolean
   isPresent: boolean
   ordinalPosition: number
+  // 원천 컬럼 설명(DB 주석). 없으면 비어 있다.
+  sourceComment?: string | null
 }
 
 export type CredentialInput = {

@@ -84,6 +84,32 @@ test('원천 상세에서 열면 그 원천의 표와 첫 표의 컬럼을 보�
   ).toBeDisabled()
 })
 
+test('목업처럼 원천별 자료 수·표별 컬럼 수·컬럼 설명을 보여 주고 설명으로도 찾는다', async () => {
+  const user = userEvent.setup()
+  const dialog = await openFromSource(user)
+
+  const select = within(dialog).getByLabelText('등록된 원천')
+  expect(
+    await within(select).findByRole('option', { name: /· 15개 자료$/ }),
+  ).toBeInTheDocument()
+  const list = await within(dialog).findByRole('list', { name: '표·자료 목록' })
+  expect(
+    await within(list).findByText(/^테이블 · 8개 컬럼$/),
+  ).toBeInTheDocument()
+  const table = await within(dialog).findByRole('table', {
+    name: 'mes.equipment 컬럼 선택',
+  })
+  expect(within(table).getByText('컬럼 · 설명')).toBeInTheDocument()
+  expect(within(table).getByText('설비 이름')).toBeInTheDocument()
+
+  await user.type(
+    within(dialog).getByLabelText('컬럼 이름·설명 검색'),
+    '설비 이름',
+  )
+  expect(within(table).getAllByRole('row')).toHaveLength(2)
+  expect(within(table).getByText('name')).toBeInTheDocument()
+})
+
 test('고른 컬럼만 분석을 맡기고 연결 규칙에서 이번 분석을 보여준다', async () => {
   const user = userEvent.setup()
   const sent = captureAnalysisRequest()
