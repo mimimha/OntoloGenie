@@ -1209,6 +1209,10 @@ def _cardinality(rel: Relation, tables: Tables) -> str:
     )
 
 
+def _floor_percent(rate: float) -> str:
+    return f"{int(rate * 100 + 1e-9)}%"
+
+
 def _how_text(rel: Relation, steps_by_column: list[tuple[list, list]]) -> str:
     """제안 이유의 비교 방법. 변환 이름 대신 사람이 읽는 말로 쓰고 이어진 값 한 쌍을 예로 붙인다."""
     if rel.rule_type == "same_value":
@@ -1225,7 +1229,7 @@ def _how_text(rel: Relation, steps_by_column: list[tuple[list, list]]) -> str:
     how = "비교 방법: " + " / ".join(parts) if parts else "비교 방법: 값을 그대로 비교"
     example = next((m for m in rel.matched if m[0] != m[1]), None)
     if example:
-        how += f" (예: '{example[0]}' → '{example[1]}')"
+        how += f" (예: '{example[0]}' ↔ '{example[1]}')"
     return how
 
 
@@ -1278,15 +1282,28 @@ def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
         source_cols = " ".join(c.name for c in rel.source)
         unmatched = [mask_value(str(v), source_cols) for v in rel.unmatched]
         target_cols = " + ".join(c.name for c in rel.target)
-        if rel.distinct_coverage >= 0.995 and rel.row_coverage >= 0.995:
-            matched_text = "일치율 100%"
+        # 승인 근거로 몇 행을 맞춰 봤는지 함께 적는다(값이 있는 출발 행 기준)
+        checked = tables.frames[s_table].dropna(subset=[c.name for c in rel.source])
+        if rel.condition:
+            checked = checked[
+                checked[rel.condition[0].name].astype(str) == rel.condition[1]
+            ]
+        total = len(checked)
+        matched_rows = round(rel.row_coverage * total)
+        if rel.unmatched:
+            # 비율은 소수 셋째 자리로 반올림돼 큰 표에서는 몇 건이 빠져도 100%가 될 수 있다
+            matched_rows = min(matched_rows, total - 1)
+        if matched_rows >= total:
+            matched_text = f"일치율 100% ({total:,}행 모두 연결)"
         else:
+            # 다 이어지지 않았으면 100%로 올려 쓰지 않는다(400행 중 399행 → 99%)
             matched_text = (
-                f"일치율 값 {rel.distinct_coverage:.0%} / 행 {rel.row_coverage:.0%}"
+                f"일치율 {_floor_percent(rel.row_coverage)} ({matched_rows:,}/{total:,}행 연결,"
+                f" 값 종류 기준 {_floor_percent(rel.distinct_coverage)})"
             )
         parts = [
             f"대상 키: {t_table} {target_cols} ({key_text})",
-            "비교: 원값"
+            "비교: 값 그대로"
             if rel.rule_type == "same_value"
             else f"비교: {how.removeprefix('비교 방법: ')}",
             matched_text,

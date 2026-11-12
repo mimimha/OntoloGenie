@@ -285,12 +285,7 @@ def _table_candidates(
                 description=f"원천 {key}의 한 행",
                 category=category,
             ),
-            reason=f"분류: {CATEGORY_TEXT.get(category, category)} ({why}) · "
-            + (
-                "명칭: 테이블 주석 기준"
-                if schema.description
-                else "명칭: 테이블명 사용 (주석 없음)"
-            ),
+            reason=f"분류: {CATEGORY_TEXT.get(category, category)} ({why})",
             evidence=[table_evidence],
             confidence=score.build(
                 score.object_type(bool(schema.primary_key), bool(keys), len(in_tables)),
