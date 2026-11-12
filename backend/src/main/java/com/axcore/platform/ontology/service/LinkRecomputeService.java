@@ -64,9 +64,10 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>원천에서 지운 객체(DELETED_AT_SOURCE)는 묶음에 넣지 않는다. 그래서 그 객체의 규칙 연결은 INACTIVE가 된다.
  * </ul>
  *
- * <p>바꾸는 것은 RULE 연결뿐이다. 보류 건 승인(MANUAL)·문서(DOCUMENT) 연결은 건드리지 않는다(결정 U6). 조건을 읽지 못해 건너뛴 규칙이 근거인 연결은
- * 양 끝 객체가 활성인 동안 그대로 둔다. 성립하지 않게 된 연결은 지우지 않고 INACTIVE로, 다시 성립하면 같은 행을 ACTIVE로 되살린다. issue는 만들지
- * 않는다(결정 문서 8장).
+ * <p>주로 바꾸는 것은 RULE 연결이다. 조건을 읽지 못해 건너뛴 규칙이 근거인 연결은 양 끝 객체가 활성인 동안 그대로 둔다. 성립하지 않게 된 연결은 지우지 않고
+ * INACTIVE로, 다시 성립하면 같은 행을 ACTIVE로 되살린다. 문서(DOCUMENT) 연결은 건드리지 않는다(결정 U6). 수동(MANUAL) 연결은 규칙이 잇지
+ * 못하는 출발의 예외라, 규칙이 그 출발을 잇거나 양 끝이 지워지거나 승인 당시 비교 값이 바뀌면 끄고, 규칙이 같은 쌍을 이으면 규칙 연결로 바꾼다(366, {@link
+ * #manualLinksToInactivate}). issue는 만들지 않는다(결정 문서 8장).
  *
  * <p>MVP에서는 관계 유형마다 양 끝 유형의 활성 객체와 그 관계 유형의 연결을 모두 읽는다(비교값이 변환 결과라 SQL로 좁히기 어렵다). 객체가 많아지면 비교값을 미리
  * 저장하는 칸을 둔다. 잠금 순서를 지키려면 <b>트랜잭션당 한 번, 객체를 다 쓴 뒤 마지막에</b> 부른다.
@@ -75,6 +76,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class LinkRecomputeService {
+
+    /**
+     * 수동 연결 근거({@code object_link.evidence})에 저장 당시 출발 객체의 비교 속성 값을 남기는 키. 값은 {속성 코드: 값}이다. 이 값이
+     * 바뀌면 수동 연결을 끈다(366).
+     */
+    public static final String SOURCE_VALUES = "sourceValues";
 
     private final LinkMappingRepository rules;
     private final LinkMappingConditionRepository conditions;
@@ -137,74 +144,6 @@ public class LinkRecomputeService {
         return run(
                 requested.stream().map(LinkMapping::getLinkTypeId).collect(Collectors.toSet()),
                 requested.stream().map(LinkMapping::getId).collect(Collectors.toSet()));
-    }
-
-    /**
-     * 승인한 규칙 개정본으로 연결되지 않은 출발 객체(보류 건 후보, 189). {@link #recomputeRules}를 부른 같은 트랜잭션에서 그 뒤에 부른다(관계
-     * 유형 잠금이 아직 잡혀 있다). 그 관계 유형의 활성 연결(규칙·수동·문서)이 이미 있는 출발은 빼고, 비교값이 비어 있는 출발도 뺀다.
-     *
-     * @throws LinkRuleNotComputableException 개정본이 없거나 ACTIVE가 아니거나 조건을 읽지 못함
-     */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public List<UnlinkedSource> unlinkedSources(long linkMappingId) {
-        LinkMapping rule =
-                rules.findById(linkMappingId)
-                        .filter(found -> found.getStatus() == LinkMappingStatus.ACTIVE)
-                        .orElseThrow(() -> LinkRuleNotComputableException.notActive(linkMappingId));
-        LinkType linkType = linkTypes.findById(rule.getLinkTypeId()).orElseThrow();
-        List<LinkMappingCondition> ruleConditions =
-                conditions.findByLinkMappingIdInOrderByLinkMappingIdAscSequenceNoAsc(
-                        List.of(linkMappingId));
-        Map<Long, String> propertyCodes =
-                properties
-                        .findAllById(
-                                ruleConditions.stream()
-                                        .flatMap(
-                                                c ->
-                                                        Stream.of(
-                                                                c.getSourcePropertyId(),
-                                                                c.getTargetPropertyId()))
-                                        .collect(Collectors.toSet()))
-                        .stream()
-                        .collect(
-                                Collectors.toMap(
-                                        PropertyDefinition::getId, PropertyDefinition::getCode));
-        Map<Long, String> typeCodes =
-                objectTypes
-                        // 자기 관계면 출발·도착 유형이 같다(Set.of는 중복을 거부한다).
-                        .findAllById(
-                                Stream.of(linkType.getSourceTypeId(), linkType.getTargetTypeId())
-                                        .collect(Collectors.toSet()))
-                        .stream()
-                        .collect(Collectors.toMap(ObjectType::getId, ObjectType::getCode));
-        RulePlan plan = RulePlan.of(rule, linkType, ruleConditions, propertyCodes, typeCodes);
-        if (plan == null) {
-            throw new LinkRuleNotComputableException(rule.getId(), rule.getCode());
-        }
-        List<LinkableObject> sources = ruleLinks.activeObjects(linkType.getSourceTypeId());
-        List<LinkableObject> targets =
-                linkType.getTargetTypeId().equals(linkType.getSourceTypeId())
-                        ? sources
-                        : ruleLinks.activeObjects(linkType.getTargetTypeId());
-        Set<Long> linkedSources =
-                ruleLinks.linksOf(linkType.getId()).stream()
-                        .filter(StoredLink::active)
-                        .map(StoredLink::sourceObjectId)
-                        .collect(Collectors.toSet());
-        // 재계산 뒤 이 관계 유형의 활성 연결이 없는 출발만 남긴다. 이 규칙으로는 이을 수 있었는데 안 이어진 출발(같은 관계 유형의 다른 규칙과 결과가
-        // 달라 둘 다 빠짐, 같은 쌍의 비활성 수동 연결 등)도 보류 건이 되게 이유를 붙인다.
-        return plan.unlinked(sources, targets, transformer).stream()
-                .filter(source -> !linkedSources.contains(source.sourceObjectId()))
-                .map(
-                        source ->
-                                source.reason() != null
-                                        ? source
-                                        : new UnlinkedSource(
-                                                source.sourceObjectId(),
-                                                source.rawValue(),
-                                                source.transformedValue(),
-                                                "이 규칙으로는 이어지지만 같은 관계 유형의 다른 규칙·연결과 맞지 않아 잇지 않음"))
-                .toList();
     }
 
     /**
@@ -367,12 +306,17 @@ public class LinkRecomputeService {
         ruleLinks.inactivateRuleLinks(toInactivate);
         result.inactivated.addAll(toInactivate);
 
+        List<Long> manualToInactivate =
+                manualLinksToInactivate(existing, desired.keySet(), sourcesById, linkType);
+        ruleLinks.inactivateManualLinks(manualToInactivate);
+        result.inactivated.addAll(manualToInactivate);
+
         for (Map.Entry<Pair, Desired> entry : desired.entrySet()) {
             Pair pair = entry.getKey();
             Desired want = entry.getValue();
             StoredLink link = byPair.get(pair);
-            if (link != null && !link.isRule()) {
-                continue; // 보류 건 승인·문서 연결은 그대로 둔다.
+            if (link != null && link.isDocument()) {
+                continue; // 문서 연결은 그대로 둔다.
             }
             long ruleId = want.plan().ruleId();
             boolean sameActiveRule =
@@ -398,9 +342,69 @@ public class LinkRecomputeService {
             if (sameActiveRule && Objects.equals(link.evidence(), evidence)) {
                 continue;
             }
-            ruleLinks.confirmRuleLink(link.id(), ruleId, evidence);
+            if (link.isManual()) {
+                // 규칙이 이 쌍을 이으면 수동 연결은 규칙 연결이 된다(366). 이후로는 규칙이 지킨다. 승인자(confirmed_by)는 남긴다.
+                ruleLinks.convertManualToRuleLink(link.id(), ruleId, evidence);
+            } else {
+                ruleLinks.confirmRuleLink(link.id(), ruleId, evidence);
+            }
             (link.active() ? result.updated : result.activated).add(link.id());
         }
+    }
+
+    /**
+     * 이번 계산 뒤 끌 활성 수동 연결(366). 수동 연결은 규칙이 잇지 못하는 출발에 관리자가 정한 예외라, 아래 경우에는 더 믿지 않는다.
+     *
+     * <ul>
+     *   <li>양 끝 객체 중 하나가 원천에서 지워졌다.
+     *   <li>규칙이 그 출발을 다른 도착과 잇는다(규칙이 기준). 출발이 하나뿐인 관계(ONE_TO_ONE·ONE_TO_MANY)면 규칙이 그 도착을 다른 출발과 이을
+     *       때도 같다. 관계 수 제약을 지키기 위해서다. 같은 쌍이면 끄지 않고 규칙 연결로 바꾼다.
+     *   <li>저장 때 남긴 출발 비교 속성 값({@code evidence.sourceValues}, {@link
+     *       ConfirmedLinkService#saveManual})이 지금 값과 다르다. 고쳐진 값으로 다시 판단해야 한다. 끄면 다음 SYNC 검사가 그 출발을
+     *       다시 판정해 문제로 올린다.
+     * </ul>
+     */
+    private static List<Long> manualLinksToInactivate(
+            List<StoredLink> existing,
+            Set<Pair> desired,
+            Map<Long, LinkableObject> sourcesById,
+            LinkType linkType) {
+        Set<Long> ruleSources = desired.stream().map(Pair::source).collect(Collectors.toSet());
+        Set<Long> ruleTargets =
+                linkType.getCardinality().sourceIsOne()
+                        ? desired.stream().map(Pair::target).collect(Collectors.toSet())
+                        : Set.of();
+        List<Long> inactivate = new ArrayList<>();
+        for (StoredLink link : existing) {
+            if (!link.isManual() || !link.active()) {
+                continue;
+            }
+            if (desired.contains(new Pair(link.sourceObjectId(), link.targetObjectId()))) {
+                continue;
+            }
+            if (!link.endsActive()
+                    || ruleSources.contains(link.sourceObjectId())
+                    || ruleTargets.contains(link.targetObjectId())
+                    || sourceValuesChanged(link, sourcesById.get(link.sourceObjectId()))) {
+                inactivate.add(link.id());
+            }
+        }
+        return inactivate;
+    }
+
+    private static boolean sourceValuesChanged(StoredLink link, LinkableObject source) {
+        if (!(link.evidence().get(SOURCE_VALUES) instanceof Map<?, ?> saved) || saved.isEmpty()) {
+            return false;
+        }
+        if (source == null) {
+            return true;
+        }
+        Map<String, Object> current = source.properties() == null ? Map.of() : source.properties();
+        return saved.entrySet().stream()
+                .anyMatch(
+                        e ->
+                                !Objects.equals(
+                                        e.getValue(), current.get(String.valueOf(e.getKey()))));
     }
 
     /**
@@ -452,16 +456,6 @@ public class LinkRecomputeService {
                     "연결 규칙 개정본 ID " + linkMappingId + "은(는) 없거나 ACTIVE가 아니라 연결을 계산할 수 없습니다.");
         }
     }
-
-    /**
-     * 승인한 규칙으로 연결되지 않은 출발 객체 하나(보류 건 후보, 189). 비교값이 비어 있는 객체는 넣지 않는다(이을 값이 없으므로 SYNC 검사가 다룬다).
-     *
-     * @param rawValue 조건별 원래 값을 " / "로 이은 것
-     * @param transformedValue 조건별 변환 뒤 값을 " / "로 이은 것. 변환에 실패했으면 null
-     * @param reason 연결되지 않은 이유
-     */
-    public record UnlinkedSource(
-            long sourceObjectId, String rawValue, String transformedValue, String reason) {}
 
     private record Pair(long source, long target) {}
 
@@ -631,44 +625,6 @@ public class LinkRecomputeService {
                 key.add(value);
             }
             return new KeyResult(List.copyOf(key), List.copyOf(raws), null);
-        }
-
-        /**
-         * 이 규칙으로 연결되지 않는 출발 객체와 그 이유(보류 건 후보). 출발 조건(filter)에 맞지 않거나 비교값이 비어 있는 객체는 넣지 않는다. 연결 여부는
-         * 이 규칙만 본다. 다른 규칙·수동 연결로 이미 이어진 출발은 부르는 쪽이 뺀다.
-         */
-        List<UnlinkedSource> unlinked(
-                List<LinkableObject> sources,
-                List<LinkableObject> targets,
-                ValueTransformer transformer) {
-            Map<List<String>, Set<Long>> targetsByKey = group(targets, transformer, false);
-            Map<List<String>, Set<Long>> sourcesByKey = group(sources, transformer, true);
-            List<UnlinkedSource> unlinked = new ArrayList<>();
-            for (LinkableObject object : sources) {
-                if (!sourceFilter.matches(object)) {
-                    continue;
-                }
-                KeyResult result = evaluate(object, transformer, true);
-                if (result.isMissing()) {
-                    continue;
-                }
-                String raw = String.join(" / ", result.raws());
-                if (result.failure() != null) {
-                    unlinked.add(new UnlinkedSource(object.id(), raw, null, result.failure()));
-                    continue;
-                }
-                String transformed = String.join(" / ", result.key());
-                var matches =
-                        new LinkMatchGroup<>(
-                                sourcesByKey.get(result.key()),
-                                targetsByKey.getOrDefault(result.key(), Set.of()),
-                                true);
-                String reason = mismatchReason(object.id(), matches);
-                // 이 규칙으로는 이을 수 있는 출발도 넣는다(이유 null). 다른 규칙과 합쳐 모호해졌거나 비활성 수동 연결과 겹쳐 실제로는 안 이어졌을 수
-                // 있다.
-                unlinked.add(new UnlinkedSource(object.id(), raw, transformed, reason));
-            }
-            return unlinked;
         }
 
         private Map<String, Object> evidence(List<String> key) {

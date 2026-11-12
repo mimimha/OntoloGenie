@@ -10,7 +10,6 @@ import com.axcore.platform.ontology.domain.ProposalItemKind;
 import com.axcore.platform.ontology.domain.ProposalOrigin;
 import com.axcore.platform.ontology.dto.ApplyCommand;
 import com.axcore.platform.ontology.dto.ApplyResult;
-import com.axcore.platform.ontology.service.LinkRecomputeService;
 import com.axcore.platform.ontology.service.ProposalApplyService;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,7 +35,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 class LinkRuleApplierTests {
 
     @Autowired ProposalApplyService service;
-    @Autowired LinkRecomputeService recompute;
     @Autowired JdbcClient jdbc;
     @Autowired TransactionTemplate tx;
 
@@ -84,9 +82,9 @@ class LinkRuleApplierTests {
     }
 
     @Test
-    void firstRevisionLinksMatchesAndHoldsTheRest() {
+    void firstRevisionLinksMatchesAndLeavesTheRestToSync() {
         long linked = workOrder("EQ-3");
-        long held = workOrder("W23");
+        long unlinked = workOrder("W23");
         long empty = workOrder(" ");
         long eq = equipment("EQ-3", "프레스");
         long proposal = proposal();
@@ -119,43 +117,35 @@ class LinkRuleApplierTests {
                                         + result.targetId()))
                 .isEqualTo(1);
 
-        assertThat(result.heldItemIds()).hasSize(1);
-        assertThat(
-                        row(
-                                "select source_object_id, raw_value, transformed_value, hold_reason, status, link_mapping_id, proposal_item_id from held_item where id = :id",
-                                result.heldItemIds().getFirst()))
-                .containsEntry("source_object_id", held)
-                .containsEntry("raw_value", "W23")
-                .containsEntry("transformed_value", "W23")
-                .containsEntry("hold_reason", "비교값이 같은 도착 객체가 없음")
-                .containsEntry("status", "HELD")
-                .containsEntry("link_mapping_id", result.targetId())
-                .containsEntry("proposal_item_id", proposal);
-        assertThat(count("held_item", "source_object_id = " + empty)).isZero();
+        // 이어지지 않은 출발은 보류 건으로 남기지 않는다(366). 미연결은 SYNC 검사가 문제로 남긴다.
+        assertThat(result.heldItemIds()).isEmpty();
+        assertThat(count("held_item", "source_object_id in (" + unlinked + "," + empty + ")"))
+                .isZero();
         assertThat(result.summary())
                 .containsEntry("revision", 1)
                 .containsEntry("linksActivated", 1)
-                .containsEntry("heldCount", 1);
+                .doesNotContainKey("heldCount");
+        assertThat(result.changes()).extracting("tableName").doesNotContain("held_item");
+
+        // 커밋 뒤 새 개정본을 포함한 SYNC 검사가 바로 들어간다.
+        assertThat(
+                        count(
+                                "check_run",
+                                "trigger_kind = 'SYNC' and scope->'linkMappingIds' @> '["
+                                        + result.targetId()
+                                        + "]'::jsonb"))
+                .isEqualTo(1);
     }
 
     @Test
-    void newRevisionRetiresOldOneRebindsLinksAndDoesNotDuplicateHeldItems() {
-        // 운영처럼 ID가 Long 캐시(-128~127) 밖이어도 닫기가 맞는지 본다.
-        jdbc.sql(
-                        """
-                        select setval(pg_get_serial_sequence('link_mapping', 'id'),
-                                      greatest(1000, nextval(pg_get_serial_sequence('link_mapping', 'id'))))
-                        """)
-                .query()
-                .singleValue();
+    void newRevisionRetiresOldOneAndRebindsLinks() {
         long wo = workOrder("eq-3");
-        long held = workOrder("W23");
+        long unlinked = workOrder("W23");
         equipment("EQ-3", "프레스");
         ApplyResult first = apply(proposal(), rulePayload(List.of()));
-        assertThat(count("held_item", "source_object_id in (" + wo + "," + held + ")"))
-                .isEqualTo(2);
+        assertThat(activeTargets(wo)).isEmpty();
 
-        // 두 번째 개정본은 UPPER로 wo를 잇는다. W23은 여전히 대상이 없지만 열린 보류 건이 있어 다시 만들지 않는다.
+        // 두 번째 개정본은 UPPER로 wo를 잇는다.
         ApplyResult second = apply(proposal(), rulePayload(List.of(Map.of("op", "UPPER"))));
 
         assertThat(row("select status from link_mapping where id = :id", first.targetId()))
@@ -167,37 +157,14 @@ class LinkRuleApplierTests {
                 .containsEntry("revision", 2)
                 .containsEntry("status", "ACTIVE");
         assertThat(activeTargets(wo)).hasSize(1);
-        assertThat(second.heldItemIds()).isEmpty();
-        assertThat(count("held_item", "source_object_id = " + held)).isEqualTo(1);
+        assertThat(activeTargets(unlinked)).isEmpty();
         assertThat(second.summary()).containsEntry("retiredRevisionId", first.targetId());
-
-        // rev1에서 보류했던 wo는 rev2로 이어졌으므로 승인자가 닫은 것으로 기록된다. W23은 여전히 열려 있다.
-        assertThat(second.summary()).containsEntry("heldClosedCount", 1);
-        Map<String, Object> closed =
-                jdbc.sql(
-                                """
-                                select h.status, h.resolved_by, h.resolution_note, h.resolved_at is not null as resolved,
-                                       h.resolved_link_id = l.id as same_link
-                                from held_item h
-                                join object_link l on l.link_type_id = h.link_type_id and l.source_object_id = h.source_object_id
-                                where h.source_object_id = :wo
-                                """)
-                        .param("wo", wo)
-                        .query()
-                        .singleRow();
-        assertThat(closed)
-                .containsEntry("status", "APPROVED")
-                .containsEntry("resolved_by", account)
-                .containsEntry("resolved", true)
-                .containsEntry("same_link", true);
-        assertThat(String.valueOf(closed.get("resolution_note"))).contains("개정본 2");
-        assertThat(row("select status from held_item where source_object_id = :id", held))
-                .containsEntry("status", "HELD");
-        assertThat(second.changes()).extracting("tableName").contains("held_item");
+        assertThat(count("held_item", "source_object_id in (" + wo + "," + unlinked + ")"))
+                .isZero();
     }
 
     @Test
-    void sourceDroppedByAnotherRuleOfSameLinkTypeBecomesHeldItem() {
+    void sourceDroppedByAnotherRuleOfSameLinkTypeIsRelinkedWhenRulesAgree() {
         // 규칙 A(equipment_code)로 WO1→EQ-1이 이어진 뒤, 규칙 B(alt_code)는 WO1→EQ-2를 원한다. MANY_TO_ONE이라 둘 다
         // 빠진다.
         property(workOrderTypeId, "alt_code");
@@ -230,19 +197,11 @@ class LinkRuleApplierTests {
 
         assertThat(activeTargets(wo)).isEmpty();
         assertThat(result.summary()).containsEntry("linksInactivated", 1);
-        assertThat(result.heldItemIds()).hasSize(1);
-        assertThat(
-                        row(
-                                "select source_object_id, hold_reason from held_item where id = :id",
-                                result.heldItemIds().getFirst()))
-                .containsEntry("source_object_id", wo)
-                .containsEntry("hold_reason", "이 규칙으로는 이어지지만 같은 관계 유형의 다른 규칙·연결과 맞지 않아 잇지 않음");
 
-        // 규칙 B 개정본 2가 A와 같은 쌍(WO1→EQ-1)을 원하면 다시 이어진다. 근거는 기존 연결의 규칙(A)을 우선해 A로 남지만, 이번
-        // 승인으로 이어졌으므로 B가 열어 둔 보류 건은 닫힌다.
+        // 규칙 B 개정본 2가 A와 같은 쌍(WO1→EQ-1)을 원하면 다시 이어진다. 근거는 기존 연결의 규칙(A)을 우선해 A로 남는다.
         Map<String, Object> sameAsA = rulePayload(List.of());
         sameAsA.put("code", ruleB);
-        ApplyResult second = apply(proposal(), sameAsA);
+        apply(proposal(), sameAsA);
 
         assertThat(activeTargets(wo)).containsExactly(eq1);
         assertThat(
@@ -253,69 +212,27 @@ class LinkRuleApplierTests {
                                         + " and status = 'ACTIVE' and link_mapping_id = "
                                         + ruleA.targetId()))
                 .isEqualTo(1);
-        assertThat(second.summary()).containsEntry("heldClosedCount", 1);
-        assertThat(
-                        row(
-                                "select status from held_item where id = :id",
-                                result.heldItemIds().getFirst()))
-                .containsEntry("status", "APPROVED");
     }
 
     @Test
-    void heldItemAlreadyLinkedByCollectionIsClosedWithItsOwnNote() {
-        long wo = workOrder("W23");
-        ApplyResult ruleA = apply(proposal(), rulePayload(List.of()));
-        long heldId = ruleA.heldItemIds().getFirst();
-
-        // 수집이 도착을 적재하고 다시 계산해 이었지만 자동 해소가 아직 없어 보류 건은 열려 있다.
-        long eq = equipment("W23", "프레스");
-        tx.executeWithoutResult(status -> recompute.recomputeRules(List.of(ruleA.targetId())));
-        assertThat(activeTargets(wo)).containsExactly(eq);
-        assertThat(row("select status from held_item where id = :id", heldId))
-                .containsEntry("status", "HELD");
-
-        // 같은 관계 유형의 다른 규칙을 승인하면 기존 연결을 근거로 닫되, 이번 승인으로 이어진 것과 메모를 달리한다.
-        property(workOrderTypeId, "alt_code");
-        Map<String, Object> other = rulePayload(List.of());
-        other.put("code", "RULE_C_" + suffix());
-        other.put(
-                "conditions",
-                List.of(
-                        Map.of(
-                                "sourceProperty",
-                                workOrderType + ".alt_code",
-                                "targetProperty",
-                                "code")));
-        ApplyResult ruleC = apply(proposal(), other);
-
-        assertThat(ruleC.summary()).containsEntry("heldClosedCount", 1);
-        assertThat(row("select status, resolution_note from held_item where id = :id", heldId))
-                .containsEntry("status", "APPROVED")
-                .containsEntry(
-                        "resolution_note",
-                        "규칙 " + other.get("code") + " 개정본 1 승인 때 이미 규칙 연결이 있어 닫음");
-    }
-
-    @Test
-    void sourceFilterLimitsLinkedAndHeldSources() {
+    void sourceFilterLimitsLinkedSources() {
         long matching = workOrder("EQ-3");
         long outside = workOrder("W23");
         long eq = equipment("EQ-3", "프레스");
         Map<String, Object> payload = rulePayload(List.of());
         payload.put("sourceFilter", Map.of("property", "equipment_code", "equals", "EQ-3"));
 
-        ApplyResult result = apply(proposal(), payload);
+        apply(proposal(), payload);
 
         assertThat(activeTargets(matching)).containsExactly(eq);
-        assertThat(result.heldItemIds()).isEmpty();
-        assertThat(count("held_item", "source_object_id = " + outside)).isZero();
+        assertThat(activeTargets(outside)).isEmpty();
     }
 
     @Test
-    void manyToOneSelfRelationLinksTheOtherObjectAndHoldsOnlyTheObjectWithoutATarget() {
+    void manyToOneSelfRelationLinksTheOtherObject() {
         long first = equipment("EQ-3", "프레스");
         long second = equipment("EQ-3", "선반");
-        long lonely = equipment("EQ-9", "프레스");
+        equipment("EQ-9", "프레스");
         String selfLinkType = "EQ_EQ_" + suffix();
         jdbc.sql(
                         """
@@ -343,13 +260,6 @@ class LinkRuleApplierTests {
                                 .query((rs, rowNum) -> List.of(rs.getLong(1), rs.getLong(2)))
                                 .list())
                 .containsExactlyInAnyOrder(List.of(first, second), List.of(second, first));
-        assertThat(result.heldItemIds()).hasSize(1);
-        assertThat(
-                        row(
-                                "select source_object_id, hold_reason from held_item where id = :id",
-                                result.heldItemIds().getFirst()))
-                .containsEntry("source_object_id", lonely)
-                .containsEntry("hold_reason", "비교값이 같은 도착 객체가 없음");
     }
 
     @Test
@@ -389,11 +299,10 @@ class LinkRuleApplierTests {
         long wo = workOrder("EQ-3");
         equipment("EQ-4", "프레스");
 
-        ApplyResult result = apply(proposal(), payload);
+        apply(proposal(), payload);
 
         assertThat(activeTargets(wo)).containsExactly(mold);
-        assertThat(result.heldItemIds()).hasSize(1);
-        assertThat(count("held_item", "source_object_id = " + filteredOut)).isEqualTo(1);
+        assertThat(activeTargets(filteredOut)).isEmpty();
     }
 
     @Test

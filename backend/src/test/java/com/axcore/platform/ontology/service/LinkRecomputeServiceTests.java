@@ -221,27 +221,17 @@ class LinkRecomputeServiceTests {
     }
 
     @Test
-    void manualLinkIsNeverChangedByRule() {
+    void manualLinkStaysWhileRuleCannotLinkTheSource() {
         long wo = workOrder("EQ-3");
         long other = equipment("EQ-9");
-        long account = account();
-        long manual =
-                jdbc.sql(
-                                """
-                                insert into object_link (link_type_id, source_object_id, target_object_id, origin, confirmed_by)
-                                values (:type, :source, :target, 'MANUAL', :account) returning id
-                                """)
-                        .param("type", linkType)
-                        .param("source", wo)
-                        .param("target", other)
-                        .param("account", account)
-                        .query(Long.class)
-                        .single();
+        long manual = manualLink(wo, other, "{\"sourceValues\": {\"equipment_code\": \"EQ-3\"}}");
 
         LinkRecomputeResult result = recompute(wo);
 
         assertThat(result.inactivatedLinkIds()).doesNotContain(manual);
-        assertThat(status(manual)).isEqualTo("ACTIVE");
+        assertThat(link(manual))
+                .containsEntry("origin", "MANUAL")
+                .containsEntry("status", "ACTIVE");
     }
 
     @Test
@@ -416,28 +406,76 @@ class LinkRecomputeServiceTests {
     }
 
     @Test
-    void manualLinkOnPairThatRuleWantsStaysManual() {
+    void manualLinkOnPairThatRuleWantsBecomesRuleLink() {
         long wo = workOrder("EQ-3");
         long eq = equipment("EQ-3");
-        long manual =
-                jdbc.sql(
-                                """
-                                insert into object_link (link_type_id, source_object_id, target_object_id, origin, confirmed_by)
-                                values (:type, :source, :target, 'MANUAL', :account) returning id
-                                """)
-                        .param("type", linkType)
-                        .param("source", wo)
-                        .param("target", eq)
-                        .param("account", account())
-                        .query(Long.class)
-                        .single();
+        long manual = manualLink(wo, eq, "{}");
 
         LinkRecomputeResult result = recompute(wo);
 
-        assertThat(result.activatedLinkIds()).isEmpty();
+        // 같은 쌍은 한 행뿐이라 새로 넣지 않고 수동 연결 행을 규칙 연결로 바꾼다(366).
+        assertThat(result.updatedLinkIds()).containsExactly(manual);
         assertThat(link(manual))
-                .containsEntry("origin", "MANUAL")
-                .containsEntry("status", "ACTIVE");
+                .containsEntry("origin", "RULE")
+                .containsEntry("status", "ACTIVE")
+                .containsEntry("link_mapping_id", rule);
+        assertThat(activeTargets(wo)).containsExactly(eq);
+    }
+
+    @Test
+    void inactiveManualLinkOnPairThatRuleWantsIsRevivedAsRuleLink() {
+        long wo = workOrder("EQ-3");
+        long eq = equipment("EQ-3");
+        long manual = manualLink(wo, eq, "{}");
+        jdbc.sql(
+                        "update object_link set status = 'INACTIVE', inactivated_at = now() where id = :id")
+                .param("id", manual)
+                .update();
+
+        assertThat(recompute(wo).activatedLinkIds()).containsExactly(manual);
+        assertThat(link(manual)).containsEntry("origin", "RULE").containsEntry("status", "ACTIVE");
+    }
+
+    @Test
+    void manualLinkIsInactivatedWhenRuleLinksTheSourceToAnotherTarget() {
+        long wo = workOrder("EQ-3");
+        long other = equipment("EQ-9");
+        long manual = manualLink(wo, other, "{}");
+
+        long eq = equipment("EQ-3");
+        LinkRecomputeResult result = recompute(eq);
+
+        assertThat(result.inactivatedLinkIds()).containsExactly(manual);
+        assertThat(status(manual)).isEqualTo("INACTIVE");
+        assertThat(activeTargets(wo)).containsExactly(eq);
+    }
+
+    @Test
+    void manualLinkIsInactivatedWhenSourceValueChangesSinceSaving() {
+        long wo = workOrder("EQ-3");
+        long other = equipment("EQ-9");
+        long manual = manualLink(wo, other, "{\"sourceValues\": {\"equipment_code\": \"EQ-3\"}}");
+
+        // 저장 당시 값 그대로면 둔다.
+        assertThat(recompute(wo).inactivatedLinkIds()).isEmpty();
+        assertThat(status(manual)).isEqualTo("ACTIVE");
+
+        // 값이 바뀌면(여전히 규칙으로는 이어지지 않아도) 다시 판단하도록 끈다.
+        setProperty(wo, "equipment_code", "EQ-4");
+        assertThat(recompute(wo).inactivatedLinkIds()).containsExactly(manual);
+        assertThat(status(manual)).isEqualTo("INACTIVE");
+    }
+
+    @Test
+    void manualLinkIsInactivatedWhenAnEndIsDeletedAtSource() {
+        long wo = workOrder("EQ-3");
+        long other = equipment("EQ-9");
+        long manual = manualLink(wo, other, "{}");
+
+        setStatus(other, "DELETED_AT_SOURCE");
+
+        assertThat(recompute(other).inactivatedLinkIds()).containsExactly(manual);
+        assertThat(status(manual)).isEqualTo("INACTIVE");
     }
 
     @Test
@@ -495,31 +533,6 @@ class LinkRecomputeServiceTests {
                 .isInstanceOf(LinkRecomputeService.LinkRuleNotComputableException.class);
         assertThatThrownBy(() -> inTx(() -> service.recomputeRules(List.of(Long.MAX_VALUE))))
                 .isInstanceOf(LinkRecomputeService.LinkRuleNotComputableException.class);
-    }
-
-    @Test
-    void unlinkedSourcesListsWhyEachSourceIsNotLinked() {
-        long linked = workOrder("EQ-3");
-        long noTarget = workOrder(" eq-9 ");
-        long empty = workOrder(" ");
-        equipment("EQ-3");
-        inTx(() -> service.recomputeRules(List.of(rule)));
-
-        List<LinkRecomputeService.UnlinkedSource> unlinked =
-                inTx(() -> service.unlinkedSources(rule));
-
-        assertThat(unlinked)
-                .extracting(LinkRecomputeService.UnlinkedSource::sourceObjectId)
-                .contains(noTarget)
-                .doesNotContain(linked, empty);
-        LinkRecomputeService.UnlinkedSource item =
-                unlinked.stream()
-                        .filter(u -> u.sourceObjectId() == noTarget)
-                        .findFirst()
-                        .orElseThrow();
-        assertThat(item.rawValue()).isEqualTo(" eq-9 ");
-        assertThat(item.transformedValue()).isEqualTo("EQ-9");
-        assertThat(item.reason()).isEqualTo("비교값이 같은 도착 객체가 없음");
     }
 
     @Test
@@ -581,6 +594,23 @@ class LinkRecomputeServiceTests {
                             .update();
                     return id;
                 });
+    }
+
+    private long manualLink(long source, long target, String evidence) {
+        return jdbc.sql(
+                        """
+                        insert into object_link
+                            (link_type_id, source_object_id, target_object_id, origin, confirmed_by, evidence)
+                        values (:type, :source, :target, 'MANUAL', :account, cast(:evidence as jsonb))
+                        returning id
+                        """)
+                .param("type", linkType)
+                .param("source", source)
+                .param("target", target)
+                .param("account", account())
+                .param("evidence", evidence)
+                .query(Long.class)
+                .single();
     }
 
     private long linkId(long source, long target) {

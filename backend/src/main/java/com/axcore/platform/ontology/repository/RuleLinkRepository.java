@@ -145,6 +145,40 @@ public class RuleLinkRepository {
                 .update();
     }
 
+    /** 활성 수동 연결을 끈다(366). 지우지 않는다. */
+    public void inactivateManualLinks(Collection<Long> linkIds) {
+        if (linkIds.isEmpty()) {
+            return;
+        }
+        jdbc.sql(
+                        """
+                        update object_link
+                        set status = 'INACTIVE', inactivated_at = now(), updated_at = now()
+                        where id = any(cast(:ids as bigint[])) and origin = 'MANUAL' and status = 'ACTIVE'
+                        """)
+                .param("ids", linkIds.toArray(Long[]::new))
+                .update();
+    }
+
+    /**
+     * 규칙이 원하는 쌍의 수동 연결(활성·비활성)을 그 규칙의 연결로 바꾼다(366). 같은 쌍은 {@code uq_object_link}로 한 행뿐이라 새로 넣지 않고 이
+     * 행을 쓴다. 승인자({@code confirmed_by})·근거 후보는 이력으로 남긴다.
+     */
+    public void convertManualToRuleLink(
+            long linkId, long linkMappingId, Map<String, Object> evidence) {
+        jdbc.sql(
+                        """
+                        update object_link
+                        set origin = 'RULE', status = 'ACTIVE', inactivated_at = null,
+                            link_mapping_id = :rule, evidence = cast(:evidence as jsonb), updated_at = now()
+                        where id = :id and origin = 'MANUAL'
+                        """)
+                .param("id", linkId)
+                .param("rule", linkMappingId)
+                .param("evidence", json.writeValueAsString(evidence))
+                .update();
+    }
+
     private StoredLink storedLink(ResultSet rs, int row) throws SQLException {
         long mapping = rs.getLong("link_mapping_id");
         Long linkMappingId = rs.wasNull() ? null : mapping;
@@ -178,6 +212,14 @@ public class RuleLinkRepository {
 
         public boolean isRule() {
             return "RULE".equals(origin);
+        }
+
+        public boolean isManual() {
+            return "MANUAL".equals(origin);
+        }
+
+        public boolean isDocument() {
+            return "DOCUMENT".equals(origin);
         }
     }
 }

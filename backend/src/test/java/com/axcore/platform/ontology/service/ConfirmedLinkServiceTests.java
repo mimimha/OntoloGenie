@@ -138,11 +138,83 @@ class ConfirmedLinkServiceTests {
     }
 
     @Test
-    void cardinalityCountsEveryOriginButSkipsDeletedEnds() {
+    void sourceAlreadyLinkedByRuleIsRejectedUntilItsTargetIsDeleted() {
         long wo = object(workOrderType);
         long first = object(equipmentType);
         long second = object(equipmentType);
         ruleLink(linkType, wo, first, rule(linkType), "ACTIVE");
+
+        // 수동 연결은 규칙이 잇지 못한 출발의 예외다(366). 관계 수와 상관없이 받지 않는다.
+        assertError(
+                () -> manual(new ConfirmedLinkRequest(linkType, wo, second, account, null, null)),
+                ObjectLinkErrorCode.LINK_SOURCE_LINKED_BY_RULE);
+
+        deleteAtSource(first, equipmentType);
+        assertThat(
+                        manual(new ConfirmedLinkRequest(linkType, wo, second, account, null, null))
+                                .outcome())
+                .isEqualTo(Outcome.CREATED);
+    }
+
+    @Test
+    void manualLinkKeepsTheSourceValuesItWasConfirmedWith() {
+        long code =
+                jdbc.sql(
+                                """
+                                insert into property_definition (object_type_id, code, name, data_type)
+                                values (:type, 'equipment_code', 'equipment_code', 'STRING') returning id
+                                """)
+                        .param("type", workOrderType)
+                        .query(Long.class)
+                        .single();
+        long target =
+                jdbc.sql(
+                                """
+                                insert into property_definition (object_type_id, code, name, data_type)
+                                values (:type, 'code', 'code', 'STRING') returning id
+                                """)
+                        .param("type", equipmentType)
+                        .query(Long.class)
+                        .single();
+        // 비교 항목은 규칙 개정본을 만든 트랜잭션에서만 넣을 수 있다.
+        tx.executeWithoutResult(
+                status ->
+                        jdbc.sql(
+                                        """
+                                        insert into link_mapping_condition
+                                            (link_mapping_id, source_property_id, target_property_id, sequence_no)
+                                        values (:rule, :source, :target, 1)
+                                        """)
+                                .param("rule", rule(linkType))
+                                .param("source", code)
+                                .param("target", target)
+                                .update());
+        long wo =
+                jdbc.sql(
+                                """
+                                insert into object_instance (object_type_id, display_name, properties)
+                                values (:type, 'W23', '{"equipment_code": "E23", "memo": "x"}'::jsonb) returning id
+                                """)
+                        .param("type", workOrderType)
+                        .query(Long.class)
+                        .single();
+
+        SavedLink saved =
+                manual(
+                        new ConfirmedLinkRequest(
+                                linkType, wo, object(equipmentType), account, null, null));
+
+        // 반영 중인 규칙이 출발에서 비교하는 속성만 남긴다. 재계산은 이 값이 바뀌면 이 연결을 끈다.
+        assertThat(link(saved.linkId()))
+                .containsEntry("evidence", "{\"sourceValues\": {\"equipment_code\": \"E23\"}}");
+    }
+
+    @Test
+    void cardinalityCountsEveryOriginButSkipsDeletedEnds() {
+        long wo = object(workOrderType);
+        long first = object(equipmentType);
+        long second = object(equipmentType);
+        manual(new ConfirmedLinkRequest(linkType, wo, first, account, null, null));
 
         // MANY_TO_ONE: 작업지시 하나는 설비 하나에만
         assertError(

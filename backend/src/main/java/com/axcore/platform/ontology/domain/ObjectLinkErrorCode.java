@@ -12,7 +12,8 @@ public enum ObjectLinkErrorCode implements ErrorCode {
             HttpStatus.UNPROCESSABLE_CONTENT, "관계 수 제약을 넘습니다. 이미 다른 객체와 연결되어 있습니다."),
     LINK_EVIDENCE_INVALID(
             HttpStatus.BAD_REQUEST, "문서 연결의 표현 종류(expression_kind)는 OBSERVED·ESTIMATED만 됩니다."),
-    LINK_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 연결된 쌍입니다.");
+    LINK_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 연결된 쌍입니다."),
+    LINK_SOURCE_LINKED_BY_RULE(HttpStatus.CONFLICT, "규칙이 이미 이 출발 객체를 잇고 있어 수동으로 연결할 수 없습니다.");
 
     private final HttpStatus status;
     private final String message;

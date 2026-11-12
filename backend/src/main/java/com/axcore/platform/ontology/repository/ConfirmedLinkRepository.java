@@ -6,6 +6,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -18,6 +19,8 @@ import tools.jackson.databind.json.JsonMapper;
 @Repository
 @RequiredArgsConstructor
 public class ConfirmedLinkRepository {
+
+    private static final TypeReference<Map<String, Object>> PROPERTIES = new TypeReference<>() {};
 
     private final JdbcClient jdbc;
     private final JsonMapper json;
@@ -43,6 +46,31 @@ public class ConfirmedLinkRepository {
                                         rs.getLong("object_type_id"),
                                         "ACTIVE".equals(rs.getString("status"))))
                 .list();
+    }
+
+    /** 객체 하나의 속성 값(키는 속성 코드). 없으면 빈 값이다. 수동 연결에 저장 당시 비교 값을 남길 때 쓴다(366). */
+    public Map<String, Object> properties(long objectId) {
+        return jdbc.sql("select properties::text from object_instance where id = :id")
+                .param("id", objectId)
+                .query(String.class)
+                .optional()
+                .map(text -> json.readValue(text, PROPERTIES))
+                .orElse(Map.of());
+    }
+
+    /** 출발 객체에서 나가는 활성 규칙 연결 수. 도착 객체가 원천에서 삭제된 연결은 세지 않는다(366). */
+    public long countActiveRuleFromSource(long linkTypeId, long sourceObjectId) {
+        return jdbc.sql(
+                        """
+                        select count(*) from object_link l
+                        join object_instance o on o.id = l.target_object_id
+                        where l.link_type_id = :type and l.source_object_id = :object
+                          and l.origin = 'RULE' and l.status = 'ACTIVE' and o.status = 'ACTIVE'
+                        """)
+                .param("type", linkTypeId)
+                .param("object", sourceObjectId)
+                .query(Long.class)
+                .single();
     }
 
     /** 관계 유형·출발·도착 쌍의 연결 행(모든 출처·상태). {@code uq_object_link}로 쌍마다 하나다. */

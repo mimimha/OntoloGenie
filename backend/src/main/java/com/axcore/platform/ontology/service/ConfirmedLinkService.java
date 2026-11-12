@@ -4,19 +4,30 @@ import com.axcore.platform.audit.domain.ChangeEntry;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.ontology.domain.LinkCardinality;
+import com.axcore.platform.ontology.domain.LinkMapping;
+import com.axcore.platform.ontology.domain.LinkMappingCondition;
+import com.axcore.platform.ontology.domain.LinkMappingStatus;
 import com.axcore.platform.ontology.domain.LinkType;
 import com.axcore.platform.ontology.domain.ObjectLinkErrorCode;
+import com.axcore.platform.ontology.domain.PropertyDefinition;
 import com.axcore.platform.ontology.dto.ConfirmedLinkRequest;
 import com.axcore.platform.ontology.dto.SavedLink;
 import com.axcore.platform.ontology.dto.SavedLink.Outcome;
 import com.axcore.platform.ontology.repository.ConfirmedLinkRepository;
 import com.axcore.platform.ontology.repository.ConfirmedLinkRepository.LinkEnd;
 import com.axcore.platform.ontology.repository.ConfirmedLinkRepository.PairLink;
+import com.axcore.platform.ontology.repository.LinkMappingConditionRepository;
+import com.axcore.platform.ontology.repository.LinkMappingRepository;
 import com.axcore.platform.ontology.repository.LinkTypeRepository;
+import com.axcore.platform.ontology.repository.PropertyDefinitionRepository;
 import com.axcore.platform.ontology.repository.RuleLinkRepository;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -26,7 +37,8 @@ import org.springframework.transaction.annotation.Transactional;
  * 관리자가 확정한 연결을 {@code object_link}에 저장한다(Jira 329, FN-ONT-05). 화면·외부 API는 없고 내부에서만 부른다.
  *
  * <ul>
- *   <li>{@link #saveManual}: 보류 건 승인(238). origin=MANUAL
+ *   <li>{@link #saveManual}: 관리자가 문제(issue)에서 정한 수동 연결(058, 366). origin=MANUAL. 규칙이 이미 이은 출발은 받지
+ *       않고, 저장 당시 출발 비교 속성 값을 근거에 남긴다. 재계산은 그 값이 바뀌거나 규칙이 그 출발을 이으면 이 연결을 끈다
  *   <li>{@link #saveDocument}: 문서 연결 후보 승인(DOCUMENT_LINK 반영기). origin=DOCUMENT
  * </ul>
  *
@@ -56,8 +68,14 @@ public class ConfirmedLinkService {
     private final LinkTypeRepository linkTypes;
     private final RuleLinkRepository ruleLinks;
     private final ConfirmedLinkRepository links;
+    private final LinkMappingRepository rules;
+    private final LinkMappingConditionRepository conditions;
+    private final PropertyDefinitionRepository properties;
 
-    /** 보류 건 승인으로 관리자가 고른 도착 객체와 연결한다. 같은 쌍에 활성 연결이 있으면 {@code LINK_ALREADY_EXISTS}(409)다. */
+    /**
+     * 관리자가 고른 도착 객체와 연결한다. 같은 쌍에 활성 연결이 있으면 {@code LINK_ALREADY_EXISTS}, 규칙이 이미 그 출발을 이었으면 {@code
+     * LINK_SOURCE_LINKED_BY_RULE}(둘 다 409)다.
+     */
     @Transactional(propagation = Propagation.MANDATORY)
     public SavedLink saveManual(ConfirmedLinkRequest request) {
         return save(MANUAL, request);
@@ -111,6 +129,17 @@ public class ConfirmedLinkService {
                     Map.of("linkId", existing.id(), "origin", existing.origin()));
         }
 
+        // 수동 연결은 규칙이 잇지 못한 출발의 예외다. 규칙이 이미 그 출발을 이었으면 받지 않는다(366). 받아도 재계산이 곧 끈다.
+        Map<String, Object> evidence = request.evidence();
+        if (MANUAL.equals(origin)) {
+            if (links.countActiveRuleFromSource(linkType.getId(), sourceId) > 0) {
+                throw new BusinessException(
+                        ObjectLinkErrorCode.LINK_SOURCE_LINKED_BY_RULE,
+                        Map.of("sourceObjectId", sourceId, "linkTypeId", linkType.getId()));
+            }
+            evidence = withSourceValues(evidence, linkType.getId(), sourceId);
+        }
+
         // 4. 관계 수 제약(모든 출처). 쌍의 행은 활성이 아니므로 세지 않는다.
         LinkCardinality cardinality = linkType.getCardinality();
         if (targetSideIsOne(cardinality)
@@ -136,7 +165,7 @@ public class ConfirmedLinkService {
                             origin,
                             request.confirmedBy(),
                             request.proposalItemId(),
-                            request.evidence());
+                            evidence);
             Map<String, Object> inserted = new LinkedHashMap<>();
             inserted.put("linkTypeId", linkType.getId());
             inserted.put("sourceObjectId", sourceId);
@@ -149,11 +178,7 @@ public class ConfirmedLinkService {
                     ChangeEntry.insert("object_link", Map.of("id", id), inserted));
         }
         links.reactivate(
-                existing.id(),
-                origin,
-                request.confirmedBy(),
-                request.proposalItemId(),
-                request.evidence());
+                existing.id(), origin, request.confirmedBy(), request.proposalItemId(), evidence);
         Map<String, Object> before = new LinkedHashMap<>();
         before.put("origin", existing.origin());
         before.put("status", "INACTIVE");
@@ -164,6 +189,41 @@ public class ConfirmedLinkService {
                 Outcome.REACTIVATED,
                 existing.origin(),
                 ChangeEntry.update("object_link", Map.of("id", existing.id()), before, after));
+    }
+
+    /**
+     * 수동 연결 근거에 저장 당시 출발 객체의 비교 속성 값({@link LinkRecomputeService#SOURCE_VALUES})을 더한다(366). 비교 속성은
+     * 그 관계 유형의 반영 중인 규칙들이 출발 쪽에서 비교하는 속성이다. 재계산은 이 값이 바뀌면 수동 연결을 끈다. 반영 중인 규칙이 없으면 더하지 않는다.
+     */
+    private Map<String, Object> withSourceValues(
+            Map<String, Object> evidence, long linkTypeId, long sourceObjectId) {
+        List<Long> ruleIds =
+                rules
+                        .findByStatusAndLinkTypeIdInOrderById(
+                                LinkMappingStatus.ACTIVE, List.of(linkTypeId))
+                        .stream()
+                        .map(LinkMapping::getId)
+                        .toList();
+        if (ruleIds.isEmpty()) {
+            return evidence;
+        }
+        Set<Long> propertyIds =
+                conditions
+                        .findByLinkMappingIdInOrderByLinkMappingIdAscSequenceNoAsc(ruleIds)
+                        .stream()
+                        .map(LinkMappingCondition::getSourcePropertyId)
+                        .collect(Collectors.toCollection(TreeSet::new));
+        Map<String, Object> current = links.properties(sourceObjectId);
+        Map<String, Object> values = new TreeMap<>();
+        for (PropertyDefinition property : properties.findAllById(propertyIds)) {
+            values.put(property.getCode(), current.get(property.getCode()));
+        }
+        if (values.isEmpty()) {
+            return evidence;
+        }
+        Map<String, Object> merged = new LinkedHashMap<>(evidence);
+        merged.put(LinkRecomputeService.SOURCE_VALUES, values);
+        return merged;
     }
 
     private static void requireEnd(LinkEnd end, long objectId, long expectedTypeId, String side) {
