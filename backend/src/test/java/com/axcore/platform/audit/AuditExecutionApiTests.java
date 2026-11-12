@@ -60,7 +60,7 @@ class AuditExecutionApiTests {
     private static final String AUDIT = "/api/v1/audit/actions";
     private static final TypeReference<Map<String, Object>> JSON_OBJECT = new TypeReference<>() {};
 
-    /** 096·080 한 줄의 필드. 3단계(기존 필드 제거) 전까지 기존 필드를 모두 유지하고 changeCount만 더한다. */
+    /** 096·080 한 줄의 필드. 입력·결과·막힌 이유는 097, 변경 내역은 098로 본다(S15P31C106-374). */
     private static final List<String> LIST_FIELDS =
             List.of(
                     "id",
@@ -79,15 +79,10 @@ class AuditExecutionApiTests {
                     "targetType",
                     "targetId",
                     "targetLabel",
-                    "input",
                     "status",
-                    "blockedReason",
-                    "result",
                     "requestedAt",
                     "finishedAt",
-                    "entityChanges",
-                    "changeCount",
-                    "restrictedPropertyCodes");
+                    "changeCount");
 
     private static final List<String> DETAIL_FIELDS =
             List.of(
@@ -219,20 +214,11 @@ class AuditExecutionApiTests {
                 .andExpect(jsonPath(base.formatted(directRun) + ".actionName").value("재배정 계획 생성"))
                 .andExpect(jsonPath(base.formatted(directRun) + ".actorName").value("테스트 사용자"))
                 .andExpect(jsonPath(base.formatted(directRun) + ".targetLabel").value("프레스 3호기"))
-                .andExpect(
-                        jsonPath(base.formatted(directRun) + ".entityChanges[0].tableName")
-                                .value("reassignment_plan"))
-                .andExpect(
-                        jsonPath(
-                                base.formatted(directRun) + ".restrictedPropertyCodes",
-                                contains(empty())))
+                .andExpect(jsonPath(base.formatted(directRun) + ".changeCount").value(1))
                 .andExpect(jsonPath(base.formatted(recordAction) + ".category").value("CHANGE"))
                 .andExpect(jsonPath(base.formatted(recordAction) + ".targetLabel").value("테스트 사용자"))
                 .andExpect(
                         jsonPath(base.formatted(analysisResultOfA) + ".category").value("ANALYSIS"))
-                .andExpect(
-                        jsonPath(base.formatted(analysisResultOfA) + ".result.errorMessage")
-                                .value("분석 실패"))
                 .andExpect(
                         jsonPath(base.formatted(systemWithoutTarget) + ".category")
                                 .value("DATA_JOB"));
@@ -282,8 +268,7 @@ class AuditExecutionApiTests {
                                 .param("targetType", "object_instance")
                                 .param("targetId", String.valueOf(object)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[*].id", containsInAnyOrder(intValue(blockedRun))))
-                .andExpect(jsonPath("$.data[0].blockedReason").value("대체 설비 능력이 부족합니다."));
+                .andExpect(jsonPath("$.data[*].id", containsInAnyOrder(intValue(blockedRun))));
         mockMvc.perform(
                         withSession(get(AUDIT), session)
                                 .param("from", from)
@@ -321,7 +306,7 @@ class AuditExecutionApiTests {
     }
 
     @Test
-    void listRowsKeepTheirFieldsAndCountChanges() throws Exception {
+    void listRowsHaveOnlySummaryFieldsAndCountChanges() throws Exception {
         Map<String, Object> direct =
                 rowOf(
                         perform(
@@ -331,7 +316,6 @@ class AuditExecutionApiTests {
                         directRun);
         assertThat(direct.keySet()).containsExactlyInAnyOrderElementsOf(LIST_FIELDS);
         assertThat(direct).containsEntry("changeCount", 1);
-        assertThat((List<?>) direct.get("entityChanges")).hasSize(1);
 
         Map<String, Object> blocked =
                 rowOf(
@@ -420,7 +404,7 @@ class AuditExecutionApiTests {
     }
 
     @Test
-    void failureReasonPrefersErrorMessageOverReasonCode() throws Exception {
+    void failureReasonPrefersNonBlankErrorMessageOverReasonCode() throws Exception {
         String timeoutMessage = "30분 동안 진행 신호가 없어 실패로 처리했습니다.";
         // StaleJobCleaner가 남기는 시간 초과 결과 줄과 같은 모양이다.
         long timedOut =
@@ -436,6 +420,16 @@ class AuditExecutionApiTests {
                 record(
                         analysisResult(createAnalysisRun(plannerA.id()))
                                 .result(Map.of("reason", "TIMEOUT")));
+        long blankMessage =
+                record(
+                        analysisResult(createAnalysisRun(plannerA.id()))
+                                .result(Map.of("errorMessage", " ", "reason", "TIMEOUT")));
+        long noReason =
+                record(
+                        analysisResult(createAnalysisRun(plannerA.id()))
+                                .result(Map.of("errorMessage", "", "detail", "기타")));
+        long emptyResult =
+                record(analysisResult(createAnalysisRun(plannerA.id())).result(Map.of()));
         LoginSession session = login(plannerA, true);
 
         mockMvc.perform(withSession(get(detail(timedOut)), session))
@@ -445,6 +439,15 @@ class AuditExecutionApiTests {
                 .andExpect(jsonPath("$.data.result.reason").value("TIMEOUT"));
         mockMvc.perform(withSession(get(detail(reasonOnly)), session))
                 .andExpect(jsonPath("$.data.failureReason").value("TIMEOUT"));
+        mockMvc.perform(withSession(get(detail(blankMessage)), session))
+                .andExpect(jsonPath("$.data.failureReason").value("TIMEOUT"));
+        for (long withoutReason : List.of(noReason, emptyResult)) {
+            Map<String, Object> failed =
+                    dataOf(perform(withSession(get(detail(withoutReason)), session)));
+            assertThat(failed)
+                    .containsEntry("status", "FAILED")
+                    .containsEntry("failureReason", null);
+        }
         mockMvc.perform(withSession(get(detail(analysisResultOfA)), session))
                 .andExpect(jsonPath("$.data.failureReason").value("분석 실패"));
         Map<String, Object> blocked =

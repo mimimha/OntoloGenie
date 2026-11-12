@@ -1,8 +1,6 @@
 package com.axcore.platform.audit.repository;
 
-import com.axcore.platform.action.dto.ActionExecutionDetailResponse.EntityChangeResponse;
 import com.axcore.platform.audit.domain.ActorType;
-import com.axcore.platform.audit.domain.EntityChange;
 import com.axcore.platform.audit.domain.EntryPoint;
 import com.axcore.platform.audit.domain.EventKind;
 import com.axcore.platform.audit.domain.ExecutionCategory;
@@ -12,9 +10,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -25,19 +21,27 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * 실행·감사 이력 목록 (API 096·080)과 097·098의 열람 범위. 실행 기록에 정의·실행자·대상 표시 이름을 붙이고, 본인 실행 범위는 여러 작업 표의 요청자를
  * 함께 본다. 여러 도메인 표를 같은 규칙으로 훑는 조회라 JdbcClient로 쓴다(조회 쿼리 기준 초안 2-2, S15P31C106-294). SQL에 이어 붙이는 것은 이
- * 클래스의 상수뿐이고 값은 모두 바인딩한다. Agent 조회 기록(AGENT_QUERY)은 늘 뺀다.
+ * 클래스의 상수뿐이고 값은 모두 바인딩한다. Agent 조회 기록(AGENT_QUERY)은 늘 뺀다. 목록은 요약만 읽는다. 입력·결과 JSON과 변경 내역 본문은 읽지 않고
+ * 변경 건수만 센다(S15P31C106-374).
  */
 @Repository
 @RequiredArgsConstructor
 public class AuditExecutionQueryRepository {
 
-    private static final TypeReference<Map<String, Object>> JSON_OBJECT = new TypeReference<>() {};
+    /** 목록 한 줄에 쓰는 실행 기록 칸. input·result·blocked_reason은 097에서만 읽는다. */
+    private static final String COLUMNS =
+            """
+            e.id, e.request_id, e.event_kind, e.action_definition_id, e.actor_type, e.actor_id,
+             e.actor_role_code, e.checked_permission_code, e.entry_point, e.target_type, e.target_id,
+             e.status, e.requested_at, e.finished_at""";
+
+    /** 실행이 바꾼 행 수. ix_entity_change_execution 인덱스로 센다. */
+    private static final String CHANGE_COUNT =
+            "(select count(*) from entity_change c where c.action_execution_id = e.id)";
 
     /** 종류 탭. action_mode가 없는 ACTION(정의가 지워진 경우 등)은 관리 Action으로 본다. */
     private static final String CATEGORY =
@@ -90,8 +94,6 @@ public class AuditExecutionQueryRepository {
             """;
 
     private final JdbcClient jdbc;
-    private final JsonMapper json;
-    private final EntityChangeRepository changes;
 
     /** 조건에 맞는 기록을 최근 요청순으로. viewerId가 있으면 그 사람의 본인 실행만 본다. */
     public Page<AuditExecutionResponse> search(Filter filter, Long viewerId, Pageable pageable) {
@@ -131,10 +133,12 @@ public class AuditExecutionQueryRepository {
         params.put("offset", pageable.getOffset());
         List<AuditExecutionResponse> rows =
                 jdbc.sql(
-                                "select e.*, d.code as action_code, d.name as action_name,"
-                                        + " a.display_name as actor_name,"
-                                        + " e.input::text as input_json, e.result::text as result_json,"
-                                        + " ("
+                                "select "
+                                        + COLUMNS
+                                        + ", d.code as action_code, d.name as action_name,"
+                                        + " a.display_name as actor_name, "
+                                        + CHANGE_COUNT
+                                        + " as change_count, ("
                                         + CATEGORY
                                         + ") as category, ("
                                         + TARGET_LABEL
@@ -146,7 +150,7 @@ public class AuditExecutionQueryRepository {
                         .params(params)
                         .query((rs, row) -> row(rs))
                         .list();
-        return new PageImpl<>(withChanges(rows), pageable, total);
+        return new PageImpl<>(rows, pageable, total);
     }
 
     /**
@@ -178,23 +182,6 @@ public class AuditExecutionQueryRepository {
                 .optional();
     }
 
-    private List<AuditExecutionResponse> withChanges(List<AuditExecutionResponse> rows) {
-        if (rows.isEmpty()) {
-            return rows;
-        }
-        Map<Long, List<EntityChangeResponse>> byExecution = new LinkedHashMap<>();
-        for (EntityChange change :
-                changes.findByActionExecutionIdInOrderByIdAsc(
-                        rows.stream().map(AuditExecutionResponse::id).toList())) {
-            byExecution
-                    .computeIfAbsent(change.getActionExecutionId(), id -> new ArrayList<>())
-                    .add(EntityChangeResponse.from(change));
-        }
-        return rows.stream()
-                .map(row -> row.withEntityChanges(byExecution.getOrDefault(row.id(), List.of())))
-                .toList();
-    }
-
     private AuditExecutionResponse row(ResultSet rs) throws SQLException {
         long definitionId = rs.getLong("action_definition_id");
         Long actionDefinitionId = rs.wasNull() ? null : definitionId;
@@ -219,15 +206,10 @@ public class AuditExecutionQueryRepository {
                 rs.getString("target_type"),
                 targetId,
                 rs.getString("target_label"),
-                object(rs.getString("input_json")),
                 ExecutionStatus.valueOf(rs.getString("status")),
-                rs.getString("blocked_reason"),
-                object(rs.getString("result_json")),
                 instant(rs.getTimestamp("requested_at")),
                 instant(rs.getTimestamp("finished_at")),
-                List.of(),
-                0,
-                List.of());
+                rs.getInt("change_count"));
     }
 
     private static void add(
@@ -252,10 +234,6 @@ public class AuditExecutionQueryRepository {
 
     private static Instant instant(Timestamp value) {
         return value == null ? null : value.toInstant();
-    }
-
-    private Map<String, Object> object(String value) {
-        return value == null ? Map.of() : json.readValue(value, JSON_OBJECT);
     }
 
     /** 096·080의 공통 조건. 080은 대상(object_instance, 객체 ID)과 기간·상태만 쓴다. */
