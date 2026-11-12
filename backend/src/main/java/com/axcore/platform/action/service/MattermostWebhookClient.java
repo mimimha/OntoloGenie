@@ -41,6 +41,12 @@ public class MattermostWebhookClient {
             log.info(
                     "AXCORE_ACTION_NOTIFY_WEBHOOK_URL이 비어 있어 Handler 구현 요청을 Mattermost로 보내지 않습니다.");
         }
+        if (properties.screenBaseUrl() != null
+                && !properties.screenBaseUrl().isBlank()
+                && !properties.hasScreenBaseUrl()) {
+            log.warn(
+                    "AXCORE_ACTION_NOTIFY_SCREEN_BASE_URL이 http·https 주소가 아니라 알림에 정의 화면 링크를 넣지 않습니다.");
+        }
     }
 
     public boolean isConfigured() {
