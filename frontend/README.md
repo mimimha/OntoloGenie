@@ -311,6 +311,11 @@ npm test -- --run src/api/client.test.ts
 - 로그인은 `src/features/auth/login.css`, 비밀번호 변경·권한 및 없는 주소 안내는 공통 토큰과 컴포넌트를 사용한다. 로그인은 Pretendard와 heading-32·label-14·input-14·control-14, 높이 40px·모서리 4px 컨트롤을 사용한다. WELCOME·소개 문구는 제거하고, 사용자가 요청한 반응형 오브를 배경 없이 왼쪽에 배치한다. 좁은 창에서는 오브를 폼 위로 옮기며 인증·권한·저장 및 충돌 처리 동작을 유지한다.
 - 관련 회귀 검증: `npx vitest run src/features/actions src/features/accounts src/features/audit src/features/history src/features/auth src/features/review src/features/issues --maxWorkers=2`.
 
+## 객체 유형 화면 가독성 적용
+
+- `src/features/ontology/objectTypes.css`에서 객체 유형 목록과 우측 대표 속성 지정 패널을 배치한다. 페이지 바탕·패널·안내는 `management.css`의 공통 배치를 쓰고, 선택 행은 데이터 연결과 같은 보라색 표시를 사용한다.
+- 관련 회귀 검증: `npx vitest run src/features/ontology src/features/auth/RoleAccess.test.tsx --maxWorkers=2`.
+
 ## 팀 결정이 필요한 항목
 
 - 백엔드 개발 서버 주소·포트 (인증은 API 명세 001에 따라 세션 쿠키 + `X-XSRF-TOKEN` 헤더)

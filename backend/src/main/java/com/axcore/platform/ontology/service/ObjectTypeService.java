@@ -2,6 +2,7 @@ package com.axcore.platform.ontology.service;
 
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
+import com.axcore.platform.mapping.repository.ObjectSourceMappingRepository;
 import com.axcore.platform.ontology.domain.DefinitionSource;
 import com.axcore.platform.ontology.domain.ObjectType;
 import com.axcore.platform.ontology.domain.PropertyDefinition;
@@ -13,8 +14,12 @@ import com.axcore.platform.ontology.dto.ObjectTypeUpdateRequest;
 import com.axcore.platform.ontology.repository.DefinitionReferenceRepository;
 import com.axcore.platform.ontology.repository.ObjectTypeRepository;
 import com.axcore.platform.ontology.repository.PropertyDefinitionRepository;
+import com.axcore.platform.source.domain.SourceResource;
+import com.axcore.platform.source.service.SourceCatalogService;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,6 +34,8 @@ public class ObjectTypeService {
     private final ObjectTypeRepository objectTypeRepository;
     private final PropertyDefinitionRepository propertyDefinitionRepository;
     private final DefinitionReferenceRepository referenceRepository;
+    private final ObjectSourceMappingRepository mappingRepository;
+    private final SourceCatalogService catalogService;
 
     /** API 021. q가 비어 있으면 전체를 돌려준다. */
     public Page<ObjectTypeResponse> search(String q, Pageable pageable) {
@@ -68,6 +75,9 @@ public class ObjectTypeService {
     /**
      * API 024. 대표 속성은 이 유형의 속성이어야 한다. 민감(RESTRICTED) 속성은 대표로 쓸 수 없다. 대표 속성 값은 객체 표시 이름이 되어 민감 값을 볼
      * 수 없는 사용자에게도 보이기 때문이다(S15P31C106-205 결정 D2).
+     *
+     * <p>표시 이름은 수집할 때 저장된다. 대표 속성이 바뀌면 이 유형이 켜진 매핑으로 연결된 원천 테이블을 다시 읽기로 표시해 기존 객체의 표시 이름도 새 대표 속성으로
+     * 다시 만든다(S15P31C106-371). 읽고 있던 전체 읽기는 저장할 때 계획(유형 버전·대표 속성)이 달라진 것을 보고 저장하지 않는다.
      */
     @Transactional
     public ObjectTypeResponse update(Long id, ObjectTypeUpdateRequest request) {
@@ -84,8 +94,11 @@ public class ObjectTypeService {
                 request.hasDisplayPropertyId()
                         ? request.getDisplayPropertyId()
                         : objectType.getDisplayPropertyId();
-        if (displayPropertyId != null
-                && !displayPropertyId.equals(objectType.getDisplayPropertyId())) {
+        boolean displayChanged =
+                !Objects.equals(displayPropertyId, objectType.getDisplayPropertyId());
+        // 매핑 변경과 같이 원천 테이블 행을 속성 행보다 먼저 잠근다. 속성 매핑을 만드는 쪽은 테이블 행을 잠근 뒤 속성 행을 FK로 참조한다.
+        List<SourceResource> reloadTargets = displayChanged ? lockMappedResources(id) : List.of();
+        if (displayChanged && displayPropertyId != null) {
             // 028(속성 수정)과 같은 속성 행 잠금을 잡는다. 대표 지정과 민감 전환이 동시에 와도 뒤의 요청이 최신 값을 보고 거절된다.
             PropertyDefinition property =
                     propertyDefinitionRepository
@@ -110,9 +123,18 @@ public class ObjectTypeService {
                 request.getSynonyms() == null ? objectType.getSynonyms() : request.getSynonyms(),
                 request.hasAccessGroup() ? request.getAccessGroup() : objectType.getAccessGroup(),
                 displayPropertyId);
+        reloadTargets.forEach(catalogService::requireFullReload);
         // 응답의 rowVersion·수정 시각이 이번 변경을 반영하도록 먼저 DB에 쓴다.
         objectTypeRepository.flush();
         return ObjectTypeResponse.from(objectType);
+    }
+
+    /** 이 유형이 켜진 매핑으로 연결된 원천 테이블 행을 번호 순으로 잠근다. 번호 순이라 다른 잠금과 서로 기다리다 멈추지 않는다. */
+    private List<SourceResource> lockMappedResources(Long objectTypeId) {
+        return mappingRepository.findActiveSourceResourceIds(objectTypeId).stream()
+                .map(catalogService::lockResource)
+                .flatMap(Optional::stream)
+                .toList();
     }
 
     /** API 025. 참조가 하나라도 있으면 지우지 않고 참조 목록을 돌려준다. */
