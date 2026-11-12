@@ -41,6 +41,8 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -408,22 +410,26 @@ class AgentMessageApiTests {
                 .andExpect(jsonPath("$.data[5].answerMeta.conditions.purpose").value("비가동 이력"));
     }
 
-    @Test
-    void clarificationContinuesAfterOutOfScopeQuestion() throws Exception {
+    @ParameterizedTest
+    @EnumSource(
+            value = QuestionScope.class,
+            names = {"HELP", "OUT_OF_SCOPE"})
+    void clarificationContinuesAfterOutOfScopeQuestion(QuestionScope scope) throws Exception {
         when(interpreter.isConfigured()).thenReturn(true);
         when(responder.answer(anyString(), any(), any(), any())).thenReturn("비가동 이력 답변");
         when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
                 .thenReturn(
                         new QuestionInterpretation(
                                 "비가동 이력", List.of(), null, null, List.of(), null))
-                .thenReturn(outsideBusiness(QuestionScope.HELP))
+                .thenReturn(outsideBusiness(scope))
                 .thenReturn(
                         new QuestionInterpretation(
                                 null, List.of("PR-03"), null, null, List.of(), null));
 
         ask(conversation, "비가동 이력 보여줘").andExpect(status().isAccepted());
         awaitAnswered(conversation);
-        ask(conversation, "근데 너는 뭘 할 수 있어?").andExpect(status().isAccepted());
+        ask(conversation, scope == QuestionScope.HELP ? "근데 너는 뭘 할 수 있어?" : "오늘 날씨 어때?")
+                .andExpect(status().isAccepted());
         awaitAnswered(conversation);
         ask(conversation, "PR-03").andExpect(status().isAccepted());
         awaitAnswered(conversation);
@@ -437,7 +443,7 @@ class AgentMessageApiTests {
         assertThat(pending.getValue().previous().purpose()).isEqualTo("비가동 이력");
         mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
                 .andExpect(jsonPath("$.data[1].answerMeta.clarification").exists())
-                .andExpect(jsonPath("$.data[3].answerMeta.scope").value("HELP"))
+                .andExpect(jsonPath("$.data[3].answerMeta.scope").value(scope.name()))
                 .andExpect(jsonPath("$.data[5].status").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.data[5].content").value("비가동 이력 답변"))
                 .andExpect(jsonPath("$.data[5].answerMeta.clarification").doesNotExist())
