@@ -271,7 +271,8 @@ class LinkRecomputeServiceTests {
 
     @Test
     void unreadableFilterSkipsRuleInsteadOfFailing() {
-        long odd = rule(linkType, "RULE_" + suffix(), 1, "{\"any\": [1, 2]}", "{}");
+        // 관계 유형마다 반영 중 규칙은 하나라(V17) 읽지 못하는 규칙은 다른 관계 유형에 둔다.
+        long odd = rule(linkType("MANY_TO_ONE"), "RULE_" + suffix(), 1, "{\"any\": [1, 2]}", "{}");
         long wo = workOrder("EQ-3");
         equipment("EQ-3");
 
@@ -290,7 +291,7 @@ class LinkRecomputeServiceTests {
         // 유형 코드가 도착 유형과 다른 조건은 읽지 못한다.
         long wrongPrefix =
                 rule(
-                        linkType,
+                        linkType("MANY_TO_ONE"),
                         "RULE_" + suffix(),
                         1,
                         "{}",
@@ -344,43 +345,6 @@ class LinkRecomputeServiceTests {
 
         assertThat(activeTargets(oneToOne, first)).isEmpty();
         assertThat(activeTargets(oneToOne, second)).isEmpty();
-    }
-
-    @Test
-    void secondRuleOfSameLinkTypeKeepsPairWhenFirstStopsMatching() {
-        // 두 번째 규칙: 작업지시.alt_code와 설비.code를 비교한다.
-        long altCode = property(workOrderType, "alt_code");
-        long second = secondRule(altCode);
-        long wo = workOrder("EQ-3");
-        setProperty(wo, "alt_code", "EQ-3");
-        long eq = equipment("EQ-3");
-        long linkId = recompute(wo).activatedLinkIds().getFirst();
-        assertThat(link(linkId)).containsEntry("link_mapping_id", rule);
-
-        setProperty(wo, "equipment_code", "EQ-9");
-        LinkRecomputeResult result = recompute(wo);
-
-        assertThat(result.inactivatedLinkIds()).isEmpty();
-        assertThat(result.updatedLinkIds()).containsExactly(linkId);
-        assertThat(link(linkId))
-                .containsEntry("status", "ACTIVE")
-                .containsEntry("link_mapping_id", second)
-                .containsEntry("target_object_id", eq);
-    }
-
-    @Test
-    void twoRulesPointingOneSourceToDifferentTargetsLinkNeither() {
-        long altCode = property(workOrderType, "alt_code");
-        secondRule(altCode);
-        long wo = workOrder("EQ-3");
-        setProperty(wo, "alt_code", "EQ-4");
-        equipment("EQ-3");
-        equipment("EQ-4");
-
-        recompute(wo);
-
-        // MANY_TO_ONE인데 두 규칙이 서로 다른 설비를 가리키므로 어느 쪽도 잇지 않는다.
-        assertThat(activeTargets(wo)).isEmpty();
     }
 
     @Test
@@ -491,33 +455,6 @@ class LinkRecomputeServiceTests {
     }
 
     @Test
-    void newRevisionOfCurrentOwnerKeepsOwnershipEvenWhenAnotherRuleHasLowerId() {
-        // 규칙 A(setUp의 rule) rev1이 연결의 근거. 규칙 B(alt_code)도 같은 쌍을 원하고 ID는 A rev2보다 작다.
-        long altCode = property(workOrderType, "alt_code");
-        secondRule(altCode);
-        long wo = workOrder("EQ-3");
-        setProperty(wo, "alt_code", "EQ-3");
-        equipment("EQ-3");
-        long linkId = recompute(wo).activatedLinkIds().getFirst();
-        assertThat(link(linkId)).containsEntry("link_mapping_id", rule);
-
-        long revision2 =
-                inTx(
-                        () -> {
-                            jdbc.sql(
-                                            "update link_mapping set status = 'RETIRED', retired_at = now() where id = :id")
-                                    .param("id", rule)
-                                    .update();
-                            return rule(linkType, ruleCode, 2, "{}");
-                        });
-        LinkRecomputeResult result = inTx(() -> service.recomputeRules(List.of(revision2)));
-
-        // 규칙 ID가 더 작은 B로 넘어가지 않고, 같은 코드 A의 새 개정본이 근거가 된다.
-        assertThat(result.updatedLinkIds()).containsExactly(linkId);
-        assertThat(link(linkId)).containsEntry("link_mapping_id", revision2);
-    }
-
-    @Test
     void recomputeRulesRejectsMissingOrRetiredRevision() {
         long retired =
                 inTx(
@@ -566,34 +503,6 @@ class LinkRecomputeServiceTests {
                 .param("source", source)
                 .query(Long.class)
                 .list();
-    }
-
-    // 두 번째 규칙: 작업지시의 다른 속성과 설비.code를 비교한다(변환 없음).
-    private long secondRule(long sourceProperty) {
-        return inTx(
-                () -> {
-                    long id =
-                            jdbc.sql(
-                                            """
-                                            insert into link_mapping (link_type_id, code, revision)
-                                            values (:type, :code, 1) returning id
-                                            """)
-                                    .param("type", linkType)
-                                    .param("code", "RULE_" + suffix())
-                                    .query(Long.class)
-                                    .single();
-                    jdbc.sql(
-                                    """
-                                    insert into link_mapping_condition
-                                        (link_mapping_id, source_property_id, target_property_id, sequence_no)
-                                    values (:rule, :source, :target, 1)
-                                    """)
-                            .param("rule", id)
-                            .param("source", sourceProperty)
-                            .param("target", eqCode)
-                            .update();
-                    return id;
-                });
     }
 
     private long manualLink(long source, long target, String evidence) {

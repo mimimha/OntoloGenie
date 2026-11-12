@@ -210,6 +210,13 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                 reverification && !run.issueIds().isEmpty()
                         ? reverify(run.issueIds(), active, evaluated)
                         : List.of();
+        // 재검증은 완료 때 실제로 읽은 기준으로 work_key를 다시 만든다. 연결 상태도 같은 읽기 스냅샷에서 읽는다(367).
+        String linkState =
+                reverification
+                        ? runs.linkState(
+                                CheckRunRequestService.linkTypeIds(
+                                        linkMappings, run.linkMappingIds()))
+                        : null;
         return new Outcome(
                 run.triggerKind(),
                 List.copyOf(evaluated),
@@ -217,7 +224,8 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                 new Totals(),
                 reverifications,
                 run.reverificationScope(),
-                basis);
+                basis,
+                linkState);
     }
 
     private CheckDataBasis latestDataBasis(CheckDataBasis requestedBasis) {
@@ -236,10 +244,9 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
             List<Long> issueIds, Map<Long, LinkMapping> active, List<RuleEvaluated> evaluated) {
         Map<String, Long> activeByCode = new LinkedHashMap<>();
         active.values().forEach(rule -> activeByCode.put(rule.getCode(), rule.getId()));
-        Map<Long, CheckEvaluation> evaluationByRule = new LinkedHashMap<>();
+        Map<Long, RuleEvaluated> evaluationByRule = new LinkedHashMap<>();
         for (RuleEvaluated rule : evaluated) {
-            evaluationByRule.put(
-                    rule.evaluation().rule().target().linkMappingId(), rule.evaluation());
+            evaluationByRule.put(rule.evaluation().rule().target().linkMappingId(), rule);
         }
         List<Issue> targets =
                 issues.findAllById(issueIds).stream()
@@ -258,7 +265,8 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         List<IssueReverification> verdicts = new ArrayList<>();
         for (Issue issue : targets) {
             Long revision = activeByCode.get(codeByRevision.get(issue.getLinkMappingId()));
-            CheckEvaluation evaluation = revision == null ? null : evaluationByRule.get(revision);
+            RuleEvaluated ruleResult = revision == null ? null : evaluationByRule.get(revision);
+            CheckEvaluation evaluation = ruleResult == null ? null : ruleResult.evaluation();
             if (issue.getObjectInstanceId() == null) {
                 verdicts.add(notEvaluated(issue, revision, "문제에 객체가 없습니다."));
             } else if (evaluation == null) {
@@ -272,7 +280,7 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                                                         .equals(r.source().objectInstanceId()))
                                 .findFirst();
                 verdicts.add(
-                        row.map(r -> judged(issue, revision, evaluation, r))
+                        row.map(r -> judged(issue, revision, ruleResult, r))
                                 .orElseGet(
                                         () ->
                                                 notEvaluated(
@@ -285,14 +293,22 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
     }
 
     private static IssueReverification judged(
-            Issue issue, long revision, CheckEvaluation evaluation, RowResult row) {
-        List<CheckCondition> conditions = evaluation.rule().conditions();
+            Issue issue, long revision, RuleEvaluated ruleResult, RowResult row) {
+        List<CheckCondition> conditions = ruleResult.evaluation().rule().conditions();
+        List<Long> manual = ruleResult.manualTargets().get(row.source().objectInstanceId());
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("rawValue", CheckRowText.rawValue(row, conditions));
         detail.put("transformedValue", CheckRowText.transformedValue(row, conditions));
-        detail.put("targetFound", !row.targets().isEmpty());
+        detail.put("targetFound", !row.targets().isEmpty() || manual != null);
         detail.put("classification", row.outcome().name());
         detail.put("reason", row.reason());
+        if (row.outcome() == CheckOutcome.MATCHED) {
+            // 수동 연결로 통과했으면 그 근거와 실제로 이은 대상을 남긴다(367). 대상이 규칙의 도착 행 밖이어도 남는다.
+            detail.put("matchedBy", manual == null ? "RULE" : "MANUAL_LINK");
+            if (manual != null) {
+                detail.put("manualTargetObjectIds", manual);
+            }
+        }
         Verdict verdict = row.outcome() == CheckOutcome.MATCHED ? Verdict.PASSED : Verdict.FAILED;
         return new IssueReverification(issue.getId(), revision, verdict, detail, null);
     }
@@ -316,24 +332,25 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                 engine.evaluate(
                         new CheckInput(rule.input(), sourceRows, targetRows),
                         rule.sourceType().id() == rule.targetType().id());
-        Map<Long, List<Long>> manualTargets = objects.manualLinkTargets(linkTypeId);
-        int manualMatched = 0;
-        if (!manualTargets.isEmpty()) {
+        Map<Long, List<Long>> manualLinks = objects.manualLinkTargets(linkTypeId);
+        Map<Long, List<Long>> manualTargets = new LinkedHashMap<>();
+        if (!manualLinks.isEmpty()) {
             Map<Long, CheckRow> targetById = new HashMap<>();
             targetRows.forEach(row -> targetById.put(row.objectInstanceId(), row));
             List<RowResult> rows = new ArrayList<>(evaluation.rows().size());
             for (RowResult row : evaluation.rows()) {
-                List<Long> targets = manualTargets.get(row.source().objectInstanceId());
+                long source = row.source().objectInstanceId();
+                List<Long> targets = manualLinks.get(source);
                 if (row.outcome() != CheckOutcome.UNMATCHED || targets == null) {
                     rows.add(row);
                     continue;
                 }
                 rows.add(manuallyMatched(row, targets, targetById));
-                manualMatched++;
+                manualTargets.put(source, targets);
             }
             evaluation = new CheckEvaluation(evaluation.rule(), rows);
         }
-        return new RuleEvaluated(evaluation, samples(evaluation), plan, manualMatched);
+        return new RuleEvaluated(evaluation, samples(evaluation), plan, Map.copyOf(manualTargets));
     }
 
     /**
@@ -444,7 +461,8 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                             outcome.triggerKind(),
                             scope.comparedToRunId(),
                             scope.scopeJson(),
-                            basisJson);
+                            basisJson,
+                            outcome.linkState());
             runs.markReverificationSucceeded(jobId, now, workKey, basisJson);
         }
     }
@@ -494,17 +512,24 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
             Totals judgment,
             List<IssueReverification> reverifications,
             ReverificationScope reverificationScope,
-            CheckDataBasis dataBasis) {}
+            CheckDataBasis dataBasis,
+            String linkState) {}
 
     /**
-     * 규칙 하나의 판정과 저장할 표본. plan은 issue를 만드는 검사(SYNC·MANUAL)에만 있다. manualMatched는 규칙으로는 미연결이지만 활성 수동
-     * 연결이 있어 정상으로 본 출발 수다(366).
+     * 규칙 하나의 판정과 저장할 표본. plan은 issue를 만드는 검사(SYNC·MANUAL)에만 있다. manualTargets는 규칙으로는 미연결이지만 활성 수동
+     * 연결이 있어 정상으로 본 출발 → 그 수동 연결의 도착 객체다(366·367, 재검증 근거에 쓴다).
      */
     public record RuleEvaluated(
             CheckEvaluation evaluation,
             List<Map<String, Object>> samples,
             RulePlan plan,
-            int manualMatched) {}
+            Map<Long, List<Long>> manualTargets) {
+
+        /** 규칙으로는 미연결이지만 활성 수동 연결이 있어 정상으로 본 출발 수(366). */
+        public int manualMatched() {
+            return manualTargets.size();
+        }
+    }
 
     /** 판정하지 않은 규칙과 이유. 이유에는 원천 값을 넣지 않는다. */
     public record SkippedRule(long linkMappingId, String reason) {}

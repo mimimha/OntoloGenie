@@ -1189,12 +1189,18 @@ class ObjectSearchApiTests {
                 .single();
     }
 
+    /** 관계 유형마다 반영 중 규칙은 하나라(V17) 그 유형의 규칙이 있으면 그 규칙을 근거로 쓴다. */
     private long link(long type, long source, long target, String status) {
         return jdbc.sql(
                         """
-                        with rule as (
+                        with existing as (
+                            select id from link_mapping where link_type_id = :type and status = 'ACTIVE'
+                        ), created as (
                             insert into link_mapping (link_type_id, code, revision)
-                            values (:type, :code, 1) returning id
+                            select :type, :code, 1 where not exists (select 1 from existing)
+                            returning id
+                        ), rule as (
+                            select id from created union all select id from existing
                         )
                         insert into object_link
                             (link_type_id, source_object_id, target_object_id, origin,
