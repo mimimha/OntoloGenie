@@ -100,6 +100,8 @@ def test_swapped_code_is_linked_after_checking_values(tmp_path):
     step = rule.payload.conditions[0].source_transforms[0]
     assert step.op.value == "MAP_VALUE" and step.arg["0001-B24"] == "B24-0001"
     assert "변환 함수 추가 검토" in rule.hold_reason
+    # 의견은 다른 관계 의견과 같은 형식으로 쓴다
+    assert rule.llm_judgement.startswith("업무상 관계 맞음 · ")
     assert report["calls"] == 2 * ROUNDS and report["proposed"] == 1
 
 
