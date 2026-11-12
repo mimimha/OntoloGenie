@@ -221,6 +221,20 @@ test('없는 코드로 열면 대상을 찾을 수 없다고 알린다', async (
   ).toBeInTheDocument()
 })
 
+test('코드가 NEW인 정의도 등록 폼이 아니라 상세로 연다', async () => {
+  server.use(
+    http.get('/api/v1/actions/NEW', () =>
+      HttpResponse.json({
+        data: { ...actionFixtures[1], code: 'NEW', name: '새 기능' },
+      }),
+    ),
+  )
+  open('/admin/actions/NEW')
+  expect(await screen.findByLabelText(/^이름/)).toHaveValue('새 기능')
+  expect(screen.getByLabelText(/^코드/)).toHaveValue('NEW')
+  expect(screen.getByLabelText(/^코드/)).toBeDisabled()
+})
+
 test('입력 형식을 표로 만들면 JSON Schema로 바꿔 보낸다', async () => {
   let body: Record<string, unknown> | undefined
   server.use(

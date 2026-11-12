@@ -61,6 +61,7 @@ function App() {
                 <Route path="actions" element={<ActionDefinitionsPage />} />
                 <Route
                   path="actions/new"
+                  caseSensitive
                   element={<ActionDefinitionEditorPage />}
                 />
                 <Route
