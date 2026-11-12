@@ -120,6 +120,25 @@ public class ObjectQueryRepository {
                     + SEARCH_MATCH.formatted(":exactPattern")
                     + "then 0 else 1 end, oi.id ";
 
+    // 속성마다 포함 조건(@>)으로 찾아 properties의 GIN 인덱스(jsonb_path_ops)를 쓴다. 원천 키는 보지 않는다.
+    // id 순 limit을 찾기와 같은 단계에 두면 id 순으로 전체를 훑는 계획이 나와서 materialized로 나눈다.
+    private static final String PROPERTY_VALUE_MATCHES =
+            """
+            with matched as materialized (
+                select oi.id
+                from property_definition pd
+                join object_instance oi
+                  on oi.object_type_id = pd.object_type_id
+                 and oi.properties @> jsonb_build_object(pd.code, cast(:value as text))
+                where pd.object_type_id in (:visibleTypeIds)
+                  and pd.data_type = 'STRING'
+                  and (pd.sensitivity = 'NORMAL' or pd.object_type_id <> all(:maskedTypeIds))
+                  and oi.status = 'ACTIVE'
+            ), picked as (
+                select distinct id from matched order by id limit :limit
+            )
+            """;
+
     private static final String SELECT =
             """
             select oi.id, oi.object_type_id, ot.name as object_type_name, shown.display_name,
@@ -410,6 +429,29 @@ public class ObjectQueryRepository {
     private interface JitScope extends AutoCloseable {
         @Override
         void close();
+    }
+
+    public List<ObjectRow> findByPropertyValue(
+            Collection<Long> visibleTypeIds,
+            Collection<Long> maskedTypeIds,
+            String value,
+            int limit) {
+        try (var jitScope = disableJitForSearch()) {
+            return withDisplayScope(
+                            jdbc.sql(
+                                    PROPERTY_VALUE_MATCHES
+                                            + SELECT
+                                            + "from picked\n"
+                                            + "join object_instance oi on oi.id = picked.id\n"
+                                            + DISPLAY_JOINS
+                                            + "order by oi.id"),
+                            maskedTypeIds)
+                    .param("visibleTypeIds", visibleTypeIds)
+                    .param("value", value)
+                    .param("limit", limit)
+                    .query((rs, rowNum) -> row(rs))
+                    .list();
+        }
     }
 
     public Optional<DetailRow> findDetail(
