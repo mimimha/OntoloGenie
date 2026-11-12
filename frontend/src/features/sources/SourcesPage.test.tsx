@@ -78,13 +78,13 @@ test('수집 이력 탭에서 실제 어댑터로 073 요청·074 이력·075 �
     http.get('/api/v1/sources/1/sync-runs', ({ request }) => {
       const params = new URL(request.url).searchParams
       expect(params.get('page')).toBe('0')
-      expect(params.get('size')).toBe('20')
+      expect(['1', '20']).toContain(params.get('size'))
       expect(params.has('triggerKind')).toBe(false)
       return HttpResponse.json({
         data: requested ? [run] : [],
         meta: {
           page: 0,
-          size: 20,
+          size: Number(params.get('size')),
           totalElements: requested ? 1 : 0,
           hasNext: false,
         },
@@ -121,6 +121,12 @@ test('수집 이력 탭에서 실제 어댑터로 073 요청·074 이력·075 �
   await user.click(screen.getByRole('button', { name: '수동 수집 요청' }))
   await screen.findByText('수집 실행 #21을 접수했습니다.')
   await screen.findByRole('button', { name: '수집 실행 #21' })
+  const sourceRows = within(
+    screen.getByRole('table', { name: '등록된 원천 목록' }),
+  ).getAllByRole('row')
+  expect(
+    await within(sourceRows[1]).findByText('전체 읽기 · 완료'),
+  ).toBeInTheDocument()
   const detail = within(
     await screen.findByRole('region', { name: '수집 실행 #21 상세' }),
   )
@@ -128,7 +134,7 @@ test('수집 이력 탭에서 실제 어댑터로 073 요청·074 이력·075 �
     detail.getByText('읽음 12 · 생성·갱신 10 · 삭제 2'),
   ).toBeInTheDocument()
   expect(
-    detail.getByText(/erp.item · CDC · 전체 읽기 · 완료/),
+    await detail.findByText(/erp.item · CDC · 전체 읽기 · 완료/),
   ).toBeInTheDocument()
   expect(
     screen.queryByText('수동 수집과 실행 이력 조회는 아직 사용할 수 없습니다.'),
