@@ -183,6 +183,7 @@ def skip_past_decisions(
 
     같은 내용(지문)이 승인·거절됐으면 빼고(문서 연결은 선택지 중 승인된 것이 있어도 뺀다), 거절된 선택지는 선택지
     목록에서 뺀다. 보류됐거나 같은 후보 ID가 거절·보류된 뒤 내용이 바뀌었으면 내되 이유에 이전 결정을 적는다.
+    문서 연결의 '이미 승인'은 대상이 든 지문으로만 본다. 같은 후보 ID라도 대상이 다르면 다시 묻고 이유에 적는다.
     """
     skipped = {"APPROVE": 0, "REJECT": 0}
     if not decisions:
@@ -213,17 +214,11 @@ def skip_past_decisions(
         if same and same["decision"] in skipped:
             skipped[same["decision"]] += 1
             continue
-        approved_before = by_candidate.get(evidence.get("candidateId"), {}).get(
-            "decision"
-        )
-        if p.get("itemKind") == "DOCUMENT_LINK" and (
-            # 같은 언급을 이미 승인했으면 대안이 바뀌어도 다시 묻지 않는다
-            approved_before == "APPROVE"
-            or any(
-                by_fingerprint.get(_option_fingerprint(option), {}).get("decision")
-                == "APPROVE"
-                for option in p.get("options") or []
-            )
+        if p.get("itemKind") == "DOCUMENT_LINK" and any(
+            # 선택지 중 하나를 이미 승인했으면 대안이 바뀌어도 다시 묻지 않는다
+            by_fingerprint.get(_option_fingerprint(option), {}).get("decision")
+            == "APPROVE"
+            for option in p.get("options") or []
         ):
             skipped["APPROVE"] += 1
             continue
@@ -250,6 +245,16 @@ def skip_past_decisions(
                 p = _note(
                     p,
                     f"이전에 {word}된 후보{_why(before)}인데 내용이 바뀌어 다시 제안합니다.",
+                )
+            elif (
+                before
+                and before["decision"] == "APPROVE"
+                and p.get("itemKind") == "DOCUMENT_LINK"
+            ):
+                # 같은 언급이라도 승인한 대상·선택지와 지문이 다르면 다시 묻는다
+                p = _note(
+                    p,
+                    "같은 언급을 이전에 승인했지만 대상이나 선택지가 달라 다시 묻습니다.",
                 )
         kept.append(p)
     return kept, skipped

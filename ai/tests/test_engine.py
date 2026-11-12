@@ -339,6 +339,44 @@ def test_llm_failures_are_logged_by_stage_and_kind_only(monkeypatch, data, caplo
     assert "secret-body" not in caplog.text and "sk-test-key" not in caplog.text
 
 
+class SilentLLM(MockLLMClient):
+    """GMS가 응답하지 않는다(호출마다 시간 초과)."""
+
+    def complete_json(self, prompt: str) -> dict:
+        self.prompts.append(prompt)
+        raise LLMError("GMS 응답이 없습니다: TimeoutError")
+
+
+def test_llm_outage_is_counted_apart_from_calls_in_summary(monkeypatch, data, caplog):
+    import pandas as pd
+
+    from app.extractors.notes import BATCH
+
+    # 고른 표는 인수인계 메모뿐이다. 연속 3번 응답이 없으면 남은 묶음은 부르지 않는다
+    notes = pd.read_csv(data / "mes" / "handover_note.csv", dtype=str)
+    batches = -(-len(notes) // BATCH)
+    assert batches > 3
+    req = request([("mes.work_order", {}), ("mes.handover_note", {})])
+    monkeypatch.setattr(engine, "get_settings", lambda: Settings(llm_credit_limit=0))
+    llm = SilentLLM()
+
+    with caplog.at_level(logging.WARNING, logger="app.analysis.engine"):
+        result = analyze(req, {"MES_MAIN": data / "mes"}, llm=llm)
+
+    summary = result.summary
+    # 부른 수는 실제 호출만, 건너뛴 묶음은 따로 센다
+    assert summary["llmCalls"] == len(llm.prompts) == summary["llmFailedCalls"]
+    assert summary["llmSkippedCalls"] == batches - 3
+    assert summary["llmSkipReason"] == "LLM 호출이 모두 실패함"
+    assert summary["llmUsed"] is False
+    assert any(
+        line.startswith(f"분석 실행 1 LLM 메모 추출 실패 {batches}건")
+        and f"LLM 끊김 {batches - 3}건" in line
+        and "응답 없음(TimeoutError) 3건" in line
+        for line in (r.getMessage() for r in caplog.records)
+    )
+
+
 @pytest.mark.parametrize(
     "error, kind",
     [
