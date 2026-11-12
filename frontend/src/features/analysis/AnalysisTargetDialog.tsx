@@ -5,7 +5,7 @@ import DataTable from '../../components/DataTable'
 import Dialog from '../../components/Dialog'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import Pagination from '../../components/Pagination'
-import { fetchColumns, fetchResources, fetchSources } from '../sources/api'
+import { fetchAllResources, fetchColumns, fetchSources } from '../sources/api'
 import type { SourceColumn, SourceResource } from '../sources/types'
 import { startAnalysis } from './api'
 import type { AnalysisKind, AnalysisRun, AnalysisTarget } from './types'
@@ -281,16 +281,17 @@ function AnalysisTargetDialog({
     !sources.data.some((item) => item.id === initialSourceId)
 
   const resources = useQuery({
-    queryKey: ['sources', sourceId, 'resources'],
-    queryFn: () => fetchResources(sourceId!),
+    // 표가 200개를 넘는 원천도 다 고를 수 있게 모든 쪽을 받는다(다른 원천 화면과 같은 조회)
+    queryKey: ['sources', sourceId, 'resources', 'all'],
+    queryFn: () => fetchAllResources(sourceId!),
     enabled: sourceId !== undefined,
   })
 
   // 목업처럼 선택칸에 원천별 자료 수를 보여 준다. 표 목록과 같은 캐시를 쓴다.
   const sourceResources = useQueries({
     queries: (sources.data ?? []).map((item) => ({
-      queryKey: ['sources', item.id, 'resources'],
-      queryFn: () => fetchResources(item.id),
+      queryKey: ['sources', item.id, 'resources', 'all'],
+      queryFn: () => fetchAllResources(item.id),
     })),
   })
 
