@@ -28,9 +28,15 @@
 
 ## 실행 명령
 
-| 서비스 | 명령 | 비고 |
-| --- | --- | --- |
-| 백엔드 | `backend/`에서 `./gradlew build` | 테스트와 포맷 검사(`spotlessCheck`)를 함께 실행한다. Testcontainers를 쓰므로 Docker가 실행 중이어야 한다. |
+| 서비스 | 시점 | 명령 | 비고 |
+| --- | --- | --- | --- |
+| 백엔드 | 작업 중 | `backend/`에서 `./gradlew test --tests '<클래스·패키지 패턴>'` | 바꾼 코드와 관련된 테스트만 실행한다. 예: `--tests 'com.axcore.platform.agent.*'` |
+| 백엔드 | 코드를 고친 뒤·커밋 전 | `backend/`에서 `./gradlew spotlessApply` | 포맷을 적용한다. `build`는 포맷이 맞지 않으면 실패한다. |
+| 백엔드 | 구현을 마칠 때 | `backend/`에서 `./gradlew build` | 전체 테스트와 포맷 검사(`spotlessCheck`)를 함께 실행한다. |
+
+- Testcontainers를 쓰므로 `test`와 `build`는 Docker가 실행 중이어야 한다.
+- 전체 `build`는 구현을 마칠 때 한 번 실행한다. 그 뒤에는 코드가 바뀐 경우에만 다시 실행한다.
+- 같은 코드 상태에서 이 세션이 이미 실행한 검증은 다시 실행하지 않고 그 결과를 보고에 쓴다. 이전 세션의 결과처럼 같은 상태인지 확인할 수 없는 결과는 다시 쓰지 않는다.
 
 ## 필수 테스트 범위
 
