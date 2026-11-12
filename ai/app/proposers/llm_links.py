@@ -8,11 +8,12 @@ import json
 import re
 from pathlib import Path
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 from app.analyzers.structured import analyze_sources
-from app.llm.client import LLMClient, LLMError, token_credits
-from app.llm.privacy import mask_value
+from app.llm.client import LLMClient, token_credits
+from app.llm.outage import Outage
+from app.llm.privacy import mask_text, mask_value
 from app.models.candidate import Candidate
 from app.proposers.links import (
     ROW_COVERAGE,
@@ -32,7 +33,7 @@ MAX_ID_LENGTH = 40  # 값 길이(중앙값)가 이보다 긴 컬럼은 글로 �
 MAX_SOURCES = 30  # 한 번에 묻는 출발 컬럼 수
 MAX_TARGETS = 60  # 한 번에 보여 주는 도착 키 수
 SAMPLES = 6
-MAX_PATTERN = 200  # LLM이 준 정규식 길이 상한
+MAX_PATTERN = 120  # LLM이 준 정규식 길이 상한
 MAX_VALUE = 64  # 식별자로 볼 값 길이 상한(정규식 적용 시간도 묶는다)
 # 끝없는 되풀이가 바로 이어지면('\d*\d*') 아주 느려질 수 있어 받지 않는다
 ATOM = r"(?:\\.|\[[^\]]*\]|[^\\()\[\]|])"
@@ -103,17 +104,24 @@ def _bare(text: str) -> str:
     return "".join(out)
 
 
+# 묶음 맨 앞의 묶음 표시('?:', '?=', '?P<이름>' 등). 수량자 '?'가 아니다
+GROUP_FLAG = re.compile(r"(?:^|(?<=\())\?(?:[:=!>]|<[=!]|P?<[A-Za-z_]\w*>)")
+
+
 def _slow_group(pattern: str) -> bool:
-    """되풀이되는 괄호 묶음 안에 다시 되풀이('(\\d+)+')나 선택('(a|aa)*')이 있는지(아주 느려질 수 있는 모양)."""
+    """되풀이되는 괄호 묶음 안에 수량자('(\\d+)+', '(\\d?\\d?)+', '(?:\\d?){2,}')나 선택('(a|aa)*')이 있는지.
+
+    아주 느려질 수 있는 모양이다(값 하나에 십수 초).
+    """
     bare = _bare(pattern)
     starts = []
     for i, ch in enumerate(bare):
         if ch == "(":
             starts.append(i)
         elif ch == ")" and starts:
-            body = bare[starts.pop() + 1 : i]
+            body = GROUP_FLAG.sub("", bare[starts.pop() + 1 : i])
             if bare[i + 1 : i + 2] in ("+", "*", "{") and any(
-                c in body for c in "+*}|"
+                c in body for c in "+*?}|"
             ):
                 return True
     return False
@@ -245,8 +253,9 @@ def _samples(values, column: str = "") -> list[str]:
 
 
 def build_prompt(tables: Tables, columns: list[Column], targets: list[dict]) -> str:
+    # 컬럼 주석에도 담당자 이름·연락처가 적혀 있을 수 있어 가린다
     comments = {
-        c.ref: (c.analysis.comment or "")
+        c.ref: mask_text(c.analysis.comment or "").text
         for cols in tables.columns.values()
         for c in cols
     }
@@ -427,6 +436,7 @@ def propose(
     """(새 보류 관계 후보, 사용량 보고)."""
     tables, prompts = prepare(root, candidates, tables)
     found, failed, used, asked, calls = [], [], 0.0, 0, 0
+    outage = Outage()
     not_verified: list[str] = []
     # 규칙이 이미 낸 후보와 같은 ID는 다시 내지 않는다
     seen: set[str] = {c.candidate_id for c in candidates}
@@ -434,14 +444,23 @@ def propose(
         by_id = {t["id"]: t for t in targets}
         asked_refs = {c.ref for c in columns}
         links, keys = [], set()
+        skipped = outage.tripped
         for _ in range(ROUNDS):
+            if outage.tripped:
+                # GMS가 연속으로 응답하지 않으면 남은 시스템은 부르지 않는다(호출마다 응답 대기 시간을 다 쓰지 않게)
+                failed.append(
+                    {"system": system, "error": outage.reason, "skipped": True}
+                )
+                break
             calls += 1
             # 호출이 실패하면 사용량이 갱신되지 않아 앞 호출 값을 다시 세게 되므로 비워 둔다
             if hasattr(llm, "last_usage"):
                 llm.last_usage = None
             try:
                 answer = Answer.model_validate(llm.complete_json(prompt))
-            except (LLMError, ValidationError) as error:
+                outage.record(None)
+            except Exception as error:  # noqa: BLE001 - 시스템 하나가 실패해도 다른 시스템은 계속 묻는다
+                outage.record(error)
                 failed.append({"system": system, "error": str(error)[:300]})
                 continue
             finally:
@@ -457,7 +476,7 @@ def propose(
                 if key not in keys:
                     keys.add(key)
                     links.append(link)
-        asked += len(columns)
+        asked += 0 if skipped else len(columns)
         for link in links:
             target = by_id.get(link.target)
             try:
@@ -489,7 +508,8 @@ def propose(
                     )
                 )
     report = {
-        "calls": calls,
+        "calls": calls,  # 실제로 부른 수. 끊겨서 건너뛴 시스템은 skipped에 따로 센다
+        "skipped": sum(bool(f.get("skipped")) for f in failed),
         "asked_columns": asked,
         "proposed": sum(c.payload.kind.value == "LINK_RULE" for c in found),
         "not_verified": not_verified,

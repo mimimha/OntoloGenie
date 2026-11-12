@@ -267,6 +267,25 @@ def test_nested_repeat_patterns_are_refused():
     assert safe_pattern(r"^(\d{4})-(B\d{2})$")
 
 
+def test_optional_parts_inside_repeated_groups_are_refused_quickly():
+    # '(\d?\d?)+x'·'(?:\d?){2,}'는 예전 검사를 통과해 값 하나에 십수 초가 걸렸다
+    import time
+
+    from app.proposers.llm_links import MAX_PATTERN, Step, apply, safe_pattern
+
+    for slow in (r"(\d?\d?)+x", r"(?:\d?){2,}x", r"^((?:a|b)?)+$", r"(?P<n>\d?)*x"):
+        assert not safe_pattern(slow), slow
+    # 묶음 표시('?:'·'?P<이름>')는 수량자가 아니다
+    assert safe_pattern(r"^(?:\d{4})-(?P<b>B\d{2})$")
+    assert safe_pattern(r"^(\d{4})?-B$")
+    assert not safe_pattern("a" * (MAX_PATTERN + 1))
+
+    began = time.perf_counter()
+    value = "1" * 40
+    assert apply([Step(op="regex", pattern=r"(\d?\d?)+x", repl="y")], value) is None
+    assert time.perf_counter() - began < 1
+
+
 def test_lowercase_source_values_are_retried_with_upper(tmp_path):
     # LLM이 대문자만 맞춘 정규식을 줘도, 값 절반이 소문자인 원천은 대문자로 바꿔 한 번 더 확인한다
     batches = [f"H24A{n:04d}-03" for n in range(1, 21)]
@@ -337,3 +356,46 @@ def test_links_from_both_rounds_are_merged(tmp_path, monkeypatch):
     rules = [c for c in found if c.payload.kind.value == "LINK_RULE"]
     assert len(lims_calls) == 2
     assert [c.evidence[0].locator for c in rules] == ["lims.sample.lot_no"]
+
+
+def test_column_comments_are_masked_before_asking(tmp_path):
+    import json
+
+    from app.proposers.llm_links import prepare
+
+    batch_data(tmp_path)
+    schema_file = tmp_path / "lims" / "_schema.json"
+    schema = json.loads(schema_file.read_text(encoding="utf-8"))
+    schema["tables"]["sample"]["columns"]["lot_no"]["comment"] = (
+        "로트 번호 (문의 김철수 책임 010-1234-5678)"
+    )
+    schema_file.write_text(json.dumps(schema, ensure_ascii=False), encoding="utf-8")
+    kept, _ = generate(tmp_path)
+
+    _, prompts = prepare(tmp_path, kept)
+
+    text = "\n".join(p[3] for p in prompts)
+    assert "로트 번호" in text
+    assert "김철수" not in text and "010-1234-5678" not in text
+
+
+def test_llm_outage_skips_remaining_systems(tmp_path, monkeypatch):
+    from app.llm import outage
+    from app.llm.client import LLMError
+    from app.proposers import llm_links
+
+    batch_data(tmp_path)
+    kept, _ = generate(tmp_path)
+    # 시스템이 둘뿐이라 연속 1번에 끊기게 해서 본다(실제 기준은 연속 3번)
+    monkeypatch.setattr(llm_links, "Outage", lambda: outage.Outage(limit=1))
+    asked = []
+
+    def answer(prompt):
+        asked.append(prompt)
+        raise LLMError("GMS 응답이 없습니다: TimeoutError")
+
+    found, report = propose(tmp_path, kept, MockLLMClient(answer))
+
+    assert found == [] and len(asked) == 1 and report["calls"] == 1
+    assert len(report["failed"]) == 2
+    assert "응답하지 않아 남은 호출을 건너뜀" in report["failed"][1]["error"]

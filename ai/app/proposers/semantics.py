@@ -13,7 +13,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.analyzers.structured import value_pattern
 from app.llm.client import LLMClient, LLMError, token_credits
-from app.llm.privacy import MASK, is_person_column, mask_value
+from app.llm.outage import Outage
+from app.llm.privacy import MASK, is_person_column, mask_text, mask_value
 from app.models.candidate import Candidate, DataType, ItemKind, Sensitivity
 from app.proposers.confidence import CAP, LLM_AGREE_HELD
 from app.proposers.objects import CATEGORY_TEXT, HANGUL
@@ -110,12 +111,16 @@ def build_prompt(
     column_lines = []
     for p in properties:
         load = p.payload
-        snippet = p.evidence[0].snippet
-        comment = load.description or "없음"
+        snippet = mask_text(p.evidence[0].snippet).text
+        # 표 설명·주석·등록 메모에도 담당자 이름·연락처가 적혀 있을 수 있어 가린다
+        comment = mask_text(load.description).text if load.description else "없음"
         column_lines.append(
             f"- {load.code} | 주석 {comment} | 규칙 자료형 {load.data_type.value} | {snippet}"
         )
-    link_lines = [f"- {c.payload.code}: {c.reason}" for c in links] or ["- 없음"]
+    link_lines = [f"- {c.payload.code}: {mask_text(c.reason).text}" for c in links] or [
+        "- 없음"
+    ]
+    description = mask_text(schema.description).text if schema.description else None
     return "\n".join(
         [
             "너는 제조 공장 ERP·MES 데이터의 업무 의미를 해석한다. 아래 원천 표 하나를 보고 JSON 하나로 답한다.",
@@ -142,8 +147,8 @@ def build_prompt(
                 " 일부 행에서만 맞더라도 업무상 그 값을 가리키는 관계면 true로 두고 reason에 그 조건을 쓴다."
             ),
             "",
-            f"표: {table} ({schema.description or '설명 없음'})",
-            *([f"표 참고: {schema.note}"] if schema.note else []),
+            f"표: {table} ({description or '설명 없음'})",
+            *([f"표 참고: {mask_text(schema.note).text}"] if schema.note else []),
             "컬럼:",
             *column_lines,
             "코드가 찾은 관계 후보(이 표에서 출발):",
@@ -372,8 +377,17 @@ def interpret(
     only: set[str] | None = None,
 ) -> tuple[list[Candidate], dict]:
     prompts = prepare(root, candidates, only)
-    views, failed, used = {}, [], 0.0
+    views, failed, used, calls = {}, [], 0.0, 0
+    outage = Outage()
     for table, props, links, prompt in prompts:
+        if outage.tripped:
+            # GMS가 연속으로 응답하지 않으면 남은 표는 부르지 않는다(표마다 응답 대기 시간을 다 쓰지 않게)
+            failed.append({"table": table, "error": outage.reason, "skipped": True})
+            continue
+        # 호출이 실패하면 사용량이 갱신되지 않아 앞 호출 값을 다시 세게 되므로 비워 둔다
+        if hasattr(llm, "last_usage"):
+            llm.last_usage = None
+        calls += 1
         try:
             answer = llm.complete_json(prompt)
             views[table] = parse(
@@ -381,17 +395,22 @@ def interpret(
                 {p.payload.code for p in props},
                 {link.payload.code for link in links},
             )
-        except LLMError as error:
-            failed.append({"table": table, "error": str(error)})
-            continue
-        usage = getattr(llm, "last_usage", None) or {}
-        used += token_credits(
-            getattr(llm, "model", None),
-            usage.get("input_tokens", 0),
-            usage.get("output_tokens", 0),
-        )
+            outage.record(None)
+        except Exception as error:  # noqa: BLE001 - 표 하나가 실패해도 다른 표는 계속 해석한다
+            outage.record(error)
+            failed.append({"table": table, "error": str(error)[:300]})
+        finally:
+            # 형식이 틀린 답(JSON 아님·필드 누락)도 쓴 토큰은 센다
+            usage = getattr(llm, "last_usage", None) or {}
+            used += token_credits(
+                getattr(llm, "model", None),
+                usage.get("input_tokens", 0),
+                usage.get("output_tokens", 0),
+            )
     report = {
         "tables": len(prompts),
+        "calls": calls,  # 실제로 부른 수. 끊겨서 건너뛴 표는 skipped에 따로 센다
+        "skipped": sum(bool(f.get("skipped")) for f in failed),
         "interpreted": len(views),
         "failed": failed,
         "credits_used": round(used, 2),

@@ -44,9 +44,9 @@
 | `confidenceItems[]`, `confidenceCap` | 신뢰도 점수 내역, 보류 상한 `{cap, reason}` |
 | `holdRecommended`, `holdReason` | AI의 보류 권고. 105는 PENDING으로 저장하므로 권고로만 남음 |
 | `method`, `llmJudgement` | `rule` · `llm` · `rule+llm`, LLM 판단 문장(점수에는 넣지 않음) |
-| `candidateId`, `fingerprint` | 재분석 비교·과거 결정 대조용 후보 ID와 payload 지문 |
+| `candidateId`, `fingerprint` | 재분석 비교·과거 결정 대조용 후보 ID와 payload 지문. 문서 연결 후보 ID는 `DL-{문서 번호}-{언급 글자}-{같은 글자 중 몇 번째}`라 LLM 답 순서와 무관 |
 | `changeType` | 재분석(REANALYSIS)에서만. 이전 후보가 있으면 후보 ID·지문으로 ADDED·CHANGED·UNCHANGED를 표시합니다. 이전 후보가 없으면 043 모델과 비교하고, 모델과 같은 후보는 `changeCounts`에만 셉니다. |
-| `originalText`, `observations[]`, `times[]` | DOCUMENT_LINK만. 원문 전체, 이 언급에 걸린 관찰 표현 `{text, spanStart, spanEnd, assertion}`, 글 속 시각 표현 `{text, spanStart, spanEnd, normalized, basis}`. `assertion`은 AFFIRMED(확인) · NEGATED(부정) · UNCERTAIN(추정). `normalized`는 원천에서 기준 시각을 알 때만 채움 |
+| `originalText`, `observations[]`, `times[]` | DOCUMENT_LINK만. 원문 전체, 이 언급에 걸린 관찰 표현 `{text, spanStart, spanEnd, assertion}`, 글 속 시각 표현 `{text, spanStart, spanEnd, normalized, basis}`. `assertion`은 AFFIRMED(확인) · NEGATED(부정) · UNCERTAIN(추정). `normalized`는 원천에서 기준 시각을 알 때만 채움. 원문·관찰·근거 글의 이름·전화·이메일·주민번호 자리는 같은 글자 수의 `*`로 가림(위치는 원문 그대로) |
 
 **묶음 후보 (11-05~)**
 
@@ -61,7 +61,7 @@
 - 묶음 안 구성 후보 하나라도 보류 권고면 묶음도 `holdRecommended=true`이고, `holdReason`은 이유를 ` / `로 잇습니다. 어느 속성 때문인지는 `evidence.properties[].holdRecommended`·`holdReason`에 남습니다.
 - 같은 관계 유형을 쓰는 연결 규칙이 여럿이면 규칙마다 `linkType`을 담습니다.
 - 객체 유형 코드가 겹치거나 한 객체에 객체 매핑이 둘 이상이면, 묶을 곳이 모호한 후보는 원래 종류로 따로 보냅니다(빠지지 않음).
-- `fingerprint`는 묶은 payload의 지문입니다. 이름·설명·다른 이름(`name`, `description`, `synonyms`)은 빼고 계산해 문구만 바뀐 재분석 결과를 변경으로 보지 않습니다. 대안(`options`)이 둘 이상이면 대안 지문도 함께 넣어, 대표 제안이 그대로여도 대안이 바뀌면 변경(CHANGED)으로 봅니다. 같은 문서 언급을 이미 승인했으면 대안이 바뀌어도 다시 내지 않습니다.
+- `fingerprint`는 묶은 payload의 지문입니다. 이름·설명·다른 이름(`name`, `description`, `synonyms`)은 빼고 계산해 문구만 바뀐 재분석 결과를 변경으로 보지 않습니다. 대안(`options`)이 둘 이상이면 대안 지문도 함께 넣어, 대표 제안이 그대로여도 대안이 바뀌면 변경(CHANGED)으로 봅니다. 문서 연결은 승인한 지문(대표 또는 선택지)과 같은 대상이 있으면 다시 내지 않고, 같은 후보 ID라도 지문이 다르면 이유에 이전 승인을 적고 다시 묻습니다.
 - 연결 규칙이 없는 관계 유형(문서 연결용, 다른 표를 거치는 관계)은 지금처럼 LINK_TYPE 한 건으로 보냅니다.
 - 개수 예(개발용 데이터 A 전체, LLM 없이, 11-12 확인): 구성 후보 649건 → 보내는 후보 95건(객체 31, 관계 57, 규칙 없는 관계 유형 7). 문서 연결(DOCUMENT_LINK) 39건은 따로 더해집니다.
 
@@ -166,7 +166,7 @@ LLM 설정이 없거나 LLM 호출이 실패해도 실행은 실패로 끝내지
 | --- | --- |
 | `llmUsed` | LLM 답을 하나라도 썼는지 |
 | `llmSkipReason` | LLM 없이 분석한 이유. `LLM 설정 없음` · `LLM 호출이 모두 실패함` · `예상 크레딧 N이 한도 M를 넘음`(`AI_ONTOLOGY_LLM_CREDIT_LIMIT`, 기본 10,000), 아니면 null |
-| `llmCalls`, `llmFailedCalls` | 호출 수, 실패한 호출 수(표 의미 해석과 메모 추출을 합친 수) |
+| `llmCalls`, `llmFailedCalls`, `llmSkippedCalls` | 실제로 부른 수, 그중 실패한 수, LLM이 연속 3번 응답하지 않아 부르지 않고 건너뛴 수(표 의미 해석·시스템 간 연결·메모 추출을 합친 수) |
 | `llmCredits` | 사용량(GMS 크레딧 기준 환산) |
 | `llmRejectedLinks` | 규칙이 보류로 둔 관계를 LLM도 업무상 맞지 않다고 봐서 보내지 않은 수(관계 유형·연결 규칙 한 쌍을 1로 셈). 규칙이 대기로 둔 관계는 LLM이 반대해도 빼지 않고 보류로만 바꿈 |
 | `llmCrossLinks` | 규칙이 못 이은 시스템 간 참조 컬럼을 LLM에게 묻고, 받은 변환을 실제 값으로 확인해 낸 연결 수. 모두 보류 권고(`method`=`llm`) |
