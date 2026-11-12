@@ -84,6 +84,30 @@ public class SourceLoadFailureRepository {
                 .update();
     }
 
+    /**
+     * 전체 읽기(362)가 끝날 때, 그 매핑의 열린 기록 중 이번 읽기에서 다시 나오지 않은 것을 닫는다(V12 주석 "다음 전체 읽기에서 다시 나오지 않음"). 이번에
+     * 다시 실패한 것은 {@link #record}가 {@code last_sync_run_id}를 이번 실행으로 바꿔 두므로 남는다. 읽기를 시작한 뒤에 본 실패(CDC가
+     * 그 사이 남긴 것)는 이 스냅샷이 보지 못한 변경일 수 있어 닫지 않는다. 기준은 실행 시작 시각이다(읽기는 그 뒤에 한다).
+     *
+     * @return 닫은 수
+     */
+    public int closeNotSeenInFullLoad(long mappingId, long syncRunId) {
+        return jdbc.sql(
+                        """
+                        update source_load_failure f
+                        set status = 'CLOSED', closed_at = now()
+                        from sync_run s
+                        where s.id = :run
+                          and f.object_source_mapping_id = :mapping
+                          and f.status = 'OPEN'
+                          and f.last_sync_run_id <> :run
+                          and f.last_seen_at < s.started_at
+                        """)
+                .param("mapping", mappingId)
+                .param("run", syncRunId)
+                .update();
+    }
+
     /** 원천에서 지워진 행의 열린 기록을 모두 닫는다(그 테이블의 모든 매핑). 닫은 수. */
     public int closeDeleted(long resourceId, Map<String, Object> sourceKey) {
         return jdbc.sql(

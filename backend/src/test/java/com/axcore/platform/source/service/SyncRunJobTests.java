@@ -460,6 +460,98 @@ class SyncRunJobTests {
         assertThat(resource).containsEntry("status", "SUCCEEDED").containsEntry("rows_read", 3);
         assertThat(resource.get("to_lsn")).isNull();
         assertThat(loadState(viewId).get("full_load_done_gen")).isNull();
+        // 키가 빈 행은 객체를 만들지 않고 키 없는 수집 실패로 남긴다(362).
+        assertThat(
+                        jdbc.sql(
+                                        """
+                                        select source_key is null as no_key, column_name, reason, status
+                                        from source_load_failure where object_source_mapping_id = :m
+                                        """)
+                                .param("m", viewMapping)
+                                .query()
+                                .listOfRows())
+                .containsExactly(
+                        Map.of(
+                                "no_key", true,
+                                "column_name", "wo_no",
+                                "reason", "KEY_MISSING",
+                                "status", "OPEN"));
+    }
+
+    @Test
+    void recordsLoadFailuresAndClosesOnlyThoseTheNextReadNoLongerSees() {
+        // WO-X에는 숫자가 없어 seq(EXTRACT_NUMBER) 값을 바꾸지 못한다.
+        long first = queueRun(workOrderId);
+        queuedJobRunner.runNext(job);
+
+        assertThat(runStatus(first)).isEqualTo("SUCCEEDED");
+        assertThat(failures())
+                .containsExactly(
+                        Map.of(
+                                "key", "3",
+                                "column", "wo_no",
+                                "reason", "VALUE_CONVERSION",
+                                "status", "OPEN",
+                                "run", first));
+
+        // 같은 실패를 다시 보면 열린 기록 하나에 횟수만 올린다.
+        long second = queueRun(workOrderId);
+        queuedJobRunner.runNext(job);
+        assertThat(failures()).extracting(f -> f.get("run")).containsExactly(second);
+        assertThat(
+                        jdbc.sql(
+                                        """
+                                        select occurrences from source_load_failure
+                                        where object_source_mapping_id = :m and status = 'OPEN'
+                                        """)
+                                .param("m", mappingId)
+                                .query(Integer.class)
+                                .single())
+                .isEqualTo(2);
+
+        // 원천을 고쳐 다시 읽으면 닫는다. 읽기 시작 전에 본 옛 실패도 닫고, 읽기 시작 뒤 CDC가 남긴 실패는 남긴다.
+        jdbc.sql("update erp_src.work_order set wo_no = 'WO-0003' where id = 3").update();
+        long cdc = cdcRun();
+        failure("1", "now() - interval '1 hour'", cdc);
+        failure("2", "now() + interval '1 hour'", cdc);
+        long third = queueRun(workOrderId);
+        queuedJobRunner.runNext(job);
+
+        assertThat(runStatus(third)).isEqualTo("SUCCEEDED");
+        assertThat(failures())
+                .extracting(f -> f.get("key") + ":" + f.get("status"))
+                .containsExactly("1:CLOSED", "2:OPEN", "3:CLOSED");
+    }
+
+    private void failure(String id, String lastSeenAt, long runId) {
+        jdbc.sql(
+                        """
+                        insert into source_load_failure (source_resource_id, object_source_mapping_id, source_key,
+                            column_name, property_definition_id, reason, first_seen_at, last_seen_at, last_sync_run_id)
+                        select :resource, :mapping, jsonb_build_object('id', cast(:id as text)), 'qty', p.id,
+                               'VALUE_CONVERSION', %1$s, %1$s, :run
+                        from property_definition p where p.object_type_id = :type and p.code = 'qty'
+                        """
+                                .formatted(lastSeenAt))
+                .param("resource", workOrderId)
+                .param("mapping", mappingId)
+                .param("id", id)
+                .param("type", typeId)
+                .param("run", runId)
+                .update();
+    }
+
+    private List<Map<String, Object>> failures() {
+        return jdbc.sql(
+                        """
+                        select source_key ->> 'id' as key, column_name as column, reason, status,
+                               last_sync_run_id as run
+                        from source_load_failure where object_source_mapping_id = :mapping
+                        order by source_key ->> 'id', id
+                        """)
+                .param("mapping", mappingId)
+                .query()
+                .listOfRows();
     }
 
     @Test
