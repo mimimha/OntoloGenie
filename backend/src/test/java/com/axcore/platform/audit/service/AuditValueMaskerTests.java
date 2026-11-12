@@ -15,11 +15,13 @@ import com.axcore.platform.audit.domain.EventKind;
 import com.axcore.platform.audit.domain.ExecutionCategory;
 import com.axcore.platform.audit.domain.ExecutionStatus;
 import com.axcore.platform.audit.dto.AuditExecutionResponse;
+import com.axcore.platform.audit.service.AuditValueMasker.Masked;
 import com.axcore.platform.audit.service.RecordedPropertyPaths.Path;
 import com.axcore.platform.auth.service.DataAccess;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -82,7 +84,31 @@ class AuditValueMaskerTests {
                         operation -> assertThat(asMap(operation)).containsEntry("status", null));
         assertThat(masked.input()).isEqualTo(input());
         assertThat(masked.restrictedPropertyCodes()).containsExactly("status", "wo_no");
+        assertThat(masked.changeCount()).isOne();
         assertThat(snapshotOf(row)).containsEntry("workOrderNo", "WO-1");
+    }
+
+    @Test
+    void masksInputAndChangesSeparatelyForASingleExecution() {
+        when(access.hidesValue("Operation", "op_seq")).thenReturn(true);
+        when(access.hidesValue("WorkOrder", "wo_no")).thenReturn(true);
+        ActionDefinition plan = definition(PLAN_DEFINITION, "PLAN");
+        when(definitions.findById(PLAN_DEFINITION)).thenReturn(Optional.of(plan));
+
+        Masked<Map<String, Object>> input = masker.maskInput(PLAN_DEFINITION, input(), access);
+        Masked<List<EntityChangeResponse>> changes =
+                masker.maskChanges(List.of(itemChange()), access);
+
+        assertThat((List<?>) input.value().get("items"))
+                .allSatisfy(item -> assertThat(asMap(item)).containsEntry("operationCode", null));
+        assertThat(input.restrictedPropertyCodes()).containsExactly("op_seq");
+        assertThat(asMap(changes.value().getFirst().afterData().get("source_snapshot")))
+                .containsEntry("workOrderNo", null);
+        assertThat(changes.restrictedPropertyCodes()).containsExactly("wo_no");
+        assertThat(masker.maskInput(OTHER_DEFINITION, input(), access).restrictedPropertyCodes())
+                .isEmpty();
+        assertThat(masker.maskInput(null, null, access))
+                .isEqualTo(new Masked<Map<String, Object>>(null, List.of()));
     }
 
     @Test
@@ -189,6 +215,7 @@ class AuditValueMaskerTests {
                 Instant.parse("2026-11-09T00:00:00Z"),
                 Instant.parse("2026-11-09T00:00:01Z"),
                 changes,
+                changes.size(),
                 List.of());
     }
 }

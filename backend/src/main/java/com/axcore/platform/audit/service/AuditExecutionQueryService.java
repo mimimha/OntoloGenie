@@ -1,8 +1,10 @@
 package com.axcore.platform.audit.service;
 
-import com.axcore.platform.action.dto.ActionExecutionDetailResponse;
+import com.axcore.platform.action.dto.ActionExecutionDetailResponse.EntityChangeResponse;
 import com.axcore.platform.audit.domain.ActionExecution;
 import com.axcore.platform.audit.domain.EventKind;
+import com.axcore.platform.audit.dto.AuditExecutionChangesResponse;
+import com.axcore.platform.audit.dto.AuditExecutionDetailResponse;
 import com.axcore.platform.audit.dto.AuditExecutionResponse;
 import com.axcore.platform.audit.dto.AuditExecutionSearchRequest;
 import com.axcore.platform.audit.dto.ObjectExecutionSearchRequest;
@@ -10,11 +12,13 @@ import com.axcore.platform.audit.repository.ActionExecutionRepository;
 import com.axcore.platform.audit.repository.AuditExecutionQueryRepository;
 import com.axcore.platform.audit.repository.AuditExecutionQueryRepository.Filter;
 import com.axcore.platform.audit.repository.EntityChangeRepository;
+import com.axcore.platform.audit.service.AuditValueMasker.Masked;
 import com.axcore.platform.auth.service.DataAccess;
 import com.axcore.platform.auth.service.DataAccessPolicy;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 실행·감사 이력 조회 (API 096·097·098·080, FN-LOG-01~04·FN-EXP-03). Agent 조회 기록(AGENT_QUERY)은 어디에도 보여 주지
- * 않는다. 080은 역할의 객체 조회 범위(S15P31C106-205)를 따른다. 080·096은 ADMIN이 아니면 사용자가 볼 수 없는 민감 속성 값을 가린다.
+ * 않는다. 080은 역할의 객체 조회 범위(S15P31C106-205)를 따른다. 080·096·097·098은 ADMIN이 아니면 사용자가 볼 수 없는 민감 속성 값을
+ * 가린다.
  */
 @Service
 @RequiredArgsConstructor
@@ -78,22 +83,44 @@ public class AuditExecutionQueryService {
         return isAdmin(viewer) ? SCOPE_ALL : SCOPE_MINE;
     }
 
-    /** 097·098. ADMIN만 본다. 없는 기록과 Agent 조회 기록은 404다. */
-    public ActionExecutionDetailResponse get(LoginAccount viewer, long id) {
-        if (!isAdmin(viewer)) {
-            throw forbidden();
+    /**
+     * 097. 실행 하나의 입력·결과·막힌 이유·실패 이유. ADMIN은 전체, 그 밖의 역할은 096과 같은 본인 실행 범위만 열고 입력값의 민감 속성 값을 가린다.
+     */
+    public AuditExecutionDetailResponse get(LoginAccount viewer, long id) {
+        ActionExecution execution = visibleExecution(viewer, id);
+        if (isAdmin(viewer)) {
+            return AuditExecutionDetailResponse.of(execution, execution.getInput(), List.of());
         }
-        ActionExecution execution =
-                executions
-                        .findById(id)
-                        .filter(found -> found.getEventKind() != EventKind.AGENT_QUERY)
-                        .orElseThrow(
-                                () ->
-                                        new BusinessException(
-                                                CommonErrorCode.RESOURCE_NOT_FOUND,
-                                                Map.of("resource", "action_execution")));
-        return ActionExecutionDetailResponse.of(
-                execution, changes.findByActionExecutionIdOrderByIdAsc(id));
+        Masked<Map<String, Object>> input =
+                masker.maskInput(
+                        execution.getActionDefinitionId(),
+                        execution.getInput(),
+                        dataAccessPolicy.of(viewer));
+        return AuditExecutionDetailResponse.of(
+                execution, input.value(), input.restrictedPropertyCodes());
+    }
+
+    /** 098. 실행 하나가 바꾼 행 전체. 열람 범위는 097과 같고, ADMIN이 아니면 변경 내역의 민감 속성 값을 가린다. */
+    public AuditExecutionChangesResponse changes(LoginAccount viewer, long id) {
+        visibleExecution(viewer, id);
+        List<EntityChangeResponse> found =
+                changes.findByActionExecutionIdOrderByIdAsc(id).stream()
+                        .map(EntityChangeResponse::from)
+                        .toList();
+        if (isAdmin(viewer)) {
+            return new AuditExecutionChangesResponse(found, List.of());
+        }
+        Masked<List<EntityChangeResponse>> masked =
+                masker.maskChanges(found, dataAccessPolicy.of(viewer));
+        return new AuditExecutionChangesResponse(masked.value(), masked.restrictedPropertyCodes());
+    }
+
+    /** 범위 밖 기록, 없는 기록, Agent 조회 기록은 모두 같은 404로 막아 있다는 사실도 알리지 않는다. */
+    private ActionExecution visibleExecution(LoginAccount viewer, long id) {
+        if (!history.isVisible(id, isAdmin(viewer) ? null : viewer.id())) {
+            throw executionNotFound();
+        }
+        return executions.findById(id).orElseThrow(AuditExecutionQueryService::executionNotFound);
     }
 
     /**
@@ -139,6 +166,11 @@ public class AuditExecutionQueryService {
 
     private static boolean isAdmin(LoginAccount viewer) {
         return Objects.equals(ADMIN, viewer.roleCode());
+    }
+
+    private static BusinessException executionNotFound() {
+        return new BusinessException(
+                CommonErrorCode.RESOURCE_NOT_FOUND, Map.of("resource", "action_execution"));
     }
 
     private static BusinessException forbidden() {

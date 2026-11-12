@@ -143,8 +143,6 @@ class ProposalObjectTypeApprovalApiTests {
                 .andExpect(jsonPath("$.data[0].id").value(execution))
                 .andExpect(jsonPath("$.data[0].actionCode").value("DECIDE_PROPOSAL"));
         read(AUDIT + "/{id}", execution)
-                .andExpect(jsonPath("$.data.targetType").value("proposal_item"))
-                .andExpect(jsonPath("$.data.targetId").value(proposal))
                 .andExpect(jsonPath("$.data.status").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.data.input.proposalItemId").value(proposal))
                 .andExpect(jsonPath("$.data.input.revision").value(1))
@@ -152,10 +150,11 @@ class ProposalObjectTypeApprovalApiTests {
                 .andExpect(jsonPath("$.data.result.decisionId").value(decision))
                 .andExpect(jsonPath("$.data.result.targetTable").value("object_type"))
                 .andExpect(jsonPath("$.data.result.targetId").value(type))
-                .andExpect(jsonPath("$.data.result.reloadResourceIds[0]").value(resource))
+                .andExpect(jsonPath("$.data.result.reloadResourceIds[0]").value(resource));
+        read(AUDIT + "/{id}/changes", execution)
                 .andExpect(
                         jsonPath(
-                                "$.data.entityChanges[?(@.tableName == 'object_type')].afterData.code",
+                                "$.data.changes[?(@.tableName == 'object_type')].afterData.code",
                                 contains(typeCode)));
     }
 
@@ -209,8 +208,8 @@ class ProposalObjectTypeApprovalApiTests {
                 .andExpect(jsonPath("$.data.result.basisCheckRunId").value(nullValue()))
                 .andExpect(jsonPath("$.data.result.errorCode").value("APPLY_REFERENCE_MISSING"))
                 .andExpect(jsonPath("$.data.result.decisionId").doesNotExist())
-                .andExpect(jsonPath("$.data.result.targetId").doesNotExist())
-                .andExpect(jsonPath("$.data.entityChanges").isEmpty());
+                .andExpect(jsonPath("$.data.result.targetId").doesNotExist());
+        read(AUDIT + "/{id}/changes", execution).andExpect(jsonPath("$.data.changes").isEmpty());
     }
 
     private void prepareCandidate(String propertyColumn) {
