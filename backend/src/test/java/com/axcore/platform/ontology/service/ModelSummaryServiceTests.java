@@ -101,7 +101,9 @@ class ModelSummaryServiceTests {
                 .param("target", equipmentCode)
                 .update();
 
-        restrictedConditionRule = rule(woToEquipment, "RULE_" + suffix(), 1, "ACTIVE", "{}");
+        // 관계 유형마다 반영 중 규칙은 하나라(V17) 같은 양 끝의 관계 유형을 따로 둔다.
+        restrictedConditionRule =
+                rule(linkType(workOrder, equipment), "RULE_" + suffix(), 1, "ACTIVE", "{}");
         condition(restrictedConditionRule, workOrderEquipment, purchasePrice);
 
         // 도착(설비) 조건이 민감 속성을 '유형코드.속성코드' 꼴로 가리킨다.
@@ -113,7 +115,7 @@ class ModelSummaryServiceTests {
                                         jsonb_build_object('property', cast(:ref as text), 'equals', 'Y'))
                                 returning id
                                 """)
-                        .param("linkType", woToEquipment)
+                        .param("linkType", linkType(workOrder, equipment))
                         .param("code", "RULE_" + suffix())
                         .param("ref", "EQUIPMENT." + purchasePriceCode)
                         .query(Long.class)

@@ -39,6 +39,8 @@ def load_dictionary(root: Path) -> dict[str, tuple[EntityType, str]]:
             continue
         reader = CsvSourceReader(source, folder)
         pk = reader.read_schema(table).primary_key
+        if not pk:  # 기본키 없는 표·뷰는 가리킬 객체 키가 없다
+            continue
         rows = reader.read_rows(table)
         if column not in rows.columns:  # 분석할 컬럼으로 고르지 않았다
             continue

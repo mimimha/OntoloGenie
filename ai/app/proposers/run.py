@@ -18,7 +18,7 @@ from app.llm.client import LLMClient, create_llm_client
 from app.models.candidate import Candidate
 from app.proposers.api_format import to_api_proposals
 from app.proposers.evidence import verify
-from app.proposers.links import propose_links
+from app.proposers.links import business_cardinality, propose_links
 from app.proposers.llm_links import estimate_credits as estimate_cross_links
 from app.proposers.llm_links import prepare as prepare_cross_links
 from app.proposers.llm_links import propose as cross_links
@@ -60,6 +60,7 @@ def run(root: Path, llm: LLMClient | None = None, only: set[str] | None = None) 
         cross_kept, _ = verify(root, cross)
         kept += cross_kept
         llm_report["cross_links"] = cross_report | {"kept": len(cross_kept)}
+    kept = business_cardinality(kept)
     return {
         "source": str(root),
         "created_at": datetime.now().isoformat(timespec="seconds"),

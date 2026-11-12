@@ -81,7 +81,7 @@ class ActionExecutionApiTests {
     void createS4Objects() {
         s4 = new S4(UUID.randomUUID().toString().substring(0, 8).toUpperCase());
         // 실행 대상 객체는 실행자가 볼 수 있어야 한다(S15P31C106-205 결정 D4). 계획자는 생산 쪽 유형을 모두 본다(D1).
-        for (String type : List.of("Equipment", "WorkOrder", "WorkOrderOperation", "Routing")) {
+        for (String type : List.of("EQUIPMENT", "WORK_ORDER", "WORK_ORDER_OPERATION", "ROUTING")) {
             allowPlannerToSeeType(type);
         }
     }
@@ -440,7 +440,7 @@ class ActionExecutionApiTests {
                 .andExpect(jsonPath("$.data.entityChanges[0].rowKey.id").value(planId))
                 .andExpect(jsonPath("$.data.entityChanges[0].afterData.status").value("CREATED"));
         // 080: 정지 설비의 실행 이력에서 이 계획 실행을 찾는다. 080은 역할의 객체 조회 범위를 따른다.
-        allowPlannerToSeeType("Equipment");
+        allowPlannerToSeeType("EQUIPMENT");
         mockMvc.perform(get("/api/v1/objects/" + s4.p103 + "/executions").cookie(planner.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[*].id", hasItem((int) executionId)));
@@ -463,7 +463,7 @@ class ActionExecutionApiTests {
                                 """
                                         .formatted(s4.order, s4.p101)))
                 .andExpect(jsonPath("$.data.status").value("SUCCEEDED"));
-        long restricted = restrictProperty("WorkOrder", "wo_no");
+        long restricted = restrictProperty("WORK_ORDER", "wo_no");
         try {
             JsonNode plannerRow = historyRowOf(planner);
             assertThat(plannerRow.get("restrictedPropertyCodes").toString())
@@ -498,8 +498,8 @@ class ActionExecutionApiTests {
                                 """
                                         .formatted(s4.order, s4.p101)))
                 .andExpect(jsonPath("$.data.status").value("SUCCEEDED"));
-        allowPlannerToSeeType("Equipment");
-        long restricted = restrictProperty("WorkOrderOperation", "op_seq");
+        allowPlannerToSeeType("EQUIPMENT");
+        long restricted = restrictProperty("WORK_ORDER_OPERATION", "op_seq");
         try {
             MvcResult result =
                     mockMvc.perform(
@@ -1372,10 +1372,10 @@ class ActionExecutionApiTests {
         final long operation30;
 
         S4(String suffix) {
-            long equipment = typeId("Equipment");
-            long workOrder = typeId("WorkOrder");
-            long operation = typeId("WorkOrderOperation");
-            long routing = typeId("Routing");
+            long equipment = typeId("EQUIPMENT");
+            long workOrder = typeId("WORK_ORDER");
+            long operation = typeId("WORK_ORDER_OPERATION");
+            long routing = typeId("ROUTING");
             this.suffix = suffix;
             String product = "BRK-" + suffix;
             p101Code = "P101-" + suffix;

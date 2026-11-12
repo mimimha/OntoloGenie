@@ -223,3 +223,27 @@ test.each([
 ])('표로 열 수 없으면 이유를 알려 준다: %o', (schema, reason) => {
   expect(tableRows(schema).reason).toContain(reason)
 })
+
+test('유니코드 표현이 다른 이름도 순서에 무관하게 비교하고 서로 구별한다', () => {
+  const composed = '\u00e9'
+  const decomposed = 'e\u0301'
+  const left = {
+    required: [composed, decomposed],
+    properties: {
+      [composed]: { type: 'string' },
+      [decomposed]: { type: 'number' },
+    },
+  }
+  const right = {
+    properties: {
+      [decomposed]: { type: 'number' },
+      [composed]: { type: 'string' },
+    },
+    required: [decomposed, composed],
+  }
+  expect(sameJson(left, right)).toBe(true)
+  expect(sameJson({ required: [composed] }, { required: [decomposed] })).toBe(
+    false,
+  )
+  expect(sameJson({ [composed]: 1 }, { [decomposed]: 1 })).toBe(false)
+})

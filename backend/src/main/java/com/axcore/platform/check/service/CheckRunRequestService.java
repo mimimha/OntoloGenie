@@ -30,6 +30,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -107,7 +108,10 @@ public class CheckRunRequestService {
         }
 
         String basisJson = json.writeValueAsString(basis);
-        String workKey = workKey(triggerKind, request.comparedToRunId(), scopeJson, basisJson);
+        String linkState =
+                checkRunRepository.linkState(linkTypeIds(linkMappingRepository, ruleIds));
+        String workKey =
+                workKey(triggerKind, request.comparedToRunId(), scopeJson, basisJson, linkState);
         NewRun run =
                 new NewRun(
                         triggerKind,
@@ -398,16 +402,32 @@ public class CheckRunRequestService {
         return new BusinessException(CommonErrorCode.BUSINESS_RULE_VIOLATION, reason, details);
     }
 
-    /** 검사 실행의 work_key: 종류, 비교 실행, 범위와 수집 기준의 해시. 재검증은 완료 때 실제로 읽은 기준으로 다시 만든다. */
+    /**
+     * 검사 실행의 work_key: 종류, 비교 실행, 범위·수집 기준·연결 상태의 해시. 재검증은 완료 때 실제로 읽은 기준으로 다시 만든다.
+     *
+     * @param linkState 범위 규칙들의 관계 유형 연결 상태({@link CheckRunRepository#linkState}, 367). 수동 연결을 만들거나
+     *     끄면 수집 실행이 없어도 바뀌어, 이전 검사를 재사용하거나 그 검사에 합류하지 않는다
+     */
     static String workKey(
-            String triggerKind, Long comparedToRunId, String scopeJson, String basisJson) {
+            String triggerKind,
+            Long comparedToRunId,
+            String scopeJson,
+            String basisJson,
+            String linkState) {
         // 이전 배치가 성공한 재검증에는 문제별 이력이 없을 수 있어 새 실행을 접수한다.
         String version = "REVERIFY".equals(triggerKind) ? "|verification-history-v1" : "";
         return triggerKind
                 + ":"
                 + (comparedToRunId == null ? "-" : comparedToRunId)
                 + ":"
-                + sha256(scopeJson + "|" + basisJson + version);
+                + sha256(scopeJson + "|" + basisJson + "|" + linkState + version);
+    }
+
+    /** 규칙 개정본들의 관계 유형(연결 상태를 읽을 범위, 367). 없는 ID는 무시한다. */
+    static Set<Long> linkTypeIds(LinkMappingRepository rules, Collection<Long> ruleIds) {
+        return rules.findAllById(ruleIds).stream()
+                .map(LinkMapping::getLinkTypeId)
+                .collect(Collectors.toCollection(TreeSet::new));
     }
 
     /** work_key의 해시. 수집 뒤 검사(SyncCheckRequester)도 같은 방식으로 만든다. */

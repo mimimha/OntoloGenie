@@ -32,7 +32,7 @@
 | `itemKind` | AI가 보내는 것은 OBJECT_TYPE · LINK_RULE · LINK_TYPE · DOCUMENT_LINK (아래 "묶음 후보"). PROPERTY · OBJECT_MAPPING · PROPERTY_MAPPING은 묶을 객체 후보가 없을 때만 따로 보냄 |
 | `payload` | 후보 내용. 객체·관계 유형 코드는 대문자(`WORK_ORDER`), 속성은 컬럼 이름 그대로. `sourceId`는 `data_source.code`(예: `MES_MAIN`), `resourceKey`는 `source_resource.resource_key`(예: `mes.work_order`). 표를 가리키는 값은 늘 `sourceId` + `resourceKey`. 속성 매핑 `sourceColumn`은 `{sourceId, resourceKey, table, column}`이고 `resourceKey`가 백엔드가 원천 표를 찾는 값(`table`은 `resourceKey`의 첫 점 뒤, 이전 후보와 맞추려고 남김) |
 | `evidence` | 아래 표 |
-| `aiConfidence` | 0~1. 근거 신호 점수의 합이고 정답 확률이 아님. 매칭률과 섞지 않음 |
+| `aiConfidence` | 0~1. 같은 근거로 나온 제안이 평가 데이터에서 실제로 맞은 비율. 매칭률과 섞지 않음 |
 | `options[]` | 같은 대상에 후보가 여럿일 때 `{optionNo, payload, evidence, aiConfidence}` |
 
 **`evidence` 안 (105는 evidence를 객체로만 받으므로 검토에 필요한 것을 여기에 담습니다)**
@@ -95,10 +95,10 @@ DOCUMENT_LINK `payload`는 `name`, `linkTypeCode`, `documentId`, `spanStart`·`s
 | `runKind` | O | INITIAL · REANALYSIS |
 | `targets[]` | O | `{sourceResourceId, dataSourceCode, resourceKey(원천.표), columns, sourceMetadata}` |
 | `sources[]` | O | `{dataSourceCode, sourceKind(POSTGRES·CSV), connection, schema, path}`. 아래 `sources[].connection` |
-| `allowedTransforms` | 선택 | 041 허용 변환. 목록 밖 변환을 쓰는 후보는 내지 않음 |
+| `allowedTransforms` | 선택 | 041 허용 변환. 지금은 받아도 쓰지 않음(AI 안의 허용 변환 목록 FN-MAP-05를 씀) |
 | `pastDecisions` | 선택 | `[{candidateId, itemKind, revision, fingerprint 또는 payload, decision, reason}]`. `decision`은 APPROVE·REJECT·HOLD. 같은 지문이 승인·거절됐으면 다시 내지 않음, 보류였으면 이유에 적음. 같은 후보 ID가 거절·보류됐는데 내용이 바뀌었으면 이유에 이전 결정을 적고 냄 |
 | `previousProposals` | 재분석 | `[{candidateId, fingerprint}]`. 이전 후보 evidence에서 꺼낸 값. 보내면 `changeType`을 이전 후보 기준(같은 ID·지문 UNCHANGED, ID만 같음 CHANGED, 새 ID ADDED)으로 붙이고, 없으면 043 기준 |
-| `options.useLlm` | 선택 | false면 코드 분석만 |
+| `options.useLlm` | 선택 | 지금은 받아도 쓰지 않음. LLM 사용은 AI 서버 설정(`AI_ONTOLOGY_LLM_PROVIDER`)으로 정함 |
 
 **`targets[].sourceMetadata`** (선택): `source_resource.source_metadata`를 그대로 보냅니다. 연동 구현은 #223입니다. AI는 아래 키만 읽고 나머지는 무시합니다.
 
@@ -157,7 +157,7 @@ LLM 설정이 없거나 LLM 호출이 실패해도 실행은 실패로 끝내지
 | 필드 | 내용 |
 | --- | --- |
 | `llmUsed` | LLM 답을 하나라도 썼는지 |
-| `llmSkipReason` | LLM 없이 분석한 이유. `요청에서 LLM을 끔` · `LLM 설정 없음` · `LLM 호출이 모두 실패함` · `예상 크레딧 N이 한도 M를 넘음`(`AI_ONTOLOGY_LLM_CREDIT_LIMIT`, 기본 10,000), 아니면 null |
+| `llmSkipReason` | LLM 없이 분석한 이유. `LLM 설정 없음` · `LLM 호출이 모두 실패함` · `예상 크레딧 N이 한도 M를 넘음`(`AI_ONTOLOGY_LLM_CREDIT_LIMIT`, 기본 10,000), 아니면 null |
 | `llmCalls`, `llmFailedCalls` | 호출 수, 실패한 호출 수(표 의미 해석과 메모 추출을 합친 수) |
 | `llmCredits` | 사용량(GMS 크레딧 기준 환산) |
 | `llmRejectedLinks` | 규칙이 보류로 둔 관계를 LLM도 업무상 맞지 않다고 봐서 보내지 않은 수(관계 유형·연결 규칙 한 쌍을 1로 셈). 규칙이 대기로 둔 관계는 LLM이 반대해도 빼지 않고 보류로만 바꿈 |
