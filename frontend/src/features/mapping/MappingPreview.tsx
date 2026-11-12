@@ -15,6 +15,10 @@ import {
 const active = (status: string) => status === 'QUEUED' || status === 'RUNNING'
 function safeError(error: unknown) {
   if (error instanceof PreviewDraftError) return error
+  if (error instanceof ApiError && error.kind === 'invalid-response')
+    return new ApiError('변환 미리보기 응답을 확인할 수 없습니다.', {
+      kind: error.kind,
+    })
   return error instanceof ApiError
     ? new ApiError(getHttpErrorMessage(error.status ?? 500), {
         kind: error.kind,
@@ -126,7 +130,8 @@ export default function MappingPreview({
       if (mounted.current) setPending(false)
     }
   }
-  const missing = error instanceof ApiError && error.kind === 'not-found'
+  const missing =
+    !!receipt && error instanceof ApiError && error.kind === 'not-found'
   const busy =
     pending ||
     (!!receipt && !expired && !missing && (!result || active(result.status)))
@@ -238,16 +243,29 @@ export default function MappingPreview({
                 {result.rows.map((row, index) => (
                   <section
                     key={index}
-                    aria-label={`표본 ${row.rowNumber}행 변환 결과`}
+                    aria-label={
+                      row.rowNumber === null
+                        ? `변환 객체 ${index + 1}`
+                        : `표본 ${row.rowNumber}행 변환 결과`
+                    }
                     className="space-y-2"
                   >
                     <h4 className="font-medium">
-                      표본 {row.rowNumber}행 · 객체 키 {value(row.objectKey)}
+                      {row.rowNumber === null
+                        ? `변환 객체 ${index + 1} · 원천 행 번호 미제공`
+                        : `표본 ${row.rowNumber}행`}{' '}
+                      · 객체 키 {value(row.objectKey)}
                     </h4>
                     {!row.values.length ? (
                       <EmptyState message="제공된 속성 변환 결과가 없습니다." />
                     ) : (
-                      <DataTable label={`표본 ${row.rowNumber}행 변환 전후`}>
+                      <DataTable
+                        label={
+                          row.rowNumber === null
+                            ? `변환 객체 ${index + 1} 속성 결과`
+                            : `표본 ${row.rowNumber}행 변환 전후`
+                        }
+                      >
                         <thead>
                           <tr>
                             {[
@@ -297,8 +315,13 @@ export default function MappingPreview({
                       {item.property ?? '미제공'} · 변환 단계{' '}
                       {item.step ?? '미제공'}
                     </p>
+                    {item.source && <p>원천 컬럼: {item.source}</p>}
+                    {item.transform && (
+                      <p>실패한 변환 함수: {item.transform}</p>
+                    )}
                     <p>
-                      오류 코드: {item.code} · 실패 근거: {item.reason}
+                      오류 코드: {item.code ?? '미제공'} · 실패 근거:{' '}
+                      {item.reason}
                     </p>
                     <p>변환 전: {value(item.before)}</p>
                   </li>
