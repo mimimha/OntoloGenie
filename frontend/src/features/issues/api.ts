@@ -1,5 +1,5 @@
 import { apiGet, apiPatch, apiPost } from '../../api/client'
-import { ApiError } from '../../api/errors'
+import { ApiError, isRecord } from '../../api/errors'
 
 export type Issue = {
   id: number
@@ -79,6 +79,50 @@ export function fetchIssueVerifications(
     `/issues/${id}/verifications?page=${page}&size=${ISSUE_PAGE_SIZE}`,
     { signal },
   )
+}
+
+// 070의 해결 통과 기록에서 실제 검사에 사용한 규칙 개정본을 찾는다.
+export async function fetchResolutionRuleId(
+  issueId: number,
+  runId: number,
+  signal?: AbortSignal,
+): Promise<number | null> {
+  for (let page = 0; ; page += 1) {
+    const response = await fetchIssueVerifications(issueId, page, signal)
+    if (
+      !Array.isArray(response.data) ||
+      !response.meta ||
+      response.meta.page !== page ||
+      typeof response.meta.hasNext !== 'boolean' ||
+      (response.meta.hasNext && response.data.length === 0) ||
+      response.data.some((record) => record.issueId !== issueId)
+    ) {
+      throw new ApiError('해결 근거의 판정 이력을 확인할 수 없습니다.', {
+        kind: 'invalid-response',
+      })
+    }
+    const record = response.data.find((item) => item.checkRunId === runId)
+    if (record) {
+      if (
+        record.triggerKind !== 'REVERIFY' ||
+        record.status !== 'SUCCEEDED' ||
+        record.outcome !== 'PASSED'
+      ) {
+        throw new ApiError('해결에 사용한 통과 판정을 확인할 수 없습니다.', {
+          kind: 'invalid-response',
+        })
+      }
+      const ruleId = isRecord(record.detail)
+        ? record.detail.linkMappingId
+        : null
+      return typeof ruleId === 'number' &&
+        Number.isSafeInteger(ruleId) &&
+        ruleId > 0
+        ? ruleId
+        : null
+    }
+    if (!response.meta.hasNext) return null
+  }
 }
 
 export function fetchReverificationComparison(

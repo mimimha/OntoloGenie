@@ -7,7 +7,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import Pagination from '../../components/Pagination'
 import { fetchRunResults } from '../review/checkApi'
 import { Result } from '../review/CheckResults'
-import type { Issue } from './api'
+import { fetchResolutionRuleId, type Issue } from './api'
 import ReverificationHistory from './ReverificationHistory'
 import {
   fetchReverificationRun,
@@ -61,6 +61,46 @@ function RunResults({
           {(query.data.meta.totalElements > query.data.meta.size ||
             page > 0) && <Pagination {...query.data.meta} onChange={setPage} />}
         </>
+      )}
+    </section>
+  )
+}
+
+function ResolvedRunResults({
+  issueId,
+  runId,
+}: {
+  issueId: number
+  runId: number
+}) {
+  const query = useQuery({
+    queryKey: ['issues', 'resolution-rule', issueId, runId],
+    queryFn: ({ signal }) => fetchResolutionRuleId(issueId, runId, signal),
+    retry: false,
+  })
+  const title = '해결 처리에 사용한 재검증 결과'
+  if (query.isSuccess && query.data != null) {
+    return (
+      <RunResults
+        runId={runId}
+        filter={{ linkMappingId: query.data }}
+        title={title}
+      />
+    )
+  }
+  return (
+    <section aria-label={title} className="space-y-2">
+      <h4 className="font-medium">
+        {title} · 실행 #{runId}
+      </h4>
+      {query.isPending && (
+        <LoadingState message="해결에 사용한 규칙 정보를 불러오는 중…" />
+      )}
+      {query.isError && (
+        <ErrorState error={query.error} onRetry={() => void query.refetch()} />
+      )}
+      {query.isSuccess && (
+        <EmptyState message="해결에 사용한 규칙 정보를 확인할 수 없습니다." />
       )}
     </section>
   )
@@ -250,8 +290,8 @@ export default function IssueReverification({ issue }: { issue: Issue }) {
                 재검증 실행 #{run.id} · {runStatuses[run.status]}
               </h4>
               <p>
-                비교 기준 검사 #{run.comparedToRunId} · 현재 검사 규칙 #
-                {run.scope.linkMappingIds[0]}
+                비교 기준: 최초 발견 검사 #{run.comparedToRunId} · 현재 검사
+                규칙 #{run.scope.linkMappingIds[0]}
               </p>
               <p>
                 접수 {time(run.requestedAt)} · 시작 {time(run.startedAt)} · 종료{' '}
@@ -296,35 +336,27 @@ export default function IssueReverification({ issue }: { issue: Issue }) {
         {open && (
           <div className="mt-3 space-y-4">
             {filter && detectedCheckRunId > 0 ? (
-              <>
-                <RunResults
-                  key={detectedCheckRunId}
-                  title="발견 당시 검사 결과"
-                  runId={detectedCheckRunId}
-                  filter={filter}
-                />
-                {resolvedCheckRunId != null &&
-                resolvedCheckRunId !== detectedCheckRunId ? (
-                  <RunResults
-                    key={resolvedCheckRunId}
-                    title="해결 처리에 사용한 재검증 결과"
-                    runId={resolvedCheckRunId}
-                    filter={
-                      run?.id === resolvedCheckRunId &&
-                      run.status === 'SUCCEEDED'
-                        ? { linkMappingId: run.scope.linkMappingIds[0]! }
-                        : filter
-                    }
-                  />
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    이 문제에 연결된 해결 재검증 기록이 없습니다.
-                  </p>
-                )}
-              </>
+              <RunResults
+                key={detectedCheckRunId}
+                title="발견 당시 검사 결과"
+                runId={detectedCheckRunId}
+                filter={filter}
+              />
             ) : (
               <p className="text-sm text-slate-500">
                 이 문제에서 조회할 수 있는 검사 기록이 없습니다.
+              </p>
+            )}
+            {resolvedCheckRunId != null &&
+            resolvedCheckRunId !== detectedCheckRunId ? (
+              <ResolvedRunResults
+                key={resolvedCheckRunId}
+                issueId={issue.id}
+                runId={resolvedCheckRunId}
+              />
+            ) : (
+              <p className="text-sm text-slate-500">
+                이 문제에 연결된 해결 재검증 기록이 없습니다.
               </p>
             )}
             {execution.isSuccess &&

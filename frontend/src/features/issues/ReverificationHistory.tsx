@@ -34,11 +34,13 @@ function ComparisonResults({ runId }: { runId: number }) {
       </h4>
       {coverage === 'PARTIAL' && (
         <p className="text-sm text-slate-600">
-          저장된 판정 근거로 확인할 수 있는 행만 표시합니다.
+          저장된 판정 근거로 확인할 수 있는 행만 표시합니다. 신규 문제는 이전에
+          정상으로 확인된 항목만 표시합니다. 이전 판정 기록이 없는 항목은 새로
+          생긴 문제인지 알 수 없어요.
         </p>
       )}
       {coverage === 'UNAVAILABLE' && (
-        <EmptyState message="두 실행에서 비교할 수 있는 판정 기록이 없습니다." />
+        <EmptyState message="두 실행에서 비교할 수 있는 판정 기록이 없어 새로 생긴 문제인지 알 수 없어요." />
       )}
       {coverage !== 'UNAVAILABLE' &&
         categories
@@ -63,8 +65,7 @@ function ComparisonResults({ runId }: { runId: number }) {
         <section aria-label="신규 문제">
           <h5 className="font-medium">신규 문제 확인 불가</h5>
           <p className="text-sm text-slate-600">
-            이전 검사에 정상 판정 기록이 없어 새로 생긴 문제를 확인할 수
-            없습니다.
+            이전 검사에 정상 판정 기록이 없어 새로 생긴 문제인지 알 수 없어요.
           </p>
         </section>
       )}
