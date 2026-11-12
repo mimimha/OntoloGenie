@@ -4,6 +4,7 @@ import {
   getBezierPath,
   Handle,
   MarkerType,
+  Panel,
   Position,
   ReactFlow,
   type Edge,
@@ -12,8 +13,9 @@ import {
   type NodeProps,
   type ReactFlowInstance,
 } from '@xyflow/react'
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import Button from '../../components/Button'
+import { formatCount } from './format'
 import '@xyflow/react/dist/style.css'
 import {
   groupRelationLines,
@@ -52,6 +54,8 @@ function TypeNode({ data }: NodeProps<TypeFlowNode>) {
       <button
         type="button"
         aria-pressed={selected}
+        // 화면에서는 유형 이름만 보이지만, 화면 낭독기에는 무엇의 이름인지 함께 알린다.
+        aria-label={`객체 유형 ${type.name}`}
         onClick={() => onSelect(type.id)}
         // nopan·nodrag: 카드를 누를 때 관계도 끌어서 이동이 같이 시작되지 않게 한다.
         className={`model-graph-node nopan nodrag border px-2 py-2 text-center ${
@@ -66,11 +70,6 @@ function TypeNode({ data }: NodeProps<TypeFlowNode>) {
           pointerEvents: 'all',
         }}
       >
-        <span
-          className={`block ${selected ? 'text-slate-300' : 'text-slate-500'}`}
-        >
-          객체 유형
-        </span>
         <strong className="block">{type.name}</strong>
       </button>
       <Handle
@@ -129,7 +128,7 @@ function RelationEdge({
         >
           {data?.edges.map((edge) => (
             <span key={edge.id} className="block">
-              {`${edge.name} · ${edge.activeLinkCount}건`}
+              {`${edge.name} · ${formatCount(edge.activeLinkCount)}건`}
             </span>
           ))}
         </div>
@@ -141,17 +140,25 @@ function RelationEdge({
 const nodeTypes = { type: TypeNode }
 const edgeTypes = { relation: RelationEdge }
 
+// 개요(관계도 그림) 또는 유형 목록. 고르는 버튼은 관계도 칸 제목 줄에 있다.
+export type ModelGraphView = 'graph' | 'list'
+
 type ModelGraphProps = {
+  view: ModelGraphView
   graph: ModelGraphData
   selectedTypeId: number | null
   onSelect: (id: number) => void
 }
 
-function ModelGraph({ graph, selectedTypeId, onSelect }: ModelGraphProps) {
+function ModelGraph({
+  view,
+  graph,
+  selectedTypeId,
+  onSelect,
+}: ModelGraphProps) {
   const flow = useRef<ReactFlowInstance<TypeFlowNode, RelationFlowEdge> | null>(
     null,
   )
-  const [view, setView] = useState<'graph' | 'list'>('graph')
   const lines = groupRelationLines(graph.edges)
   const points = layoutTypeGraph(graph.nodes, lines)
 
@@ -212,23 +219,6 @@ function ModelGraph({ graph, selectedTypeId, onSelect }: ModelGraphProps) {
 
   return (
     <div>
-      <div className="model-graph-toolbar">
-        <Button
-          variant="secondary"
-          aria-pressed={view === 'graph'}
-          onClick={() => setView('graph')}
-        >
-          개요
-        </Button>
-        <Button
-          variant="secondary"
-          aria-pressed={view === 'list'}
-          onClick={() => setView('list')}
-        >
-          유형 목록
-        </Button>
-      </div>
-
       {view === 'list' ? (
         <div className="model-graph-directory" aria-label="객체 유형 목록">
           {graph.nodes.map((type) => (
@@ -244,32 +234,7 @@ function ModelGraph({ graph, selectedTypeId, onSelect }: ModelGraphProps) {
         </div>
       ) : (
         <>
-          <div className="model-graph-toolbar" aria-label="관계도 배율 조절">
-            <Button variant="text" onClick={() => void flow.current?.zoomTo(1)}>
-              읽기 크기
-            </Button>
-            <Button
-              variant="text"
-              onClick={() => void flow.current?.fitView({ padding: 0.15 })}
-            >
-              전체 맞춤
-            </Button>
-            <Button
-              variant="text"
-              onClick={() => void flow.current?.zoomIn()}
-              aria-label="관계도 확대"
-            >
-              ＋
-            </Button>
-            <Button
-              variant="text"
-              onClick={() => void flow.current?.zoomOut()}
-              aria-label="관계도 축소"
-            >
-              −
-            </Button>
-          </div>
-          <div className="explorer-graph-canvas h-[460px] bg-white">
+          <div className="explorer-graph-canvas">
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -286,19 +251,57 @@ function ModelGraph({ graph, selectedTypeId, onSelect }: ModelGraphProps) {
               nodesConnectable={false}
               elementsSelectable={false}
               proOptions={{ hideAttribution: true }}
-            />
+            >
+              {/* 배율 버튼은 그림 위 오른쪽에 겹쳐 두어 그림 위에 버튼 줄이 생기지 않게 한다. */}
+              <Panel position="top-right">
+                <div
+                  role="group"
+                  aria-label="관계도 배율 조절"
+                  className="model-graph-zoom"
+                >
+                  <button
+                    type="button"
+                    onClick={() => void flow.current?.zoomTo(1)}
+                  >
+                    읽기 크기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void flow.current?.fitView({ padding: 0.15 })
+                    }
+                  >
+                    전체 맞춤
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void flow.current?.zoomIn()}
+                    aria-label="관계도 확대"
+                  >
+                    ＋
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void flow.current?.zoomOut()}
+                    aria-label="관계도 축소"
+                  >
+                    −
+                  </button>
+                </div>
+              </Panel>
+            </ReactFlow>
           </div>
         </>
       )}
 
+      {/* 건수와 범례를 한 줄에 두어 1440×900 첫 화면 안에 들어오게 한다. */}
       <p className="model-graph-caption">
-        {`객체 유형 ${graph.nodes.length}개 · 관계 유형 ${graph.edges.length}개`}
-      </p>
-      <p className="model-graph-caption">
-        각 카드는 개별 객체가 아닌 객체 유형입니다. 유형을 선택하면 왼쪽에 그
-        유형의 객체 목록이 열리고, 객체를 선택하면 그 객체의 관계도로 바뀝니다.
-        개요가 작게 보이면 읽기 크기로 확대하거나 유형 목록에서 이름을
-        확인하세요.
+        <span>
+          {`객체 유형 ${graph.nodes.length}개 · 관계 유형 ${graph.edges.length}개`}
+        </span>
+        {view === 'graph' && (
+          <span>점선: 현재 연결 0건 · 화살표: 관계 방향</span>
+        )}
       </p>
     </div>
   )
