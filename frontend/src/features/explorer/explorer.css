@@ -226,6 +226,10 @@
 .object-graph-canvas {
   background-color: var(--ui-surface-subtle);
 }
+.object-graph-node,
+.object-graph-center {
+  overflow-wrap: anywhere;
+}
 .object-graph-node {
   border-radius: var(--ui-radius);
   background: var(--ui-surface);
