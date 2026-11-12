@@ -29,9 +29,9 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * 실행·감사 이력 목록 (API 096·080). 실행 기록에 정의·실행자·대상 표시 이름을 붙이고, 본인 실행 범위는 여러 작업 표의 요청자를 함께 본다. 여러 도메인 표를
- * 같은 규칙으로 훑는 조회라 JdbcClient로 쓴다(조회 쿼리 기준 초안 2-2, S15P31C106-294). SQL에 이어 붙이는 것은 이 클래스의 상수뿐이고 값은 모두
- * 바인딩한다. Agent 조회 기록(AGENT_QUERY)은 늘 뺀다.
+ * 실행·감사 이력 목록 (API 096·080)과 097·098의 열람 범위. 실행 기록에 정의·실행자·대상 표시 이름을 붙이고, 본인 실행 범위는 여러 작업 표의 요청자를
+ * 함께 본다. 여러 도메인 표를 같은 규칙으로 훑는 조회라 JdbcClient로 쓴다(조회 쿼리 기준 초안 2-2, S15P31C106-294). SQL에 이어 붙이는 것은 이
+ * 클래스의 상수뿐이고 값은 모두 바인딩한다. Agent 조회 기록(AGENT_QUERY)은 늘 뺀다.
  */
 @Repository
 @RequiredArgsConstructor
@@ -149,6 +149,27 @@ public class AuditExecutionQueryRepository {
         return new PageImpl<>(withChanges(rows), pageable, total);
     }
 
+    /**
+     * 097·098에서 열 수 있는 기록인지. Agent 조회 기록은 늘 아니다. viewerId가 있으면 096과 같은 본인 실행 범위만 본다. 없는 기록도 false다.
+     */
+    public boolean isVisible(long executionId, Long viewerId) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("id", executionId);
+        String mine = "";
+        if (viewerId != null) {
+            mine = MINE;
+            params.put("viewerId", viewerId);
+        }
+        return jdbc.sql(
+                        "select exists (select 1 from action_execution e"
+                                + " where e.id = :id and e.event_kind <> 'AGENT_QUERY'"
+                                + mine
+                                + ")")
+                .params(params)
+                .query(Boolean.class)
+                .single();
+    }
+
     /** 080 경로 객체의 유형. 없는 객체면 비어 있다. 원천에서 지워진 객체(DELETED_AT_SOURCE)도 이력은 볼 수 있다. */
     public Optional<Long> findObjectTypeId(long objectId) {
         return jdbc.sql("select object_type_id from object_instance where id = :id")
@@ -205,6 +226,7 @@ public class AuditExecutionQueryRepository {
                 instant(rs.getTimestamp("requested_at")),
                 instant(rs.getTimestamp("finished_at")),
                 List.of(),
+                0,
                 List.of());
     }
 

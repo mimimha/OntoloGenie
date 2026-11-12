@@ -1,5 +1,6 @@
 package com.axcore.platform.audit.service;
 
+import com.axcore.platform.action.domain.ActionDefinition;
 import com.axcore.platform.action.dto.ActionExecutionDetailResponse.EntityChangeResponse;
 import com.axcore.platform.action.repository.ActionDefinitionRepository;
 import com.axcore.platform.audit.dto.AuditExecutionResponse;
@@ -18,8 +19,8 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 /**
- * 실행 이력에서 사용자가 볼 수 없는 민감(RESTRICTED) 속성 값을 가린다(API 080·096, S15P31C106-205). 077 객체 상세와 같은 방식이다. 키는
- * 남기고 값만 null로 바꾸며, 가린 속성 코드를 restrictedPropertyCodes에 담는다. 가릴 자리는 기록을 남기는 쪽이 {@link
+ * 실행 이력에서 사용자가 볼 수 없는 민감(RESTRICTED) 속성 값을 가린다(API 080·096·097·098, S15P31C106-205). 077 객체 상세와 같은
+ * 방식이다. 키는 남기고 값만 null로 바꾸며, 가린 속성 코드를 restrictedPropertyCodes에 담는다. 가릴 자리는 기록을 남기는 쪽이 {@link
  * RecordedPropertyPaths}로 알린다.
  */
 @Component
@@ -48,18 +49,34 @@ class AuditValueMasker {
                 .toList();
     }
 
+    /** 실행 하나의 입력값만 가린다(097). 실행한 정의의 Handler가 알린 자리만 본다. */
+    Masked<Map<String, Object>> maskInput(
+            Long actionDefinitionId, Map<String, Object> input, DataAccess access) {
+        Set<String> masked = new TreeSet<>();
+        Map<String, Object> value =
+                blank(input, inputPathsOf(handlerKeyOf(actionDefinitionId)), access, masked);
+        return new Masked<>(value, List.copyOf(masked));
+    }
+
+    /** 실행 하나의 변경 내역만 가린다(098). */
+    Masked<List<EntityChangeResponse>> maskChanges(
+            List<EntityChangeResponse> changes, DataAccess access) {
+        Set<String> masked = new TreeSet<>();
+        List<EntityChangeResponse> value = mask(changes, access, masked);
+        return new Masked<>(value, List.copyOf(masked));
+    }
+
     private AuditExecutionResponse mask(
             AuditExecutionResponse row, String handlerKey, DataAccess access) {
         Set<String> masked = new TreeSet<>();
-        Map<String, Object> input =
-                blank(
-                        row.input(),
-                        handlerKey == null ? List.of() : paths(inputPaths, handlerKey),
-                        access,
-                        masked);
-        List<EntityChangeResponse> changes =
-                row.entityChanges().stream().map(change -> mask(change, access, masked)).toList();
+        Map<String, Object> input = blank(row.input(), inputPathsOf(handlerKey), access, masked);
+        List<EntityChangeResponse> changes = mask(row.entityChanges(), access, masked);
         return masked.isEmpty() ? row : row.withMaskedValues(input, changes, List.copyOf(masked));
+    }
+
+    private List<EntityChangeResponse> mask(
+            List<EntityChangeResponse> changes, DataAccess access, Set<String> masked) {
+        return changes.stream().map(change -> mask(change, access, masked)).toList();
     }
 
     private EntityChangeResponse mask(
@@ -153,6 +170,20 @@ class AuditValueMasker {
         return keys;
     }
 
+    private String handlerKeyOf(Long actionDefinitionId) {
+        if (actionDefinitionId == null || inputPaths.isEmpty()) {
+            return null;
+        }
+        return definitions
+                .findById(actionDefinitionId)
+                .map(ActionDefinition::getHandlerKey)
+                .orElse(null);
+    }
+
+    private List<Path> inputPathsOf(String handlerKey) {
+        return handlerKey == null ? List.of() : paths(inputPaths, handlerKey);
+    }
+
     private static List<Path> paths(Map<String, List<Path>> paths, String owner) {
         return paths.getOrDefault(owner, List.of());
     }
@@ -162,4 +193,7 @@ class AuditValueMasker {
                 .filter(path -> path.section() == section)
                 .collect(Collectors.groupingBy(Path::owner));
     }
+
+    /** 가린 값과, 값을 가린 민감 속성 코드(이름순). */
+    record Masked<T>(T value, List<String> restrictedPropertyCodes) {}
 }
