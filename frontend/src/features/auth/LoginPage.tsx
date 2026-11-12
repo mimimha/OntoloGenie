@@ -58,6 +58,14 @@ function LoginPage() {
     )
   return (
     <main className="auth-page">
+      <header className="auth-brand">
+        <img
+          src="/ontologenie-logo.svg"
+          alt="OntoloGenie"
+          width="250"
+          height="32"
+        />
+      </header>
       <div className="auth-columns">
         <div className="auth-introduction" aria-hidden="true">
           <div className="auth-orb">
@@ -65,14 +73,6 @@ function LoginPage() {
           </div>
         </div>
         <section className="auth-card" aria-labelledby="login-heading">
-          <header className="auth-brand">
-            <img
-              src="/ontologenie-logo.svg"
-              alt="OntoloGenie"
-              width="250"
-              height="32"
-            />
-          </header>
           <h1 id="login-heading">워크스페이스에 로그인</h1>
           {restoring ? (
             <LoadingState message="인증 상태를 확인하는 중…" />

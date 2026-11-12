@@ -5,6 +5,7 @@ function NotFoundPage() {
   return (
     <section className="management-page management-panel">
       <PageHeader
+        variant="message"
         title="페이지를 찾을 수 없어요"
         description="주소가 맞는지 확인해 주세요."
       />

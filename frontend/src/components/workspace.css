@@ -4,18 +4,58 @@
   color: var(--ui-text);
   font: 14px / 21px var(--ui-font);
 }
+.ui-page-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  padding: 0;
+  margin: -1px;
+  border: 0;
+}
+.ui-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-bottom: 24px;
+}
 .app-frame {
+  --app-header-height: 64px;
+  --app-panel-width: 240px;
   min-width: 0;
 }
 .app-shell .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
   display: flex;
-  min-height: 64px;
+  height: var(--app-header-height);
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+  gap: 16px;
   border-bottom: 1px solid var(--ui-border);
-  padding: 12px 24px;
+  padding: 0 24px;
   background: var(--ui-surface);
+}
+.app-panel-toggle {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  background: var(--ui-surface);
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+}
+.app-panel-toggle:hover,
+.app-panel-toggle[aria-expanded='true'] {
+  background: var(--ui-brand-subtle);
+  color: var(--ui-brand-strong);
 }
 .app-brand {
   display: flex;
@@ -28,16 +68,43 @@
   max-width: 100%;
   height: auto;
 }
-.app-shell .app-header-actions,
-.app-shell .app-header nav {
+.app-body {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.app-header-actions {
+  align-items: flex-start;
   min-width: 0;
+}
+.app-navigation-panel {
+  position: sticky;
+  top: var(--app-header-height);
+  display: flex;
+  width: var(--app-panel-width);
+  height: calc(100dvh - var(--app-header-height));
+  flex: 0 0 var(--app-panel-width);
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-right: 1px solid var(--ui-border);
+  padding: 16px;
+  background: var(--ui-surface-subtle);
+}
+.app-navigation-panel[hidden] {
+  display: none;
+}
+.app-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.app-panel-heading h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.app-panel-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .app-header-link {
   display: inline-flex;
@@ -56,20 +123,38 @@
   background: var(--ui-brand-subtle);
   color: var(--ui-brand-strong);
 }
-.app-header .account-menu {
-  margin-left: 8px;
+.app-panel-account {
+  margin-top: auto;
+  padding-top: 24px;
 }
-.app-header .account-menu span {
+.app-panel-account .account-menu {
+  border-top: 1px solid var(--ui-border);
+  padding-top: 20px;
+}
+.app-panel-account .account-menu > div:first-child {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+  gap: 4px;
+}
+.app-panel-account .account-menu span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.app-panel-account .account-menu span:nth-child(2) {
   color: var(--ui-text-secondary);
+}
+.app-panel-account .account-menu button {
+  width: 100%;
+  margin-top: 16px;
 }
 .app-shell .main-nav {
   display: flex;
-  flex-wrap: wrap;
   align-items: stretch;
+  align-self: stretch;
   gap: 16px;
-  border-bottom: 1px solid var(--ui-border);
-  padding: 0 24px;
-  background: var(--ui-surface);
+  min-width: 0;
+  margin-left: auto;
 }
 .app-shell .main-nav .app-nav-link {
   display: flex;
@@ -91,6 +176,7 @@
 }
 .app-shell .workspace-main {
   min-width: 0;
+  flex: 1;
   padding: 24px;
 }
 .workspace-main button {
@@ -120,25 +206,48 @@
   border: 0;
 }
 
-@media (max-width: 1000px) {
-  .app-shell .app-header {
-    flex-wrap: wrap;
-    gap: 12px;
+@media (max-width: 900px) {
+  .app-header > .app-panel-toggle {
+    margin-left: auto;
   }
-  .app-shell .app-header-actions {
-    justify-content: flex-start;
+  .app-panel-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 59;
+    background: rgb(18 18 18 / 24%);
+  }
+  .app-navigation-panel {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 60;
+    width: min(288px, calc(100vw - 48px));
+    height: 100dvh;
+    box-shadow: 8px 0 32px rgb(18 18 18 / 12%);
+  }
+  .app-shell .app-navigation-panel .main-nav {
+    flex-direction: column;
+    align-self: auto;
+    gap: 4px;
+    margin: 0 0 16px;
+    border-bottom: 1px solid var(--ui-border);
+    padding-bottom: 16px;
+  }
+  .app-shell .app-navigation-panel .app-nav-link {
+    min-height: 44px;
+    border: 0;
+    border-radius: var(--ui-radius);
+    padding: 12px;
+  }
+  .app-shell .app-navigation-panel .app-nav-link.is-active {
+    background: var(--ui-brand-subtle);
   }
 }
 @media (max-width: 600px) {
-  .app-shell .app-header,
-  .app-shell .workspace-main {
-    padding: 16px;
-  }
-  .app-shell .main-nav {
-    gap: 8px;
+  .app-shell .app-header {
+    gap: 12px;
     padding: 0 16px;
   }
-  .app-header .account-menu {
-    margin-left: 0;
+  .app-shell .workspace-main {
+    padding: 16px;
   }
 }

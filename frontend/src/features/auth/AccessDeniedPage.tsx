@@ -6,6 +6,7 @@ function AccessDeniedPage() {
   return (
     <section role="alert" className="management-page management-panel">
       <PageHeader
+        variant="message"
         title="접근 권한이 없습니다."
         description="현재 계정으로 이 화면을 사용할 수 없습니다. 권한이 필요하면 관리자에게 문의해 주세요."
       />

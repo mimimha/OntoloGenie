@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterEach, expect, test, vi } from 'vitest'
 import App from '../../App'
@@ -59,6 +60,9 @@ test.each(roles)(
   async (role) => {
     const client = openAt('/explorer', role)
     await screen.findByRole('heading', { name: '업무 데이터' })
+    await userEvent.click(
+      screen.getByRole('button', { name: '메뉴 패널 열기' }),
+    )
     for (const name of ['업무 데이터', 'AI 업무 도우미', '실행 이력']) {
       expect(screen.getByRole('link', { name })).toBeInTheDocument()
     }
@@ -91,6 +95,9 @@ test.each(
     openAt(path, role)
     await screen.findByRole('heading', { name: '접근 권한이 없습니다.' })
     expect(window.location.pathname).toBe(path)
+    await userEvent.click(
+      screen.getByRole('button', { name: '메뉴 패널 열기' }),
+    )
     expect(screen.getByRole('button', { name: '로그아웃' })).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: '업무 데이터로 돌아가기' }),
@@ -216,6 +223,7 @@ test('관리자라도 서버가 403을 반환하면 실패 안내를 표시하�
   expect(await screen.findByRole('alert')).toHaveTextContent(
     '서버에서 원천 조회를 허용하지 않았습니다.',
   )
+  await userEvent.click(screen.getByRole('button', { name: '메뉴 패널 열기' }))
   expect(screen.getByRole('button', { name: '로그아웃' })).toBeInTheDocument()
   expect(window.location.pathname).toBe('/admin/sources')
 })
