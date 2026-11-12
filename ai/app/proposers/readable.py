@@ -95,6 +95,40 @@ def _name_link_type(link_type: dict, names: Names, document: bool = False) -> No
     link_type["description"] = " · ".join(parts)
 
 
+def _column_names(text: str, payload: dict, names: Names) -> str:
+    """연결 규칙 이유·설명의 영문 컬럼 이름(so_ref는, item_code)을 속성 이름으로 바꾼다."""
+    refs = [
+        ref
+        for condition in payload.get("conditions") or []
+        for ref in (condition.get("sourceProperty"), condition.get("targetProperty"))
+        if ref
+    ]
+    # "대상 키: 표 컬럼 (기본키)" 부분은 언제나 대상 쪽이라 컬럼 이름이 같아도 대상 속성 이름으로 바꾼다
+    head, sep, rest = text.partition(" · ")
+    if head.startswith("대상 키:"):
+        for condition in payload.get("conditions") or []:
+            ref = condition.get("targetProperty")
+            if ref and names.prop(ref) != ref.rsplit(".", 1)[-1]:
+                column = re.escape(ref.rsplit(".", 1)[-1])
+                head = re.sub(rf"(?<![\w.']){column}(?![\w.'])", names.prop(ref), head)
+        text = head + sep + rest
+    by_column: dict[str, set[str]] = {}
+    for ref in refs:
+        by_column.setdefault(ref.rsplit(".", 1)[-1], set()).add(names.prop(ref))
+    for ref in refs:
+        column, name = ref.rsplit(".", 1)[-1], names.prop(ref)
+        # 출발·대상 컬럼 이름이 같은데 속성 이름이 다르면 어느 쪽인지 알 수 없어 그대로 둔다
+        if name == column or len(by_column[column]) > 1:
+            continue
+        text = re.sub(
+            rf"(?<![\w.']){re.escape(column)}(은|는)(?!\w)",
+            lambda _m, n=name: josa(n, "은/는"),
+            text,
+        )
+        text = re.sub(rf"(?<![\w.']){re.escape(column)}(?![\w.'])", name, text)
+    return text
+
+
 def _link_rule_description(payload: dict, names: Names) -> str | None:
     """payload.description('비교 방법: 값을 그대로 비교')을 무엇과 무엇을 맞추는지로 바꾼다."""
     link_type = payload.get("linkType") or {}
@@ -105,7 +139,9 @@ def _link_rule_description(payload: dict, names: Names) -> str | None:
         return None
     by = "·".join(names.prop(c.get("sourceProperty")) for c in conditions)
     to = "·".join(names.prop(c.get("targetProperty")) for c in conditions)
-    how = (payload.get("description") or "").removeprefix("비교 방법: ")
+    how = _column_names(
+        (payload.get("description") or "").removeprefix("비교 방법: "), payload, names
+    )
     rule = f"연결 기준: {source} {by} = {target} {to}"
     if how in ("", "값을 그대로 비교"):
         return rule
@@ -238,6 +274,8 @@ def readable(proposals: list[dict]) -> list[dict]:
             for key in ("reason", "holdReason"):
                 if evidence.get(key):
                     evidence[key] = _table_names(evidence[key], names)
+                    if kind == "LINK_RULE":
+                        evidence[key] = _column_names(evidence[key], payload, names)
         if made:
             title, lead = made
             payload["name"] = title
