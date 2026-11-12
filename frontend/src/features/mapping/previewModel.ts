@@ -2,7 +2,7 @@ import type { SampleCell } from '../sources/samplePreview'
 import type { CheckStatus } from '../sources/types'
 import type { ObjectMapping, PropertyMapping } from './api'
 
-// 040·102 제공 후 실제 DTO와 변환할 화면 전용 모델이다.
+// 040·102 응답에서 제공하지 않는 정보는 null 또는 unavailable로 구분한다.
 export type MappingPreviewDraft = Pick<
   ObjectMapping,
   'sourceResourceId' | 'objectTypeId' | 'keyColumns' | 'rowFilter' | 'isActive'
@@ -23,7 +23,7 @@ export type MappingPreviewReceipt = {
 export type MappingPreviewResult = {
   status: CheckStatus
   rows: {
-    rowNumber: number
+    rowNumber: number | null
     objectKey: SampleCell
     values: {
       source: string
@@ -34,9 +34,11 @@ export type MappingPreviewResult = {
   }[]
   rowErrors: {
     rowNumber: number
+    source?: string
+    transform?: string | null
     property: string | null
     step: number | null
-    code: string
+    code: string | null
     // 어댑터에서 정책에 맞춰 정제한 근거만 전달한다. 원천 오류 원문이 아니다.
     reason: string
     before: SampleCell

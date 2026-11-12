@@ -7,6 +7,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import AnalysisTargetDialog from '../analysis/AnalysisTargetDialog'
 import { analysisRunPath } from '../analysis/labels'
 import MappingPanel from '../mapping/MappingPanel'
+import { mappingPreviewApi } from '../mapping/previewApi'
 import { fetchSources } from './api'
 import ConnectionInfo from './ConnectionInfo'
 import { connectionStatusLabels, sourceKindLabels } from './labels'
@@ -213,7 +214,11 @@ function SourcesPage() {
           ) : tab === 'samples' ? (
             <SourceSamples key={selected.id} sourceId={selected.id} />
           ) : (
-            <MappingPanel key={selected.id} sourceId={selected.id} />
+            <MappingPanel
+              key={selected.id}
+              sourceId={selected.id}
+              previewAccess={mappingPreviewApi}
+            />
           )}
           <div className="border-t border-slate-100 pt-4">
             <Button onClick={() => setAnalyzing(true)}>

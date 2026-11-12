@@ -68,10 +68,24 @@ const objectPath = '/api/v1/ontology/object-mappings'
 const propertyPath = '/api/v1/ontology/property-mappings'
 let objectMappings: ObjectMapping[]
 let propertyMappings: PropertyMapping[]
+let nextPreviewId = 1
+const previews = new Map<
+  number,
+  {
+    sourceResourceId: number
+    requestedAt: string
+    expiresAt: string
+    keyColumns: string[]
+    rowLimit: number
+    reads: number
+  }
+>()
 
 export function resetMappingMocks() {
   objectMappings = [initialObject]
   propertyMappings = [initialProperty]
+  previews.clear()
+  nextPreviewId = 1
 }
 resetMappingMocks()
 
@@ -110,6 +124,82 @@ type PropertyWrite = Pick<
 > & { rowVersion?: number }
 
 export const mappingHandlers = [
+  // 개발용 고정 표본이다. 브라우저에서 실제 변환 엔진을 실행하지 않는다.
+  http.post(
+    '/api/v1/ontology/source-resources/:id/mapping-previews',
+    async ({ params, request }) => {
+      const input = (await request.json()) as {
+        mapping: { keyColumns: string[] }
+        rowLimit?: number
+      }
+      const previewId = nextPreviewId++
+      const requestedAt = new Date().toISOString()
+      const expiresAt = new Date(Date.now() + 3600000).toISOString()
+      previews.set(previewId, {
+        sourceResourceId: Number(params.id),
+        requestedAt,
+        expiresAt,
+        keyColumns: input.mapping.keyColumns,
+        rowLimit: input.rowLimit ?? 20,
+        reads: 0,
+      })
+      return HttpResponse.json(
+        {
+          data: {
+            previewId,
+            status: 'QUEUED',
+            joined: false,
+            requestedAt,
+            expiresAt,
+          },
+        },
+        { status: 202 },
+      )
+    },
+  ),
+  http.get('/api/v1/ontology/source-previews/:id', ({ params }) => {
+    const preview = previews.get(Number(params.id))
+    if (!preview || Date.parse(preview.expiresAt) <= Date.now())
+      return failure(404, 'RESOURCE_NOT_FOUND', '미리보기가 만료되었습니다.')
+    const done = preview.reads++ > 0
+    return HttpResponse.json({
+      data: {
+        id: Number(params.id),
+        previewKind: 'MAPPING_PREVIEW',
+        sourceResourceId: preview.sourceResourceId,
+        status: done ? 'SUCCEEDED' : 'RUNNING',
+        requestedAt: preview.requestedAt,
+        startedAt: preview.requestedAt,
+        finishedAt: done ? new Date().toISOString() : null,
+        expiresAt: preview.expiresAt,
+        errorMessage: null,
+        result: done
+          ? {
+              objects: [
+                {
+                  sourceKey: Object.fromEntries(
+                    preview.keyColumns.map((key) => [key, 'MOCK-001']),
+                  ),
+                  displayName: '모의 표본',
+                  properties: { MOCK_VALUE: '모의 변환 결과' },
+                },
+              ],
+              rowErrors:
+                preview.rowLimit > 1
+                  ? [
+                      {
+                        rowIndex: 1,
+                        column: 'mock_column',
+                        transform: 'TO_INTEGER',
+                        message: '모의 원천 값 변환 실패',
+                      },
+                    ]
+                  : [],
+            }
+          : null,
+      },
+    })
+  }),
   http.get('/api/v1/ontology/object-types', ({ request }) =>
     paged(types, new URL(request.url).searchParams),
   ),
