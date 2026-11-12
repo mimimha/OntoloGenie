@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -8,8 +9,10 @@ from app.analysis import engine
 from app.analysis.engine import AnalysisFailure, analyze
 from app.config import Settings
 from app.dataset.build import generate
-from app.llm.client import MockLLMClient
+from app.llm.client import LLMError, MockLLMClient
 from app.models.analysis import AnalysisStartRequest
+from app.sources.postgres_reader import PostgresSourceReader
+from tests.fake_postgres import FakeConn
 
 
 @pytest.fixture(scope="module")
@@ -309,3 +312,100 @@ def test_llm_runs_when_limit_is_off(monkeypatch, data):
 
     assert llm.prompts  # 한도가 없으면 LLM을 부른다
     assert result.summary["llmCalls"] >= 1
+
+
+class FailingLLM(MockLLMClient):
+    """GMS가 오류 본문과 함께 503을 돌려준 것처럼 실패한다."""
+
+    def complete_json(self, prompt: str) -> dict:
+        self.prompts.append(prompt)
+        raise LLMError("GMS 요청 실패 (HTTP 503): secret-body sk-test-key")
+
+
+def test_llm_failures_are_logged_by_stage_and_kind_only(monkeypatch, data, caplog):
+    req = request([("mes.work_order", {}), ("mes.handover_note", {})])
+    monkeypatch.setattr(engine, "get_settings", lambda: Settings(llm_credit_limit=0))
+
+    with caplog.at_level(logging.WARNING, logger="app.analysis.engine"):
+        result = analyze(req, {"MES_MAIN": data / "mes"}, llm=FailingLLM())
+
+    assert result.summary["llmSkipReason"] == "LLM 호출이 모두 실패함"
+    lines = [r.getMessage() for r in caplog.records]
+    assert any(
+        line.startswith("분석 실행 1 LLM 표 의미 해석 실패") and "HTTP 503" in line
+        for line in lines
+    )
+    assert any(line.startswith("분석 실행 1 LLM 메모 추출 실패") for line in lines)
+    assert "secret-body" not in caplog.text and "sk-test-key" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "error, kind",
+    [
+        ("GMS 요청 실패 (HTTP 429): {...}", "HTTP 429"),
+        ("GMS 응답이 없습니다: TimeoutError", "응답 없음(TimeoutError)"),
+        ("GMS 접속하지 못했습니다: [Errno 111]", "접속 실패"),
+        ("GMS가 JSON이 아닌 답을 보냈습니다: HTTP 500 이라는 글", "JSON 아님"),
+        ("1 validation error for Answer", "답 형식 오류"),
+        (None, "기타"),
+    ],
+)
+def test_llm_error_kind_keeps_only_cause(error, kind):
+    assert engine.llm_error_kind(error) == kind
+
+
+def test_postgres_source_is_closed_before_llm_stage(monkeypatch):
+    conn = FakeConn()
+    reader = PostgresSourceReader("MES_MAIN", lambda: conn, schema="mes")
+    seen = {}
+
+    def after_snapshot(req, root, llm, credit_limit=0):
+        seen["closed"] = conn.closed
+        seen["files"] = sorted(p.name for p in (root / "mes").iterdir())
+        return engine.AnalysisResult(summary={}, proposals=[])
+
+    monkeypatch.setattr(engine, "_analyze", after_snapshot)
+    req = request([("mes.work_order", {})], kind="POSTGRES", schema="mes")
+
+    analyze(req, {"MES_MAIN": reader}, model_summary={})
+
+    # 분석 단계는 임시 폴더만 읽으므로 원천 연결은 스냅샷 직후 닫는다
+    assert seen == {"closed": True, "files": ["_schema.json", "work_order.csv"]}
+
+
+def test_sources_sharing_a_schema_name_are_rejected(data):
+    req = AnalysisStartRequest.model_validate(
+        {
+            "runId": 1,
+            "runKind": "INITIAL",
+            "targets": [
+                {"sourceResourceId": 1, "dataSourceCode": c, "resourceKey": k}
+                for c, k in (("ERP_MAIN", "mes.item"), ("MES_MAIN", "mes.work_order"))
+            ],
+            "sources": [
+                {"dataSourceCode": c, "sourceKind": "CSV", "path": str(data / "mes")}
+                for c in ("ERP_MAIN", "MES_MAIN")
+            ],
+        }
+    )
+
+    with pytest.raises(AnalysisFailure, match=r"같은 스키마 이름\(mes\)"):
+        analyze(req, {"ERP_MAIN": data / "mes", "MES_MAIN": data / "mes"})
+
+
+def test_stale_run_folders_are_removed_on_server_start(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+
+    import main
+    from app.api.analysis_runs import get_runner
+
+    (tmp_path / "ai-run-crashed" / "mes").mkdir(parents=True)
+    (tmp_path / "ai-run-crashed" / "mes" / "employee.csv").write_text("x")
+    (tmp_path / "other").mkdir()
+    monkeypatch.setattr(engine.tempfile, "tempdir", str(tmp_path))
+    try:
+        with TestClient(main.app):
+            assert not (tmp_path / "ai-run-crashed").exists()
+    finally:
+        get_runner.cache_clear()  # 종료 때 stop()한 실행기를 다른 테스트가 쓰지 않게 한다
+    assert (tmp_path / "other").is_dir()

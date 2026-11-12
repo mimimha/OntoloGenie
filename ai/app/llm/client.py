@@ -1,4 +1,5 @@
 import copy
+import http.client
 import json
 import re
 import urllib.error
@@ -132,8 +133,9 @@ class ResponsesLLMClient(_HttpLLMClient):
 
     def _usage(self, usage: dict) -> dict:
         return {
-            "input_tokens": usage.get("input_tokens", 0),
-            "output_tokens": usage.get("output_tokens", 0),
+            # 값이 null로 오는 제공사가 있어 0으로 센다
+            "input_tokens": usage.get("input_tokens") or 0,
+            "output_tokens": usage.get("output_tokens") or 0,
             "reasoning_tokens": (usage.get("output_tokens_details") or {}).get(
                 "reasoning_tokens"
             ),
@@ -171,8 +173,8 @@ class ChatLLMClient(_HttpLLMClient):
 
     def _usage(self, usage: dict) -> dict:
         return {
-            "input_tokens": usage.get("prompt_tokens", 0),
-            "output_tokens": usage.get("completion_tokens", 0),
+            "input_tokens": usage.get("prompt_tokens") or 0,
+            "output_tokens": usage.get("completion_tokens") or 0,
             "reasoning_tokens": (usage.get("completion_tokens_details") or {}).get(
                 "reasoning_tokens"
             ),
@@ -200,15 +202,25 @@ def _post_json(url: str, headers: dict, body: dict, timeout: float) -> dict:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", errors="replace")[:300]
-        raise LLMError(f"요청 실패 (HTTP {error.code}): {detail}") from error
+        raise LLMError(
+            f"요청 실패 (HTTP {error.code}): {_error_detail(error)}"
+        ) from error
     except urllib.error.URLError as error:
         raise LLMError(f"접속하지 못했습니다: {error.reason}") from error
-    except (TimeoutError, OSError) as error:
-        # 응답을 기다리다 시간이 지나면 URLError가 아니라 TimeoutError가 난다. 표 하나만 건너뛰게 LLMError로 바꾼다
+    except (TimeoutError, OSError, http.client.HTTPException) as error:
+        # 응답을 기다리다 시간이 지나면 URLError가 아니라 TimeoutError가, 응답이 중간에 끊기면
+        # IncompleteRead 등이 난다. 표 하나만 건너뛰게 LLMError로 바꾼다
         raise LLMError(f"응답이 없습니다: {type(error).__name__}") from error
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise LLMError("JSON이 아닌 응답을 받았습니다") from error
+
+
+def _error_detail(error: urllib.error.HTTPError) -> str:
+    """오류 응답 본문 앞부분. 본문을 읽다 시간 초과 등으로 실패해도 HTTP 상태는 남긴다."""
+    try:
+        return error.read().decode("utf-8", errors="replace")[:300]
+    except (OSError, http.client.HTTPException) as read_error:
+        return f"본문을 읽지 못함({type(read_error).__name__})"
 
 
 # provider: (클라이언트, 오류 메시지에 쓸 이름). 기본 주소·모델과 키 필수 여부는 config.py에 있다.

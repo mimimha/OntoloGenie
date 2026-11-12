@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.analysis.engine import remove_stale_workdirs
 from app.api.analysis_runs import get_runner
 from app.api.analysis_runs import router as analysis_runs_router
 from app.api.errors import ApiError, api_error, error_response
@@ -27,7 +28,14 @@ async def validation_error(
 async def lifespan(app: FastAPI):
     """재배포로 컨테이너가 꺼질 때(SIGTERM) 진행 중인 분석을 FAILED로 알린다. uvicorn은 백그라운드 분석이
     끝날 때까지 종료를 미루다 유예 시간이 지나면 강제 종료되므로, 종료 신호를 받는 즉시 알린다.
-    개발 중 Ctrl+C(SIGINT)는 다루지 않는다."""
+    개발 중 Ctrl+C(SIGINT)는 다루지 않는다.
+
+    시작할 때는 강제 종료로 남은 원천 값 임시 폴더를 지운다. 이 프로세스의 분석은 아직 시작 전이다."""
+    removed = remove_stale_workdirs()
+    if removed:
+        logging.getLogger(__name__).warning(
+            "남아 있던 분석 임시 폴더 %d개를 지움", removed
+        )
     previous = signal.getsignal(signal.SIGTERM)
 
     def on_term(signum, frame):

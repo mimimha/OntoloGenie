@@ -5,7 +5,7 @@ allowedTransforms·options는 아직 쓰지 않아 버린다. connection의 비�
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -18,13 +18,22 @@ class _Wire(BaseModel):
 class AnalysisTarget(_Wire):
     source_resource_id: int
     data_source_code: str
-    resource_key: str  # 원천.테이블 (예: mes.work_order)
+    resource_key: str  # 스키마.테이블 (예: mes.work_order)
     columns: list[str] | None = None  # 없으면 전체 컬럼
     source_metadata: dict = Field(default_factory=dict)
 
+    @field_validator("resource_key")
+    @classmethod
+    def _schema_and_name(cls, value: str) -> str:
+        # 점이 없으면 어느 후보에도 맞지 않아 후보 0건으로 성공한 것처럼 보인다
+        schema, _, name = value.partition(".")
+        if not schema.strip() or not name.strip():
+            raise ValueError("resourceKey는 '스키마.이름' 형식이어야 합니다.")
+        return value
+
     @property
     def table(self) -> str:
-        return self.resource_key.split(".", 1)[-1]
+        return self.resource_key.split(".", 1)[1]
 
 
 class AnalysisSource(_Wire):

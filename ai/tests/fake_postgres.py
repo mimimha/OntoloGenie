@@ -8,9 +8,10 @@ ROW_QUERY = re.compile(
     r'SELECT (?P<cols>.+?) FROM "?\w+"?\."?(?P<table>\w+)"?(?: ORDER BY (?P<order>.+?))?(?: LIMIT (?P<limit>\d+))?$'
 )
 
+# kind는 pg_class.relkind(r 표, v 뷰, m 구체화 뷰). denied는 컬럼 SELECT 권한이 없는 컬럼
 TABLES = {
     "work_order": {
-        "kind": "BASE TABLE",
+        "kind": "r",
         "comment": "작업지시",
         "columns": [
             ("wo_no", "character varying(20)", "작업지시 번호"),
@@ -21,13 +22,38 @@ TABLES = {
         "rows": [("WO-2", None), ("WO-1", 10)],
     },
     "v_open": {
-        "kind": "VIEW",
+        "kind": "v",
         "comment": None,
         "columns": [("wo_no", "text", None)],
         "pk": [],
         "rows": [],
     },
+    "mv_daily": {
+        "kind": "m",
+        "comment": "일별 생산 집계",
+        "columns": [("work_date", "date", None)],
+        "pk": [],
+        "rows": [("2026-08-20",)],
+    },
+    # 컬럼 단위로만 권한을 준 표. 연락처는 AI 계정이 읽지 못한다
+    "machine": {
+        "kind": "r",
+        "comment": "설비",
+        "columns": [
+            ("code", "character varying(10)", None),
+            ("active", "boolean", None),
+            ("spec", "jsonb", None),
+            ("phone", "text", None),
+        ],
+        "denied": ["phone"],
+        "pk": ["code"],
+        "rows": [("M-1", True, {"톤수": 200, "형식": ["A"]}, "010-0000-0000")],
+    },
 }
+
+
+class PermissionDenied(Exception):
+    sqlstate = "42501"
 
 
 class FakeCursor:
@@ -42,7 +68,9 @@ class FakeCursor:
         elif sql == pg.TABLE_COMMENT:
             self.result = [(TABLES[params[1]]["comment"],)]
         elif sql == pg.COLUMNS:
-            self.result = TABLES[params[1]]["columns"]
+            table = TABLES[params[1]]
+            denied = table.get("denied", [])
+            self.result = [c for c in table["columns"] if c[0] not in denied]
         elif sql == pg.PRIMARY_KEY:
             self.result = [(c,) for c in TABLES[params[1]]["pk"]]
         elif m := ROW_QUERY.match(sql):
@@ -50,6 +78,8 @@ class FakeCursor:
             table = TABLES[m["table"]]
             names = [c[0] for c in table["columns"]]
             picked = [names.index(c.strip('"')) for c in m["cols"].split(", ")]
+            if any(names[i] in table.get("denied", []) for i in picked):
+                raise PermissionDenied("permission denied for table")
             source = table["rows"]
             if m["order"]:
                 keys = [names.index(c.strip('"')) for c in m["order"].split(", ")]
