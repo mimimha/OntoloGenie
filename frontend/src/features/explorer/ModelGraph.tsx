@@ -16,6 +16,7 @@ import '@xyflow/react/dist/style.css'
 import {
   groupRelationLines,
   layoutTypeGraph,
+  selfRelationHeight,
   TYPE_NODE_HEIGHT,
   TYPE_NODE_WIDTH,
 } from './modelGraphLayout'
@@ -29,28 +30,26 @@ type TypeNodeData = {
   type: ModelNode
   selected: boolean
   onSelect: (id: number) => void
+  loopHeight: number
 }
 
 type TypeFlowNode = Node<TypeNodeData, 'type'>
 
 // 유형 카드. 선이 붙을 자리(Handle)는 보이지 않게 두고, 카드 자체는 누를 수 있는 버튼이다.
 function TypeNode({ data }: NodeProps<TypeFlowNode>) {
-  const { type, selected, onSelect } = data
-  // 객체가 하나도 없는 유형은 자리와 건수만 보여 주고 누를 수 없게 한다.
-  const empty = type.objectCount === 0
+  const { type, selected, onSelect, loopHeight } = data
 
   return (
-    <>
+    <div style={{ paddingTop: loopHeight }}>
       <Handle
         type="target"
         position={Position.Left}
         isConnectable={false}
-        style={{ opacity: 0 }}
+        style={{ opacity: 0, top: loopHeight + TYPE_NODE_HEIGHT / 2 }}
       />
       <button
         type="button"
         aria-pressed={selected}
-        disabled={empty}
         onClick={() => onSelect(type.id)}
         // nopan·nodrag: 카드를 누를 때 관계도 끌어서 이동이 같이 시작되지 않게 한다.
         className={`nopan nodrag rounded-lg border px-2 py-2 text-center text-xs ${
@@ -71,24 +70,20 @@ function TypeNode({ data }: NodeProps<TypeFlowNode>) {
           객체 유형
         </span>
         <strong className="block">{type.name}</strong>
-        {type.objectCount !== undefined && (
-          <span className={selected ? 'text-slate-300' : ''}>
-            {`객체 ${type.objectCount}개`}
-          </span>
-        )}
       </button>
       <Handle
         type="source"
         position={Position.Right}
         isConnectable={false}
-        style={{ opacity: 0 }}
+        style={{ opacity: 0, top: loopHeight + TYPE_NODE_HEIGHT / 2 }}
       />
-    </>
+    </div>
   )
 }
 
 type RelationEdgeData = {
   edges: ModelEdge[]
+  loopHeight: number
 }
 
 type RelationFlowEdge = Edge<RelationEdgeData, 'relation'>
@@ -106,7 +101,7 @@ function RelationEdge({
   style,
   data,
 }: EdgeProps<RelationFlowEdge>) {
-  const [path, labelX, labelY] = getBezierPath({
+  let [path, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
     targetX,
@@ -114,6 +109,11 @@ function RelationEdge({
     sourcePosition,
     targetPosition,
   })
+  if (data?.loopHeight) {
+    labelX = (sourceX + targetX) / 2
+    labelY = sourceY - TYPE_NODE_HEIGHT / 2 - data.loopHeight / 2
+    path = `M ${sourceX} ${sourceY} C ${sourceX + 24} ${sourceY}, ${sourceX + 24} ${labelY}, ${labelX} ${labelY} C ${targetX - 24} ${labelY}, ${targetX - 24} ${targetY}, ${targetX} ${targetY}`
+  }
 
   return (
     <>
@@ -155,13 +155,13 @@ function ModelGraph({ graph, selectedTypeId, onSelect }: ModelGraphProps) {
     type: 'type',
     position: points.get(type.id) ?? { x: 0, y: 0 },
     width: TYPE_NODE_WIDTH,
-    height: TYPE_NODE_HEIGHT,
+    height: TYPE_NODE_HEIGHT + selfRelationHeight(lines, type.id),
     handles: [
       {
         type: 'target',
         position: Position.Left,
         x: 0,
-        y: TYPE_NODE_HEIGHT / 2,
+        y: selfRelationHeight(lines, type.id) + TYPE_NODE_HEIGHT / 2,
         width: 1,
         height: 1,
       },
@@ -169,12 +169,17 @@ function ModelGraph({ graph, selectedTypeId, onSelect }: ModelGraphProps) {
         type: 'source',
         position: Position.Right,
         x: TYPE_NODE_WIDTH,
-        y: TYPE_NODE_HEIGHT / 2,
+        y: selfRelationHeight(lines, type.id) + TYPE_NODE_HEIGHT / 2,
         width: 1,
         height: 1,
       },
     ],
-    data: { type, selected: type.id === selectedTypeId, onSelect },
+    data: {
+      type,
+      selected: type.id === selectedTypeId,
+      onSelect,
+      loopHeight: selfRelationHeight(lines, type.id),
+    },
   }))
 
   const edges: RelationFlowEdge[] = lines.map((line) => ({
@@ -190,7 +195,13 @@ function ModelGraph({ graph, selectedTypeId, onSelect }: ModelGraphProps) {
         ? '4 4'
         : undefined,
     },
-    data: { edges: line.edges },
+    data: {
+      edges: line.edges,
+      loopHeight:
+        line.sourceTypeId === line.targetTypeId
+          ? selfRelationHeight(lines, line.sourceTypeId)
+          : 0,
+    },
   }))
 
   return (

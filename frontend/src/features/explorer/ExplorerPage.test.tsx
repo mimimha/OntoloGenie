@@ -3,24 +3,29 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
-import { expect, test } from 'vitest'
+import { beforeEach, expect, test } from 'vitest'
 import { server } from '../../mocks/node'
+import { demoAccount, setMockAccount } from '../../mocks/auth'
 import ExplorerPage from './ExplorerPage'
 import type { AgentEntryState } from '../agent/types'
 
 function renderExplorerPage() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
   render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
+    <QueryClientProvider client={client}>
       <MemoryRouter>
         <ExplorerPage />
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return client
 }
+
+beforeEach(() => {
+  setMockAccount({ ...demoAccount, roleCode: 'ADMIN' })
+})
 
 test('객체 목록 API로 받은 객체를 보여준다', async () => {
   renderExplorerPage()
@@ -465,14 +470,15 @@ test('유형 카드를 누르면 그 유형의 객체 목록과 관계를 보여
   expect(screen.getByText('활성 연결 1건 · 전체 2건')).toBeInTheDocument()
 })
 
-test('관리자가 아니라 전체 연결 수가 없으면 활성 연결 수만 보여준다', async () => {
+test('객체 수가 없는 ADMIN 응답으로 활성 연결과 전체 연결을 구분해 보여준다', async () => {
   server.use(
-    http.get('/api/v1/ontology/model-graph', () =>
-      HttpResponse.json({
+    http.get('/api/v1/ontology/model-graph', ({ request }) => {
+      expect(new URL(request.url).search).toBe('')
+      return HttpResponse.json({
         data: {
           nodes: [
-            { id: 3, code: 'EQUIPMENT', name: '설비', objectCount: 2 },
-            { id: 4, code: 'WORK_ORDER', name: '작업지시', objectCount: 1 },
+            { id: 3, code: 'EQUIPMENT', name: '설비' },
+            { id: 4, code: 'WORK_ORDER', name: '작업지시' },
           ],
           edges: [
             {
@@ -482,13 +488,13 @@ test('관리자가 아니라 전체 연결 수가 없으면 활성 연결 수만
               sourceTypeId: 4,
               targetTypeId: 3,
               cardinality: 'MANY_TO_ONE',
-              relationCount: null,
+              relationCount: 3,
               activeLinkCount: 1,
             },
           ],
         },
-      }),
-    ),
+      })
+    }),
   )
   const user = userEvent.setup()
   renderExplorerPage()
@@ -496,8 +502,11 @@ test('관리자가 아니라 전체 연결 수가 없으면 활성 연결 수만
   const graph = within(screen.getByRole('region', { name: '관계도' }))
   await user.click(await graph.findByRole('button', { name: /설비/ }))
 
-  expect(await screen.findByText('활성 연결 1건')).toBeInTheDocument()
-  expect(screen.queryByText(/null/)).not.toBeInTheDocument()
+  expect(
+    await screen.findByText('활성 연결 1건 · 전체 3건'),
+  ).toBeInTheDocument()
+  expect(graph.getByText('현재 배정 설비 · 1건')).toBeInTheDocument()
+  expect(graph.queryByText(/객체 \d+개/)).not.toBeInTheDocument()
 })
 
 test('검색어가 있을 때 유형 카드를 누르면 검색어는 두고 유형만 바꾼다', async () => {
@@ -517,14 +526,19 @@ test('검색어가 있을 때 유형 카드를 누르면 검색어는 두고 유
   expect(screen.getByLabelText('객체 유형')).toHaveValue('3')
 })
 
-test('객체가 없는 유형은 건수를 보여주고 누를 수 없다', async () => {
+test('객체 수를 받지 않은 유형도 선택해 빈 객체 목록을 조회할 수 있다', async () => {
+  const user = userEvent.setup()
   renderExplorerPage()
 
   const graph = within(screen.getByRole('region', { name: '관계도' }))
   const emptyType = await graph.findByRole('button', { name: /점검 요청/ })
 
-  expect(emptyType).toBeDisabled()
-  expect(emptyType).toHaveTextContent('객체 0개')
+  expect(emptyType).toBeEnabled()
+  expect(emptyType).not.toHaveTextContent('객체 0개')
+  await user.click(emptyType)
+  expect(
+    await screen.findByText('조건에 맞는 객체가 없습니다.'),
+  ).toBeInTheDocument()
 })
 
 test('객체를 고른 뒤 전체 구조로를 누르면 유형 관계도로 돌아간다', async () => {
@@ -544,27 +558,109 @@ test('객체를 고른 뒤 전체 구조로를 누르면 유형 관계도로 돌
   ).toBeInTheDocument()
 })
 
-test('유형 관계도를 볼 권한이 없으면 객체 선택 안내만 보여준다', async () => {
-  server.use(
-    http.get('/api/v1/ontology/model-graph', () =>
-      HttpResponse.json(
-        {
-          error: {
-            code: 'FORBIDDEN',
-            message: '요청을 실행할 권한이 없습니다.',
-            details: {},
-            requestId: 'mock-request-id',
-          },
-        },
-        { status: 403 },
+test.each(['PLANNER', 'MAINTENANCE', 'VIEWER'] as const)(
+  '%s는 403 뒤 객체 선택 안내만 보여준다',
+  async (roleCode) => {
+    setMockAccount({ ...demoAccount, roleCode })
+    renderExplorerPage()
+
+    expect(
+      await screen.findByText('객체를 선택하면 연결 관계를 표시합니다.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: '객체 유형 간 관계' }),
+    ).not.toBeInTheDocument()
+  },
+)
+
+test.each(['server', 'network'])(
+  '%s 오류는 안내와 재시도를 제공하고 성공하면 관계도를 복구한다',
+  async (kind) => {
+    server.use(
+      http.get('/api/v1/ontology/model-graph', () =>
+        kind === 'network'
+          ? HttpResponse.error()
+          : HttpResponse.json(
+              {
+                error: {
+                  code: 'INTERNAL_ERROR',
+                  message: '일시적인 오류입니다.',
+                  details: {},
+                  requestId: 'test-042',
+                },
+              },
+              { status: 500 },
+            ),
       ),
+    )
+    const user = userEvent.setup()
+    renderExplorerPage()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '유형 관계도를 불러오지 못했습니다.',
+    )
+    expect(
+      screen.queryByText('객체를 선택하면 연결 관계를 표시합니다.'),
+    ).not.toBeInTheDocument()
+    server.resetHandlers()
+    await user.click(screen.getByRole('button', { name: '다시 시도' }))
+    expect(
+      await screen.findByRole('heading', { name: '객체 유형 간 관계' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  },
+)
+
+test('이미 받은 관계도는 새로고침 실패 시 유지하고 실패 안내를 보여준다', async () => {
+  const client = renderExplorerPage()
+  await screen.findByRole('heading', { name: '객체 유형 간 관계' })
+  server.use(
+    http.get(
+      '/api/v1/ontology/model-graph',
+      () => new HttpResponse(null, { status: 500 }),
     ),
   )
-  renderExplorerPage()
-
+  await client.invalidateQueries({ queryKey: ['ontology', 'model-graph'] })
+  expect(await screen.findByRole('alert')).toBeInTheDocument()
   expect(
-    await screen.findByText('객체를 선택하면 연결 관계를 표시합니다.'),
+    screen.getByRole('heading', { name: '객체 유형 간 관계' }),
   ).toBeInTheDocument()
+})
+
+test('자기 유형 관계도 관계선과 유형 상세에 표시한다', async () => {
+  server.use(
+    http.get('/api/v1/ontology/model-graph', () =>
+      HttpResponse.json({
+        data: {
+          nodes: [{ id: 4, code: 'WORK_ORDER', name: '작업지시' }],
+          edges: [
+            {
+              id: 9,
+              code: 'RELATED_ORDER',
+              name: '연관 작업',
+              sourceTypeId: 4,
+              targetTypeId: 4,
+              cardinality: 'MANY_TO_MANY',
+              relationCount: 2,
+              activeLinkCount: 0,
+            },
+          ],
+        },
+      }),
+    ),
+  )
+  const user = userEvent.setup()
+  renderExplorerPage()
+  const graph = within(screen.getByRole('region', { name: '관계도' }))
+  expect(await graph.findByText('연관 작업 · 0건')).toBeInTheDocument()
+  const edge = document.querySelector('.react-flow__edge path')
+  expect(edge?.getAttribute('d')).not.toMatch(/NaN/)
+  expect(edge?.getAttribute('d')).toContain('C')
+  await user.click(graph.getByRole('button', { name: /작업지시/ }))
+  expect(
+    await screen.findByText('작업지시 → 작업지시 · N:M'),
+  ).toBeInTheDocument()
+  expect(screen.getByText('활성 연결 0건 · 전체 2건')).toBeInTheDocument()
 })
 
 test('관계도에서 연결된 객체 카드를 누르면 그 객체로 이동한다', async () => {

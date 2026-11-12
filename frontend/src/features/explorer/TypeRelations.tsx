@@ -24,7 +24,7 @@ function RelationList({ title, edges, typeName }: RelationListProps) {
                 {`${typeName(edge.sourceTypeId)} → ${typeName(edge.targetTypeId)} · ${cardinalityLabels[edge.cardinality]}`}
               </p>
               <p className="text-xs text-slate-500">
-                {`활성 연결 ${edge.activeLinkCount}건${edge.relationCount == null ? '' : ` · 전체 ${edge.relationCount}건`}`}
+                {`활성 연결 ${edge.activeLinkCount}건 · 전체 ${edge.relationCount}건`}
               </p>
             </li>
           ))}
@@ -57,11 +57,7 @@ function TypeRelations({ graph, typeId }: TypeRelationsProps) {
 
   return (
     <div>
-      <p className="text-xs text-slate-500">
-        {type.objectCount === undefined
-          ? '객체 유형'
-          : `객체 유형 · 객체 ${type.objectCount}개`}
-      </p>
+      <p className="text-xs text-slate-500">객체 유형</p>
       <h2 className="mt-1 text-lg font-semibold text-slate-900">{type.name}</h2>
       {outgoing.length + incoming.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">

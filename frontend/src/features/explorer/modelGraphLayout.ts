@@ -17,13 +17,10 @@ export type RelationLine = {
   edges: ModelEdge[]
 }
 
-// 관계 유형을 출발·도착 유형별로 묶는다. 자기 자신으로 이어지는 관계는 선으로 그리지 않는다.
+// 관계 유형을 출발·도착 유형별로 묶는다. 같은 유형으로 돌아오는 관계도 포함한다.
 export function groupRelationLines(edges: ModelEdge[]): RelationLine[] {
   const lineByKey = new Map<string, RelationLine>()
   for (const edge of edges) {
-    if (edge.sourceTypeId === edge.targetTypeId) {
-      continue
-    }
     const key = `${edge.sourceTypeId}-${edge.targetTypeId}`
     const line = lineByKey.get(key) ?? {
       key,
@@ -35,6 +32,14 @@ export function groupRelationLines(edges: ModelEdge[]): RelationLine[] {
     lineByKey.set(key, line)
   }
   return [...lineByKey.values()]
+}
+
+// 자기 유형 관계의 이름과 곡선이 카드 위에 들어갈 공간을 확보한다.
+export function selfRelationHeight(lines: RelationLine[], typeId: number) {
+  const line = lines.find(
+    (item) => item.sourceTypeId === typeId && item.targetTypeId === typeId,
+  )
+  return line ? Math.max(80, line.edges.length * 16 + 24) : 0
 }
 
 // 관계 이름 칸의 대략적인 크기. 자동 배치가 이 자리를 비워 두어 이름이 카드와 겹치지 않게 한다.
@@ -60,10 +65,11 @@ export function layoutTypeGraph(
   for (const node of nodes) {
     graph.setNode(String(node.id), {
       width: TYPE_NODE_WIDTH,
-      height: TYPE_NODE_HEIGHT,
+      height: TYPE_NODE_HEIGHT + selfRelationHeight(lines, node.id),
     })
   }
   for (const line of lines) {
+    if (line.sourceTypeId === line.targetTypeId) continue
     graph.setEdge(String(line.sourceTypeId), String(line.targetTypeId), {
       ...labelSize(line),
       labelpos: 'c',
@@ -77,7 +83,7 @@ export function layoutTypeGraph(
     const { x, y } = graph.node(String(node.id))
     points.set(node.id, {
       x: x - TYPE_NODE_WIDTH / 2,
-      y: y - TYPE_NODE_HEIGHT / 2,
+      y: y - (TYPE_NODE_HEIGHT + selfRelationHeight(lines, node.id)) / 2,
     })
   }
   return points
