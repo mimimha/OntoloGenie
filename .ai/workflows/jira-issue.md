@@ -1,6 +1,6 @@
 # Jira Issue Workflow
 
-먼저 [AI 협업 규칙](../rules/ai-collaboration.md), [Jira 규칙](../rules/jira.md), [기준 문서](../references.md)를 읽는다.
+먼저 [Jira 규칙](../rules/jira.md), [기준 문서](../references.md)를 읽는다. [AI 협업 규칙](../rules/ai-collaboration.md)은 아직 읽지 않았을 때만 읽는다.
 
 ## 실행 순서
 

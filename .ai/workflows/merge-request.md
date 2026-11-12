@@ -1,6 +1,6 @@
 # Merge Request Workflow
 
-먼저 [AI 협업 규칙](../rules/ai-collaboration.md), [Git 규칙](../rules/git.md), [Code Review Workflow](code-review.md)를 읽는다. 테스트를 실행한다면 [테스트 규칙](../rules/testing.md)도 읽는다. 코드 리뷰를 수행하는 에이전트는 Code Review Workflow가 지정한 규칙 문서를 모두 읽는다.
+먼저 [Git 규칙](../rules/git.md)을 읽는다. [AI 협업 규칙](../rules/ai-collaboration.md)은 아직 읽지 않았을 때만 읽는다. 테스트를 실행한다면 [테스트 규칙](../rules/testing.md)도 읽는다. [Code Review Workflow](code-review.md)와 그 문서가 지정한 규칙 문서는 코드 리뷰를 수행하는 에이전트가 읽는다. 리뷰를 서브에이전트에 맡기면 작성 세션은 읽지 않는다.
 
 ## 실행 순서
 

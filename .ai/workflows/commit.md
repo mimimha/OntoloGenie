@@ -1,6 +1,6 @@
 # Commit Workflow
 
-먼저 [AI 협업 규칙](../rules/ai-collaboration.md)과 [Git 규칙](../rules/git.md)을 읽는다. 테스트를 실행한다면 [테스트 규칙](../rules/testing.md)도 읽는다.
+먼저 [Git 규칙](../rules/git.md)을 읽는다. [AI 협업 규칙](../rules/ai-collaboration.md)은 아직 읽지 않았을 때만 읽는다. 테스트를 실행한다면 [테스트 규칙](../rules/testing.md)도 읽는다.
 
 ## 실행 순서
 
