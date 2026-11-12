@@ -9,7 +9,7 @@ paths:
       description: >-
         기존 검색에 속성 일치 및 기간 조건을 선택적으로 추가한다.
         propertyValues, dateProperty, from, to 중 하나라도 사용하면 objectTypeId가 필수다.
-        모든 조건은 AND이며 정렬은 기존 ID 오름차순이다.
+        모든 조건은 AND이다. 검색어가 있으면 정확 일치 우선, 각 그룹 안에서는 ID 오름차순이며 검색어가 없으면 ID 오름차순이다.
         dateProperty는 DATE 또는 DATETIME이고 from/to 중 하나 이상이 필요하다.
         DATE에는 날짜, DATETIME에는 UTC 오프셋을 포함한 시각을 사용하며 양쪽 경계를 포함한다.
         날짜는 0001~9999년 범위이며 DATETIME은 UTC로 환산한 날짜에 적용한다.

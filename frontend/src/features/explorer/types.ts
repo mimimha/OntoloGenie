@@ -88,8 +88,6 @@ export type ModelNode = {
   id: number
   code: string
   name: string
-  // 유형별 객체 수. 업무 데이터 화면에서 쓰려고 백엔드에 추가를 요청할 값이라 아직 없을 수 있다.
-  objectCount?: number
 }
 
 // 042 객체 유형 관계도의 선 하나 (관계 유형)
@@ -100,8 +98,8 @@ export type ModelEdge = {
   sourceTypeId: number
   targetTypeId: number
   cardinality: Cardinality
-  // INACTIVE까지 센 운영용 숫자라 ADMIN만 받고, 다른 역할은 null이다.
-  relationCount?: number | null
+  // 비활성 연결을 포함한 전체 연결 수. 042 API는 ADMIN 전용이다.
+  relationCount: number
   activeLinkCount: number
 }
 

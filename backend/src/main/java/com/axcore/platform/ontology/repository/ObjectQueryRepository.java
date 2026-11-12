@@ -99,19 +99,26 @@ public class ObjectQueryRepository {
               and oi.status = :status
             """;
 
-    private static final String SEARCH_CONDITION =
+    private static final String SEARCH_MATCH =
             """
-              and (
-                  shown.display_name ilike :pattern
+              (
+                  shown.display_name ilike %1$s
                   or exists (
                       select 1 from property_definition identifier
                       where identifier.object_type_id = oi.object_type_id
                         and identifier.is_identifier
                         and (scope.can_view_restricted or identifier.sensitivity = 'NORMAL')
-                        and (oi.properties ->> identifier.code) ilike :pattern
+                        and (oi.properties ->> identifier.code) ilike %1$s
                   )
               )
             """;
+
+    private static final String SEARCH_CONDITION = "and " + SEARCH_MATCH.formatted(":pattern");
+
+    private static final String SEARCH_ORDER =
+            "order by case when "
+                    + SEARCH_MATCH.formatted(":exactPattern")
+                    + "then 0 else 1 end, oi.id ";
 
     private static final String SELECT =
             """
@@ -252,9 +259,25 @@ public class ObjectQueryRepository {
             Collection<Long> visibleTypeIds,
             Collection<Long> maskedTypeIds,
             Status status,
-            String pattern,
+            String exactPattern,
             SearchFilters filters,
             Pageable page) {
+        if (exactPattern == null) {
+            return searchPage(visibleTypeIds, maskedTypeIds, status, null, filters, page);
+        }
+        try (var jitScope = disableJitForSearch()) {
+            return searchPage(visibleTypeIds, maskedTypeIds, status, exactPattern, filters, page);
+        }
+    }
+
+    private Page<ObjectRow> searchPage(
+            Collection<Long> visibleTypeIds,
+            Collection<Long> maskedTypeIds,
+            Status status,
+            String exactPattern,
+            SearchFilters filters,
+            Pageable page) {
+        String pattern = exactPattern == null ? null : "%" + exactPattern + "%";
         SearchClause conditions = searchConditions(filters);
         String matches =
                 OBJECTS
@@ -262,13 +285,19 @@ public class ObjectQueryRepository {
                         + FILTERS
                         + (pattern == null ? "" : SEARCH_CONDITION)
                         + conditions.sql();
-        List<ObjectRow> rows =
+        String order = exactPattern == null ? "order by oi.id " : SEARCH_ORDER;
+        JdbcClient.StatementSpec pageQuery =
                 displayQuery(
-                                SELECT + matches + "order by oi.id limit :limit offset :offset",
-                                visibleTypeIds,
-                                maskedTypeIds,
-                                status,
-                                pattern)
+                        SELECT + matches + order + "limit :limit offset :offset",
+                        visibleTypeIds,
+                        maskedTypeIds,
+                        status,
+                        pattern);
+        if (exactPattern != null) {
+            pageQuery = pageQuery.param("exactPattern", exactPattern);
+        }
+        List<ObjectRow> rows =
+                pageQuery
                         .params(conditions.parameters())
                         .param("limit", page.getPageSize())
                         .param("offset", page.getOffset())
@@ -366,6 +395,22 @@ public class ObjectQueryRepository {
     public record PeriodFilter(String code, PropertyDataType type, String from, String to) {}
 
     public record SearchFilters(List<PropertyFilter> values, PeriodFilter period) {}
+
+    private JitScope disableJitForSearch() {
+        if ("off".equals(jdbc.sql("show jit").query(String.class).single())) {
+            return () -> {};
+        }
+        // 검색 비용 추정치가 높아, 결과가 적어도 JIT 컴파일에 시간이 오래 걸린다.
+        jdbc.sql("set local jit = off").update();
+        // 호출자가 이미 트랜잭션을 시작했을 수 있어 조회를 마치면 원래 값으로 복구한다.
+        return () -> jdbc.sql("set local jit = on").update();
+    }
+
+    @FunctionalInterface
+    private interface JitScope extends AutoCloseable {
+        @Override
+        void close();
+    }
 
     public Optional<DetailRow> findDetail(
             long id,

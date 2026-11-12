@@ -86,24 +86,33 @@ def to_api(candidate: Candidate) -> dict:
         evidence["originalText"] = candidate.document.original_text
         evidence["observations"] = camel_keys(data["document"]["observations"])
         evidence["times"] = camel_keys(data["document"]["times"])
+    options = [
+        {
+            "optionNo": o["option_no"],
+            "payload": api_payload(o["payload"]),
+            # 선택지에도 지문을 둔다. 백엔드가 고른 선택지의 결정(거절 등)을 이 지문으로 다음 분석에 돌려준다
+            "evidence": {
+                "fingerprint": fingerprint_payload(api_payload(o["payload"])),
+                "items": camel_keys(o["evidence"]),
+            },
+            "aiConfidence": opt.confidence.total if opt.confidence else None,
+        }
+        for o, opt in zip(data["options"], candidate.options, strict=True)
+    ]
+    if len(options) > 1:
+        # 대안이 있으면 지문에 대안도 넣는다. 대표 제안이 그대로여도 대안이 바뀌면 재분석에서 변경으로 본다
+        evidence["fingerprint"] = fingerprint_payload(
+            {
+                "payload": payload,
+                "options": sorted(o["evidence"]["fingerprint"] for o in options),
+            }
+        )
     return {
         "itemKind": candidate.item_kind.value,
         "payload": payload,
         "evidence": evidence,
         "aiConfidence": candidate.ai_confidence,
-        "options": [
-            {
-                "optionNo": o["option_no"],
-                "payload": api_payload(o["payload"]),
-                # 선택지에도 지문을 둔다. 백엔드가 고른 선택지의 결정(거절 등)을 이 지문으로 다음 분석에 돌려준다
-                "evidence": {
-                    "fingerprint": fingerprint_payload(api_payload(o["payload"])),
-                    "items": camel_keys(o["evidence"]),
-                },
-                "aiConfidence": opt.confidence.total if opt.confidence else None,
-            }
-            for o, opt in zip(data["options"], candidate.options, strict=True)
-        ],
+        "options": options,
     }
 
 

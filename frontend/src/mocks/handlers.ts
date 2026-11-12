@@ -1,7 +1,7 @@
 import { delay, http, HttpResponse } from 'msw'
 import { agentHandlers } from './agentHandlers'
 import { analysisHandlers } from './analysisHandlers'
-import { authHandlers } from './auth'
+import { authHandlers, getMockAccount } from './auth'
 import { accountHandlers } from './accountHandlers'
 import { proposalHandlers } from './proposalHandlers'
 import { reassignmentHandlers } from './reassignmentHandlers'
@@ -474,6 +474,20 @@ function filterExecutions(items: Execution[], searchParams: URLSearchParams) {
     .filter((item) => !to || new Date(item.requestedAt) < new Date(to))
 }
 
+function executionPage(items: Execution[], searchParams: URLSearchParams) {
+  const page = Number(searchParams.get('page') ?? 0)
+  const size = Number(searchParams.get('size') ?? 20)
+  return {
+    data: items.slice(page * size, (page + 1) * size),
+    meta: {
+      page,
+      size,
+      totalElements: items.length,
+      hasNext: (page + 1) * size < items.length,
+    },
+  }
+}
+
 // 042 객체 유형 관계도 응답 (노드는 객체 유형, 선은 관계 유형)
 // 관계 유형 번호·이름과 연결 수는 078 목의 연결(objectLinks)과 맞춘다.
 const modelGraph: ModelGraph = {
@@ -707,13 +721,27 @@ export const handlers = [
   // 042 객체 유형 관계도
   http.get('/api/v1/ontology/model-graph', async () => {
     await delay()
-    // objectCount는 백엔드에 추가를 요청할 값이라, 목에서는 목 객체 수로 채운다.
-    const nodes = modelGraph.nodes.map((node) => ({
-      ...node,
-      objectCount: objects.filter((item) => item.objectTypeId === node.id)
-        .length,
-    }))
-    return HttpResponse.json({ data: { ...modelGraph, nodes } })
+    const account = getMockAccount()
+    if (
+      !account ||
+      account.roleCode !== 'ADMIN' ||
+      account.mustChangePassword
+    ) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: account ? 'FORBIDDEN' : 'UNAUTHENTICATED',
+            message: account
+              ? '요청을 실행할 권한이 없습니다.'
+              : '로그인이 필요합니다.',
+            details: account ? { requiredPermission: 'ADMIN' } : {},
+            requestId: 'mock-model-graph',
+          },
+        },
+        { status: account ? 403 : 401 },
+      )
+    }
+    return HttpResponse.json({ data: modelGraph })
   }),
 
   // 044 정의 변경 이력 조회
@@ -884,24 +912,44 @@ export const handlers = [
   // 080 객체 관련 실행 이력 조회
   http.get('/api/v1/objects/:id/executions', async ({ params, request }) => {
     await delay()
+    const account = getMockAccount()
+    if (!account || account.mustChangePassword) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: account ? 'FORBIDDEN' : 'UNAUTHENTICATED',
+            message: account
+              ? '비밀번호를 변경한 뒤 이용해 주세요.'
+              : '로그인이 필요합니다.',
+            details: {},
+            requestId: 'mock-object-executions',
+          },
+        },
+        { status: account ? 403 : 401 },
+      )
+    }
+    if (!objects.some((object) => object.id === Number(params.id))) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: 'RESOURCE_NOT_FOUND',
+            message: '대상을 찾을 수 없습니다.',
+            details: { resource: 'object_instance' },
+            requestId: 'mock-object-executions',
+          },
+        },
+        { status: 404 },
+      )
+    }
     const objectExecutions = executions.filter(
       (item) =>
         item.targetType === 'object_instance' &&
-        item.targetId === Number(params.id),
+        item.targetId === Number(params.id) &&
+        (account.roleCode === 'ADMIN' || item.actorId === account.id),
     )
-    const matched = filterExecutions(
-      objectExecutions,
-      new URL(request.url).searchParams,
-    )
-    return HttpResponse.json({
-      data: matched,
-      meta: {
-        page: 0,
-        size: 20,
-        totalElements: matched.length,
-        hasNext: false,
-      },
-    })
+    const searchParams = new URL(request.url).searchParams
+    const matched = filterExecutions(objectExecutions, searchParams)
+    return HttpResponse.json(executionPage(matched, searchParams))
   }),
 
   // 096 실행·감사 이력 (관리자면 전체, 아니면 본인 실행)
@@ -914,14 +962,13 @@ export const handlers = [
           (item) =>
             item.actorId === mockUser.accountId && item.actorType !== 'SYSTEM',
         )
-    const matched = filterExecutions(visible, new URL(request.url).searchParams)
+    const searchParams = new URL(request.url).searchParams
+    const matched = filterExecutions(visible, searchParams)
+    const result = executionPage(matched, searchParams)
     return HttpResponse.json({
-      data: matched,
+      ...result,
       meta: {
-        page: 0,
-        size: 20,
-        totalElements: matched.length,
-        hasNext: false,
+        ...result.meta,
         scope: isAdmin ? 'ALL' : 'MINE',
       },
     })
