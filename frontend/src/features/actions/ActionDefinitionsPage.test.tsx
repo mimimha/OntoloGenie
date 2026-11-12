@@ -221,6 +221,36 @@ test('없는 코드로 열면 대상을 찾을 수 없다고 알린다', async (
   ).toBeInTheDocument()
 })
 
+test('필요 권한은 역할에서 모아 겹치지 않게 사전 순으로 보여 준다', async () => {
+  server.use(
+    http.get('/api/v1/admin/roles', () =>
+      HttpResponse.json({
+        data: [
+          {
+            code: 'ADMIN',
+            name: '관리자',
+            permissions: ['PLAN_CREATE', 'ACCOUNT_MANAGE'],
+          },
+          {
+            code: 'PLANNER',
+            name: '생산기획자',
+            permissions: ['PLANNER_VIEW', 'PLAN_CREATE'],
+          },
+        ],
+      }),
+    ),
+  )
+  open('/admin/actions/new')
+  const select = await screen.findByLabelText('필요 권한')
+  await within(select).findByRole('option', { name: 'PLANNER_VIEW' })
+  expect(
+    within(select)
+      .getAllByRole('option')
+      .map((option) => option.getAttribute('value'))
+      .filter(Boolean),
+  ).toEqual(['ACCOUNT_MANAGE', 'PLAN_CREATE', 'PLANNER_VIEW'])
+})
+
 test('코드가 NEW인 정의도 등록 폼이 아니라 상세로 연다', async () => {
   server.use(
     http.get('/api/v1/actions/NEW', () =>
