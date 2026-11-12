@@ -9,7 +9,11 @@ import { reassignmentHandlers } from './reassignmentHandlers'
 import { issueHandlers } from './issueHandlers'
 import { mappingHandlers } from './mappingHandlers'
 import { sourceHandlers } from './sourceHandlers'
-import type { Execution } from '../features/audit/types'
+import type {
+  EntityChange,
+  Execution,
+  ExecutionDetail,
+} from '../features/audit/types'
 import type {
   DefinitionChange,
   RuleRevision,
@@ -282,7 +286,14 @@ function objectSummary(id: number) {
 export const mockUser = { accountId: 7, roleCode: 'PLANNER' }
 
 // 080·096 응답의 실행 이력 (최근 실행이 앞에 오도록 적어 둔다)
-const executions: Execution[] = [
+type MockExecution = Omit<Execution, 'changeCount'> & {
+  input: Record<string, unknown>
+  result: Record<string, unknown>
+  blockedReason: string | null
+  entityChanges: EntityChange[]
+  restrictedPropertyCodes?: string[]
+}
+const executions: MockExecution[] = [
   {
     id: 9005,
     requestId: '66666666-6666-4666-8666-666666666666',
@@ -454,8 +465,48 @@ const executions: Execution[] = [
   },
 ]
 
+function findVisibleExecution(id: number) {
+  const account = getMockAccount()
+  const status = !account ? 401 : account.mustChangePassword ? 403 : 404
+  const found = executions.find((execution) => execution.id === id)
+  if (
+    account &&
+    !account.mustChangePassword &&
+    found &&
+    (account.roleCode === 'ADMIN' ||
+      mockUser.roleCode === 'ADMIN' ||
+      found.actorId === account.id)
+  ) {
+    return found
+  }
+  return HttpResponse.json(
+    {
+      error: {
+        code:
+          status === 401
+            ? 'UNAUTHENTICATED'
+            : status === 403
+              ? 'FORBIDDEN'
+              : 'RESOURCE_NOT_FOUND',
+        message:
+          status === 401
+            ? '로그인이 필요합니다.'
+            : status === 403
+              ? '비밀번호를 변경한 뒤 이용해 주세요.'
+              : '대상을 찾을 수 없습니다.',
+        details: {},
+        requestId: 'mock-audit-detail',
+      },
+    },
+    { status },
+  )
+}
+
 // 080·096 조회 조건(status, from, to, 096의 category·targetType·targetId)으로 실행 이력을 거른다.
-function filterExecutions(items: Execution[], searchParams: URLSearchParams) {
+function filterExecutions(
+  items: MockExecution[],
+  searchParams: URLSearchParams,
+) {
   const status = searchParams.get('status')
   const from = searchParams.get('from')
   const to = searchParams.get('to')
@@ -475,11 +526,35 @@ function filterExecutions(items: Execution[], searchParams: URLSearchParams) {
     .filter((item) => !to || new Date(item.requestedAt) < new Date(to))
 }
 
-function executionPage(items: Execution[], searchParams: URLSearchParams) {
+function executionPage(items: MockExecution[], searchParams: URLSearchParams) {
   const page = Number(searchParams.get('page') ?? 0)
   const size = Number(searchParams.get('size') ?? 20)
   return {
-    data: items.slice(page * size, (page + 1) * size),
+    data: items.slice(page * size, (page + 1) * size).map((item) => {
+      const summary: Execution = {
+        id: item.id,
+        requestId: item.requestId,
+        eventKind: item.eventKind,
+        category: item.category,
+        actionDefinitionId: item.actionDefinitionId,
+        actionCode: item.actionCode,
+        actionName: item.actionName,
+        actorType: item.actorType,
+        actorId: item.actorId,
+        actorName: item.actorName,
+        actorRoleCode: item.actorRoleCode,
+        checkedPermissionCode: item.checkedPermissionCode,
+        entryPoint: item.entryPoint,
+        targetType: item.targetType,
+        targetId: item.targetId,
+        targetLabel: item.targetLabel,
+        status: item.status,
+        requestedAt: item.requestedAt,
+        finishedAt: item.finishedAt,
+        changeCount: item.entityChanges.length,
+      }
+      return summary
+    }),
     meta: {
       page,
       size,
@@ -966,6 +1041,38 @@ export const handlers = [
     const searchParams = new URL(request.url).searchParams
     const matched = filterExecutions(objectExecutions, searchParams)
     return HttpResponse.json(executionPage(matched, searchParams))
+  }),
+
+  // 097·098: 일반 사용자도 본인 기록을 조회하고, 범위 밖은 404다.
+  http.get('/api/v1/audit/actions/:id/changes', async ({ params }) => {
+    await delay()
+    const found = findVisibleExecution(Number(params.id))
+    if (found instanceof HttpResponse) return found
+    return HttpResponse.json({
+      data: {
+        changes: found.entityChanges,
+        restrictedPropertyCodes: found.restrictedPropertyCodes ?? [],
+      },
+    })
+  }),
+  http.get('/api/v1/audit/actions/:id', async ({ params }) => {
+    await delay()
+    const found = findVisibleExecution(Number(params.id))
+    if (found instanceof HttpResponse) return found
+    const data: ExecutionDetail = {
+      id: found.id,
+      status: found.status,
+      input: found.input,
+      result: found.result,
+      blockedReason: found.blockedReason,
+      failureReason:
+        found.status === 'FAILED'
+          ? String(found.result.errorMessage ?? found.result.reason ?? '') ||
+            null
+          : null,
+      restrictedPropertyCodes: found.restrictedPropertyCodes ?? [],
+    }
+    return HttpResponse.json({ data })
   }),
 
   // 096 실행·감사 이력 (관리자면 전체, 아니면 본인 실행)
