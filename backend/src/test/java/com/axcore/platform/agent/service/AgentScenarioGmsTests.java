@@ -39,9 +39,23 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>판정은 도구 호출 기록으로 한다. 시나리오마다 꼭 조회해야 하는 객체(원천 키로 찾은 ID)를 정해 두고, 그 객체를 정해진 도구로 조회했는지 본다. AI 답은 실행마다
  * 달라질 수 있어 답변 문장과 정답(ai/data/gold-v1.0/scenario_answers.json)은 로그로만 비교한다. 실행 방법은
  * docs/agent-scenario-gms.md에 있다.
+ *
+ * <p>시험 데이터(agent-scenario/press-v1.0.json.gz)는 정답 온톨로지의 유형 코드(WorkOrder 등)를 쓴다. 운영 코드로 바뀐 설정 기본값
+ * 대신 이 클래스에서만 정답 코드로 덮어쓴다.
  */
 @Slf4j
-@SpringBootTest(properties = "test.context=agent-scenario-gms")
+@SpringBootTest(
+        properties = {
+            "test.context=agent-scenario-gms",
+            "axcore.reassignment.equipment.type=Equipment",
+            "axcore.reassignment.work-order.type=WorkOrder",
+            "axcore.reassignment.operation.type=WorkOrderOperation",
+            "axcore.reassignment.routing.type=Routing",
+            "axcore.agent.completion-estimate.work-order.type=WorkOrder",
+            "axcore.agent.completion-estimate.operation.type=WorkOrderOperation",
+            "axcore.agent.completion-estimate.routing.type=Routing",
+            "axcore.agent.completion-estimate.equipment.type=Equipment"
+        })
 @ActiveProfiles("api")
 @Import(TestcontainersConfiguration.class)
 @EnabledIfEnvironmentVariable(named = "AXCORE_AGENT_LLM", matches = "openai")

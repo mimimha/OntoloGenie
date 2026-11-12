@@ -42,7 +42,7 @@ Agent가 "이 작업지시를 끝내려면 몇 시간 걸려?", "언제 끝나?"
 
 ## 설정
 
-`application.yml`의 `axcore.agent.completion-estimate.*`에 객체 유형·속성 코드(작업지시·공정·공정 표준·설비)와 완료·진행 상태 값을 둔다. 기본값은 시연 정답 온톨로지(`ai/data/gold-v1.0/ontology.json`)의 이름이다. 값이 빠지면 서버가 시작하지 않는다.
+`application.yml`의 `axcore.agent.completion-estimate.*`에 객체 유형·속성 코드(작업지시·공정·공정 표준·설비)와 완료·진행 상태 값을 둔다. 유형 코드 기본값은 운영 온톨로지 코드(`WORK_ORDER` 등, 2026-11-12 확인)를 임시로 적은 것이다. 업무 역할 묶기·관계 기반 구조를 도입하면 삭제한다. 속성 코드는 정답 온톨로지(`ai/data/gold-v1.0/ontology.json`)와 운영이 같다. 값이 빠지면 서버가 시작하지 않는다.
 
 ## 검산 (시연 데이터, 기준 2026-10-30 14:00)
 
