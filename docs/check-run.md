@@ -126,6 +126,9 @@ batch 프로필의 작업 표 처리기(`QueuedJobHandler`, `CHECK_RUN`)다. `tr
 3. 출발·도착 유형의 객체를 읽는다. 대상은 `status = ACTIVE`이고 활성 매핑(`object_source_mapping.is_active`)으로 규칙의 원천 자원에서 수집한 객체다. 원천에서 지운 객체, 플랫폼에서 만든 객체(원천 키 없음), 비활성 매핑에서 온 객체는 빠진다.
 4. 행 조건(`source_filter`·`target_filter`)을 객체 속성에 적용한다(`ObjectRowFilter`). 연결 재계산(181)과 같은 두 형식(`{}`, `{"property", "equals"}`)만 읽는다.
 5. 속성을 `유형코드.속성코드` 이름으로 `CheckRow`에 넣고(원천 자원 = 매핑의 원천 자원, 원천 키 = `source_key`, 객체 ID), 판정 엔진으로 판정한다.
+6. **수동 연결(366):** 규칙으로는 미연결(UNMATCHED)인 출발에 같은 관계 유형의 활성 수동 연결(`object_link.origin = MANUAL`, 양 끝 ACTIVE)이 있으면 그 행을 정상(MATCHED)으로 바꾼다(`CheckObjectReader.manualLinkTargets`, 같은 읽기 스냅샷). 이유는 `관리자가 수동으로 연결함`, 대응 도착은 그 연결의 도착 중 이번 도착 행에 있는 것이다. 중복·조건 위반은 규칙이 가리킨 대상의 문제라 바꾸지 않는다.
+   - 수동 연결은 승인 당시 값이 그대로인 동안만 활성이다. 값이 바뀌거나 끝이 지워지거나 규칙이 그 출발을 이으면 연결 재계산이 끈다(`docs/link-recompute.md`). 그래서 검사는 활성 수동 연결을 그대로 믿는다.
+   - 결과: 그 행은 문제·확인 대기로 가지 않고, 열린 확인 대기는 연결됨으로 닫히며, 그 행의 문제는 재검증 PASSED로 해결할 수 있다(246).
 
 **규칙 건너뛰기:** 아래 경우에는 그 규칙만 판정하지 않고 감사 결과(`skippedRules[]`: `linkMappingId`, `reason`)에 남긴다. 모든 규칙을 건너뛰면 검사는 FAILED("검사할 수 있는 규칙이 없습니다. …")이다. 단 SYNC는 결과 없는 성공으로 끝낸다. 적재·복구 중에는 SYNC가 모든 규칙을 건너뛰는데, 실패로 두면 다시 쓰이지 않아 주기마다 실패가 쌓이기 때문이다. DB 오류는 검사 전체 실패다.
 
@@ -144,7 +147,7 @@ batch 프로필의 작업 표 처리기(`QueuedJobHandler`, `CHECK_RUN`)다. `tr
 | `previous_result_id` | 같은 규칙 개정본의 가장 최근 결과. 결과는 성공하는 트랜잭션에서만 저장되므로 성공한 검사의 결과다 |
 | `sample_rows` | 정상이 아닌 행 최대 20개, 객체 ID 순. `objectInstanceId`, `sourceResourceId`, `sourceKey`, `classification`, `rawValue`, `transformedValue`, `reason`, `targetObjectIds`. 조건이 여럿이면 값을 조건 순서대로 ` / `로 잇는다 |
 
-**감사 결과 줄:** `triggerKind`, `checkedRuleCount`, `skippedRules[]`. 문제별 재검증이면 `reverification`(PASSED·FAILED·NOT_EVALUATED 건수)도 넣는다. 원천 값은 넣지 않는다.
+**감사 결과 줄:** `triggerKind`, `checkedRuleCount`, `manualMatchedCount`(수동 연결로 정상 처리한 출발 수, 366), `skippedRules[]`. 문제별 재검증이면 `reverification`(PASSED·FAILED·NOT_EVALUATED 건수)도 넣는다. 원천 값은 넣지 않는다.
 
 ### 문제별 재검증 판정 (246, 135 확장 지점)
 
@@ -224,7 +227,7 @@ FULL_COMPARE 표의 기준을 "마지막 성공 수집 시각부터 대기"로 �
 
 ## SYNC 요청 (191-4, `SyncCheckJob`·`SyncCheckRequester`)
 
-batch의 `@Scheduled`(247)가 `axcore.check.sync.interval`(기본 5분)마다 SYNC 하나를 넣는다. 넣기만 하고 실행은 위 실행기가 한다. `AXCORE_CHECK_SYNC_ENABLED=false`면 주기 작업을 띄우지 않는다.
+batch의 `@Scheduled`(247)가 `axcore.check.sync.interval`(기본 5분)마다 SYNC 하나를 넣는다. 넣기만 하고 실행은 위 실행기가 한다. 연결 규칙 개정본을 승인하면 커밋 뒤에도 하나 넣는다(366, `SyncCheckOnRuleApproval`). 승인 반영은 미연결을 기록하지 않으므로 새 개정본의 판정이 다음 주기를 기다리지 않게 한다. `AXCORE_CHECK_SYNC_ENABLED=false`면 둘 다 넣지 않는다.
 
 - **범위:** 반영 중인 규칙 전부(`scope.kind = ALL`). 반영 중인 규칙이 없으면 넣지 않는다. 요청자와 `sync_run_id`는 없다(V12).
 - **데이터 기준:** 060과 같다(원천 테이블별 마지막 성공 수집). CDC 반영기도 원천 트랜잭션마다 성공 수집(`sync_run`·`sync_run_resource` INCREMENTAL)을 남기므로, 데이터가 바뀌면 기준도 바뀐다. 그래서 데이터 기준에 원천 트랜잭션 번호를 따로 더하지 않았다(191 설계안 Q1-3).
@@ -255,7 +258,7 @@ batch의 `@Scheduled`(247)가 `axcore.check.sync.interval`(기본 5분)마다 SY
 
 - `CheckRunApiIntegrationTests` 36개: 접수(ALL·LINK_MAPPINGS·ISSUES, 규칙 개정 뒤 문제를 현재 개정본으로 재검증), 데이터 기준(마지막 성공 수집, 수집 전 null), 합류(QUEUED·RUNNING), 새 수집 뒤에는 실행 중인 재검증에 합류하지 않고 새로 넣기, 성공 재사용, 새 수집·실패 뒤 새 검사, MANUAL·REVERIFY 분리, 422 각 경우, 400 12가지, 목록 필터·정렬·페이지, 상태 조회·저장 기준 이름 변환·404, 401·403(역할·CSRF).
 - `LinkMappingRuleLoaderTests` 7개: 변환 결과(객체 유형, 조건 이름·변환·관계 수·자원·행 조건·기준 걸러내기), 바꾼 입력으로 판정 엔진이 실제로 판정함, 비활성 매핑 제외, 기준 누락·조건 없음·없는 규칙·읽을 수 없는 변환 거절.
-- `CheckRunJobTests` 9개: 작업 표에서 가져가 규칙별 결과 저장(건수·표본·원천 키), 지운·플랫폼·비활성 매핑 객체 제외, 행 조건 적용, 같은 규칙 직전 결과 연결, 판정할 수 없는 규칙 건너뛰기와 감사 결과, 모두 건너뛰면 FAILED, 후보 시험은 가져가지 않음, 문제별 재검증 판정(옛 개정본 문제를 현재 개정본으로 PASSED·FAILED·NOT_EVALUATED)과 확장 지점 호출, 규칙 범위 재검증은 확장 지점을 부르지 않음.
+- `CheckRunJobTests` 16개: 작업 표에서 가져가 규칙별 결과 저장(건수·표본·원천 키), 지운·플랫폼·비활성 매핑 객체 제외, 행 조건 적용, 같은 규칙 직전 결과 연결, 판정할 수 없는 규칙 건너뛰기와 감사 결과, 모두 건너뛰면 FAILED, 후보 시험은 가져가지 않음, 문제별 재검증 판정(옛 개정본 문제를 현재 개정본으로 PASSED·FAILED·NOT_EVALUATED)과 확장 지점 호출, 규칙 범위 재검증은 확장 지점을 부르지 않음, 활성 수동 연결이 있는 미연결 출발은 정상·연결을 끄면 다시 미연결(366).
 - `CheckIssueJudgmentTests` 9개: 같은 원천은 모든 문제를 issue로 한 번만, 원천 사이 미연결은 확인 대기·중복은 issue, 연결·출발 삭제로 닫기, 대기 시간 뒤 승격, FULL_COMPARE 수집이 처음 본 뒤 없거나 CDC 원천이 비정상이면 승격하지 않음, 도착 키 실패로 미연결 보류, 적재 전·복구 중 건너뛰기(SYNC는 결과 없는 성공, 이유는 감사 결과), 폐기한 규칙의 대기 닫기, 재검증은 issue 없음.
 - `SyncCheckRequesterTests` 6개: 반영 중인 규칙 전부와 마지막 성공 수집 기준으로 넣기, 대기 중 SYNC에 합류, 데이터가 그대로면 성공한 SYNC 재사용·바뀌면 새로 넣기, 확인 대기가 있으면 주기 구간마다 새로 넣기, 반영 중인 규칙이 없으면 넣지 않기, 시험에서 주기 작업이 꺼져 있음.
 - `CheckResultCreateTests` 3개: 판정 결과로 만든 검사 결과를 JPA로 저장(규칙·후보 대상, 건수, null 값 표본, 직전 결과), 잘못된 ID 거절.

@@ -35,6 +35,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +86,7 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
 
     static final int SAMPLE_LIMIT = 20;
     static final String NOT_ACTIVE = "반영 중인 규칙이 아닙니다.";
+    static final String MANUAL_LINK = "관리자가 수동으로 연결함";
 
     private final CheckRunRepository runs;
     private final CheckResultRepository results;
@@ -182,7 +184,7 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                     skipped.add(new SkippedRule(linkMappingId, plan.skipReason()));
                     continue;
                 }
-                evaluated.add(evaluateRule(rule, plan));
+                evaluated.add(evaluateRule(rule, active.get(linkMappingId).getLinkTypeId(), plan));
             } catch (SkipRule | IllegalArgumentException | IllegalStateException e) {
                 // 규칙 하나의 입력·데이터 문제다. DB 오류(DataAccessException)는 여기서 잡지 않아 검사 전체가 실패한다.
                 String reason =
@@ -305,7 +307,7 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         return "SYNC".equals(triggerKind) || "MANUAL".equals(triggerKind);
     }
 
-    private RuleEvaluated evaluateRule(LinkMappingRule rule, RulePlan plan) {
+    private RuleEvaluated evaluateRule(LinkMappingRule rule, long linkTypeId, RulePlan plan) {
         List<CheckRow> sourceRows =
                 rows(rule.sourceType(), rule.sourceResourceIds(), rule.sourceFilter(), "출발");
         List<CheckRow> targetRows =
@@ -314,7 +316,41 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
                 engine.evaluate(
                         new CheckInput(rule.input(), sourceRows, targetRows),
                         rule.sourceType().id() == rule.targetType().id());
-        return new RuleEvaluated(evaluation, samples(evaluation), plan);
+        Map<Long, List<Long>> manualTargets = objects.manualLinkTargets(linkTypeId);
+        int manualMatched = 0;
+        if (!manualTargets.isEmpty()) {
+            Map<Long, CheckRow> targetById = new HashMap<>();
+            targetRows.forEach(row -> targetById.put(row.objectInstanceId(), row));
+            List<RowResult> rows = new ArrayList<>(evaluation.rows().size());
+            for (RowResult row : evaluation.rows()) {
+                List<Long> targets = manualTargets.get(row.source().objectInstanceId());
+                if (row.outcome() != CheckOutcome.UNMATCHED || targets == null) {
+                    rows.add(row);
+                    continue;
+                }
+                rows.add(manuallyMatched(row, targets, targetById));
+                manualMatched++;
+            }
+            evaluation = new CheckEvaluation(evaluation.rule(), rows);
+        }
+        return new RuleEvaluated(evaluation, samples(evaluation), plan, manualMatched);
+    }
+
+    /**
+     * 규칙으로는 미연결이지만 관리자가 수동으로 이은 출발을 정상으로 바꾼다(366). 수동 연결은 승인 당시 값이 그대로인 동안만 활성이다(값이 바뀌면 연결 재계산이
+     * 끈다). 그래서 활성 수동 연결이 있으면 믿고, 그 행의 문제는 재검증에서 PASSED가 된다. 중복·조건 위반은 규칙이 가리킨 대상의 문제라 바꾸지 않는다.
+     */
+    private static RowResult manuallyMatched(
+            RowResult row, List<Long> targetIds, Map<Long, CheckRow> targetById) {
+        List<MatchedTarget> targets = new ArrayList<>();
+        for (Long id : targetIds) {
+            CheckRow target = targetById.get(id);
+            if (target != null) {
+                targets.add(new MatchedTarget(target, Map.of()));
+            }
+        }
+        return new RowResult(
+                row.source(), CheckOutcome.MATCHED, row.transformedValues(), targets, MANUAL_LINK);
     }
 
     private List<CheckRow> rows(
@@ -419,6 +455,9 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
         result.put("triggerKind", outcome.triggerKind());
         result.put("checkedRuleCount", outcome.evaluated().size());
         result.put(
+                "manualMatchedCount",
+                outcome.evaluated().stream().mapToInt(RuleEvaluated::manualMatched).sum());
+        result.put(
                 "skippedRules",
                 outcome.skipped().stream()
                         .map(
@@ -457,9 +496,15 @@ public class CheckRunJob implements QueuedJobHandler<CheckRunJob.Outcome> {
             ReverificationScope reverificationScope,
             CheckDataBasis dataBasis) {}
 
-    /** 규칙 하나의 판정과 저장할 표본. plan은 issue를 만드는 검사(SYNC·MANUAL)에만 있다. */
+    /**
+     * 규칙 하나의 판정과 저장할 표본. plan은 issue를 만드는 검사(SYNC·MANUAL)에만 있다. manualMatched는 규칙으로는 미연결이지만 활성 수동
+     * 연결이 있어 정상으로 본 출발 수다(366).
+     */
     public record RuleEvaluated(
-            CheckEvaluation evaluation, List<Map<String, Object>> samples, RulePlan plan) {}
+            CheckEvaluation evaluation,
+            List<Map<String, Object>> samples,
+            RulePlan plan,
+            int manualMatched) {}
 
     /** 판정하지 않은 규칙과 이유. 이유에는 원천 값을 넣지 않는다. */
     public record SkippedRule(long linkMappingId, String reason) {}

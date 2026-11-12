@@ -227,6 +227,50 @@ class CheckRunJobTests {
     }
 
     @Test
+    void activeManualLinkTurnsUnmatchedSourceIntoMatched() {
+        long rule = rule("{}");
+        long wo2 = objectId(woType, "eq_code", "E2");
+        long eq1 = objectId(eqType, "code", "E1");
+        long manual =
+                jdbc.sql(
+                                """
+                                insert into object_link (link_type_id, source_object_id, target_object_id, origin, confirmed_by)
+                                values (:type, :source, :target, 'MANUAL', :account) returning id
+                                """)
+                        .param("type", linkType)
+                        .param("source", wo2)
+                        .param("target", eq1)
+                        .param("account", accountId)
+                        .query(Long.class)
+                        .single();
+        long runId = queue("MANUAL", rule);
+
+        runner.runNext(job);
+
+        // 규칙으로는 미연결인 WO2를 관리자가 이었으므로 정상으로 본다(366). 중복인 WO3은 그대로다.
+        CheckResult result = resultsOf(runId).getFirst();
+        assertThat(
+                        List.of(
+                                result.getTotalCount(),
+                                result.getMatchedCount(),
+                                result.getUnmatchedCount(),
+                                result.getDuplicateCount()))
+                .containsExactly(3, 2, 0, 1);
+        assertThat(result.getSampleRows())
+                .extracting(s -> s.get("classification"))
+                .containsExactly("DUPLICATE");
+
+        // 수동 연결이 꺼지면 다시 미연결이다.
+        jdbc.sql(
+                        "update object_link set status = 'INACTIVE', inactivated_at = now() where id = :id")
+                .param("id", manual)
+                .update();
+        long next = queue("MANUAL", rule);
+        runner.runNext(job);
+        assertThat(resultsOf(next).getFirst().getUnmatchedCount()).isEqualTo(1);
+    }
+
+    @Test
     void linksPreviousResultOfSameRuleRevision() {
         long rule = rule("{}");
         long first = queue("MANUAL", rule);
@@ -809,6 +853,19 @@ class CheckRunJobTests {
         return jdbc.sql("select error_message from check_run where id = :id")
                 .param("id", runId)
                 .query(String.class)
+                .single();
+    }
+
+    private long objectId(long type, String property, String value) {
+        return jdbc.sql(
+                        """
+                        select id from object_instance
+                        where object_type_id = :type and properties->>:property = :value
+                        """)
+                .param("type", type)
+                .param("property", property)
+                .param("value", value)
+                .query(Long.class)
                 .single();
     }
 }

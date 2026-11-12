@@ -14,27 +14,22 @@ import com.axcore.platform.ontology.domain.ProposalItemKind;
 import com.axcore.platform.ontology.dto.ApplyCommand;
 import com.axcore.platform.ontology.dto.ApplyResult;
 import com.axcore.platform.ontology.dto.LinkRecomputeResult;
+import com.axcore.platform.ontology.dto.LinkRuleApproved;
 import com.axcore.platform.ontology.repository.LinkMappingConditionRepository;
 import com.axcore.platform.ontology.repository.LinkMappingRepository;
 import com.axcore.platform.ontology.repository.LinkTypeRepository;
 import com.axcore.platform.ontology.repository.ObjectTypeRepository;
-import com.axcore.platform.ontology.repository.RuleLinkRepository;
-import com.axcore.platform.ontology.repository.RuleLinkRepository.StoredLink;
-import com.axcore.platform.ontology.service.HeldItemRecorder;
-import com.axcore.platform.ontology.service.HeldItemRecorder.NewHeldItem;
 import com.axcore.platform.ontology.service.LinkRecomputeService;
 import com.axcore.platform.ontology.service.LinkRecomputeService.LinkRuleNotComputableException;
-import com.axcore.platform.ontology.service.LinkRecomputeService.UnlinkedSource;
 import com.axcore.platform.ontology.service.ProposalApplier;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 /**
@@ -46,9 +41,12 @@ import org.springframework.stereotype.Component;
  *   <li>같은 규칙 코드의 ACTIVE 개정본을 RETIRED로 바꾸고 다음 번호의 개정본과 비교 항목을 만든다(결정 U6, 이전 개정본은 보존).
  *   <li>그 관계 유형의 연결을 다시 계산한다({@link LinkRecomputeService#recomputeRules}). 옛 개정본 연결도 새 개정본 기준으로
  *       바뀐다.
- *   <li>새 규칙으로 연결되지 않은 출발 객체를 보류 건으로 남긴다(2026-11-09 결정 (a), 시나리오 2 W23 → E023). issue는 만들지 않는다(결정
- *       문서 8장: 미연결 issue는 SYNC 검사만).
+ *   <li>커밋 뒤 SYNC 검사를 넣도록 알린다({@link LinkRuleApproved}).
  * </ol>
+ *
+ * <p>이어지지 않은 출발은 보류 건(held_item)으로 남기지 않는다(366). 미연결은 SYNC 검사가 판정해 문제(issue)로 남기고, 관리자는 원천 수정·규칙
+ * 개정·문제에서의 수동 연결로 고친다. 승인 반영에는 SYNC의 보호 장치(적재 전·복구 중 건너뛰기, 원천 사이 확인 대기)가 없어, 여기서 기록하면 곧 이어질 출발까지
+ * 미연결로 남기 때문이다.
  *
  * <p>조건은 {@code conditions[]} {sourceProperty, targetProperty, operator(EQ), sourceTransforms,
  * targetTransforms}로, 속성은 {@code 유형코드.속성코드} 또는 {@code 속성코드}로 가리킨다. 출발·도착 조건(filter)은 {@code {}} 또는
@@ -67,8 +65,7 @@ class LinkRuleApplier implements ProposalApplier {
     private final LinkMappingRepository rules;
     private final LinkMappingConditionRepository conditions;
     private final LinkRecomputeService recompute;
-    private final HeldItemRecorder heldItems;
-    private final RuleLinkRepository ruleLinks;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     @Override
@@ -171,70 +168,14 @@ class LinkRuleApplier implements ProposalApplier {
         changes.add(ChangeEntry.insert("link_mapping", Map.of("id", created.getId()), after));
 
         LinkRecomputeResult links;
-        List<UnlinkedSource> unlinked;
         try {
             links = recompute.recomputeRules(List.of(created.getId()));
-            unlinked = recompute.unlinkedSources(created.getId());
         } catch (LinkRuleNotComputableException e) {
             throw ApplySupport.invalid(FIELD, e.getMessage());
         }
-
-        // 이전 개정본 등에서 열어 둔 보류 건 중, 재계산 뒤 이 관계 유형의 규칙 연결이 있는 출발은 닫는다(2026-11-09 결정 (a)).
-        // 근거가 이 개정본인 연결만 보지 않는다. 같은 쌍을 원하는 다른 규칙 코드가 근거를 유지하면(소유 규칙 유지) 이번 승인으로
-        // 이어졌어도 근거가 다르다. 열어 두면 관리자가 238에서 승인할 때 같은 쌍의 수동 연결을 또 만들려다 충돌한다.
-        // 이번 계산에서 생기거나 바뀐 연결을 먼저 근거로 쓴다. 그 밖의 기존 연결(예: 수집이 이미 이었지만 자동 해소가 아직 없어 열린 건)로
-        // 닫을 때는 메모를 달리한다. 출발마다 연결이 여럿이면 가장 작은 ID를 골라 실행마다 같게 한다.
-        Set<Long> changedLinks = new HashSet<>(links.activatedLinkIds());
-        changedLinks.addAll(links.updatedLinkIds());
-        Map<Long, Long> changedBySource = new LinkedHashMap<>();
-        Map<Long, Long> existingBySource = new LinkedHashMap<>();
-        for (StoredLink link : ruleLinks.linksOf(linkType.getId())) {
-            if (link.active() && link.isRule()) {
-                (changedLinks.contains(link.id()) ? changedBySource : existingBySource)
-                        .merge(link.sourceObjectId(), link.id(), Math::min);
-            }
-        }
-        existingBySource.keySet().removeAll(changedBySource.keySet());
-        List<Long> closedHeldItemIds = new ArrayList<>();
-        closedHeldItemIds.addAll(
-                heldItems.closeLinkedByRule(
-                        linkType.getId(),
-                        changedBySource,
-                        command.decidedBy(),
-                        "규칙 " + code + " 개정본 " + revision + " 승인으로 연결됨"));
-        closedHeldItemIds.addAll(
-                heldItems.closeLinkedByRule(
-                        linkType.getId(),
-                        existingBySource,
-                        command.decidedBy(),
-                        "규칙 " + code + " 개정본 " + revision + " 승인 때 이미 규칙 연결이 있어 닫음"));
-
-        // 열린 보류 건은 한 번 읽는다(대상 표가 적재 전이면 출발 거의 전부가 보류 후보가 된다).
-        Set<Long> open = heldItems.openSourceObjectIds(linkType.getId());
-        List<NewHeldItem> toHold = new ArrayList<>();
-        for (UnlinkedSource item : unlinked) {
-            if (open.contains(item.sourceObjectId())) {
-                continue;
-            }
-            toHold.add(
-                    new NewHeldItem(
-                            command.proposalItemId(),
-                            created.getId(),
-                            linkType.getId(),
-                            item.sourceObjectId(),
-                            item.rawValue(),
-                            item.transformedValue(),
-                            item.reason()));
-        }
-        List<Long> heldItemIds = heldItems.holdAll(toHold);
-        for (Long id : closedHeldItemIds) {
-            changes.add(
-                    ChangeEntry.update(
-                            "held_item",
-                            Map.of("id", id),
-                            Map.of("status", "HELD"),
-                            Map.of("status", "APPROVED")));
-        }
+        // 이어지지 않은 출발은 보류 건으로 남기지 않는다. 미연결 판정·기록은 SYNC 검사 → 문제(issue) 한 곳에서만 한다(366). 커밋 뒤 SYNC를
+        // 바로 넣어 새 개정본의 판정이 다음 주기를 기다리지 않게 한다.
+        events.publishEvent(new LinkRuleApproved(created.getId()));
 
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("ruleCode", code);
@@ -243,11 +184,8 @@ class LinkRuleApplier implements ProposalApplier {
         summary.put("linksActivated", links.activatedLinkIds().size());
         summary.put("linksUpdated", links.updatedLinkIds().size());
         summary.put("linksInactivated", links.inactivatedLinkIds().size());
-        summary.put("heldCount", heldItemIds.size());
-        summary.put("heldClosedCount", closedHeldItemIds.size());
-        summary.put("closedHeldItemIds", closedHeldItemIds);
         return new ApplyResult(
-                "link_mapping", created.getId(), heldItemIds, List.of(), summary, changes);
+                "link_mapping", created.getId(), List.of(), List.of(), summary, changes);
     }
 
     /**

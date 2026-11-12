@@ -1,6 +1,8 @@
 package com.axcore.platform.check.repository;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -53,6 +55,33 @@ public class CheckObjectReader {
                                         json.readValue(rs.getString("source_key"), MAP),
                                         json.readValue(rs.getString("properties"), MAP)))
                 .list();
+    }
+
+    /**
+     * 관계 유형의 활성 수동 연결(origin=MANUAL)을 출발 객체별 도착 객체 ID로 읽는다(366). 양 끝 객체가 모두 ACTIVE인 것만이다. 검사는 규칙으로
+     * 미연결인 출발에 이 연결이 있으면 정상으로 본다.
+     */
+    public Map<Long, List<Long>> manualLinkTargets(long linkTypeId) {
+        Map<Long, List<Long>> targets = new LinkedHashMap<>();
+        jdbc.sql(
+                        """
+                        select l.source_object_id, l.target_object_id
+                        from object_link l
+                        join object_instance s on s.id = l.source_object_id
+                        join object_instance t on t.id = l.target_object_id
+                        where l.link_type_id = :type and l.origin = 'MANUAL' and l.status = 'ACTIVE'
+                          and s.status = 'ACTIVE' and t.status = 'ACTIVE'
+                        order by l.source_object_id, l.target_object_id
+                        """)
+                .param("type", linkTypeId)
+                .query(
+                        (rs, row) ->
+                                targets.computeIfAbsent(
+                                                rs.getLong("source_object_id"),
+                                                id -> new ArrayList<>())
+                                        .add(rs.getLong("target_object_id")))
+                .list();
+        return targets;
     }
 
     /** 객체 하나. properties의 키는 속성 코드다(유형 코드를 붙이지 않음). */

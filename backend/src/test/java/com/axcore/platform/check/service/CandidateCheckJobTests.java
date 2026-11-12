@@ -222,7 +222,7 @@ class CandidateCheckJobTests {
                         .single();
         long first = fixtures.insertObject(mapping, type, "1", "{\"code\":\"SHARED\"}", "ACTIVE");
         long second = fixtures.insertObject(mapping, type, "2", "{\"code\":\"SHARED\"}", "ACTIVE");
-        long alone = fixtures.insertObject(mapping, type, "3", "{\"code\":\"ALONE\"}", "ACTIVE");
+        fixtures.insertObject(mapping, type, "3", "{\"code\":\"ALONE\"}", "ACTIVE");
         long sync = fixtures.insertSync(dataSource, resource, admin, "SUCCEEDED", Instant.now());
         var approval =
                 decisions.decide(
@@ -241,16 +241,13 @@ class CandidateCheckJobTests {
                                 .query((rs, rowNum) -> List.of(rs.getLong(1), rs.getLong(2)))
                                 .list())
                 .containsExactlyInAnyOrder(List.of(first, second), List.of(second, first));
+        // 승인 반영은 보류 건을 만들지 않는다(366). 혼자인 객체는 아래 SYNC가 판정한다.
         assertThat(
-                        jdbc.sql(
-                                        """
-                                select source_object_id, hold_reason from held_item
-                                where link_mapping_id=:rule
-                                """)
+                        jdbc.sql("select count(*) from held_item where link_mapping_id=:rule")
                                 .param("rule", rule)
-                                .query((rs, rowNum) -> Map.entry(rs.getLong(1), rs.getString(2)))
-                                .list())
-                .containsExactly(Map.entry(alone, "비교값이 같은 도착 객체가 없음"));
+                                .query(Long.class)
+                                .single())
+                .isZero();
 
         long syncRun =
                 fixtures.insertQueuedRun(
