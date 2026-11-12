@@ -126,6 +126,7 @@ class DefinitionAppliersTests {
                                                 "resourceKey", resourceKey,
                                                 "column", "eq_name")),
                         Map.of("code", "note", "name", "비고", "dataType", "STRING")));
+        payload.put("displayPropertyCode", "name");
         long proposal = proposal("OBJECT_TYPE");
 
         ApplyResult result = apply(proposal, ProposalItemKind.OBJECT_TYPE, payload);
@@ -167,7 +168,45 @@ class DefinitionAppliersTests {
         assertThat(result.changes()).hasSize(1 + 3 + 1 + 2);
         assertThat(result.summary())
                 .containsEntry("propertyCount", 3)
-                .containsEntry("propertyMappingCount", 2);
+                .containsEntry("propertyMappingCount", 2)
+                .containsEntry("displayPropertyCode", "name");
+        // 대표 속성이 지정돼야 수집한 객체의 표시 이름이 원천 키 값이 아니라 이름 컬럼 값이 된다
+        assertThat(
+                        count(
+                                "object_type t join property_definition p on p.id = t.display_property_id",
+                                "t.id = " + result.targetId() + " and p.code = 'name'"))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void displayPropertyMustBeABundledNormalProperty() {
+        String code = "DISPLAY_" + suffix().substring(0, 8).toUpperCase();
+        Map<String, Object> restricted = new LinkedHashMap<>();
+        restricted.put("code", code);
+        restricted.put("name", "작업자");
+        restricted.put(
+                "properties",
+                List.of(
+                        Map.of(
+                                "code", "worker_name",
+                                "name", "작업자 이름",
+                                "dataType", "STRING",
+                                "sensitivity", "RESTRICTED")));
+        restricted.put("displayPropertyCode", "worker_name");
+
+        assertApplyError(
+                () -> apply(proposal("OBJECT_TYPE"), ProposalItemKind.OBJECT_TYPE, restricted),
+                ApplyErrorCode.APPLY_PAYLOAD_INVALID,
+                "payload.displayPropertyCode");
+        assertThat(count("object_type", "code = '" + code + "'")).isZero();
+
+        Map<String, Object> missing = new LinkedHashMap<>(restricted);
+        missing.put("displayPropertyCode", "no_such_property");
+        assertApplyError(
+                () -> apply(proposal("OBJECT_TYPE"), ProposalItemKind.OBJECT_TYPE, missing),
+                ApplyErrorCode.APPLY_REFERENCE_MISSING,
+                "payload.displayPropertyCode");
+        assertThat(count("object_type", "code = '" + code + "'")).isZero();
     }
 
     @Test

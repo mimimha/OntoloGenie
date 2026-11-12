@@ -40,6 +40,7 @@ const recordKeyLabels: Record<string, string> = {
   reason: '제안 이유',
   name: '이름',
   code: '코드',
+  displayPropertyCode: '대표 속성',
   description: '설명',
   originalText: '원문',
   sourceText: '원문',
