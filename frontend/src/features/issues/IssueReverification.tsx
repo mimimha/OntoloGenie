@@ -31,7 +31,7 @@ function RunResults({
   title,
 }: {
   runId: number
-  filter: Parameters<typeof fetchRunResults>[1]
+  filter: Exclude<Parameters<typeof fetchRunResults>[1], undefined>
   title: string
 }) {
   const [page, setPage] = useState(0)

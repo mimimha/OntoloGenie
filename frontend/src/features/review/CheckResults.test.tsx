@@ -171,12 +171,17 @@ test('검사 대상이 아닌 종류는 검사 결과 없이 승인할 수 있�
   expect(requested).not.toHaveBeenCalled()
 })
 
-test('수동 실행 API 연결 전에는 재검사를 비활성화하고 쓰기 요청을 보내지 않는다', async () => {
+test('후보 시험에서 반영 규칙 수동 검사로 이동하며 후보를 수동 검사로 보내지 않는다', async () => {
   const write = vi.fn(() => HttpResponse.json({ data: {} }))
   server.use(http.post('/api/v1/*', write))
   open()
   await screen.findByRole('region', { name: '정합성 검사' })
-  expect(screen.getByRole('button', { name: '함께 재검사' })).toBeDisabled()
+  expect(
+    screen.getByRole('link', { name: '수동 검사·실행 목록' }),
+  ).toHaveAttribute('href', '/admin/checks')
+  expect(
+    screen.getByText(/승인 전 후보 시험은 제안을 저장·수정할 때/),
+  ).toBeInTheDocument()
   expect(write).not.toHaveBeenCalled()
 })
 
