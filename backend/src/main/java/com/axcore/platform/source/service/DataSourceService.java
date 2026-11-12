@@ -7,7 +7,6 @@ import com.axcore.platform.source.domain.CredentialPurpose;
 import com.axcore.platform.source.domain.DataSource;
 import com.axcore.platform.source.domain.RecoveryReason;
 import com.axcore.platform.source.domain.SourceKind;
-import com.axcore.platform.source.domain.SourceResource;
 import com.axcore.platform.source.domain.SyncStrategy;
 import com.axcore.platform.source.dto.CdcReconnectResponse;
 import com.axcore.platform.source.dto.CredentialRequest;
@@ -166,10 +165,8 @@ public class DataSourceService {
                             "expected",
                             RecoveryReason.SOURCE_CHANGED.name()));
         }
-        List<SourceResource> tables =
-                resourceRepository.findByDataSourceIdAndSyncStrategy(id, SyncStrategy.CDC);
-        tables.forEach(SourceResource::requireFullReload);
-        return new CdcReconnectResponse(id, RecoveryReason.SLOT_LOST.name(), tables.size());
+        int tables = resourceRepository.requireFullReloadOfTables(id, SyncStrategy.CDC);
+        return new CdcReconnectResponse(id, RecoveryReason.SLOT_LOST.name(), tables);
     }
 
     DataSource findDataSource(Long id) {

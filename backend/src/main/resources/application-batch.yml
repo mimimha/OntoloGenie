@@ -51,6 +51,8 @@ axcore:
       stale-after: 3m
       # 처리 장애 뒤 같은 위치부터 다시 시도하기까지 기다리는 시간.
       retry-delay: 5s
+      # 같은 위치에서 반영이 이만큼 연속으로 실패하면(다시 시도해도 같은 오류) 그 원천을 복구(APPLY_FAILED)로 돌린다. 약 retry-delay x 횟수 뒤.
+      max-apply-failures: 5
       # 소비할 원천(CDC 표가 있는 원천)을 다시 찾는 간격, 복구 중인 원천이 풀렸는지 확인하는 간격.
       refresh-interval: 30s
   check:

@@ -10,6 +10,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -34,6 +35,21 @@ public interface SourceResourceRepository extends JpaRepository<SourceResource, 
     /** 원천 하나의 CDC 테이블. 복구가 필요하면 모두 다시 읽기 대상으로 표시한다(198-5·199). */
     List<SourceResource> findByDataSourceIdAndSyncStrategy(
             Long dataSourceId, SyncStrategy syncStrategy);
+
+    /**
+     * 그 원천의 CDC 테이블을 모두 다시 읽기 대상으로 표시한다(복구 199·재연결, S15P31C106-364). 엔티티를 바꾸는 방식은 이미 비어 있는 행에
+     * UPDATE를 보내지 않아 행을 잠그지 않는다. 그러면 그 사이 끝나는 전체 읽기 저장이 복구 표시를 못 보고 {@code loaded_lsn}을 채울 수 있다.
+     * 그래서 값과 관계없이 모든 행을 갱신해 잠근다. 부르는 쪽은 먼저 {@code cdc_offset}을 잠근다(잠금 순서 cdc_offset →
+     * source_resource).
+     *
+     * @return 표시한 테이블 수
+     */
+    @Modifying(flushAutomatically = true)
+    @Query(
+            "update SourceResource r set r.loadedLsn = null"
+                    + " where r.dataSourceId = :dataSourceId and r.syncStrategy = :strategy")
+    int requireFullReloadOfTables(
+            @Param("dataSourceId") Long dataSourceId, @Param("strategy") SyncStrategy strategy);
 
     /** 매핑 변경과 수집이 같은 테이블을 동시에 다루지 않도록 행을 잠근다. 수집도 같은 행을 잠그고 읽는다. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -39,6 +39,21 @@ public class CdcConsumerRepository {
      *
      * @throws IllegalStateException 그 토픽이 다른 원천의 것으로 저장되어 있다
      */
+    /**
+     * 그 원천의 소비 상태 행을 모두 잠근다(전체 읽기 저장, S15P31C106-364). CDC 반영·복구 표시·재연결이 cdc_offset →
+     * source_resource 순서로 잠그므로 전체 읽기 저장도 원천 테이블보다 먼저 이 행을 잡는다. 아직 소비 전이라 행이 없으면 아무것도 잠그지 않는다.
+     */
+    public void lockSourceOffsets(long dataSourceId) {
+        jdbc.sql(
+                        """
+                        select 1 from cdc_offset where data_source_id = :source
+                        order by topic, partition_no for update
+                        """)
+                .param("source", dataSourceId)
+                .query()
+                .listOfRows();
+    }
+
     public OffsetState lockOffset(long dataSourceId, String topic) {
         jdbc.sql(
                         """
