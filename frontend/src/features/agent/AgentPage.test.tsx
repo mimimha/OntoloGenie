@@ -88,10 +88,24 @@ test('대화 목록을 최근 순으로 보여 주고 가장 최근 대화를 �
   expect(await screen.findByText(EMPTY_MESSAGE)).toBeInTheDocument()
 })
 
-test('답변의 정보별 결과와 기준 시점을 구분해 보여 준다', async () => {
+test('답변은 바로 보이고 출처와 조회 상태는 기본으로 접혀 있으며 펼치고 접을 수 있다', async () => {
+  const user = userEvent.setup()
   renderAgentPage('/agent?conversation=1')
 
-  expect(await screen.findByText(SAMPLE_ANSWER)).toBeInTheDocument()
+  const answer = await screen.findByText(SAMPLE_ANSWER)
+  expect(answer).toBeVisible()
+  const toggle = screen.getByText('출처 및 조회 상태')
+  const details = toggle.closest('details')!
+  expect(details).not.toHaveAttribute('open')
+  expect(within(details).getByText('4건')).toBeVisible()
+  const snapshotNotice = within(details).getByText(
+    '응답 시점의 값 · 이후 수정은 다시 질문해 확인',
+  )
+  expect(snapshotNotice).not.toBeVisible()
+  expect(screen.getByText('최신 데이터 반영 중')).toBeVisible()
+
+  await user.click(toggle)
+  expect(details).toHaveAttribute('open')
   // 정보별 결과는 정보 하나가 한 줄인 표다(머리줄 + 4줄).
   expect(
     within(screen.getByRole('table', { name: '정보별 결과' })).getAllByRole(
@@ -103,7 +117,12 @@ test('답변의 정보별 결과와 기준 시점을 구분해 보여 준다', a
   expect(screen.getByText('권한 없음')).toBeInTheDocument()
   expect(screen.getByText('확인하지 못함')).toBeInTheDocument()
   expect(screen.getAllByText('기준 시점 확인 불가')).toHaveLength(2)
-  expect(screen.getByText('최신 데이터 반영 중')).toBeInTheDocument()
+  expect(snapshotNotice).toBeVisible()
+
+  await user.click(toggle)
+  expect(details).not.toHaveAttribute('open')
+  expect(snapshotNotice).not.toBeVisible()
+  expect(answer).toBeVisible()
 })
 
 test('질문을 보내면 처리 단계를 보여 주다가 답변으로 바꾼다', async () => {
@@ -493,6 +512,7 @@ test('이름·유형이 없는 예전 기록으로 들어오면 참고 객체 �
 })
 
 test('답변의 정보별 결과에서 출처 객체와 실행 이력으로 이동할 수 있다', async () => {
+  const user = userEvent.setup()
   server.use(
     http.get('/api/v1/agent/conversations/:id/messages', () =>
       HttpResponse.json({
@@ -529,6 +549,7 @@ test('답변의 정보별 결과에서 출처 객체와 실행 이력으로 이�
   )
   renderAgentPage('/agent?conversation=1')
 
+  await user.click(await screen.findByText('출처 및 조회 상태'))
   expect(
     await screen.findByRole('link', { name: '#301 열기 ↗' }),
   ).toHaveAttribute('href', '/explorer?object=301')
@@ -584,6 +605,9 @@ test('Agent 답변의 마크다운은 그려 보이고, 사용자 질문은 글�
   renderAgentPage('/agent?conversation=1')
 
   const answer = await screen.findByRole('article', { name: 'Agent 답변' })
+  expect(
+    within(answer).queryByText('출처 및 조회 상태'),
+  ).not.toBeInTheDocument()
   // 별표 대신 굵은 글씨로, "- " 줄은 목록으로 그린다.
   expect(within(answer).getByText('최근 이력').tagName).toBe('STRONG')
   expect(answer).not.toHaveTextContent('**')
@@ -617,8 +641,10 @@ test('Agent 답변의 마크다운은 그려 보이고, 사용자 질문은 글�
 })
 
 test('실행 이력 도구가 아닌 결과에는 실행 이력 링크를 달지 않는다', async () => {
+  const user = userEvent.setup()
   renderAgentPage('/agent?conversation=1')
 
+  await user.click(await screen.findByText('출처 및 조회 상태'))
   expect(
     await screen.findByRole('link', { name: '#4101 열기 ↗' }),
   ).toHaveAttribute('href', '/explorer?object=4101')

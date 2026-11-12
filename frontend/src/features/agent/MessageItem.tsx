@@ -136,7 +136,7 @@ function MessageItem({ message }: { message: AgentMessage }) {
           답변을 끝내지 못했어요. {message.errorMessage}
         </p>
       )}
-      <div className="break-words">
+      <div className="text-base leading-relaxed break-words">
         <Markdown remarkPlugins={answerPlugins} components={answerMarkdown}>
           {message.content}
         </Markdown>
@@ -146,9 +146,22 @@ function MessageItem({ message }: { message: AgentMessage }) {
       )}
       {actions.length > 0 && <ActionResultList actions={actions} />}
       {results.length > 0 && (
-        <>
-          {/* 정보별 결과를 표로 보여 준다. 정보마다 결과·기준 시점·이동 링크를 같은 칸에 맞춰 비교하기 쉽게 한다. */}
-          <div className="mt-2">
+        <details className="group mt-4 border-t border-slate-100 pt-3">
+          <summary className="flex cursor-pointer list-none items-center gap-2 rounded text-xs text-slate-500 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-500 [&::-webkit-details-marker]:hidden">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+            >
+              <path d="m9 5 7 7-7 7" />
+            </svg>
+            <span>출처 및 조회 상태</span>
+            <span className="text-slate-400">{results.length}건</span>
+          </summary>
+          <div className="mt-3">
             <DataTable label="정보별 결과">
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
@@ -202,7 +215,7 @@ function MessageItem({ message }: { message: AgentMessage }) {
           <p className="mt-1 text-xs text-slate-500">
             {ANSWER_SNAPSHOT_NOTICE}
           </p>
-        </>
+        </details>
       )}
     </article>
   )
