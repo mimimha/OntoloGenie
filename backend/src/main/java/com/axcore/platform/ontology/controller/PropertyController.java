@@ -5,9 +5,11 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.response.ApiResponse;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.ontology.domain.DefinitionEditAction;
 import com.axcore.platform.ontology.dto.PropertyCreateRequest;
 import com.axcore.platform.ontology.dto.PropertyResponse;
 import com.axcore.platform.ontology.dto.PropertyUpdateRequest;
+import com.axcore.platform.ontology.service.DefinitionEditRecorder;
 import com.axcore.platform.ontology.service.PropertyService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -35,6 +37,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PropertyController {
 
     private final PropertyService propertyService;
+    private final DefinitionEditRecorder editRecorder;
 
     @GetMapping("/object-types/{id}/properties")
     public ApiResponse<List<PropertyResponse>> findProperties(
@@ -51,7 +54,13 @@ public class PropertyController {
             @Valid @RequestBody PropertyCreateRequest request,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        return ApiResponse.of(propertyService.create(objectTypeId, request));
+        return ApiResponse.of(
+                editRecorder.create(
+                        loginAccount,
+                        DefinitionEditAction.CREATE_PROPERTY,
+                        editRecorder.input("objectTypeId", objectTypeId, request),
+                        () -> propertyService.create(objectTypeId, request),
+                        PropertyResponse::id));
     }
 
     @PatchMapping("/properties/{id}")
@@ -60,7 +69,13 @@ public class PropertyController {
             @Valid @RequestBody PropertyUpdateRequest request,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        return ApiResponse.of(propertyService.update(id, request));
+        return ApiResponse.of(
+                editRecorder.update(
+                        loginAccount,
+                        DefinitionEditAction.UPDATE_PROPERTY,
+                        id,
+                        editRecorder.input(id, request),
+                        () -> propertyService.update(id, request)));
     }
 
     @DeleteMapping("/properties/{id}")
@@ -69,7 +84,15 @@ public class PropertyController {
             @PathVariable("id") @Min(1) long id,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        propertyService.delete(id);
+        editRecorder.delete(
+                loginAccount,
+                DefinitionEditAction.DELETE_PROPERTY,
+                id,
+                editRecorder.input(id, null),
+                () -> {
+                    propertyService.delete(id);
+                    return null;
+                });
     }
 
     private static void requireAdmin(LoginAccount loginAccount) {

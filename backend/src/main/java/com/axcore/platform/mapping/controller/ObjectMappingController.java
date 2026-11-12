@@ -11,6 +11,8 @@ import com.axcore.platform.mapping.dto.ObjectMappingSearchRequest;
 import com.axcore.platform.mapping.dto.ObjectMappingUpdateRequest;
 import com.axcore.platform.mapping.dto.ObjectMappingUpdateResponse;
 import com.axcore.platform.mapping.service.ObjectMappingService;
+import com.axcore.platform.ontology.domain.DefinitionEditAction;
+import com.axcore.platform.ontology.service.DefinitionEditRecorder;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import java.util.List;
@@ -40,6 +42,7 @@ public class ObjectMappingController {
     private static final int DEFAULT_PAGE_SIZE = 20;
 
     private final ObjectMappingService mappingService;
+    private final DefinitionEditRecorder editRecorder;
 
     @GetMapping
     public ApiResponse<List<ObjectMappingResponse>> search(
@@ -61,7 +64,13 @@ public class ObjectMappingController {
             @Valid @RequestBody ObjectMappingCreateRequest request,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        return ApiResponse.of(mappingService.create(request));
+        return ApiResponse.of(
+                editRecorder.create(
+                        loginAccount,
+                        DefinitionEditAction.CREATE_OBJECT_MAPPING,
+                        editRecorder.input(null, request),
+                        () -> mappingService.create(request),
+                        ObjectMappingResponse::id));
     }
 
     @PatchMapping("/{id}")
@@ -70,7 +79,13 @@ public class ObjectMappingController {
             @Valid @RequestBody ObjectMappingUpdateRequest request,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        return ApiResponse.of(mappingService.update(id, request));
+        return ApiResponse.of(
+                editRecorder.update(
+                        loginAccount,
+                        DefinitionEditAction.UPDATE_OBJECT_MAPPING,
+                        id,
+                        editRecorder.input(id, request),
+                        () -> mappingService.update(id, request)));
     }
 
     private static void requireAdmin(LoginAccount loginAccount) {

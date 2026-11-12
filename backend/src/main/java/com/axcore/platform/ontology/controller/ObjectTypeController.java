@@ -5,10 +5,12 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.response.ApiResponse;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.ontology.domain.DefinitionEditAction;
 import com.axcore.platform.ontology.dto.ObjectTypeCreateRequest;
 import com.axcore.platform.ontology.dto.ObjectTypeResponse;
 import com.axcore.platform.ontology.dto.ObjectTypeSearchRequest;
 import com.axcore.platform.ontology.dto.ObjectTypeUpdateRequest;
+import com.axcore.platform.ontology.service.DefinitionEditRecorder;
 import com.axcore.platform.ontology.service.ObjectTypeService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -40,6 +42,7 @@ public class ObjectTypeController {
     private static final int DEFAULT_PAGE_SIZE = 20;
 
     private final ObjectTypeService objectTypeService;
+    private final DefinitionEditRecorder editRecorder;
 
     @GetMapping
     public ApiResponse<List<ObjectTypeResponse>> search(
@@ -66,7 +69,13 @@ public class ObjectTypeController {
             @Valid @RequestBody ObjectTypeCreateRequest request,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        return ApiResponse.of(objectTypeService.create(request));
+        return ApiResponse.of(
+                editRecorder.create(
+                        loginAccount,
+                        DefinitionEditAction.CREATE_OBJECT_TYPE,
+                        editRecorder.input(null, request),
+                        () -> objectTypeService.create(request),
+                        ObjectTypeResponse::id));
     }
 
     @PatchMapping("/{id}")
@@ -75,7 +84,13 @@ public class ObjectTypeController {
             @Valid @RequestBody ObjectTypeUpdateRequest request,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        return ApiResponse.of(objectTypeService.update(id, request));
+        return ApiResponse.of(
+                editRecorder.update(
+                        loginAccount,
+                        DefinitionEditAction.UPDATE_OBJECT_TYPE,
+                        id,
+                        editRecorder.input(id, request),
+                        () -> objectTypeService.update(id, request)));
     }
 
     @DeleteMapping("/{id}")
@@ -84,7 +99,15 @@ public class ObjectTypeController {
             @PathVariable("id") @Min(1) long id,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        objectTypeService.delete(id);
+        editRecorder.delete(
+                loginAccount,
+                DefinitionEditAction.DELETE_OBJECT_TYPE,
+                id,
+                editRecorder.input(id, null),
+                () -> {
+                    objectTypeService.delete(id);
+                    return null;
+                });
     }
 
     private static void requireAdmin(LoginAccount loginAccount) {
