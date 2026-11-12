@@ -1,4 +1,4 @@
-"""Reuse successful full MR test outputs on the same Jenkins node; never reuse verdicts alone."""
+"""Reuse successful full check outputs on the same Jenkins node; never reuse verdicts alone."""
 
 import argparse
 import hashlib
@@ -123,7 +123,7 @@ def restore(work, cache, component, key):
         target = work / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(entry / "outputs" / relative, target)
-    print(f"Reused successful MR outputs: {component}, source={manifest['commit']}, build={manifest['build']}")
+    print(f"Reused successful full check outputs: {component}, source={manifest['commit']}, build={manifest['build']}")
     return True
 
 
@@ -142,7 +142,7 @@ def main():
     if args.action == "publish":
         publish(args.work, args.cache / args.component, args.component, key, args.commit)
     elif not restore(args.work, args.cache / args.component, args.component, key):
-        print("No matching complete successful MR outputs; run tests normally")
+        print("No matching complete successful check outputs; run tests normally")
         return 1
     return 0
 

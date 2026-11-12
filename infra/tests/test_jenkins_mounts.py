@@ -20,7 +20,7 @@ args = sys.argv[1:]
 if Path(sys.argv[0]).name == 'git':
     if args[0] == 'cat-file':
         sys.exit(0 if os.environ['TRACKED_CI'] == '1' else 1)
-    if args[0] == 'rev-parse':
+    if args[0] in ('rev-parse', 'hash-object'):
         print('a' * 40)
         sys.exit(0)
     sys.exit(2)
@@ -69,6 +69,10 @@ class JenkinsMountTests(unittest.TestCase):
         java = self.workspace / "bin/java"
         java.write_text("#!/bin/sh\necho test-java >&2\n")
         java.chmod(0o755)
+        gradle = self.workspace / "backend/gradlew"
+        gradle.write_text("#!/bin/sh\necho full-check >> ../checks-ran\n")
+        gradle.chmod(0o755)
+        (self.workspace / "Jenkinsfile").write_text(PIPELINE.read_text())
         self.calls = self.base / "docker-calls"
         self.environment = {
             **os.environ,
@@ -77,8 +81,7 @@ class JenkinsMountTests(unittest.TestCase):
             "JENKINS_HOME": str(self.base / "jenkins"),
             "TRACKED_CI": "0",
             "DOCKER_CALLS": str(self.calls),
-            "RESULT_ACTION": "publish",
-            "RESULT_COMPONENT": "backend",
+            "CHECK_COMPONENT": "backend",
         }
         self.source = PIPELINE.read_text()
 
@@ -87,6 +90,7 @@ class JenkinsMountTests(unittest.TestCase):
         return section.split("'''", 2)[1]
 
     def run_shell(self, marker):
+        self.environment["CHECK_POLICY_BODY"] = self.shell("def componentCheckScript(")
         return subprocess.run(
             ["bash", "-e", "-c", self.shell(marker)],
             cwd=self.workspace, env=self.environment,
@@ -131,10 +135,9 @@ class JenkinsMountTests(unittest.TestCase):
         self.assertEqual(len(self.docker_calls()), 1)
 
     def test_old_mr_cache_publish_and_restore_never_invoke_docker(self):
-        for action in ("publish", "restore"):
-            self.environment["RESULT_ACTION"] = action
-            result = self.run_shell("def runTestResultCache(")
-            self.assertNotEqual(result.returncode, 0)
+        result = self.run_shell("def componentCheckScript(")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.workspace / "checks-ran").exists())
         self.assertFalse((self.workspace / "infra/ci").exists())
         self.assertEqual(self.docker_calls(), [])
 
@@ -143,14 +146,16 @@ class JenkinsMountTests(unittest.TestCase):
         daemon = self.base / "daemon-workspace"
         (daemon / "infra/deploy").mkdir(parents=True)
         self.environment["DAEMON_ROOT"] = str(daemon)
-        for marker in ("stage('Infra check')", "def runTestResultCache("):
-            result = self.run_shell(marker)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertFalse((daemon / "infra/ci").exists())
+        result = self.run_shell("stage('Infra check')")
+        self.assertNotEqual(result.returncode, 0)
+        result = self.run_shell("def componentCheckScript(")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.workspace / "checks-ran").exists())
+        self.assertFalse((daemon / "infra/ci").exists())
 
     def test_supported_cache_uses_existing_sources(self):
         self.add_ci()
-        result = self.run_shell("def runTestResultCache(")
+        result = self.run_shell("def componentCheckScript(")
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = self.docker_calls()
         self.assertEqual(len(calls), 1)
