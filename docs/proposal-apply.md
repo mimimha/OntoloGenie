@@ -75,7 +75,7 @@ AI 제안기는 관리자가 판단하는 단위로 후보를 묶어 보낸다. 
 
 | 종류 | payload에 함께 오는 것 | 반영 |
 | --- | --- | --- |
-| OBJECT_TYPE | `objectMapping` {sourceId, resourceKey, keyColumns}, `properties[]` {code, name, dataType, isIdentifier, isRequired, unit, sensitivity, description, sourceColumn, transformSteps} | 한 번에 `object_type`, `property_definition`(속성마다), `object_source_mapping`, `property_source_mapping`(sourceColumn이 있는 속성마다)을 만든다. 순서는 위 선행 순서와 같다 |
+| OBJECT_TYPE | `objectMapping` {sourceId, resourceKey, keyColumns}, `properties[]` {code, name, dataType, isIdentifier, isRequired, unit, sensitivity, description, sourceColumn, transformSteps} | 한 번에 `object_type`, `property_definition`(속성마다), `object_source_mapping`, `property_source_mapping`(sourceColumn이 있는 속성마다)을 만든다. 순서는 위 선행 순서와 같다. `displayPropertyCode`가 있으면 속성을 만든 뒤 그 속성을 대표 속성으로 지정한다(민감 속성이면 APPLY_PAYLOAD_INVALID, 묶음에 없는 코드면 APPLY_REFERENCE_MISSING) |
 | LINK_RULE | `linkType` {code, name, sourceTypeCode, targetTypeCode, cardinality, description} | `linkTypeCode`의 관계 유형이 없으면 `linkType`으로 먼저 `link_type`을 만들고 규칙을 반영한다. 있으면 `linkType`은 쓰지 않는다 |
 
 - 묶음 안 하나라도 실패하면 묶음 전체가 실패한다(같은 트랜잭션).
@@ -88,7 +88,7 @@ AI 제안기는 관리자가 판단하는 단위로 후보를 묶어 보낸다. 
 
 | 종류 | payload | 만드는 것 |
 | --- | --- | --- |
-| OBJECT_TYPE | `code`, `name`, `description`, `synonyms`, `accessGroup`. 묶음이면 `properties[]`, `objectMapping` | 객체 유형. 묶음이면 속성 → 객체 매핑 → 속성 매핑(`properties[].sourceColumn`이 있는 것만) 순서 |
+| OBJECT_TYPE | `code`, `name`, `description`, `synonyms`, `accessGroup`. 묶음이면 `properties[]`, `objectMapping`, `displayPropertyCode` | 객체 유형. 묶음이면 속성 → 객체 매핑 → 속성 매핑(`properties[].sourceColumn`이 있는 것만) 순서 |
 | PROPERTY | `objectTypeCode`, `code`, `name`, `dataType`, `isRequired`(생략 = false), `isIdentifier`, `unit`, `sensitivity`, `temporalRole`, `constraints`, `description` | 속성 |
 | LINK_TYPE | `code`, `name`, `sourceTypeCode`, `targetTypeCode`, `cardinality`, `description` | 관계 유형. 설명이 비어 있으면 이름을 쓴다(DB 필수 칸) |
 | OBJECT_MAPPING | `objectTypeCode`, `sourceId`, `resourceKey`, `keyColumns` | 켜진 객체 매핑. 그 표를 다시 읽기 대상으로 표시한다(`loaded_lsn = NULL`, 감시 작업이 첫 적재를 넣는다) |

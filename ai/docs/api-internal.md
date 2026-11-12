@@ -54,8 +54,10 @@
 
 | 종류 | `payload` | `evidence`에 더해지는 것 |
 | --- | --- | --- |
-| OBJECT_TYPE | 객체 유형 칸(`code`, `name`, `description`, `synonyms`, `note`, `category`) + `objectMapping` {`sourceId`, `resourceKey`, `keyColumns`} + `properties[]` {`code`, `name`, `dataType`, `description`, `isIdentifier`, `isRequired`, `unit`, `sensitivity`, `sourceColumn`, `transformSteps`} | `objectMapping` {title, reason, items, …}, `properties[]` {code, title, reason, items, confidenceItems, mapping} |
+| OBJECT_TYPE | 객체 유형 칸(`code`, `name`, `description`, `synonyms`, `note`, `category`) + `objectMapping` {`sourceId`, `resourceKey`, `keyColumns`} + `properties[]` {`code`, `name`, `dataType`, `description`, `isIdentifier`, `isRequired`, `unit`, `sensitivity`, `sourceColumn`, `transformSteps`} + `displayPropertyCode`(대표 속성으로 쓸 묶음 속성 코드, 없으면 칸 없음) | `objectMapping` {title, reason, items, …}, `properties[]` {code, title, reason, items, confidenceItems, mapping} |
 | LINK_RULE | 연결 규칙 칸(`code`, `name`, `linkTypeCode`, `pattern`, `conditions`, `sourceFilter`, `description`) + `linkType` {`code`, `name`, `sourceTypeCode`, `targetTypeCode`, `cardinality`, `description`} | 없음(규칙과 관계 유형의 근거가 같음) |
+
+대표 속성(`displayPropertyCode`)은 수집한 객체의 표시 이름이 됩니다. 묶음 속성 중 글자형이고 식별 키·민감 속성이 아닌 이름 성격 컬럼을 고릅니다. 우선순위는 `name` → `*_name`·`*_nm` → 한국어 이름이 '명'·'이름'으로 끝나는 속성('설명' 제외)입니다. 없으면 칸을 보내지 않고, 표시 이름은 원천 키 값이 됩니다. 이 칸은 재분석 지문에서 뺍니다(이 칸이 생기기 전에 승인한 유형이 '변경'으로 다시 올라오지 않게).
 
 - `aiConfidence`는 객체 후보면 객체 유형의, 관계 후보면 연결 규칙의 점수입니다.
 - 묶음 안 구성 후보 하나라도 보류 권고면 묶음도 `holdRecommended=true`이고, `holdReason`은 이유를 ` / `로 잇습니다. 어느 속성 때문인지는 `evidence.properties[].holdRecommended`·`holdReason`에 남습니다.
