@@ -25,8 +25,13 @@ function AuditPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const objectId = Number(searchParams.get('objectId'))
-  const hasObject = Number.isInteger(objectId) && objectId > 0
+  const objectParam = searchParams.get('objectId')
+  const objectId = Number(objectParam)
+  const hasObject =
+    objectParam !== null &&
+    /^\d+$/.test(objectParam) &&
+    Number.isSafeInteger(objectId) &&
+    objectId > 0
 
   function goBack() {
     if (location.key !== 'default') {
@@ -58,8 +63,12 @@ function AuditPage() {
         </button>
 
         <div className="mt-5">
-          {hasObject ? (
-            <ObjectHistory objectId={objectId} />
+          {objectParam !== null && !hasObject ? (
+            <p role="alert" className="text-sm text-red-600">
+              올바른 객체 번호로 실행 이력을 조회해 주세요.
+            </p>
+          ) : hasObject ? (
+            <ObjectHistory key={objectId} objectId={objectId} />
           ) : (
             <ExecutionHistory />
           )}
