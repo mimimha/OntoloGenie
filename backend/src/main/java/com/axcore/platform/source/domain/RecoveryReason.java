@@ -2,9 +2,10 @@ package com.axcore.platform.source.domain;
 
 /**
  * 원천 하나의 CDC 반영을 이어 갈 수 없어 그 원천의 CDC 테이블을 전체 다시 읽어야 하는 이유(V12 {@code cdc_offset.recovery_reason}).
- * 값은 V12 {@code ck_cdc_offset_recovery_reason}과 같아야 한다. 하나라도 빠지면 소비자가 그 행을 읽을 때 실패해 같은 트랜잭션을 끝없이 다시
- * 시도한다. 소비자는 표시만 하고, 다시 읽기 실행은 배치 감시 작업이 {@code trigger_kind=RECOVERY}로 넣는다(결정 문서 11장 1·2, 11.1).
- * 표시는 다시 읽기를 저장하는 트랜잭션이 푼다(199, {@code CdcConsumerRepository#releaseRecoveryIfReloaded}).
+ * 값은 V12(V16에서 APPLY_FAILED 추가) {@code ck_cdc_offset_recovery_reason}과 같아야 한다. 하나라도 빠지면 소비자가 그 행을
+ * 읽을 때 실패해 같은 트랜잭션을 끝없이 다시 시도한다. 소비자는 표시만 하고, 다시 읽기 실행은 배치 감시 작업이 {@code trigger_kind=RECOVERY}로
+ * 넣는다(결정 문서 11장 1·2, 11.1). 표시는 다시 읽기를 저장하는 트랜잭션이 푼다(199, {@code
+ * CdcConsumerRepository#releaseRecoveryIfReloaded}).
  */
 public enum RecoveryReason {
     /** 복제 슬롯이 유실·재생성되어 그 사이 변경을 받을 수 없다. */
@@ -17,6 +18,11 @@ public enum RecoveryReason {
     TRANSACTION_TOO_LARGE,
     /** 메시지 순서·모양이 어긋났다(198-2). */
     PROTOCOL_ERROR,
+    /**
+     * 같은 위치의 원천 트랜잭션 반영이 연속으로 실패했다(S15P31C106-364). DB 제약 위반·버그처럼 다시 시도해도 같은 결과가 나오는 오류다. 다시 읽기로 지금
+     * 값을 맞추고, 풀린 뒤에는 그 트랜잭션을 건너뛴다(resume_after). 플랫폼 DB에 닿지 못한 일시 장애는 세지 않는다.
+     */
+    APPLY_FAILED,
     /**
      * 원천 접속 정보(host·port·database)가 바뀌었다(API 012). 커넥터를 새 DB에 맞출 때까지 반영하지 않는다. 이때는 {@code
      * loaded_lsn}을 비우지 않는다. 맞춘 뒤 199가 그 원천의 CDC 테이블을 다시 읽기 대상으로 표시한다(결정 문서 11.1 3).

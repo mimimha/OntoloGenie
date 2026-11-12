@@ -36,7 +36,9 @@ import org.apache.kafka.common.errors.WakeupException;
  *   <li>트랜잭션 밖 heartbeat는 마지막 메시지 시각을 남기고 위치를 그 다음으로 옮긴다. 트랜잭션 중간 heartbeat는 위치를 옮기지 않는다.
  *   <li>수집 정상 여부: 메시지 시각(heartbeat 시각·변경 처리 시각)보다 {@code maxLag} 넘게 늦게 처리하거나, {@code staleAfter} 동안
  *       메시지가 없으면 비정상({@code healthy_since = NULL})이다. 확인 대기의 대기 시간은 정상 구간만 센다.
- *   <li>처리 장애(DB 예외 등): 위치를 옮기지 않고 {@code retryDelay} 뒤 저장된 위치부터 다시 읽는다(9.3).
+ *   <li>처리 장애(DB 예외 등): 위치를 옮기지 않고 {@code retryDelay} 뒤 저장된 위치부터 다시 읽는다(9.3). 같은 위치에서 {@code
+ *       maxApplyFailures}번 연속 실패하면 다시 시도해도 같은 오류로 보고 복구(APPLY_FAILED)로 돌린다(364). 플랫폼 DB에 닿지 못한 장애는
+ *       세지 않는다.
  *   <li>원천 트랜잭션이 상한을 넘거나 메시지 순서·모양이 어긋나면 복구로 돌리고 멈춘다. 복구가 필요한 원천은 반영하지 않고 {@code refreshInterval}마다
  *       표시가 풀렸는지 본다.
  *   <li>복구가 풀리면(199, 전체 읽기 저장 트랜잭션이 푼다) {@code cdc_offset.resume_after}가 있다. 저장된 위치가 아니라 그 시각 뒤에
@@ -69,6 +71,11 @@ final class CdcSourceConsumer implements Runnable {
     private Long reference;
     private Instant lastMessageAt;
     private Instant lastRecheck = Instant.EPOCH;
+
+    /** 반영이 연속으로 실패한 위치와 횟수(364). */
+    private Long failedAt;
+
+    private int failures;
 
     CdcSourceConsumer(
             CdcSource source,
@@ -119,6 +126,7 @@ final class CdcSourceConsumer implements Runnable {
                             source.topic(),
                             e.toString());
                     positioned = false;
+                    countFailure(e);
                     sleep(properties.retryDelay());
                 }
             }
@@ -127,6 +135,48 @@ final class CdcSourceConsumer implements Runnable {
         } finally {
             consumer.close();
         }
+    }
+
+    /**
+     * 같은 위치에서 반영이 연속으로 실패한 횟수를 센다(364). 저장된 위치를 다시 읽지 못하면(플랫폼 DB에 닿지 못함) 일시 장애로 보고 세지 않는다. 같은 위치에서
+     * {@code maxApplyFailures}번이 되면 다시 시도해도 같은 오류로 보고 복구(APPLY_FAILED)로 돌린다. 위치를 옮기지 않으므로, 복구가 풀릴 때
+     * 다시 읽은 스냅샷 뒤(resume_after)부터 이어 받아 이 트랜잭션을 건너뛴다.
+     */
+    private void countFailure(RuntimeException cause) {
+        Long position;
+        try {
+            position =
+                    repository.findState(source.topic()).map(OffsetState::nextOffset).orElse(null);
+        } catch (RuntimeException e) {
+            failedAt = null;
+            failures = 0;
+            return;
+        }
+        if (position == null) {
+            failedAt = null;
+            failures = 0;
+            return;
+        }
+        failures = position.equals(failedAt) ? failures + 1 : 1;
+        failedAt = position;
+        if (failures < properties.maxApplyFailures()) {
+            return;
+        }
+        log.error(
+                "CDC 반영이 같은 위치에서 {}번 연속 실패해 복구로 돌림 topic={} offset={} error={}",
+                failures,
+                source.topic(),
+                position,
+                cause.toString());
+        try {
+            applier.markRecovery(source, RecoveryReason.APPLY_FAILED);
+        } catch (RuntimeException e) {
+            // 표시하지 못했으면 다음 실패 때 다시 표시한다
+            log.warn("CDC 복구 표시 실패 topic={} error={}", source.topic(), e.toString());
+            return;
+        }
+        failedAt = null;
+        failures = 0;
     }
 
     /** 다른 스레드에서 부른다. 진행 중인 반영은 끝까지 하고 멈춘다. */

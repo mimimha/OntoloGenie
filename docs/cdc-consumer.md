@@ -134,7 +134,7 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 | 변경·경계 | 198-2 조립 → END가 오면 198-5 반영(198-7 연결 재계산 포함) |
 | heartbeat | `last_message_at` 갱신. 트랜잭션 밖이면 위치를 그 다음으로 옮긴다(앞으로만). 트랜잭션 중간이면 옮기지 않는다 |
 | 수집 정상 여부 | 메시지 시각(heartbeat 시각·변경 처리 시각)보다 `max-lag`(2분) 넘게 늦거나, `stale-after`(3분) 동안 메시지가 없으면 `healthy_since = NULL`. 다시 기준 안이면 그때 시각으로 |
-| 처리 장애 | 위치를 옮기지 않고 `retry-delay`(5초) 뒤 저장된 위치부터 다시 읽는다 |
+| 처리 장애 | 위치를 옮기지 않고 `retry-delay`(5초) 뒤 저장된 위치부터 다시 읽는다. 같은 위치에서 `max-apply-failures`(5번) 연속 실패하면 다시 시도해도 같은 오류(DB 제약 위반·버그)로 보고 복구(`APPLY_FAILED`, V16)로 돌린다(364). 실패 뒤 저장된 위치를 다시 읽지 못하면(플랫폼 DB에 닿지 못함) 일시 장애로 보고 세지 않는다. 복구가 풀리면 `resume_after` 뒤부터 이어 받으므로 그 트랜잭션은 건너뛰고, 그 값은 다시 읽은 스냅샷으로 맞춘다 |
 | 트랜잭션 크기 초과·메시지 오류 | 복구(`TRANSACTION_TOO_LARGE`·`PROTOCOL_ERROR`)로 돌리고 멈춘다 |
 | 복구 중 | 읽지 않는다. `refresh-interval`(30초)마다 표시가 풀렸는지 보고, 풀리면 `resume_after` 기준으로 이어 받는다(199, 아래) |
 
@@ -159,6 +159,8 @@ Debezium이 원천마다 토픽 하나(`{data_source.code}.all`)에 보낸 변�
 ### 흐름
 
 1. 소비자가 이어 받을 수 없다고 표시한다(198-5·198-6): `recovery_reason`, `recovery_at`, `healthy_since = NULL`, 그 원천 CDC 테이블 `loaded_lsn = NULL`.
+   - `loaded_lsn`은 엔티티가 아니라 한 문장(`SourceResourceRepository.requireFullReloadOfTables`)으로 값과 관계없이 모든 행을 갱신한다(364). 이미 비어 있는 행(첫 적재·다시 읽기 중)도 잠가야, 그 사이 끝나는 전체 읽기 저장이 아직 커밋되지 않은 복구 표시를 못 보고 `loaded_lsn`을 채우는 일이 없다. 채우면 감시 작업이 다시 읽기를 넣지 않고 해제 조건도 채워지지 않아 복구가 멈춘다. 재연결(`/cdc/reconnected`)도 같다.
+   - **잠금 순서는 `cdc_offset` → `source_resource`다.** CDC 반영·복구 표시·재연결이 이 순서이고, 전체 읽기 저장(`SyncRunJob.complete`)도 CDC 테이블이 있으면 그 원천의 `cdc_offset`을 먼저 잠근다(`lockSourceOffsets`). 그래서 복구 표시와 겹치면 그 커밋을 기다렸다가 복구 시각을 보고 `loaded_lsn`을 정하고, 끝에서 복구를 풀 때(`cdc_offset` 갱신) 교착이 생기지 않는다.
 2. 배치 감시 작업이 켜진 매핑이 있는 `loaded_lsn = NULL` 테이블을 `RECOVERY`로 다시 읽는다.
 3. **다시 읽기 저장 트랜잭션 끝에서 푼다**(`SyncRunJob.complete` → `CdcConsumerRepository.releaseRecoveryIfReloaded`).
    - 조건: 그 원천의 CDC 테이블 중 켜진 매핑이 있는 테이블이 모두 `recovery_at` **뒤에 시작한** 전체 읽기로 적재됨. 매핑이 없는 테이블은 기다리지 않는다.

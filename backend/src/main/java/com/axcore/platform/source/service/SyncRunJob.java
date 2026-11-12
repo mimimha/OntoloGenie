@@ -225,6 +225,12 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
         if (!syncRunRepository.lockIfRunning(jobId)) {
             throw new QueuedJobFailure("수집 실행이 이미 끝났거나 정리되어 결과를 저장하지 않았습니다.");
         }
+        if (outcome.resources().stream().anyMatch(r -> r.plan().strategy() == SyncStrategy.CDC)) {
+            // 복구 표시·CDC 반영·재연결과 같은 순서(cdc_offset → source_resource)로 잠근다(364). 복구 표시와 겹치면 그 커밋을
+            // 기다렸다가
+            // 복구 시각을 보고 loaded_lsn을 정하고, 끝에서 복구를 풀 때(cdc_offset 갱신) 교착이 생기지 않는다.
+            consumerRepository.lockSourceOffsets(dataSourceId(jobId));
+        }
         syncRunRepository.lockResources(
                 outcome.resources().stream().map(r -> r.plan().resourceId()).toList());
         for (ResourceLoad resource : outcome.resources()) {
@@ -263,12 +269,15 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
     }
 
     /** 이번 읽기로 그 원천의 다시 읽기가 다 끝났으면 CDC 복구를 푼다(199). 소비자가 표시가 풀린 걸 보고 이어 받는다. */
+    private long dataSourceId(long jobId) {
+        return syncRunRepository
+                .findTarget(jobId)
+                .orElseThrow(() -> new IllegalStateException("수집 실행이 없습니다: " + jobId))
+                .dataSourceId();
+    }
+
     private void releaseRecovery(long jobId) {
-        long dataSourceId =
-                syncRunRepository
-                        .findTarget(jobId)
-                        .orElseThrow(() -> new IllegalStateException("수집 실행이 없습니다: " + jobId))
-                        .dataSourceId();
+        long dataSourceId = dataSourceId(jobId);
         consumerRepository
                 .releaseRecoveryIfReloaded(dataSourceId)
                 .ifPresent(

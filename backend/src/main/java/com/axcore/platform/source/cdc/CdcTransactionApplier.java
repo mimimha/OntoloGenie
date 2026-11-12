@@ -178,9 +178,7 @@ public class CdcTransactionApplier {
     public void markRecovery(CdcSource source, RecoveryReason reason) {
         consumerRepository.lockOffset(source.dataSourceId(), source.topic());
         consumerRepository.markRecovery(source.topic(), reason);
-        resourceRepository
-                .findByDataSourceIdAndSyncStrategy(source.dataSourceId(), SyncStrategy.CDC)
-                .forEach(SourceResource::requireFullReload);
+        resourceRepository.requireFullReloadOfTables(source.dataSourceId(), SyncStrategy.CDC);
     }
 
     /**

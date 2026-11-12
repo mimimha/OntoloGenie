@@ -11,12 +11,20 @@ import com.axcore.platform.ontology.domain.SourceChange;
 import com.axcore.platform.ontology.domain.SyncedObject;
 import com.axcore.platform.ontology.service.ObjectSyncService;
 import com.axcore.platform.source.cdc.CdcStartReference;
+import com.axcore.platform.source.cdc.CdcTransactionApplier;
+import com.axcore.platform.source.cdc.CdcTransactionApplier.CdcSource;
 import com.axcore.platform.source.domain.CredentialPurpose;
+import com.axcore.platform.source.domain.RecoveryReason;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +70,7 @@ class SyncRunJobTests {
     @Autowired SourceCredentialService credentialService;
     @Autowired ObjectSyncService objectSyncService;
     @Autowired CdcStartReference startReference;
+    @Autowired CdcTransactionApplier applier;
     @Autowired JdbcClient jdbc;
     @Autowired JsonMapper json;
     @Autowired PlatformTransactionManager transactionManager;
@@ -744,6 +753,63 @@ class SyncRunJobTests {
         assertThat(runStatus(late)).isEqualTo("SUCCEEDED");
         assertThat(offsetRow(topic)).containsEntry("recovery_reason", null);
         assertThat(loadState(workOrderId).get("loaded_lsn")).isNotNull();
+    }
+
+    /**
+     * 364: 첫 적재처럼 loaded_lsn이 비어 있는 동안 복구가 표시되고, 그 커밋 전에 전체 읽기 저장이 끝나려 하면 저장은 복구 표시 커밋을 기다렸다가 복구
+     * 시각을 보고 loaded_lsn을 비운 채 둔다. 그래야 감시 작업이 다시 읽기를 넣고 복구가 풀린다.
+     */
+    @Test
+    void fullLoadSavedWhileRecoveryIsMarkedWaitsAndKeepsTheTableForReload() throws Exception {
+        String topic = cdcOffset(null);
+        long early = queueRun(workOrderId);
+        startRun(early);
+        SyncRunJob.Outcome outcome = job.run(early);
+        jdbc.sql("update source_resource set loaded_lsn = null where data_source_id = :s")
+                .param("s", sourceId)
+                .update();
+        CountDownLatch marked = new CountDownLatch(1);
+        CountDownLatch commit = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> recovery =
+                    pool.submit(
+                            () ->
+                                    tx.executeWithoutResult(
+                                            status -> {
+                                                applier.markRecovery(
+                                                        new CdcSource(sourceId, topic),
+                                                        RecoveryReason.TRANSACTION_TOO_LARGE);
+                                                marked.countDown();
+                                                awaitQuietly(commit);
+                                            }));
+            assertThat(marked.await(10, TimeUnit.SECONDS)).isTrue();
+            Future<?> save =
+                    pool.submit(
+                            () -> tx.executeWithoutResult(status -> job.complete(early, outcome)));
+            Thread.sleep(500);
+            // 복구 표시가 잡은 cdc_offset을 기다린다.
+            assertThat(save.isDone()).isFalse();
+            commit.countDown();
+            recovery.get(10, TimeUnit.SECONDS);
+            save.get(10, TimeUnit.SECONDS);
+        } finally {
+            commit.countDown();
+            pool.shutdownNow();
+        }
+
+        assertThat(loadState(workOrderId))
+                .containsEntry("full_load_done_gen", early)
+                .containsEntry("loaded_lsn", null);
+        assertThat(offsetRow(topic)).containsEntry("recovery_reason", "TRANSACTION_TOO_LARGE");
+    }
+
+    private static void awaitQuietly(CountDownLatch latch) {
+        try {
+            latch.await(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /** 199: 원천 교체는 관리자가 커넥터를 맞췄다고 알리기 전이라 다시 읽어도 풀지 않는다. */

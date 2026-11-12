@@ -2,7 +2,10 @@ package com.axcore.platform.source.cdc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 import com.axcore.platform.TestcontainersConfiguration;
@@ -31,6 +34,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -46,6 +50,7 @@ import org.testcontainers.utility.DockerImageName;
             "axcore.cdc.consumer.poll-timeout=200ms",
             "axcore.cdc.consumer.refresh-interval=300ms",
             "axcore.cdc.consumer.retry-delay=300ms",
+            "axcore.cdc.consumer.max-apply-failures=3",
             // 시험 자료의 메시지 시각은 자료를 받은 날이다. 처리 지연으로 비정상이 되지 않게 넉넉히 둔다
             "axcore.cdc.consumer.max-lag=36500d",
             "axcore.cdc.consumer.stale-after=1h"
@@ -76,6 +81,9 @@ class CdcConsumerLoopTests {
 
     // 처음 소비할 때의 epoch 기준값(원천 xmax 자리). 시험 원천에는 접속하지 않는다. 자료의 txId는 756~765다.
     @MockitoBean CdcStartReference startReference;
+
+    // 364: 한 시험 원천의 반영만 실패하게 한다. 다른 시험 원천은 실제 반영기를 그대로 쓴다.
+    @MockitoSpyBean CdcTransactionApplier applier;
 
     @Autowired CdcConsumerSupervisor supervisor;
     @Autowired JdbcClient jdbc;
@@ -189,6 +197,37 @@ class CdcConsumerLoopTests {
                 .update();
         await().atMost(WAIT).until(() -> nextOffset(f.topic) == 15L);
         assertThat(f.property(f.workOrderMapping, "7", "wo_no")).isEqualTo("WO-7b");
+    }
+
+    /** 364: 같은 위치의 반영이 계속 실패하면 끝없이 다시 시도하지 않고 정해진 횟수 뒤 복구(APPLY_FAILED)로 돌린다. */
+    @Test
+    void repeatedApplyFailureAtSamePositionTurnsIntoRecovery() {
+        when(startReference.read(anyLong())).thenReturn(750L);
+        Fixture f = new Fixture();
+        doThrow(new IllegalStateException("반영 실패 시험"))
+                .when(applier)
+                .apply(argThat(s -> s != null && s.topic().equals(f.topic)), any(), any(), any());
+        produce(f.topic, lines.subList(0, 14));
+        f.register();
+
+        await().atMost(WAIT)
+                .until(() -> "APPLY_FAILED".equals(offsetOrEmpty(f.topic).get("recovery_reason")));
+        Map<String, Object> offset = offset(f.topic);
+        assertThat(offset.get("healthy_since")).isNull();
+        // 위치는 첫 트랜잭션 앞에 그대로다. 복구가 풀리면 다시 읽은 스냅샷 뒤부터 이어 받는다
+        assertThat(nextOffset(f.topic)).isLessThan(14L);
+        assertThat(f.property(f.workOrderMapping, "7", "wo_no")).isNull();
+    }
+
+    private Map<String, Object> offsetOrEmpty(String topic) {
+        return jdbc
+                .sql("select recovery_reason from cdc_offset where topic = :t")
+                .param("t", topic)
+                .query()
+                .listOfRows()
+                .stream()
+                .findFirst()
+                .orElse(Map.of());
     }
 
     /**
