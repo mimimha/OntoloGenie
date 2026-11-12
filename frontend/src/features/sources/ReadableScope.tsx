@@ -70,7 +70,7 @@ function ResourceItem({
   return (
     <details
       onToggle={(event) => setOpen(event.currentTarget.open)}
-      className="py-1"
+      className="sources-resource"
     >
       <summary className="cursor-pointer font-semibold text-slate-900">
         {resource.resourceKey}

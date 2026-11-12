@@ -155,14 +155,10 @@ function ConversationPanel({
     ))
   }
 
-  // 대화 상자는 업무 데이터 화면과 비슷한 페이지 길이가 되도록 높이를 고정하고, 넘치는 메시지는 안에서 스크롤한다.
-  // 메시지 영역을 relative로 두어, 화면 읽기용 숨김 글자(sr-only, 절대 위치)가 스크롤 상자 밖으로 빠져 페이지를 늘리지 않게 한다.
+  // 대화 목록과 입력란은 유지하고 메시지 영역 안에서 이전 답변을 읽는다.
   return (
-    <section
-      aria-label="현재 대화"
-      className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white"
-    >
-      <h2 className="border-b border-slate-200 p-3 text-sm font-semibold text-slate-900">
+    <section aria-label="현재 대화" className="agent-conversation">
+      <h2 className="agent-conversation-heading">
         {conversation.title ?? NEW_CONVERSATION_TITLE}
       </h2>
       <div
@@ -170,13 +166,14 @@ function ConversationPanel({
         role="log"
         aria-label="대화 내용"
         aria-live="polite"
+        tabIndex={0}
         onScroll={handleLogScroll}
-        className="relative min-h-0 flex-1 space-y-4 overflow-y-auto p-4"
+        className="agent-message-log"
       >
         {renderMessages()}
       </div>
       {sendMutation.isError && (
-        <div className="px-3">
+        <div className="agent-send-error">
           <ErrorState
             error={sendMutation.error}
             title="질문을 보내지 못했습니다."

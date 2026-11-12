@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import Button from '../../components/Button'
+import StatusBadge from '../../components/StatusBadge'
 import { createConversation } from '../agent/api'
 import type { AgentConversation, AgentEntryState } from '../agent/types'
 import { fetchObject } from './api'
@@ -26,7 +27,7 @@ function ObjectDetail({ objectId }: ObjectDetailProps) {
     return <p className="text-slate-500">왼쪽 목록에서 객체를 선택해 주세요.</p>
   }
 
-  return <ObjectDetailContent objectId={objectId} />
+  return <ObjectDetailContent key={objectId} objectId={objectId} />
 }
 
 type ObjectDetailContentProps = {
@@ -85,9 +86,9 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
     : '플랫폼 객체'
 
   return (
-    <div>
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-slate-500">
+    <div className="explorer-object-detail">
+      <div className="explorer-detail-actions">
+        <p className="explorer-object-meta">
           {object.objectTypeName} / {formatObjectCode(object.id)}
         </p>
         <Button
@@ -101,15 +102,13 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
       {askMutation.isError && (
         <p className="mt-1 text-sm text-red-600">대화를 만들지 못했어요.</p>
       )}
-      <h2 className="mt-1 text-lg font-semibold text-slate-900">
-        {object.displayName}
-      </h2>
-      <p className="mt-1 text-sm text-slate-500">{source}</p>
-      <span className="mt-2 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+      <h2 className="explorer-detail-title">{object.displayName}</h2>
+      <p className="explorer-source-caption">{source}</p>
+      <StatusBadge tone={object.status === 'ACTIVE' ? 'success' : 'warning'}>
         {statusLabels[object.status]}
-      </span>
+      </StatusBadge>
 
-      <dl className="mt-4 grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
+      <dl className="explorer-detail-times">
         <dt className="text-slate-500">기준 시점</dt>
         <dd className="text-slate-900">{formatDateTime(object.dataAsOf)}</dd>
         <dt className="text-slate-500">최근 동기화</dt>
@@ -118,37 +117,31 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
         </dd>
       </dl>
 
-      <h3 className="mt-6 text-sm font-semibold text-slate-900">속성</h3>
-      <dl className="mt-2 divide-y divide-slate-100 text-sm">
+      <h3 className="explorer-detail-section-title">속성</h3>
+      <dl className="explorer-properties">
         {Object.entries(object.properties).map(([code, value]) => (
-          <div key={code} className="flex gap-4 py-2">
-            <dt className="w-40 shrink-0 text-slate-500">
-              {object.propertyNames[code] ?? code}
-            </dt>
+          <div key={code}>
+            <dt>{object.propertyNames[code] ?? code}</dt>
             {object.restrictedPropertyCodes.includes(code) ? (
-              <dd className="text-slate-400">권한 없음</dd>
+              <dd className="explorer-restricted">권한 없음</dd>
             ) : (
-              <dd className="text-slate-900">{formatPropertyValue(value)}</dd>
+              <dd>{formatPropertyValue(value)}</dd>
             )}
           </div>
         ))}
       </dl>
 
-      <section className="mt-6">
-        <h3 className="text-sm font-semibold text-slate-900">원천 근거</h3>
-        <button
-          type="button"
-          onClick={() => setEvidenceOpen(true)}
-          className="mt-2 text-sm text-blue-700 hover:underline"
-        >
+      <section className="explorer-detail-section">
+        <h3 className="explorer-detail-section-title">원천 근거</h3>
+        <Button variant="text" onClick={() => setEvidenceOpen(true)}>
           원본·연결 근거 보기 ↗
-        </button>
+        </Button>
       </section>
 
       <div className="mt-6">
         <Link
           to={`/audit?objectId=${object.id}`}
-          className="inline-block rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:border-slate-900"
+          className="ui-button ui-button--secondary"
         >
           이 객체 실행 이력
         </Link>

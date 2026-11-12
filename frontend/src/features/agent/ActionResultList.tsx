@@ -1,9 +1,19 @@
 import { useState } from 'react'
+import Button from '../../components/Button'
+import StatusBadge from '../../components/StatusBadge'
 import ReassignmentPlanDetails from '../reassignment/ReassignmentPlanDetails'
 import { actionStatusLabels, MES_UNCHANGED_NOTICE } from './labels'
-import type { AgentAction } from './types'
+import type { AgentAction, AgentActionStatus } from './types'
 
 const REASSIGNMENT_ACTION_CODE = 'CREATE_REASSIGNMENT_PLAN'
+const actionTones = {
+  SUCCEEDED: 'success',
+  RUNNING: 'info',
+  BLOCKED: 'warning',
+  FAILED: 'danger',
+  CONFIRMATION_REQUIRED: 'warning',
+  NOT_RUN: 'neutral',
+} as const satisfies Record<AgentActionStatus, string>
 
 // 재배정 계획을 실제로 만들었을 때만 그 계획 번호를 돌려준다. 막히거나 실패하면 null이다.
 function createdPlanId(action: AgentAction) {
@@ -36,47 +46,41 @@ function ActionResultList({ actions }: { actions: AgentAction[] }) {
   const [openPlanId, setOpenPlanId] = useState<number | null>(null)
 
   return (
-    <ul
-      aria-label="실행한 작업"
-      className="mt-2 space-y-1 rounded-lg border border-slate-200 p-2 text-xs"
-    >
-      {actions.map((action, index) => {
-        const planId = createdPlanId(action)
-        const detail = actionDetail(action, planId)
-        const open = planId !== null && planId === openPlanId
-        return (
-          <li
-            key={`${action.code}-${index}`}
-            className="flex flex-wrap items-center gap-x-2"
-          >
-            <span className="font-medium">{action.name}</span>
-            <span
-              className={
-                action.status === 'SUCCEEDED' ? undefined : 'text-red-700'
-              }
-            >
-              {actionStatusLabels[action.status]}
-            </span>
-            {detail && <span className="text-slate-500">{detail}</span>}
-            {planId !== null && (
-              <button
-                type="button"
-                aria-expanded={open}
-                onClick={() => setOpenPlanId(open ? null : planId)}
-                className="text-blue-700 hover:underline"
-              >
-                {open ? '계획 접기' : '계획 펼치기'}
-              </button>
-            )}
-            {planId !== null && open && (
-              <div className="basis-full">
-                <ReassignmentPlanDetails planId={planId} />
+    <div className="agent-actions">
+      <h3>실행 결과</h3>
+      <ul aria-label="실행한 작업">
+        {actions.map((action, index) => {
+          const planId = createdPlanId(action)
+          const detail = actionDetail(action, planId)
+          const open = planId !== null && planId === openPlanId
+          return (
+            <li key={`${action.code}-${index}`}>
+              <div className="agent-action-heading">
+                <strong>{action.name}</strong>
+                <StatusBadge tone={actionTones[action.status]}>
+                  {actionStatusLabels[action.status]}
+                </StatusBadge>
               </div>
-            )}
-          </li>
-        )
-      })}
-    </ul>
+              {detail && <p className="agent-action-detail">{detail}</p>}
+              {planId !== null && (
+                <Button
+                  variant="text"
+                  aria-expanded={open}
+                  onClick={() => setOpenPlanId(open ? null : planId)}
+                >
+                  {open ? '계획 접기' : '계획 펼치기'}
+                </Button>
+              )}
+              {planId !== null && open && (
+                <div className="basis-full">
+                  <ReassignmentPlanDetails planId={planId} />
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 

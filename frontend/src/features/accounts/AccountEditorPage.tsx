@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router'
 import { ApiError } from '../../api/errors'
 import Button from '../../components/Button'
+import PageHeader from '../../components/PageHeader'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import { useAuth } from '../auth/auth-context'
 import type { Account } from '../auth/types'
@@ -20,7 +21,7 @@ import {
 function RolePermissions({ roles, code }: { roles: Role[]; code: string }) {
   const selected = roles.find((role) => role.code === code)
   return selected ? (
-    <section className="rounded-lg bg-slate-50 p-4 text-sm">
+    <section className="management-subpanel text-sm">
       <h2 className="font-semibold">{selected.name} 권한</h2>
       {selected.permissions.length ? (
         <ul className="mt-2 flex flex-wrap gap-2">
@@ -179,7 +180,7 @@ function AccountForm({
     )
   return (
     <form
-      className="max-w-3xl space-y-5"
+      className="management-form management-form--account space-y-5"
       onSubmit={(event) => {
         event.preventDefault()
         void submit()
@@ -305,7 +306,7 @@ function AccountForm({
           </Button>
         </>
       )}
-      <p className="text-xs text-slate-500">
+      <p className="text-sm text-slate-500">
         통신 오류가 발생하면 자동 재전송하지 않습니다. 목록에서 처리 여부를
         확인한 뒤 다시 시도하세요.
       </p>
@@ -364,16 +365,17 @@ export default function AccountEditorPage() {
       />
     )
   return (
-    <div className="space-y-5">
+    <div className="management-page space-y-5">
       <Link
         className="text-sm text-violet-700 underline"
         to={`/admin/accounts${location.search}`}
       >
         계정 목록으로 돌아가기
       </Link>
-      <h1 className="text-2xl font-semibold">
-        {editing ? '계정 상세·변경' : '계정 생성'}
-      </h1>
+      <PageHeader
+        title={editing ? '계정 상세·변경' : '계정 생성'}
+        description="계정 정보와 역할을 확인하고 필요한 권한을 설정합니다."
+      />
       {content}
     </div>
   )

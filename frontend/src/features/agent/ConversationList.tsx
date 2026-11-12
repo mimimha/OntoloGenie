@@ -92,20 +92,17 @@ function ConversationList({
   )
 
   return (
-    <aside
-      aria-label="대화방 목록"
-      className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white"
-    >
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-200 p-3">
-        <h2 className="text-sm font-semibold text-slate-900">대화</h2>
-        <Button variant="secondary" onClick={onCreate} disabled={creating}>
+    <aside aria-label="대화방 목록" className="agent-sidebar">
+      <div className="agent-sidebar-heading">
+        <h2>대화</h2>
+        <Button variant="secondary" onClick={onCreate} pending={creating}>
           + 새 대화
         </Button>
       </div>
       {!hasConversations ? (
-        <p className="p-3 text-sm text-slate-500">아직 대화가 없어요.</p>
+        <p className="agent-sidebar-empty">아직 대화가 없어요.</p>
       ) : (
-        <div ref={viewportRef} className="min-h-0 flex-1 overflow-y-auto p-2">
+        <div ref={viewportRef} className="agent-conversation-viewport">
           <ul>
             {visibleConversations.map((conversation, index) => {
               const selected = conversation.id === selectedId
@@ -113,15 +110,16 @@ function ConversationList({
                 <li
                   key={conversation.id}
                   ref={index === 0 ? rowRef : undefined}
-                  className="flex items-center gap-1"
+                  className="agent-conversation-row"
                 >
                   <button
                     type="button"
                     aria-pressed={selected}
                     onClick={() => onSelect(conversation.id)}
-                    className={`min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-left text-sm ${selected ? 'bg-slate-100 font-semibold text-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                    title={conversation.title ?? NEW_CONVERSATION_TITLE}
+                    className="agent-conversation-select"
                   >
-                    {conversation.title ?? NEW_CONVERSATION_TITLE}
+                    <span>{conversation.title ?? NEW_CONVERSATION_TITLE}</span>
                   </button>
                   {/* 임시(개발 데이터 정리용, 나중에 제거): DB에서 바로 지운다. */}
                   <button
@@ -133,7 +131,7 @@ function ConversationList({
                         onDelete(conversation.id)
                       }
                     }}
-                    className="shrink-0 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    className="agent-conversation-delete"
                   >
                     삭제
                   </button>
@@ -144,11 +142,12 @@ function ConversationList({
         </div>
       )}
       {hasConversations && (
-        <div className="shrink-0 border-t border-slate-200 py-3">
+        <div className="agent-sidebar-footer">
           <Pagination
             page={page}
             size={pageSize}
             totalElements={conversations.length}
+            compact
             onChange={(nextPage) =>
               setPagination({
                 selectedId,

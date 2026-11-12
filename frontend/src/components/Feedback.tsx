@@ -7,14 +7,8 @@ export function LoadingState({
   message?: string
 }) {
   return (
-    <div
-      role="status"
-      className="flex items-center gap-2 rounded-lg bg-slate-50 p-4 text-sm text-slate-600"
-    >
-      <span
-        aria-hidden="true"
-        className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700 motion-reduce:animate-none"
-      />
+    <div role="status" className="ui-feedback ui-feedback--loading">
+      <span aria-hidden="true" className="ui-spinner" />
       {message}
     </div>
   )
@@ -26,10 +20,7 @@ export function EmptyState({
   message?: string
 }) {
   return (
-    <div
-      role="status"
-      className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500"
-    >
+    <div role="status" className="ui-feedback ui-feedback--empty">
       {message}
     </div>
   )
@@ -63,10 +54,7 @@ export function ErrorState({
     !apiError ||
     ['server', 'network', 'http', 'invalid-response'].includes(apiError.kind)
   return (
-    <div
-      role="alert"
-      className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"
-    >
+    <div role="alert" className="ui-feedback ui-feedback--error">
       <p className="font-semibold">
         {title ??
           (apiError

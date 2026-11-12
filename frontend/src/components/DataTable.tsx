@@ -9,12 +9,13 @@ function DataTable({
   ...props
 }: DataTableProps) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200">
-      <table
-        {...props}
-        aria-label={label}
-        className={`w-full text-left text-sm ${className}`}
-      >
+    <div
+      className="ui-table-container"
+      tabIndex={0}
+      role="region"
+      aria-label={`${label} 스크롤 영역`}
+    >
+      <table {...props} aria-label={label} className={`ui-table ${className}`}>
         {children}
       </table>
     </div>

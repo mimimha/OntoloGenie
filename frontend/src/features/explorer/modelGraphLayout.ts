@@ -1,8 +1,8 @@
 import { Graph, layout } from '@dagrejs/dagre'
 import type { ModelEdge, ModelNode } from './types'
 
-export const TYPE_NODE_WIDTH = 120
-export const TYPE_NODE_HEIGHT = 64
+export const TYPE_NODE_WIDTH = 156
+export const TYPE_NODE_HEIGHT = 76
 
 export type Point = {
   x: number

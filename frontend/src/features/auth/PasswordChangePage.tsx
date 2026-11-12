@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router'
 import Button from '../../components/Button'
+import PageHeader from '../../components/PageHeader'
 import { ErrorState } from '../../components/Feedback'
 import { changePassword } from './api'
 import { ApiError } from '../../api/errors'
@@ -46,10 +47,13 @@ function PasswordChangePage() {
   }
   if (!account?.mustChangePassword) return <Navigate to="/explorer" replace />
   return (
-    <main className="min-h-screen bg-slate-100 p-6">
-      <section className="mx-auto max-w-lg space-y-6 rounded-2xl bg-white p-8">
+    <main className="auth-utility-page">
+      <section className="auth-utility-panel space-y-6">
         <AccountMenu disabled={pending} />
-        <h1 className="text-2xl font-semibold">비밀번호 변경</h1>
+        <PageHeader
+          title="비밀번호 변경"
+          description="계정을 안전하게 사용하기 위해 임시 비밀번호를 변경해 주세요."
+        />
         <p className="text-sm text-slate-600">
           임시 비밀번호를 변경해야 업무 화면을 사용할 수 있습니다. 8자 이상,
           영문·숫자·특수문자를 포함하고 72바이트 이내로 입력해 주세요. 로그인 ID

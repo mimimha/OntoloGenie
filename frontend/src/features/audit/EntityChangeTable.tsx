@@ -1,3 +1,4 @@
+import DataTable from '../../components/DataTable'
 import { formatPropertyValue, formatSourceKey } from '../explorer/format'
 import { changeKindLabels } from './labels'
 import type { EntityChange } from './types'
@@ -29,11 +30,11 @@ function EntityChangeTable({
   }
 
   return (
-    <div className="mt-2">
-      <p className="text-xs text-slate-500">
+    <div className="management-detail mt-2">
+      <p className="text-sm text-slate-500">
         {`${change.tableName} · ${formatSourceKey(change.rowKey)} · ${changeKindLabels[change.changeKind]}`}
       </p>
-      <table className="mt-1 w-full text-left text-xs">
+      <DataTable label="변경 전후 비교" className="min-w-[480px]">
         <thead className="text-slate-500">
           <tr>
             <th className="py-1 pr-2 font-normal">항목</th>
@@ -52,7 +53,7 @@ function EntityChangeTable({
             </tr>
           ))}
         </tbody>
-      </table>
+      </DataTable>
     </div>
   )
 }

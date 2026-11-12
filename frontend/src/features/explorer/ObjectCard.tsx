@@ -18,19 +18,13 @@ function ObjectCard({
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className={`block w-full rounded-lg border px-4 py-3 text-left ${
-        selected
-          ? 'border-slate-900 bg-slate-100'
-          : 'border-slate-200 bg-white hover:bg-slate-50'
-      }`}
+      className="explorer-object-row"
     >
-      <span className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-slate-500">{code}</span>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-          {typeLabel}
-        </span>
+      <span className="explorer-object-meta">
+        <span>{code}</span>
+        <span>{typeLabel}</span>
       </span>
-      <span className="mt-1 block font-medium text-slate-900">{name}</span>
+      <span className="explorer-object-name">{name}</span>
     </button>
   )
 }

@@ -2,6 +2,7 @@ import Markdown, { type Components, type Options } from 'react-markdown'
 import { Link } from 'react-router'
 import remarkGfm from 'remark-gfm'
 import DataTable from '../../components/DataTable'
+import { LoadingState } from '../../components/Feedback'
 import { formatObjectCode } from '../explorer/format'
 import ActionResultList from './ActionResultList'
 import {
@@ -27,9 +28,15 @@ const answerPlugins: Options['remarkPlugins'] = [
 // 문단 안의 한 줄 바꿈도 줄을 나누도록 문단에만 pre-line을 준다. 목록에 주면 항목 사이 줄바꿈 글자가 빈 줄이 된다.
 // 원본 HTML은 react-markdown 기본대로 요소로 만들지 않고 글자로 보인다.
 const answerMarkdown: Components = {
-  p: ({ children }) => <p className="my-1 whitespace-pre-line">{children}</p>,
-  ul: ({ children }) => <ul className="my-1 list-disc pl-5">{children}</ul>,
-  ol: ({ children }) => <ol className="my-1 list-decimal pl-5">{children}</ol>,
+  p: ({ children }) => <p className="whitespace-pre-line">{children}</p>,
+  ul: ({ children }) => <ul>{children}</ul>,
+  ol: ({ children }) => <ol>{children}</ol>,
+  h1: ({ children }) => <h3>{children}</h3>,
+  h2: ({ children }) => <h4>{children}</h4>,
+  h3: ({ children }) => <h5>{children}</h5>,
+  h4: ({ children }) => <h6>{children}</h6>,
+  h5: ({ children }) => <h6>{children}</h6>,
+  h6: ({ children }) => <h6>{children}</h6>,
   strong: ({ children }) => (
     <strong className="font-semibold">{children}</strong>
   ),
@@ -37,7 +44,7 @@ const answerMarkdown: Components = {
   // 조회 값을 실은 외부 주소를 쓰면, 누르는 것만으로 그 값이 밖으로 나가기 때문이다. 위험한 주소가 지워져 비어도 글자로 둔다.
   a: ({ href, title, children }) =>
     href && href.startsWith('/') && !href.startsWith('//') ? (
-      <Link to={href} title={title} className="text-blue-700 hover:underline">
+      <Link to={href} title={title} className="agent-inline-link">
         {children}
       </Link>
     ) : (
@@ -47,26 +54,15 @@ const answerMarkdown: Components = {
   // 원천 데이터에 섞인 지시를 AI가 따라 조회 값을 실은 주소를 쓰면 그 값이 밖으로 나간다.
   img: ({ alt }) => <span>{alt}</span>,
   // 긴 코드 블록이 답변 상자 밖으로 넘치지 않게 가로 스크롤을 준다.
-  pre: ({ children }) => <pre className="my-2 overflow-x-auto">{children}</pre>,
-  table: ({ children }) => (
-    <div className="my-2 overflow-x-auto">
-      <table className="text-left">{children}</table>
-    </div>
+  pre: ({ children }) => (
+    <pre tabIndex={0} role="region" aria-label="답변 코드">
+      {children}
+    </pre>
   ),
+  table: ({ children }) => <DataTable label="답변 표">{children}</DataTable>,
   // 표의 열 정렬(:---:)은 style로 넘어온다.
-  th: ({ style, children }) => (
-    <th
-      style={style}
-      className="border-b border-slate-200 px-2 py-1 font-medium"
-    >
-      {children}
-    </th>
-  ),
-  td: ({ style, children }) => (
-    <td style={style} className="border-b border-slate-100 px-2 py-1">
-      {children}
-    </td>
-  ),
+  th: ({ style, children }) => <th style={style}>{children}</th>,
+  td: ({ style, children }) => <td style={style}>{children}</td>,
 }
 
 function formatAsOf(value: string) {
@@ -100,9 +96,9 @@ function sourceObjectIds(result: AgentResult) {
 function MessageItem({ message }: { message: AgentMessage }) {
   if (message.sender === 'USER') {
     return (
-      <div className="flex justify-end">
-        <p className="max-w-[80%] rounded-lg bg-slate-100 px-3 py-2 text-sm whitespace-pre-wrap text-slate-900">
-          <span className="sr-only">나: </span>
+      <div className="agent-user-message">
+        <p>
+          <span className="agent-message-label">나: </span>
           {message.content}
         </p>
       </div>
@@ -112,9 +108,11 @@ function MessageItem({ message }: { message: AgentMessage }) {
   if (message.status === 'RUNNING') {
     const stage = message.answerMeta.stage
     return (
-      <p role="status" className="text-sm text-slate-600">
-        답변 준비 중{stage ? ` · ${stageLabels[stage]}` : ''}…
-      </p>
+      <div className="agent-message-progress">
+        <LoadingState
+          message={`답변 준비 중${stage ? ` · ${stageLabels[stage]}` : ''}…`}
+        />
+      </div>
     )
   }
 
@@ -122,32 +120,51 @@ function MessageItem({ message }: { message: AgentMessage }) {
   const actions = message.answerMeta.actions ?? []
   const syncStatus = message.answerMeta.syncStatus
   const syncNotice = syncStatus ? syncStatusNotices[syncStatus] : undefined
+  const evidenceWarnings = [
+    {
+      label: '권한 제한',
+      count: results.filter((result) => result.resultCategory === 'DENIED')
+        .length,
+    },
+    {
+      label: '미확인',
+      count: results.filter(
+        (result) => result.status === 'FAILED' || !result.resultCategory,
+      ).length,
+    },
+    {
+      label: '미연결',
+      count: results.filter((result) => result.resultCategory === 'UNLINKED')
+        .length,
+    },
+    {
+      label: '추정',
+      count: results.filter((result) => result.estimated).length,
+    },
+  ]
+    .filter(({ count }) => count > 0)
+    .map(({ label, count }) => `${label} ${count}건`)
+    .join(' · ')
   return (
-    // Figma 목업처럼 답변을 테두리 상자로 묶고 위에 'Agent' 이름표를 단다. 색은 디자인 정리 때 맞춘다.
-    <article
-      aria-label="Agent 답변"
-      className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-900"
-    >
-      <span aria-hidden="true" className="mb-1 block text-xs text-slate-500">
-        Agent
+    <article aria-label="Agent 답변" className="agent-answer">
+      <span aria-hidden="true" className="agent-message-label">
+        AI 답변
       </span>
       {message.status === 'FAILED' && (
-        <p role="alert" className="mb-1 font-medium text-red-700">
+        <p role="alert" className="agent-failure">
           답변을 끝내지 못했어요. {message.errorMessage}
         </p>
       )}
-      <div className="text-base leading-relaxed break-words">
+      <div className="agent-answer-body">
         <Markdown remarkPlugins={answerPlugins} components={answerMarkdown}>
           {message.content}
         </Markdown>
       </div>
-      {syncNotice && (
-        <p className="mt-1 text-xs text-amber-700">{syncNotice}</p>
-      )}
+      {syncNotice && <p className="agent-sync-notice">{syncNotice}</p>}
       {actions.length > 0 && <ActionResultList actions={actions} />}
       {results.length > 0 && (
-        <details className="group mt-4 border-t border-slate-100 pt-3">
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded text-xs text-slate-500 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-500 [&::-webkit-details-marker]:hidden">
+        <details className="agent-evidence group">
+          <summary>
             <svg
               aria-hidden="true"
               viewBox="0 0 24 24"
@@ -158,10 +175,13 @@ function MessageItem({ message }: { message: AgentMessage }) {
             >
               <path d="m9 5 7 7-7 7" />
             </svg>
-            <span>출처 및 조회 상태</span>
-            <span className="text-slate-400">{results.length}건</span>
+            <span>출처 및 조회 상태</span>{' '}
+            <span className="agent-evidence-count">{results.length}건</span>{' '}
+            {evidenceWarnings && (
+              <span className="agent-evidence-warning">{evidenceWarnings}</span>
+            )}
           </summary>
-          <div className="mt-3">
+          <div className="agent-evidence-table">
             <DataTable label="정보별 결과">
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
@@ -179,8 +199,18 @@ function MessageItem({ message }: { message: AgentMessage }) {
                   >
                     <td className="px-3 py-2 font-medium">{result.label}</td>
                     <td className="px-3 py-2">
-                      {resultLabel(result)}
-                      {result.estimated ? ' · 추정' : ''}
+                      <span
+                        className="agent-result-status"
+                        data-caution={
+                          result.status === 'FAILED' ||
+                          result.resultCategory !== 'FOUND' ||
+                          result.estimated ||
+                          undefined
+                        }
+                      >
+                        {resultLabel(result)}
+                        {result.estimated ? ' · 추정' : ''}
+                      </span>
                     </td>
                     <td className="px-3 py-2 text-slate-500">
                       {result.dataAsOf
@@ -189,17 +219,17 @@ function MessageItem({ message }: { message: AgentMessage }) {
                     </td>
                     <td className="px-3 py-2">
                       {sourceObjectIds(result).map((objectId) => (
-                        <span key={objectId} className="flex gap-2">
+                        <span key={objectId} className="agent-source-links">
                           <Link
                             to={`/explorer?object=${objectId}`}
-                            className="text-blue-700 hover:underline"
+                            className="agent-inline-link"
                           >
                             {formatObjectCode(objectId)} 열기 ↗
                           </Link>
                           {result.toolCode === EXECUTION_TOOL_CODE && (
                             <Link
                               to={`/audit?objectId=${objectId}`}
-                              className="text-blue-700 hover:underline"
+                              className="agent-inline-link"
                             >
                               실행 이력 ↗
                             </Link>
@@ -212,9 +242,7 @@ function MessageItem({ message }: { message: AgentMessage }) {
               </tbody>
             </DataTable>
           </div>
-          <p className="mt-1 text-xs text-slate-500">
-            {ANSWER_SNAPSHOT_NOTICE}
-          </p>
+          <p className="agent-evidence-notice">{ANSWER_SNAPSHOT_NOTICE}</p>
         </details>
       )}
     </article>

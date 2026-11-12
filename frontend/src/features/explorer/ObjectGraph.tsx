@@ -81,87 +81,85 @@ function ObjectGraphContent({ objectId, onSelect }: ObjectGraphContentProps) {
         {withAndParticle(object.displayName)} 연결된 정보
       </h2>
 
-      <div className="relative h-[440px] overflow-hidden bg-[radial-gradient(#d8dce1_1px,transparent_1px)] bg-[length:16px_16px]">
-        <svg className="absolute inset-0 h-full w-full" aria-hidden="true">
-          <defs>
-            <marker
-              id="graph-arrow"
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              markerWidth="6"
-              markerHeight="6"
-              orient="auto"
+      <div className="explorer-graph-canvas">
+        <div className="object-graph-canvas relative h-[440px] overflow-hidden bg-[radial-gradient(#d8dce1_1px,transparent_1px)] bg-[length:16px_16px]">
+          <svg className="absolute inset-0 h-full w-full" aria-hidden="true">
+            <defs>
+              <marker
+                id="graph-arrow"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
+              </marker>
+            </defs>
+            {nodes.map((node) => {
+              const arrow = arrowLine(node)
+              return (
+                <g key={node.group.key} stroke="#94a3b8" strokeWidth={1.5}>
+                  <line x1="50%" y1="50%" x2={`${node.x}%`} y2={`${node.y}%`} />
+                  <line
+                    x1={`${arrow.x1}%`}
+                    y1={`${arrow.y1}%`}
+                    x2={`${arrow.x2}%`}
+                    y2={`${arrow.y2}%`}
+                    markerEnd="url(#graph-arrow)"
+                  />
+                </g>
+              )
+            })}
+          </svg>
+
+          {nodes.map((node) => (
+            <span
+              key={`label-${node.group.key}`}
+              className="absolute max-w-32 truncate rounded bg-white/80 px-1 text-xs text-slate-600"
+              style={labelStyle(node)}
+              title={node.group.linkTypeName}
             >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
-            </marker>
-          </defs>
+              {node.group.linkTypeName}
+            </span>
+          ))}
+
+          <div className="object-graph-center absolute left-1/2 top-1/2 w-28 -translate-x-1/2 -translate-y-1/2 rounded border px-2 py-2 text-center text-sm">
+            <span className="block text-slate-300">
+              {formatObjectCode(object.id)}
+            </span>
+            <strong className="block text-white">{object.displayName}</strong>
+            <span className="text-slate-300">{object.objectTypeName}</span>
+          </div>
+
           {nodes.map((node) => {
-            const arrow = arrowLine(node)
+            const selected = node.group.key === selectedGroup?.key
             return (
-              <g key={node.group.key} stroke="#94a3b8" strokeWidth={1.5}>
-                <line x1="50%" y1="50%" x2={`${node.x}%`} y2={`${node.y}%`} />
-                <line
-                  x1={`${arrow.x1}%`}
-                  y1={`${arrow.y1}%`}
-                  x2={`${arrow.x2}%`}
-                  y2={`${arrow.y2}%`}
-                  markerEnd="url(#graph-arrow)"
-                />
-              </g>
+              <button
+                key={node.group.key}
+                type="button"
+                onClick={() => setPinnedGroup(node.group)}
+                aria-pressed={selected}
+                className="object-graph-node absolute w-28 -translate-x-1/2 -translate-y-1/2 border px-2 py-2 text-center"
+                style={{ left: `${node.x}%`, top: `${node.y}%` }}
+              >
+                <strong className="block text-slate-900">
+                  {node.group.relatedTypeName}
+                </strong>
+                <span className="text-slate-500">
+                  {`${node.group.linkCount}건`}
+                </span>
+              </button>
             )
           })}
-        </svg>
-
-        {nodes.map((node) => (
-          <span
-            key={`label-${node.group.key}`}
-            className="absolute max-w-32 truncate rounded bg-white/80 px-1 text-xs text-slate-600"
-            style={labelStyle(node)}
-            title={node.group.linkTypeName}
-          >
-            {node.group.linkTypeName}
-          </span>
-        ))}
-
-        <div className="absolute left-1/2 top-1/2 w-24 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-slate-900 bg-slate-900 px-2 py-2 text-center text-xs ring-4 ring-slate-200">
-          <span className="block text-slate-300">
-            {formatObjectCode(object.id)}
-          </span>
-          <strong className="block text-white">{object.displayName}</strong>
-          <span className="text-slate-300">{object.objectTypeName}</span>
         </div>
-
-        {nodes.map((node) => {
-          const selected = node.group.key === selectedGroup?.key
-          return (
-            <button
-              key={node.group.key}
-              type="button"
-              onClick={() => setPinnedGroup(node.group)}
-              aria-pressed={selected}
-              className={`absolute w-28 -translate-x-1/2 -translate-y-1/2 rounded-lg border px-2 py-2 text-center text-xs ${
-                selected
-                  ? 'border-slate-900 bg-slate-100'
-                  : 'border-slate-300 bg-white hover:border-slate-900'
-              }`}
-              style={{ left: `${node.x}%`, top: `${node.y}%` }}
-            >
-              <strong className="block truncate text-slate-900">
-                {node.group.relatedTypeName}
-              </strong>
-              <span className="text-slate-500">
-                {`${node.group.linkCount}건`}
-              </span>
-            </button>
-          )
-        })}
       </div>
 
-      <p className="mt-2 text-xs text-slate-700">
+      <p className="mt-2 text-sm text-slate-700">
         {`연결된 정보 · ${totalCount}건`}
       </p>
-      <p className="text-xs text-slate-500">
+      <p className="text-sm text-slate-500">
         {groups.length > 0
           ? '화살표는 저장된 관계 방향입니다. 유형 카드를 고르면 아래에 그 유형의 객체를 보여 줍니다.'
           : '이 객체에는 연결된 관계가 없습니다.'}
@@ -242,7 +240,7 @@ function GroupObjectList({ objectId, group, onSelect }: GroupObjectListProps) {
                 onClick={() => onSelect(link.relatedObject.id)}
                 className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50"
               >
-                <span className="truncate text-slate-900">
+                <span className="min-w-0 break-words text-slate-900">
                   {link.relatedObject.displayName}
                 </span>
                 <span className="shrink-0 text-xs text-slate-500">
@@ -254,7 +252,7 @@ function GroupObjectList({ objectId, group, onSelect }: GroupObjectListProps) {
         </ul>
       )}
       {linksQuery.hasNextPage && (
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
           <span>{`전체 ${linksQuery.totalCount}건 중 ${links.length}건`}</span>
           <Button
             variant="secondary"
@@ -269,7 +267,7 @@ function GroupObjectList({ objectId, group, onSelect }: GroupObjectListProps) {
         </div>
       )}
       {linksQuery.isFetchNextPageError && (
-        <p className="mt-1 text-xs text-red-600">
+        <p className="mt-1 text-sm text-red-600">
           {linksQuery.error?.message ?? '연결을 더 불러오지 못했습니다.'}
         </p>
       )}

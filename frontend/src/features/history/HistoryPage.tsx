@@ -1,4 +1,5 @@
 import { useSearchParams } from 'react-router'
+import PageHeader from '../../components/PageHeader'
 import DefinitionChanges from './DefinitionChanges'
 import RuleRevisions from './RuleRevisions'
 
@@ -30,22 +31,19 @@ function HistoryPage() {
   }
 
   return (
-    <div>
-      <h1 className="sr-only">정의·규칙 이력</h1>
-
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
-        <div role="group" aria-label="이력 종류" className="flex gap-2">
+    <div className="management-page">
+      <PageHeader
+        title="정의·규칙 이력"
+        description="정의 변경 기록과 규칙 개정 내역을 비교합니다."
+      />
+      <section className="management-panel">
+        <div role="group" aria-label="이력 종류" className="management-tabs">
           {tabs.map((item) => (
             <button
               key={item.key}
               type="button"
               aria-pressed={tab === item.key}
               onClick={() => selectTab(item.key)}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${
-                tab === item.key
-                  ? 'border-slate-900 bg-slate-900 text-white'
-                  : 'border-slate-300 text-slate-700 hover:border-slate-900'
-              }`}
             >
               {item.label}
             </button>

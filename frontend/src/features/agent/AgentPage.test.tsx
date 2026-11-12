@@ -98,6 +98,9 @@ test('답변은 바로 보이고 출처와 조회 상태는 기본으로 접혀 
   const details = toggle.closest('details')!
   expect(details).not.toHaveAttribute('open')
   expect(within(details).getByText('4건')).toBeVisible()
+  expect(
+    within(details).getByText('권한 제한 1건 · 미확인 1건 · 추정 1건'),
+  ).toBeVisible()
   const snapshotNotice = within(details).getByText(
     '응답 시점의 값 · 이후 수정은 다시 질문해 확인',
   )
@@ -583,6 +586,7 @@ test('Agent 답변의 마크다운은 그려 보이고, 사용자 질문은 글�
             conversationId: 1,
             sender: 'AGENT',
             content: [
+              '# 이력 요약',
               '프레스 6호기의 **최근 이력**입니다.',
               '- 11-09 실패\n- 11-03 성공',
               '| 날짜 | 결과 |\n|:---|:---:|\n| 11-09 | 실패 |',
@@ -590,6 +594,7 @@ test('Agent 답변의 마크다운은 그려 보이고, 사용자 질문은 글�
               '기간 11/03~11/09에 3~5건 실패',
               '[객체 보기](/explorer?object=301) [외부 상세](https://example.com/?d=PR-06)',
               '<b>태그</b>',
+              '```text\n긴 식별자와 원문은 코드 영역에서 확인합니다.\n```',
             ].join('\n\n'),
             context: {},
             status: 'SUCCEEDED',
@@ -605,6 +610,13 @@ test('Agent 답변의 마크다운은 그려 보이고, 사용자 질문은 글�
   renderAgentPage('/agent?conversation=1')
 
   const answer = await screen.findByRole('article', { name: 'Agent 답변' })
+  expect(
+    within(answer).getByRole('heading', { name: '이력 요약', level: 3 }),
+  ).toBeInTheDocument()
+  expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  expect(
+    within(answer).getByRole('region', { name: '답변 코드' }),
+  ).toHaveAttribute('tabindex', '0')
   expect(
     within(answer).queryByText('출처 및 조회 상태'),
   ).not.toBeInTheDocument()

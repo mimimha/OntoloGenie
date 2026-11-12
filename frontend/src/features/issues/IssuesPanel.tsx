@@ -167,7 +167,7 @@ export default function IssuesPanel() {
   const meta = query.data?.meta
   return (
     <section className="rules-issues space-y-4 rounded-xl border border-slate-200 p-5">
-      <h2 className="sr-only">적용 후 문제</h2>
+      <h2 className="text-base font-semibold">적용 후 문제</h2>
       <div
         className="issue-status-tabs"
         role="group"

@@ -73,13 +73,6 @@ function LoginPage() {
             <br />
             업무의 가능성을 넓히세요<span>.</span>
           </h1>
-          <div className="auth-art" aria-hidden="true">
-            <div className="auth-platform" />
-            <div className="auth-pillar auth-pillar-one" />
-            <div className="auth-pillar auth-pillar-two" />
-            <div className="auth-pillar auth-pillar-three" />
-            <div className="auth-orbit" />
-          </div>
         </section>
         <section className="auth-card" aria-labelledby="login-heading">
           <p className="auth-eyebrow">WELCOME TO OntoloGenie</p>

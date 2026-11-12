@@ -99,13 +99,13 @@ function ConnectionInfo({
   return (
     <div className="space-y-4 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <dl className="grid grid-cols-[7rem_1fr] gap-y-2">
+        <dl className="sources-facts">
           <dt className="text-slate-500">유형</dt>
           <dd className="text-slate-900">
             {sourceKindLabels[source.sourceKind]}
           </dd>
           <dt className="text-slate-500">접속 대상</dt>
-          <dd className="font-mono text-xs text-slate-900">
+          <dd className="font-mono text-slate-900">
             {host
               ? `${host}${port ? `:${port}` : ''}${database ? ` · ${database}` : ''}`
               : '-'}
@@ -128,7 +128,7 @@ function ConnectionInfo({
               : '미검증'}
           </dd>
         </dl>
-        <div className="flex gap-2">
+        <div className="sources-connection-actions">
           <Button variant="secondary" onClick={() => setEditing(true)}>
             정보 수정
           </Button>
@@ -170,7 +170,7 @@ function ConnectionInfo({
           className="space-y-2 rounded-lg border border-slate-200 p-4"
         >
           <div className="flex items-center gap-2">
-            <h4 className="font-semibold text-slate-900">연결 확인 결과</h4>
+            <h3 className="font-semibold text-slate-900">연결 확인 결과</h3>
             {status && (
               <StatusBadge tone={checkStatusLabels[status].tone}>
                 {checkStatusLabels[status].label}

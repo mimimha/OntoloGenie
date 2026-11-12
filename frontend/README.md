@@ -275,6 +275,38 @@ npm test -- --run src/api/client.test.ts
 - `개별 보류 건`에서 API 056·057의 `GET /api/v1/held-items` 목록과 상세를 조회합니다. API에 제안 ID 필터가 없어 전체 목록을 표시하고 각 행에서 관련 제안 ID를 확인할 수 있습니다. 상세는 원천 값, 보류 사유, 현재 상태와 처리 기록을 구분해 표시합니다.
 - 로컬 모의 환경에서 `/admin/rules/303/history?view=activity`는 과거 개정의 보류 이력, `/admin/rules/301/history`는 승인과 반영 실패의 구분을 확인할 수 있습니다.
 
+## UI/UX 1차 적용
+
+- 기준은 [디자인 시스템](../docs/design-system.md)이다. 라이트 테마와 기존 키컬러 `#8975F6`를 유지하며 가독성·기본형 밀도·데스크톱 탐색을 우선한다.
+- 전체 페이지 배경은 흰색(`--ui-canvas`), 기본 정보 면도 흰색(`--ui-surface`)을 사용한다. 연회색(`--ui-surface-subtle`)은 표 헤더·관계도·비활성 입력·hover 등 국소 구분에만 사용한다.
+- 공통 색상·타이포·입력·버튼·표·배지·피드백·다이얼로그·페이지네이션은 `src/components/ui.css`, 헤더·메뉴는 `src/components/workspace.css`에서 관리한다. 기존 화면 CSS에서 공통 컴포넌트를 다시 덮어쓰지 않는다.
+- 업무 데이터는 `src/features/explorer/explorer.css`에서 검색·목록·관계도·우측 상세를 구성한다. 좁은 창에서는 패널을 재배치하고 그래프만 내부에서 스크롤한다.
+- 페이지네이션은 처음·이전·현재 주변 최대 5개 번호·다음·마지막을 제공한다. API 페이지는 0부터 시작하며 빈 결과·1쪽·조회 중·결과 축소를 처리한다.
+- 별도 웹폰트 파일은 추가하지 않았다. Pretendard → Noto Sans KR → Malgun Gothic → Arial → sans-serif 순으로 사용 가능한 글꼴을 선택한다.
+- 확인 명령: `npm run lint`, `npm run build`, `npx vitest run --maxWorkers=2`. 테스트는 모의 API를 사용하며 실제 운영 데이터 연동 검증을 대신하지 않는다.
+
+## AI 업무 도우미 가독성 적용
+
+- `src/features/agent/agent.css`에서 대화 목록·대화 내용·질문 입력을 배치한다. 공통 `workspace.css`의 AI 전용 덮어쓰기는 제거했다.
+- 흰색 배경과 기존 키컬러를 사용한다. 질문·답변은 16px / 26px, 읽기 폭은 최대 880px이며, 근거·실행 결과·입력 안내는 14px 기준으로 표시한다.
+- 근거 상세는 기본 접힘을 유지하면서 권한 제한·미확인·미연결·추정 건수를 요약에 표시한다. 실행 결과는 실제 상태별 배지와 문구를 사용하며 성공을 추정하지 않는다.
+- 기존 전송·IME·폴링·스크롤 추적·저장 질문·참고 객체·계획 조회·외부 링크 및 이미지 제한을 유지한다. 관련 회귀 검증은 `npx vitest run src/features/agent src/components/CommonUi.test.tsx src/features/auth/RoleAccess.test.tsx --maxWorkers=2`로 실행한다.
+
+## 데이터 연결·연결 규칙 가독성 적용
+
+- 데이터 연결은 `src/features/sources/sources.css`에서 원천 비교 목록과 우측 상세·상세 탭·등록 및 수정 폼을 구성한다. 미제공 수집 상태·시각 열은 수집 이력 안내와 선택 원천의 이력 바로 가기로 정리했다.
+- 연결 규칙은 `src/features/review/rules.css`에서 후보 목록·상세·검색·필터·규칙 편집을 구성한다. 공통 입력·버튼·표를 덮어쓰던 이전 스타일은 제거했다.
+- 후보 검색은 검색 적용/Enter로 반영한다. 입력 중에는 현재 결과·페이지를 유지하고 적용 조건을 요약한다. 신뢰도는 보조 정보이며, 검토·반영·검사 상태와 승인 사유·주의 안내를 구분해 표시한다.
+- API·권한·쓰기 및 중복 요청 정책은 유지한다. 관련 검증 명령은 `npx vitest run src/features/sources src/features/review src/features/analysis src/features/issues src/features/mapping --maxWorkers=2`이다.
+- 기본 로컬 미리보기에는 수집 실행 이력·대안 후보 비교의 모의 API가 없어 404가 표시될 수 있다. 해당 정상 흐름은 테스트에서 모의 HTTP 응답을 주입해 검증하며, 운영 API 연동 확인과 구분한다.
+
+## 나머지 관리자·이력·인증 화면 가독성 적용
+
+- `src/components/management.css`에서 Action 정의·계정·권한의 목록과 편집 폼, 실행 이력·정의 변경·규칙 개정·제안 이력의 공통 배치를 관리한다. 제목·검색·결과를 구분하고 관리 폼은 최대 1100px, 계정 폼은 최대 880px로 제한한다.
+- 이력과 비교·입력 형식 표는 14px / 21px를 사용한다. 변경 전후 비교와 넓은 입력 표는 공통 DataTable로 표시하며 표 영역 안에서 스크롤한다. 종류·개정 선택은 동일한 보라색 상태 표현을 사용한다.
+- 로그인은 `src/features/auth/login.css`, 비밀번호 변경·권한 및 없는 주소 안내는 공통 토큰과 컴포넌트를 사용한다. 로그인 왼쪽 장식 오브젝트는 표시하지 않으며 인증·권한·저장 및 충돌 처리 동작을 유지한다.
+- 관련 회귀 검증: `npx vitest run src/features/actions src/features/accounts src/features/audit src/features/history src/features/auth src/features/review src/features/issues --maxWorkers=2`.
+
 ## 팀 결정이 필요한 항목
 
 - 백엔드 개발 서버 주소·포트 (인증은 API 명세 001에 따라 세션 쿠키 + `X-XSRF-TOKEN` 헤더)

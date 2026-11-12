@@ -1,0 +1,195 @@
+.sources-page {
+  min-width: 0;
+}
+.sources-workbench {
+  display: grid;
+  grid-template-columns: minmax(360px, 480px) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+.sources-list,
+.sources-detail {
+  min-width: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-panel-radius);
+  background: var(--ui-surface);
+}
+.sources-list {
+  position: sticky;
+  top: 16px;
+}
+.sources-panel-heading,
+.sources-detail-heading {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--ui-border);
+  padding: 16px;
+}
+.sources-panel-heading h2,
+.sources-detail-heading {
+  color: var(--ui-text);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 24px;
+}
+.sources-detail-heading {
+  font-size: 20px;
+  line-height: 30px;
+  overflow-wrap: anywhere;
+}
+.sources-list .ui-table-container {
+  max-height: max(320px, calc(100dvh - 440px));
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+}
+.sources-table {
+  min-width: 420px;
+}
+.sources-table th:first-child {
+  border-left: 3px solid transparent;
+}
+.sources-table tr[data-selected='true'] {
+  background: var(--ui-brand-subtle);
+}
+.sources-table tr[data-selected='true'] th {
+  border-left-color: var(--ui-brand-strong);
+}
+.sources-select {
+  color: var(--ui-text);
+  font-weight: 600;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.sources-select:hover {
+  text-decoration: underline;
+}
+.sources-list-note {
+  border-top: 1px solid var(--ui-border);
+  padding: 16px;
+  color: var(--ui-text-secondary);
+  font-size: 14px;
+  line-height: 21px;
+}
+.sources-list-note .ui-button {
+  margin-top: 8px;
+  padding-left: 0;
+}
+.sources-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  border-bottom: 1px solid var(--ui-border);
+  padding: 0 16px;
+}
+.sources-tabs button {
+  min-height: 48px;
+  border-bottom: 3px solid transparent;
+  padding: 12px 8px 9px;
+  color: var(--ui-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+}
+.sources-tabs button:hover {
+  background: var(--ui-surface-subtle);
+}
+.sources-tabs button[aria-pressed='true'] {
+  border-bottom-color: var(--ui-brand-strong);
+  color: var(--ui-brand-strong);
+}
+.sources-detail-content {
+  padding: 20px;
+}
+.sources-detail-content p {
+  max-width: 85ch;
+}
+.sources-detail-content :is(p, dd, dt, li, th, td) {
+  overflow-wrap: anywhere;
+}
+.sources-detail-content :is(h3, h4) {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}
+.sources-page .text-xs {
+  font-size: 14px;
+  line-height: 21px;
+}
+.sources-page :is(.text-slate-400, .text-slate-500) {
+  color: var(--ui-text-secondary);
+}
+.sources-page .ui-status-badge {
+  font-size: 14px;
+  line-height: 21px;
+  white-space: normal;
+}
+.sources-facts {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 360px;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: 12px 16px;
+  font-size: 14px;
+  line-height: 21px;
+}
+.sources-facts dt {
+  color: var(--ui-text-secondary);
+}
+.sources-facts dd {
+  min-width: 0;
+  color: var(--ui-text);
+  overflow-wrap: anywhere;
+}
+.sources-connection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sources-detail-footer {
+  border-top: 1px solid var(--ui-border);
+  padding: 16px 20px;
+}
+.sources-resource {
+  border-top: 1px solid var(--ui-border);
+  padding: 12px 0;
+}
+.sources-resource summary {
+  min-height: 32px;
+  color: var(--ui-text);
+  font-size: 14px;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+.sources-detail-content pre {
+  max-width: 100%;
+  overflow-x: auto;
+  font-size: 14px;
+  line-height: 21px;
+}
+.sources-form :is(input, select) {
+  min-height: 40px;
+  border-radius: var(--ui-radius);
+  font-size: 14px;
+  line-height: 21px;
+}
+.sources-form fieldset {
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  padding: 16px;
+}
+.sources-form legend {
+  padding: 0 4px;
+}
+@media (max-width: 1199px) {
+  .sources-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sources-list {
+    position: static;
+  }
+  .sources-list .ui-table-container {
+    max-height: 360px;
+  }
+}

@@ -3,39 +3,107 @@ type PaginationProps = {
   size: number
   totalElements: number
   onChange: (page: number) => void
+  pending?: boolean
+  compact?: boolean
 }
 
-function Pagination({ page, size, totalElements, onChange }: PaginationProps) {
-  const totalPages = Math.max(1, Math.ceil(totalElements / size))
+function Pagination({
+  page,
+  size,
+  totalElements,
+  onChange,
+  pending = false,
+  compact = false,
+}: PaginationProps) {
+  const totalPages = size > 0 ? Math.ceil(totalElements / size) : 0
+  const currentPage = Math.max(0, Math.min(page, totalPages - 1))
+
+  useEffect(() => {
+    if (!pending && page !== currentPage) onChange(currentPage)
+  }, [page, currentPage, totalPages, pending, onChange])
+
+  if (totalPages <= 0) {
+    return <p className="ui-pagination-empty">0건</p>
+  }
+  const start = Math.max(0, Math.min(currentPage - 2, totalPages - 5))
+  const pages = Array.from(
+    { length: Math.min(5, totalPages) },
+    (_, index) => start + index,
+  )
+
+  function goTo(nextPage: number) {
+    if (
+      !pending &&
+      nextPage >= 0 &&
+      nextPage < totalPages &&
+      nextPage !== currentPage
+    ) {
+      onChange(nextPage)
+    }
+  }
 
   return (
     <nav
       aria-label="페이지 이동"
-      className="flex items-center justify-center gap-3 text-sm text-slate-600"
+      className="ui-pagination"
+      aria-busy={pending || undefined}
     >
-      <button
-        type="button"
-        onClick={() => onChange(page - 1)}
-        disabled={page === 0}
-        aria-label="이전 페이지"
-        className="rounded px-2 py-1 hover:bg-slate-100 disabled:text-slate-300"
+      <div className="ui-pagination-controls">
+        <button
+          type="button"
+          aria-label="첫 페이지"
+          disabled={pending || currentPage === 0}
+          onClick={() => goTo(0)}
+        >
+          {compact ? '«' : '처음'}
+        </button>
+        <button
+          type="button"
+          onClick={() => goTo(currentPage - 1)}
+          disabled={pending || currentPage === 0}
+          aria-label="이전 페이지"
+        >
+          {compact ? '‹' : '이전'}
+        </button>
+        {pages.map((number) => (
+          <button
+            key={number}
+            type="button"
+            aria-label={`${number + 1}페이지로 이동`}
+            aria-current={number === currentPage ? 'page' : undefined}
+            disabled={pending || number === currentPage}
+            onClick={() => goTo(number)}
+          >
+            {number + 1}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => goTo(currentPage + 1)}
+          disabled={pending || currentPage + 1 >= totalPages}
+          aria-label="다음 페이지"
+        >
+          {compact ? '›' : '다음'}
+        </button>
+        <button
+          type="button"
+          aria-label="마지막 페이지"
+          disabled={pending || currentPage + 1 >= totalPages}
+          onClick={() => goTo(totalPages - 1)}
+        >
+          {compact ? '»' : '마지막'}
+        </button>
+      </div>
+      <p
+        className="ui-pagination-summary"
+        aria-live="polite"
+        aria-atomic="true"
       >
-        ←
-      </button>
-      <span>
-        {page + 1} / {totalPages}쪽 · {totalElements}건
-      </span>
-      <button
-        type="button"
-        onClick={() => onChange(page + 1)}
-        disabled={page + 1 >= totalPages}
-        aria-label="다음 페이지"
-        className="rounded px-2 py-1 hover:bg-slate-100 disabled:text-slate-300"
-      >
-        →
-      </button>
+        {currentPage + 1} / {totalPages}쪽 · {totalElements}건
+      </p>
     </nav>
   )
 }
 
 export default Pagination
+import { useEffect } from 'react'

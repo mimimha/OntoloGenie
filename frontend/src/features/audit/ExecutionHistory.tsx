@@ -123,7 +123,7 @@ function ExecutionDetail({ execution }: ExecutionDetailProps) {
   const result = formatJson(failed ? restResult : execution.result, restricted)
 
   return (
-    <details className="text-xs">
+    <details className="management-detail">
       <summary className="cursor-pointer text-slate-500">내용 보기</summary>
       <p className="mt-2 font-semibold text-slate-700">입력값</p>
       <pre className="whitespace-pre-wrap break-all text-slate-900">
@@ -268,11 +268,11 @@ function ExecutionHistory({
   } else {
     content = (
       <DataTable label="실행 이력" className="table-fixed min-w-[640px]">
-        <thead className="bg-slate-50 text-xs text-slate-500">
+        <thead className="bg-slate-50 text-sm text-slate-500">
           <tr>
             <th className="w-[22%] px-3 py-2 font-normal">시각·실행자</th>
             <th className="w-[24%] px-3 py-2 font-normal">동작·대상</th>
-            <th className="w-[8%] px-3 py-2 font-normal">결과</th>
+            <th className="w-[12%] px-3 py-2 font-normal">결과</th>
             <th className="px-3 py-2 font-normal">상세</th>
           </tr>
         </thead>
@@ -283,7 +283,7 @@ function ExecutionHistory({
               <tr key={execution.id}>
                 <td className="px-3 py-3">
                   <p>{requestedAt.toLocaleString('ko-KR')}</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-sm text-slate-500">
                     {actorLabel(execution)}
                   </p>
                 </td>
@@ -295,7 +295,7 @@ function ExecutionHistory({
                       targetText(execution)}
                   </p>
                   {!targetLabel && execution.targetLabel && (
-                    <p className="text-xs text-slate-500">
+                    <p className="text-sm text-slate-500">
                       {targetText(execution)}
                     </p>
                   )}
@@ -327,13 +327,13 @@ function ExecutionHistory({
   }
 
   return (
-    <div>
+    <div className="management-detail">
       {/* 종류 탭은 096 전체 목록에서만 쓴다. 객체(080)나 대상(규칙 활동 기록 등)을 고른 화면에서는 숨긴다. */}
       {objectId === undefined && target === undefined && (
         <div
           role="group"
           aria-label="실행 이력 종류"
-          className="mb-4 flex flex-wrap gap-2"
+          className="management-tabs mb-4"
         >
           {categoryTabs.map((tab) => (
             <button
@@ -344,11 +344,6 @@ function ExecutionHistory({
                 setCategory(tab.value)
                 setPage(0)
               }}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${
-                category === tab.value
-                  ? 'border-slate-900 bg-slate-900 text-white'
-                  : 'border-slate-300 text-slate-700 hover:border-slate-900'
-              }`}
             >
               {tab.label}
             </button>
@@ -356,7 +351,7 @@ function ExecutionHistory({
         </div>
       )}
       <form
-        className={`grid items-end gap-3 text-sm ${
+        className={`management-filter grid items-end gap-3 text-sm ${
           targetLabel
             ? 'md:grid-cols-[1fr_1fr_1.4fr_1fr_auto_auto]'
             : 'md:grid-cols-[1fr_1fr_1fr_auto_auto]'
@@ -412,17 +407,8 @@ function ExecutionHistory({
             ))}
           </select>
         </label>
-        <Button
-          type="submit"
-          className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white"
-        >
-          검색
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={reset}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-slate-700"
-        >
+        <Button type="submit">검색</Button>
+        <Button variant="secondary" onClick={reset}>
           초기화
         </Button>
       </form>
@@ -431,25 +417,27 @@ function ExecutionHistory({
           {formError}
         </p>
       )}
-      <p className="mt-2 text-xs text-slate-500">
+      <p className="mt-2 text-sm text-slate-500">
         {`${scopeText(objectId, target !== undefined, executionPage?.meta?.scope)} · Agent 조회 기록은 제외됩니다.`}
       </p>
       {executionPage && !isError && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-sm text-slate-500">
           {`${executionPage.meta?.totalElements ?? executionPage.data.length}건`}
         </p>
       )}
       <div className="mt-2 text-sm">{content}</div>
-      {executionPage?.meta && !isError && (
-        <div className="mt-4">
-          <Pagination
-            page={executionPage.meta.page}
-            size={executionPage.meta.size}
-            totalElements={executionPage.meta.totalElements}
-            onChange={setPage}
-          />
-        </div>
-      )}
+      {executionPage?.meta &&
+        executionPage.meta.totalElements > 0 &&
+        !isError && (
+          <div className="mt-4">
+            <Pagination
+              page={executionPage.meta.page}
+              size={executionPage.meta.size}
+              totalElements={executionPage.meta.totalElements}
+              onChange={setPage}
+            />
+          </div>
+        )}
     </div>
   )
 }

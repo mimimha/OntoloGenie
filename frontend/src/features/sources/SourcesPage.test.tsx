@@ -128,7 +128,7 @@ test('수집 이력 탭에서 실제 어댑터로 073 요청·074 이력·075 �
     detail.getByText('읽음 12 · 생성·갱신 10 · 삭제 2'),
   ).toBeInTheDocument()
   expect(
-    detail.getByText(/erp.item · CDC · 전체 읽기 · 완료/),
+    await detail.findByText(/erp.item · CDC · 전체 읽기 · 완료/),
   ).toBeInTheDocument()
   expect(
     screen.queryByText('수동 수집과 실행 이력 조회는 아직 사용할 수 없습니다.'),
@@ -246,6 +246,29 @@ test('검사한 적 없는 원천은 미검증으로 보이고 결과가 없다'
   expect(
     screen.queryByRole('region', { name: '연결 확인 결과' }),
   ).not.toBeInTheDocument()
+})
+
+test('목록의 수집 이력 바로 가기는 선택한 원천의 이력을 연다', async () => {
+  const user = userEvent.setup()
+  const requested: string[] = []
+  server.use(
+    http.get('/api/v1/sources/:id/sync-runs', ({ params }) => {
+      requested.push(String(params.id))
+      return HttpResponse.json({
+        data: [],
+        meta: { page: 0, size: 20, totalElements: 0, hasNext: false },
+      })
+    }),
+  )
+  renderSourcesPage()
+  await user.click(await screen.findByRole('button', { name: 'MES 운영 DB' }))
+  await user.click(screen.getByRole('button', { name: '수집 이력 보기' }))
+  expect(
+    screen.getByRole('button', { name: '수집 이력', pressed: true }),
+  ).toBeInTheDocument()
+  await screen.findByText('수집 실행 이력이 없습니다.')
+  expect(requested).toContain('2')
+  expect(requested).not.toContain('1')
 })
 
 test('연결 다시 확인을 누르면 끝날 때까지 다시 조회하고 계정별 결과를 보여준다', async () => {

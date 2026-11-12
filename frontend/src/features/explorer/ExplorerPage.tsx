@@ -2,6 +2,9 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { lazy, Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import Pagination from '../../components/Pagination'
+import Button from '../../components/Button'
+import PageHeader from '../../components/PageHeader'
+import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import { ApiError } from '../../api/client'
 import {
   fetchModelGraph,
@@ -16,6 +19,7 @@ import ObjectGraph from './ObjectGraph'
 import ObjectSearchBar from './ObjectSearchBar'
 import TypeRelations from './TypeRelations'
 import { formatObjectCode } from './format'
+import './explorer.css'
 
 // 유형 관계도는 그래프 라이브러리(React Flow)가 커서, 처음 화면에 그릴 때 따로 받아 온다.
 const ModelGraph = lazy(() => import('./ModelGraph'))
@@ -32,6 +36,7 @@ function ExplorerPage() {
   const selectedId = parseObjectId(searchParams.get('object'))
   const [filters, setFilters] = useState<ObjectFilters>({})
   const [page, setPage] = useState(0)
+  const [graphExpanded, setGraphExpanded] = useState(false)
 
   // 객체를 고르면 주소에 번호를 쓰고, 선택을 풀면 지운다. 기록을 쌓지 않아 뒤로 가기는 이전 화면으로 간다.
   function selectObject(id: number | null) {
@@ -55,6 +60,8 @@ function ExplorerPage() {
     isFetching,
     isError,
     error,
+    refetch: refetchObjects,
+    isPlaceholderData,
   } = useQuery({
     queryKey: ['objects', filters, page],
     queryFn: () => fetchObjects(filters, page),
@@ -98,16 +105,38 @@ function ExplorerPage() {
   }
 
   const totalCount = objectPage?.meta?.totalElements ?? objectPage?.data.length
+  const appliedTypeName = objectTypes.find(
+    (type) => type.id === filters.objectTypeId,
+  )?.name
+  const appliedConditions = [
+    appliedTypeName ?? '전체 유형',
+    filters.q ? `이름·ID: ${filters.q}` : null,
+    ...Object.values(filters.propertyValues ?? {}).map(
+      (value) => `속성 값: ${value}`,
+    ),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  if (
+    !isFetching &&
+    !isPlaceholderData &&
+    !isError &&
+    totalCount !== undefined
+  ) {
+    const lastPage = Math.max(0, Math.ceil(totalCount / OBJECT_PAGE_SIZE) - 1)
+    if (page > lastPage) setPage(lastPage)
+  }
 
   let listContent
   if (isPending) {
-    listContent = <p className="text-slate-500">불러오는 중…</p>
+    listContent = <LoadingState message="불러오는 중…" />
   } else if (isError) {
-    listContent = <p className="text-red-600">{error.message}</p>
-  } else if (objectPage.data.length === 0) {
     listContent = (
-      <p className="text-sm text-slate-500">조건에 맞는 객체가 없습니다.</p>
+      <ErrorState error={error} onRetry={() => void refetchObjects()} />
     )
+  } else if (objectPage.data.length === 0) {
+    listContent = <EmptyState message="조건에 맞는 객체가 없습니다." />
   } else {
     listContent = objectPage.data.map((item) => (
       <ObjectCard
@@ -122,8 +151,11 @@ function ExplorerPage() {
   }
 
   return (
-    <div>
-      <h1 className="sr-only">업무 데이터</h1>
+    <div className="explorer-page">
+      <PageHeader
+        title="업무 데이터"
+        description="객체를 찾고, 연결 관계와 원천 근거를 함께 확인하세요."
+      />
 
       {/* 유형 카드로 조건이 바뀌면 검색 줄 칸도 그 조건으로 다시 채운다. */}
       <ObjectSearchBar
@@ -131,6 +163,7 @@ function ExplorerPage() {
         filters={filters}
         objectTypes={objectTypes}
         onSearch={handleSearch}
+        pending={isFetching}
       />
       {objectTypesError && (
         <p role="alert" className="mt-2 text-sm text-red-600">
@@ -145,89 +178,136 @@ function ExplorerPage() {
         </p>
       )}
 
-      <div className="mt-4 grid gap-6 xl:grid-cols-[minmax(200px,0.7fr)_minmax(480px,1.5fr)_minmax(280px,1fr)]">
-        <section aria-label="객체 목록" className="flex flex-col gap-2">
-          <div className="flex items-baseline gap-2">
-            <h2 className="text-lg font-semibold text-slate-900">객체 목록</h2>
+      <p className="explorer-applied-filters" aria-label="적용된 검색 조건">
+        <span>적용 조건</span> {appliedConditions}
+      </p>
+
+      <div
+        className={`explorer-workbench${graphExpanded ? ' is-expanded' : ''}`}
+      >
+        <section
+          aria-label="객체 목록"
+          className="explorer-panel explorer-list"
+          hidden={graphExpanded}
+        >
+          <div className="explorer-panel-heading">
+            <h2>객체 목록</h2>
             {totalCount !== undefined && (
-              <span className="text-sm text-slate-500">{totalCount}건</span>
+              <span className="explorer-count">{totalCount}건</span>
             )}
             {isFetching && !isPending && (
-              <span className="text-sm text-slate-400">검색 중…</span>
+              <span role="status" className="explorer-count">
+                검색 중…
+              </span>
             )}
           </div>
-          {listContent}
+          <div className="explorer-object-list" aria-busy={isFetching}>
+            {listContent}
+          </div>
 
           {objectPage && objectPage.data.length > 0 && (
             <Pagination
-              page={page}
+              page={isPlaceholderData ? (objectPage.meta?.page ?? page) : page}
               size={OBJECT_PAGE_SIZE}
               totalElements={totalCount ?? 0}
               onChange={setPage}
+              pending={isFetching}
+              compact
             />
           )}
         </section>
 
-        <section
-          aria-label="관계도"
-          className="min-w-0 rounded-xl border border-slate-200 bg-white p-4"
-        >
-          {selectedId === null && modelGraphError && !isModelGraphForbidden && (
-            <div role="alert" className="mb-3 text-sm text-red-600">
-              <p>
-                유형 관계도를 불러오지 못했습니다. {modelGraphError.message}
-              </p>
-              <button
-                type="button"
-                disabled={isModelGraphFetching}
-                onClick={() => void refetchModelGraph()}
-                className="mt-2 rounded-lg border border-slate-300 px-3 py-1.5 text-slate-700 disabled:opacity-50"
-              >
-                {isModelGraphFetching ? '다시 불러오는 중…' : '다시 시도'}
-              </button>
-            </div>
-          )}
-          {selectedId !== null ? (
-            <>
-              <button
-                type="button"
-                onClick={() => selectObject(null)}
-                className="mb-3 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700"
-              >
-                ← 전체 구조로
-              </button>
-              <ObjectGraph objectId={selectedId} onSelect={selectObject} />
-            </>
-          ) : isModelGraphPending ? (
-            <p className="text-slate-500">유형 관계도를 불러오는 중…</p>
-          ) : modelGraph && !isModelGraphForbidden ? (
-            <Suspense
-              fallback={
-                <p className="text-slate-500">유형 관계도를 불러오는 중…</p>
-              }
+        <section aria-label="관계도" className="explorer-panel explorer-graph">
+          <div className="explorer-panel-heading">
+            <h2>
+              {selectedId === null && modelGraph && !isModelGraphForbidden
+                ? '객체 유형 간 관계'
+                : '관계 탐색'}
+            </h2>
+            <Button
+              variant="text"
+              aria-pressed={graphExpanded}
+              onClick={() => setGraphExpanded((expanded) => !expanded)}
             >
-              <ModelGraph
-                graph={modelGraph}
-                selectedTypeId={filters.objectTypeId ?? null}
-                onSelect={handleSelectType}
-              />
-            </Suspense>
-          ) : !modelGraphError || isModelGraphForbidden ? (
-            <ObjectGraph objectId={null} onSelect={selectObject} />
-          ) : null}
+              {graphExpanded ? '분할 보기' : '관계도 확장'}
+            </Button>
+          </div>
+          <div className="explorer-panel-body">
+            {selectedId === null &&
+              modelGraphError &&
+              !isModelGraphForbidden && (
+                <div role="alert" className="mb-3 text-sm text-red-600">
+                  <p>
+                    유형 관계도를 불러오지 못했습니다. {modelGraphError.message}
+                  </p>
+                  <Button
+                    variant="secondary"
+                    pending={isModelGraphFetching}
+                    onClick={() => void refetchModelGraph()}
+                  >
+                    {isModelGraphFetching ? '다시 불러오는 중…' : '다시 시도'}
+                  </Button>
+                </div>
+              )}
+            {selectedId !== null ? (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => selectObject(null)}
+                  className="mb-3"
+                >
+                  ← 전체 구조로
+                </Button>
+                <ObjectGraph objectId={selectedId} onSelect={selectObject} />
+              </>
+            ) : isModelGraphPending ? (
+              <p className="text-slate-500">유형 관계도를 불러오는 중…</p>
+            ) : modelGraph && !isModelGraphForbidden ? (
+              <Suspense
+                fallback={
+                  <p className="text-slate-500">유형 관계도를 불러오는 중…</p>
+                }
+              >
+                <ModelGraph
+                  graph={modelGraph}
+                  selectedTypeId={filters.objectTypeId ?? null}
+                  onSelect={handleSelectType}
+                />
+              </Suspense>
+            ) : !modelGraphError || isModelGraphForbidden ? (
+              <ObjectGraph objectId={null} onSelect={selectObject} />
+            ) : null}
+          </div>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-6">
-          {selectedId !== null || !modelGraph || isModelGraphForbidden ? (
-            <ObjectDetail objectId={selectedId} />
-          ) : filters.objectTypeId ? (
-            <TypeRelations graph={modelGraph} typeId={filters.objectTypeId} />
-          ) : (
-            <p className="text-slate-500">
-              가운데에서 객체 유형을 고르거나 왼쪽 목록에서 객체를 선택해
-              주세요.
-            </p>
-          )}
+        <section
+          aria-label="상세 정보"
+          className="explorer-panel explorer-detail"
+          hidden={graphExpanded}
+        >
+          <div className="explorer-panel-heading">
+            <h2>상세 정보</h2>
+            {selectedId !== null && (
+              <Button variant="text" onClick={() => selectObject(null)}>
+                선택 해제
+              </Button>
+            )}
+          </div>
+          <div
+            key={selectedId ?? `type-${filters.objectTypeId ?? 'all'}`}
+            className="explorer-panel-body explorer-detail-body"
+          >
+            {selectedId !== null || !modelGraph || isModelGraphForbidden ? (
+              <ObjectDetail objectId={selectedId} />
+            ) : filters.objectTypeId ? (
+              <TypeRelations graph={modelGraph} typeId={filters.objectTypeId} />
+            ) : (
+              <p className="explorer-detail-hint">
+                가운데에서 객체 유형을 고르거나 왼쪽 목록에서 객체를 선택해
+                주세요.
+              </p>
+            )}
+          </div>
         </section>
       </div>
     </div>

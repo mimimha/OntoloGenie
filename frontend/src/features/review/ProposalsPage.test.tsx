@@ -133,6 +133,11 @@ test('상태 탭·유형·검색을 결합하고 빈 결과에서도 전체 건�
     screen.getByRole('searchbox', { name: '후보 검색' }),
     '없는 후보',
   )
+  expect(screen.getByText('후보 1건')).toBeInTheDocument()
+  expect(screen.getByLabelText('적용된 후보 검색 조건')).not.toHaveTextContent(
+    '없는 후보',
+  )
+  await user.click(screen.getByRole('button', { name: '검색 적용' }))
   expect(
     await screen.findByText(
       '선택한 상태·유형·검색어에 해당하는 후보가 없습니다.',
@@ -268,7 +273,14 @@ test('서버의 다음 페이지 후보도 집계·검색하고 화면 페이지
     screen.getByRole('searchbox', { name: '후보 검색' }),
     '후보 20',
   )
+  expect(screen.getByText('후보 21건')).toBeInTheDocument()
+  expect(list.getByText('2 / 2쪽 · 21건')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '검색 적용' }))
   expect(await screen.findByText('후보 1건')).toBeInTheDocument()
+  expect(list.getByText('1 / 1쪽 · 1건')).toBeInTheDocument()
+  expect(screen.getByLabelText('적용된 후보 검색 조건')).toHaveTextContent(
+    '검색어: 후보 20',
+  )
   expect(list.getByText('후보 20')).toBeInTheDocument()
 })
 test('조회 사용자가 상세 주소로 진입해도 제안 API를 호출하지 않는다', async () => {

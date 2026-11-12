@@ -15,13 +15,7 @@ function StatusBadge({
   children: ReactNode
   tone?: keyof typeof tones
 }) {
-  return (
-    <span
-      className={`inline-flex shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone]}`}
-    >
-      {children}
-    </span>
-  )
+  return <span className={`ui-status-badge ${tones[tone]}`}>{children}</span>
 }
 
 export default StatusBadge

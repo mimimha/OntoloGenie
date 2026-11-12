@@ -3,21 +3,23 @@ import { useQuery } from '@tanstack/react-query'
 import { ApiError } from '../../api/client'
 import { fetchObjectProperties, type ObjectFilters } from './api'
 import type { ObjectTypeOption } from './types'
+import Button from '../../components/Button'
 
 type ObjectSearchBarProps = {
   filters: ObjectFilters
   objectTypes: ObjectTypeOption[]
   onSearch: (filters: ObjectFilters) => void
+  pending?: boolean
 }
 
-const labelClass = 'mb-1.5 block text-xs font-semibold text-slate-700'
-const fieldClass =
-  'w-full min-w-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:bg-slate-100 disabled:text-slate-400'
+const labelClass = 'explorer-field-label'
+const fieldClass = 'explorer-field'
 
 function ObjectSearchBar({
   filters,
   objectTypes,
   onSearch,
+  pending = false,
 }: ObjectSearchBarProps) {
   const [typeId, setTypeId] = useState(
     filters.objectTypeId ? String(filters.objectTypeId) : '',
@@ -58,10 +60,11 @@ function ObjectSearchBar({
 
   return (
     <form
-      className="grid gap-3 rounded-lg bg-white p-4 lg:grid-cols-[140px_minmax(190px,1.4fr)_150px_minmax(150px,1fr)_auto] lg:items-end"
+      aria-label="객체 검색"
+      className="explorer-search"
       onSubmit={(event) => {
         event.preventDefault()
-        if (propertyUnavailable) return
+        if (propertyUnavailable || pending) return
         onSearch({
           q: keyword.trim() || undefined,
           objectTypeId: typeId ? Number(typeId) : undefined,
@@ -153,32 +156,24 @@ function ObjectSearchBar({
               ? 'true 또는 false'
               : '일치하는 값을 입력하세요'
           }
+          aria-describedby={
+            showPropertyHelp ? 'property-filter-help' : undefined
+          }
           className={fieldClass}
         />
       </div>
 
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={propertyUnavailable}
-          className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-        >
+      <div className="explorer-search-actions">
+        <Button type="submit" disabled={propertyUnavailable} pending={pending}>
           검색
-        </button>
-        <button
-          type="button"
-          onClick={handleReset}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700"
-        >
+        </Button>
+        <Button type="button" variant="secondary" onClick={handleReset}>
           초기화
-        </button>
+        </Button>
       </div>
 
       {showPropertyHelp && (
-        <div
-          id="property-filter-help"
-          className="col-span-full text-xs text-slate-500"
-        >
+        <div id="property-filter-help" className="explorer-search-help">
           {!typeId ? (
             '객체 유형을 먼저 선택하면 속성 조건을 사용할 수 있습니다.'
           ) : isPending ? (

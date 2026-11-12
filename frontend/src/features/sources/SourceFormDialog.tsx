@@ -151,8 +151,12 @@ function SourceFormDialog({ source, onClose, onSaved }: Props) {
 
   return (
     <Dialog title={editing ? '원천 정보 수정' : '원천 등록'} onClose={onClose}>
-      <form className="mt-4 space-y-4 text-sm" onSubmit={submit} noValidate>
-        <p className="text-xs text-slate-500">
+      <form
+        className="sources-form mt-4 space-y-4 text-sm"
+        onSubmit={submit}
+        noValidate
+      >
+        <p className="text-sm text-slate-600">
           조회 전용 계정만 등록하세요. 비밀번호는 저장할 때만 보내고 화면에 다시
           보여 주지 않습니다.
         </p>
