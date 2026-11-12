@@ -57,10 +57,17 @@ _VIA = re.compile(r"\(\w+로 ([a-z][\w]*\.[a-z][\w]*)를 찾아 그 \w+로 비�
 
 def _table_names(text: str, names: Names) -> str:
     """이유·보류 이유의 원천 표 이름을 객체 유형 이름으로. 모르는 표는 그대로."""
-    return _TABLE_KEY.sub(
+    text = _TABLE_KEY.sub(
         lambda m: names.table(m.group(1)) if m.group(1) in names.tables else m.group(1),
         text,
     )
+    # 한글·대문자 표 이름(erp.품목, qms.QC_INSP_HDR)은 위 정규식에 안 걸려 아는 표 이름으로 한 번 더 바꾼다
+    for key in sorted(names.tables, key=len, reverse=True):
+        if key in text and not _TABLE_KEY.fullmatch(key):
+            text = re.sub(
+                rf"(?<![\w.]){re.escape(key)}(?!\w|\.\w)", names.table(key), text
+            )
+    return text
 
 
 def _name_link_type(link_type: dict, names: Names, document: bool = False) -> None:

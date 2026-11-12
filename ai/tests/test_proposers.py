@@ -874,3 +874,47 @@ def test_unmatched_examples_that_are_all_hidden_names_are_not_shown_as_stars(res
     reason = rules["maintenance_order_technician_to_department"]["reason"]
     assert "***" not in reason
     assert "불일치 값은 개인정보라 표시하지 않음" in reason
+
+
+def test_english_property_name_is_replaced_by_llm_label_only_when_not_korean():
+    from app.models.candidate import Candidate, DataType, Evidence, PropertyPayload
+    from app.proposers.semantics import TableView, apply
+
+    def renamed(current, label):
+        prop = Candidate(
+            candidate_id="P-wms.inbound.supplier_biz_no",
+            title="t",
+            payload=PropertyPayload(
+                object_type_code="INBOUND",
+                code="supplier_biz_no",
+                name=current,
+                data_type=DataType.STRING,
+                description="",
+            ),
+            reason="r",
+            evidence=[
+                Evidence(
+                    source_id="wms", locator="wms.inbound.supplier_biz_no", snippet="s"
+                )
+            ],
+        )
+        view = TableView(
+            object_name="입고 전표",
+            meaning="입고 기록",
+            category="history",
+            category_reason="발생",
+            columns=[
+                {
+                    "name": "supplier_biz_no",
+                    "label": label,
+                    "meaning": "공급업체 사업자번호",
+                    "role": "reference",
+                    "data_type": "STRING",
+                }
+            ],
+        )
+        return apply([prop], {"wms.inbound": view})[0].payload.name
+
+    assert renamed("supplier tax id", "공급업체 사업자번호") == "공급업체 사업자번호"
+    assert renamed("사업자번호", "공급업체 사업자번호") == "사업자번호"
+    assert renamed("supplier tax id", None) == "supplier tax id"

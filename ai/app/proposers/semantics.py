@@ -16,7 +16,7 @@ from app.llm.client import LLMClient, LLMError, token_credits
 from app.llm.privacy import MASK, is_person_column, mask_value
 from app.models.candidate import Candidate, DataType, ItemKind, Sensitivity
 from app.proposers.confidence import CAP, LLM_AGREE_HELD
-from app.proposers.objects import CATEGORY_TEXT
+from app.proposers.objects import CATEGORY_TEXT, HANGUL
 from app.sources.csv_reader import CsvSourceReader
 
 MAX_SAMPLE_ROWS = 20  # LLM에 보내는 표본 행 수 상한
@@ -37,6 +37,9 @@ CATEGORY_GUIDE = (
 
 class ColumnView(BaseModel):
     name: str
+    label: str | None = (
+        None  # 업무에서 부르는 짧은 이름. 주석이 없거나 영문인 컬럼의 속성 이름으로 쓴다
+    )
     meaning: str = Field(min_length=1)
     role: Role
     data_type: DataType
@@ -130,7 +133,7 @@ def build_prompt(
             f"data_type 값: {', '.join(t.value for t in DataType)}",
             (
                 '형식: {"object_name": 객체 유형 이름(한 행이 무엇인지 나타내는 짧은 명사, 예: 작업지시·공정 실적), "meaning": 표 설명, "category", "category_reason", '
-                '"columns": [{"name", "meaning", "role", "data_type", "is_personal"}], '
+                '"columns": [{"name", "label": 업무에서 부르는 짧은 한국어 이름(예: 출하 수량·사업자번호), "meaning", "role", "data_type", "is_personal"}], '
                 '"links": [{"code", "meaningful": 업무상 맞는 관계인지, "reason"}]}'
             ),
             (
@@ -295,8 +298,18 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
                         or is_person_column(f"{col.name} {c.payload.description}")
                     )
                 )
+                # 이름이 영문·코드 그대로면(주석 없음, 영문 주석) LLM이 준 한국어 이름으로 바꾼다
+                label = (col.label or "").strip()
+                rename = (
+                    {"name": label}
+                    if label
+                    and HANGUL.search(label)
+                    and not HANGUL.search(c.payload.name)
+                    else {}
+                )
                 payload = c.payload.model_copy(
                     update={
+                        **rename,
                         "description": col.meaning,
                         "sensitivity": Sensitivity.RESTRICTED
                         if personal

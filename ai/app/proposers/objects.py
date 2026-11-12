@@ -33,6 +33,21 @@ TIME_TYPES = ("date", "timestamp", "datetime", "time")
 PAIR_KEY_COLUMNS = 6  # 기본키 없는 표에서 두 컬럼 키를 찾을 때 앞에서부터 볼 컬럼 수
 
 
+HANGUL = re.compile(r"[가-힣]")
+
+
+def property_name(column: str, comment: str | None) -> str:
+    """검토 화면의 속성 이름. 한글 컬럼 이름은 그대로 업무 이름으로 쓰고, 아니면 주석의 괄호 앞부분을 쓴다.
+
+    주석이 단위·값 목록(EA, kg, 지시/진행/완료)이면 이름이 아니므로 한글 컬럼 이름을 우선한다. 둘 다 한글이 아니면
+    LLM 해석에서 받은 짧은 이름으로 바꾼다(semantics).
+    """
+    if HANGUL.search(column):
+        return column
+    head = (comment or "").split("(")[0].strip()
+    return head or column
+
+
 def observed_pair_key(df, names: list[str]) -> list[str]:
     """기본키도 값이 모두 다른 한 컬럼도 없는 표에서, 빈 값 없이 조합이 모두 다른 두 컬럼.
     오래된 시스템의 상세 표는 기본키를 선언하지 않은 경우가 많다."""
@@ -347,7 +362,7 @@ def _table_candidates(
                 payload=PropertyPayload(
                     object_type_code=code,
                     code=col.name,
-                    name=col.comment.split("(")[0].strip() if col.comment else col.name,
+                    name=property_name(col.name, col.comment),
                     data_type=dtype,
                     description=col.comment or "",
                     is_identifier=col.name in keys,
