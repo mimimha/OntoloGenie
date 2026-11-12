@@ -19,6 +19,8 @@ class Names:
         self.types: dict[str, str] = {}  # 객체 유형 코드 → 이름
         self.tables: dict[str, str] = {}  # 원천 표(resourceKey) → 객체 유형 이름
         self.props: dict[str, str] = {}  # '유형코드.속성코드' → 속성 이름
+        # '유형코드.속성코드' → 원천 컬럼 이름. 속성 코드는 바뀔 수 있어(customerId → customer_id) 글에서는 이것을 찾는다
+        self.columns: dict[str, str] = {}
         for p in proposals:
             if p.get("itemKind") != "OBJECT_TYPE":
                 continue
@@ -35,6 +37,9 @@ class Names:
                     self.props[f"{code}.{prop['code']}"] = (
                         prop.get("name") or prop["code"]
                     )
+                    column = (prop.get("sourceColumn") or {}).get("column")
+                    if column:
+                        self.columns[f"{code}.{prop['code']}"] = column
 
     def type(self, code: str | None) -> str:
         """제목·설명용 이름. 표 주석의 괄호 설명은 빼서 짧게 쓴다."""
@@ -45,6 +50,9 @@ class Names:
 
     def prop(self, ref: str | None) -> str:
         return self.props.get(ref or "", (ref or "").rsplit(".", 1)[-1])
+
+    def column(self, ref: str) -> str:
+        return self.columns.get(ref, ref.rsplit(".", 1)[-1])
 
 
 # 한글은 \w에 들어가 'erp.employee의'를 놓치므로 영문·숫자만 경계로 본다
@@ -64,8 +72,12 @@ def _table_names(text: str, names: Names) -> str:
     # 한글·대문자 표 이름(erp.품목, qms.QC_INSP_HDR)은 위 정규식에 안 걸려 아는 표 이름으로 한 번 더 바꾼다
     for key in sorted(names.tables, key=len, reverse=True):
         if key in text and not _TABLE_KEY.fullmatch(key):
+            # 바꿀 이름에 백슬래시가 있어도('규격(mm\inch)') 치환 문법으로 읽지 않게 함수로 넘긴다
+            name = names.table(key)
             text = re.sub(
-                rf"(?<![\w.]){re.escape(key)}(?!\w|\.\w)", names.table(key), text
+                rf"(?<![\w.]){re.escape(key)}(?!\w|\.\w)",
+                lambda _m, name=name: name,
+                text,
             )
     return text
 
@@ -108,15 +120,18 @@ def _column_names(text: str, payload: dict, names: Names) -> str:
     if head.startswith("대상 키:"):
         for condition in payload.get("conditions") or []:
             ref = condition.get("targetProperty")
-            if ref and names.prop(ref) != ref.rsplit(".", 1)[-1]:
-                column = re.escape(ref.rsplit(".", 1)[-1])
-                head = re.sub(rf"(?<![\w.']){column}(?![\w.'])", names.prop(ref), head)
+            if ref and names.prop(ref) != names.column(ref):
+                column = re.escape(names.column(ref))
+                name = names.prop(ref)
+                head = re.sub(
+                    rf"(?<![\w.']){column}(?![\w.'])", lambda _m, name=name: name, head
+                )
         text = head + sep + rest
     by_column: dict[str, set[str]] = {}
     for ref in refs:
-        by_column.setdefault(ref.rsplit(".", 1)[-1], set()).add(names.prop(ref))
+        by_column.setdefault(names.column(ref), set()).add(names.prop(ref))
     for ref in refs:
-        column, name = ref.rsplit(".", 1)[-1], names.prop(ref)
+        column, name = names.column(ref), names.prop(ref)
         # 출발·대상 컬럼 이름이 같은데 속성 이름이 다르면 어느 쪽인지 알 수 없어 그대로 둔다
         if name == column or len(by_column[column]) > 1:
             continue
@@ -125,7 +140,9 @@ def _column_names(text: str, payload: dict, names: Names) -> str:
             lambda _m, n=name: josa(n, "은/는"),
             text,
         )
-        text = re.sub(rf"(?<![\w.']){re.escape(column)}(?![\w.'])", name, text)
+        text = re.sub(
+            rf"(?<![\w.']){re.escape(column)}(?![\w.'])", lambda _m, n=name: n, text
+        )
     return text
 
 

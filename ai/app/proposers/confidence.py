@@ -39,6 +39,9 @@ HOLD_CAPS: list[tuple[str, float, int, int]] = [
     ("시스템 간 연결이라", 0.6, 0, 0),
     ("수량·개수 컬럼이라", 0.4, 0, 0),
     ("식별 키 없음", 0.6, 0, 0),  # 객체 유형
+    ("순번 숫자 컬럼", 0.45, 0, 0),  # 복합키 둘째 컬럼
+    # 근거 재확인(evidence.verify): 원천에서 다시 못 찾은 근거가 있으면 다른 근거가 강해도 낮게 둔다
+    ("근거 일부를 원천에서 다시 찾지 못함", 0.3, 0, 0),
     ("후보", 0.3, 0, 0),  # 문서 연결
     ("대상을 정한 언급이 없음", 0.3, 0, 0),
 ]
@@ -58,6 +61,16 @@ def hold_cap(reason: str) -> tuple[float, str]:
             )
             return cap, f"{reason}{stat}"
     return HOLD_DEFAULT, reason
+
+
+def with_hold(confidence: Confidence | None, hold: str) -> Confidence | None:
+    """나중에 보류로 바뀐 후보(근거 재확인 등)에 그 사유의 상한을 더한다. 이미 더 낮은 상한이 있으면 그대로 둔다."""
+    if confidence is None:
+        return None
+    cap, cap_reason = hold_cap(hold)
+    if confidence.cap is not None and confidence.cap <= cap:
+        return confidence
+    return confidence.model_copy(update={"cap": cap, "cap_reason": cap_reason})
 
 
 def build(items: list[tuple[str, str, float]], hold: str | None = None) -> Confidence:

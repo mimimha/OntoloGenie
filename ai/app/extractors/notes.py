@@ -48,6 +48,7 @@ from app.models.extraction import (
 )
 from app.proposers.confidence import build as confidence
 from app.proposers.confidence import document_link
+from app.proposers.objects import type_codes
 from app.sources.csv_reader import CsvSourceReader
 
 LINK_OF = {
@@ -547,8 +548,21 @@ def _around(doc: Document, start: int, end: int, width: int = 15) -> str:
     )
 
 
-def document_link_types(links: list[Candidate]) -> list[Candidate]:
-    """문서 연결이 쓰는 관계 유형마다 LINK_TYPE 후보 하나."""
+def document_link_types(
+    links: list[Candidate], root: Path | None = None
+) -> list[Candidate]:
+    """문서 연결이 쓰는 관계 유형마다 LINK_TYPE 후보 하나. root를 주면 도착 객체 유형 코드를
+    객체 후보와 같게 정한다(다른 원천에 같은 이름의 표가 있으면 MES_EQUIPMENT)."""
+    codes = (
+        type_codes(
+            f"{d.name}.{t}"
+            for d in Path(root).iterdir()
+            if d.is_dir()
+            for t in CsvSourceReader(d.name, d).list_tables()
+        )
+        if root
+        else {}
+    )
     groups: dict[str, list[Candidate]] = {}
     for link in links:
         groups.setdefault(link.payload.link_type_code, []).append(link)
@@ -558,7 +572,8 @@ def document_link_types(links: list[Candidate]) -> list[Candidate]:
             k for k, loc in LOCATORS.items() if loc == group[0].evidence[0].locator
         )
         table = group[0].payload.target_object_ref.split(":", 1)[0]
-        source, target = DOCUMENT_TYPES[kind], table.split(".", 1)[1].upper()
+        source = DOCUMENT_TYPES[kind]
+        target = codes.get(table) or table.split(".", 1)[1].upper()
         docs = sorted({c.payload.document_id for c in group})
         undecided = all(c.review_status == "HELD" for c in group)
         out.append(

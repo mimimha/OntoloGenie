@@ -69,6 +69,11 @@ def _table_of(candidate: Candidate) -> str | None:
     return None
 
 
+def _column_of(prop: Candidate) -> str:
+    """속성 후보의 원천 컬럼 이름(근거 위치 '원천.표.컬럼'). 속성 코드는 바뀔 수 있어(contactName → contact_name) 쓰지 않는다."""
+    return prop.evidence[0].locator.split(".", 2)[-1]
+
+
 def pick_sample_positions(df: pd.DataFrame, limit: int) -> list[int]:
     """앞에서부터 자르지 않고 빈 값·모양이 다른 값이 고루 보이게 고른다. 같은 표면 항상 같은 행."""
     if len(df) <= limit:
@@ -113,7 +118,7 @@ def build_prompt(
         snippet = p.evidence[0].snippet
         comment = load.description or "없음"
         column_lines.append(
-            f"- {load.code} | 주석 {comment} | 규칙 자료형 {load.data_type.value} | {snippet}"
+            f"- {_column_of(p)} | 주석 {comment} | 규칙 자료형 {load.data_type.value} | {snippet}"
         )
     link_lines = [f"- {c.payload.code}: {c.reason}" for c in links] or ["- 없음"]
     return "\n".join(
@@ -193,7 +198,7 @@ def prepare(
             and c.evidence[0].locator.startswith(table + ".")
         ]
         personal = {
-            c.payload.code
+            _column_of(c)
             for c in props
             if c.payload.sensitivity == Sensitivity.RESTRICTED
         }
@@ -288,7 +293,7 @@ def apply(candidates: list[Candidate], views: dict[str, TableView]) -> list[Cand
                 **update,
             )
         elif c.candidate_id.startswith("P-") and view:
-            col = next((x for x in view.columns if x.name == c.payload.code), None)
+            col = next((x for x in view.columns if x.name == _column_of(c)), None)
             if col:
                 # 이름 칸이나 사람을 적는 칸이 아니면 LLM이 개인정보라고 해도 따르지 않는다(A에서 22개 중 18개 오답)
                 personal = (
@@ -378,7 +383,7 @@ def interpret(
             answer = llm.complete_json(prompt)
             views[table] = parse(
                 answer,
-                {p.payload.code for p in props},
+                {_column_of(p) for p in props},
                 {link.payload.code for link in links},
             )
         except LLMError as error:

@@ -274,6 +274,21 @@ def test_maintenance_record_links_use_their_own_link_type_code():
     ] == [("MAINTENANCE_ORDER", "EQUIPMENT")]
 
 
+def test_document_link_target_code_matches_object_type_code_when_names_collide(
+    tmp_path,
+):
+    # erp·mes 둘 다 equipment 표가 있으면 객체 유형은 MES_EQUIPMENT(objects.type_codes)
+    for system in ("erp", "mes"):
+        (tmp_path / system).mkdir()
+        (tmp_path / system / "equipment.csv").write_text("code\nP103\n", "utf-8")
+    doc = Document(doc_id="RP-1", source_kind="maint", text="P103 유압 점검")
+    extraction, _ = extract(doc, load_dictionary_rows(), load_equipment(ROWS), None)
+
+    types = document_link_types(to_candidates(doc, extraction), tmp_path)
+
+    assert [t.payload.target_type_code for t in types] == ["MES_EQUIPMENT"]
+
+
 def load_dictionary_rows():
     return {"P103": (EntityType.EQUIPMENT, "mes.equipment:P103")}
 
