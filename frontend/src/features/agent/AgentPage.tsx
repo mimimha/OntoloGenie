@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
+import PageHeader from '../../components/PageHeader'
 import ConversationList from './ConversationList'
 import ConversationPanel from './ConversationPanel'
 import {
@@ -9,6 +10,7 @@ import {
   fetchConversations,
 } from './api'
 import type { AgentConversation } from './types'
+import './agent.css'
 
 function AgentPage() {
   const queryClient = useQueryClient()
@@ -68,7 +70,7 @@ function AgentPage() {
       )
     }
     return (
-      <div className="grid auto-rows-[45rem] gap-4 md:grid-cols-[16rem_minmax(0,1fr)]">
+      <div className="agent-workspace">
         <ConversationList
           conversations={conversations}
           selectedId={selected?.id ?? null}
@@ -81,15 +83,20 @@ function AgentPage() {
         {selected ? (
           <ConversationPanel key={selected.id} conversation={selected} />
         ) : (
-          <EmptyState message="[+ 새 대화]를 눌러 대화를 시작하세요." />
+          <section className="agent-empty-panel" aria-label="현재 대화">
+            <EmptyState message="[+ 새 대화]를 눌러 대화를 시작하세요." />
+          </section>
         )}
       </div>
     )
   }
 
   return (
-    <div>
-      <h1 className="sr-only">AI 업무 도우미</h1>
+    <div className="agent-page">
+      <PageHeader
+        title="AI 업무 도우미"
+        description="업무 정보를 질문하고, 답변의 출처와 실행 결과를 함께 확인하세요."
+      />
       {createMutation.isError && (
         <div className="mb-4">
           <ErrorState

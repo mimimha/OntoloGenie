@@ -126,12 +126,10 @@ test('수집 이력 탭에서 실제 어댑터로 073 요청·074 이력·075 �
   await user.click(screen.getByRole('button', { name: '수동 수집 요청' }))
   await screen.findByText('수집 실행 #21을 접수했습니다.')
   await screen.findByRole('button', { name: '수집 실행 #21' })
-  const sourceRows = within(
-    screen.getByRole('table', { name: '등록된 원천 목록' }),
-  ).getAllByRole('row')
-  expect(
-    await within(sourceRows[1]).findByText('전체 읽기 · 완료'),
-  ).toBeInTheDocument()
+  const summary = within(
+    screen.getByRole('table', { name: '선택한 원천 수집 요약' }),
+  )
+  expect(await summary.findByText('전체 읽기 · 완료')).toBeInTheDocument()
   const detail = within(
     await screen.findByRole('region', { name: '수집 실행 #21 상세' }),
   )
@@ -259,6 +257,37 @@ test('검사한 적 없는 원천은 미검증으로 보이고 결과가 없다'
   expect(
     screen.queryByRole('region', { name: '연결 확인 결과' }),
   ).not.toBeInTheDocument()
+})
+
+test('목록의 수집 이력 바로 가기는 선택한 원천의 이력을 연다', async () => {
+  const user = userEvent.setup()
+  const requested: string[] = []
+  server.use(
+    http.get('/api/v1/sources/:id/sync-runs', ({ params, request }) => {
+      const size = Number(new URL(request.url).searchParams.get('size'))
+      // 요약(size=1)과 전체 이력(size=20) 요청을 구분한다.
+      if (size === 20) requested.push(String(params.id))
+      return HttpResponse.json({
+        data: [],
+        meta: {
+          page: 0,
+          size,
+          totalElements: 0,
+          hasNext: false,
+          cdcLastAppliedAt: null,
+        },
+      })
+    }),
+  )
+  renderSourcesPage()
+  await user.click(await screen.findByRole('button', { name: 'MES 운영 DB' }))
+  await user.click(screen.getByRole('button', { name: '수집 이력 보기' }))
+  expect(
+    screen.getByRole('button', { name: '수집 이력', pressed: true }),
+  ).toBeInTheDocument()
+  await screen.findByText('수집 실행 이력이 없습니다.')
+  expect(requested).toContain('2')
+  expect(requested).not.toContain('1')
 })
 
 test('연결 다시 확인을 누르면 끝날 때까지 다시 조회하고 계정별 결과를 보여준다', async () => {

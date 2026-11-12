@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import Button from '../../components/Button'
+import DataTable from '../../components/DataTable'
 import ExecutionHistory from '../audit/ExecutionHistory'
 import { fetchRuleRevisions, fetchRules } from './api'
 import { ruleOriginLabels, ruleStatusLabels } from './labels'
@@ -84,8 +86,8 @@ type RevisionComparisonProps = {
 function RevisionComparison({ previous, selected }: RevisionComparisonProps) {
   return (
     <div className="mt-4">
-      <table className="w-full table-fixed text-left text-sm">
-        <thead className="bg-slate-50 text-xs text-slate-500">
+      <DataTable label="규칙 개정 비교" className="table-fixed min-w-[640px]">
+        <thead className="bg-slate-50 text-sm text-slate-500">
           <tr>
             <th className="w-[16%] px-3 py-2 font-normal">항목</th>
             {previous && (
@@ -108,7 +110,7 @@ function RevisionComparison({ previous, selected }: RevisionComparisonProps) {
                 <td className="px-3 py-2 text-slate-600">
                   {row.label}
                   {changed && (
-                    <span className="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-800">
+                    <span className="ml-1 rounded bg-amber-100 px-1 text-sm text-amber-800">
                       바뀜
                     </span>
                   )}
@@ -127,13 +129,13 @@ function RevisionComparison({ previous, selected }: RevisionComparisonProps) {
             )
           })}
         </tbody>
-      </table>
+      </DataTable>
       {!previous && (
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-sm text-slate-500">
           이 개정본에는 비교할 이전 개정본이 없습니다.
         </p>
       )}
-      <p className="mt-2 text-xs text-slate-500">
+      <p className="mt-2 text-sm text-slate-500">
         속성·관계 유형 이름은 개정 당시가 아니라 지금 이름입니다.
       </p>
     </div>
@@ -190,7 +192,7 @@ function RevisionList({ revisions }: RevisionListProps) {
 
   return (
     <div>
-      <p className="text-xs text-slate-500">
+      <p className="text-sm text-slate-500">
         {`${selected.code} · ${selected.linkTypeName ?? `관계 유형 #${selected.linkTypeId}`}`}
       </p>
       <h3 className="mt-1 text-lg font-semibold text-slate-900">
@@ -199,7 +201,7 @@ function RevisionList({ revisions }: RevisionListProps) {
       <div
         role="group"
         aria-label="개정본"
-        className="mt-3 flex flex-wrap gap-2"
+        className="management-selection mt-3"
       >
         {sorted.map((revision) => (
           <button
@@ -207,11 +209,6 @@ function RevisionList({ revisions }: RevisionListProps) {
             type="button"
             aria-pressed={revision.revision === selected.revision}
             onClick={() => setSelectedRevision(revision.revision)}
-            className={`rounded-lg border px-3 py-1.5 text-sm ${
-              revision.revision === selected.revision
-                ? 'border-slate-900 bg-slate-900 text-white'
-                : 'border-slate-300 text-slate-700 hover:border-slate-900'
-            }`}
           >
             {`개정 ${revision.revision} · ${ruleStatusLabels[revision.status]}`}
           </button>
@@ -220,7 +217,7 @@ function RevisionList({ revisions }: RevisionListProps) {
       <div
         role="group"
         aria-label="규칙 이력 보기"
-        className="mt-4 flex gap-2 border-b border-slate-200 pb-2"
+        className="management-tabs mt-4"
       >
         {historyViews.map((item) => (
           <button
@@ -228,11 +225,6 @@ function RevisionList({ revisions }: RevisionListProps) {
             type="button"
             aria-pressed={view === item.key}
             onClick={() => setView(item.key)}
-            className={`rounded-lg px-3 py-1.5 text-sm ${
-              view === item.key
-                ? 'bg-slate-100 font-semibold text-slate-900'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
           >
             {item.label}
           </button>
@@ -305,7 +297,7 @@ function RulePicker({ code, onSearch }: RulePickerProps) {
 
   return (
     <form
-      className="flex items-end gap-3 text-sm"
+      className="management-filter flex items-end gap-3 text-sm"
       onSubmit={(event) => {
         event.preventDefault()
         onSearch(input.trim())
@@ -321,12 +313,7 @@ function RulePicker({ code, onSearch }: RulePickerProps) {
           className="rounded-lg border border-slate-300 px-2 py-1"
         />
       </label>
-      <button
-        type="submit"
-        className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white"
-      >
-        조회
-      </button>
+      <Button type="submit">조회</Button>
     </form>
   )
 }
@@ -369,7 +356,7 @@ function RuleRevisions({ code, onSearch }: RuleRevisionsProps) {
   }
 
   return (
-    <div>
+    <div className="management-detail">
       <RulePicker code={code} onSearch={onSearch} />
       <div className="mt-5">{content}</div>
     </div>

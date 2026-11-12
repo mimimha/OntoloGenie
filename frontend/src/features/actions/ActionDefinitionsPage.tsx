@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import Button from '../../components/Button'
+import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import Pagination from '../../components/Pagination'
@@ -27,7 +28,7 @@ function Filters({
   const [draft, setDraft] = useState(initial)
   return (
     <form
-      className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto_auto]"
+      className="management-filter grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto_auto]"
       onSubmit={(event) => {
         event.preventDefault()
         onSearch(draft)
@@ -136,7 +137,7 @@ export default function ActionDefinitionsPage() {
     content = (
       <>
         <DataTable label="Action 정의 목록" className="min-w-[760px]">
-          <thead className="bg-slate-50 text-left text-xs text-slate-500">
+          <thead className="bg-slate-50 text-left text-sm text-slate-500">
             <tr>
               {['이름·코드', '데이터 변경', '사용', 'Agent 사용'].map(
                 (label) => (
@@ -163,7 +164,7 @@ export default function ActionDefinitionsPage() {
                     >
                       {item.name}
                     </Link>
-                    <p className="mt-1 break-all font-mono text-xs text-slate-500">
+                    <p className="mt-1 break-all font-mono text-sm text-slate-500">
                       {item.code}
                     </p>
                   </td>
@@ -180,7 +181,7 @@ export default function ActionDefinitionsPage() {
                       {usage.label}
                     </StatusBadge>
                     {!usage.usable && (
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-sm text-slate-500">
                         {usage.reason}
                       </p>
                     )}
@@ -201,16 +202,19 @@ export default function ActionDefinitionsPage() {
       </>
     )
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-end gap-3">
-        <h1 className="sr-only">Action 정의</h1>
-        <Link
-          className="rounded-lg bg-violet-700 px-4 py-2 text-sm text-white"
-          to="/admin/actions/new"
-        >
-          Action 등록
-        </Link>
-      </header>
+    <div className="management-page space-y-6">
+      <PageHeader
+        title="Action 정의"
+        description="업무에 사용하는 Action의 변경 여부와 사용 상태를 확인합니다."
+        action={
+          <Link
+            className="ui-button ui-button--primary"
+            to="/admin/actions/new"
+          >
+            Action 등록
+          </Link>
+        }
+      />
       <Filters
         key={params.toString()}
         initial={filters}

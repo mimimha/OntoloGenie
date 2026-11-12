@@ -141,7 +141,7 @@ export default function ExecutionDetail({
   })
   return (
     <details
-      className="text-xs"
+      className="management-detail"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary className="cursor-pointer text-slate-500">내용 보기</summary>

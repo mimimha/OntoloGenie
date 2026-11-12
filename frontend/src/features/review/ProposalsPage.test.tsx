@@ -47,6 +47,9 @@ function open(path = '/admin/rules', withHistoryControls = false) {
 test('후보 카드 선택과 상세 탭에서 근거·신뢰도를 확인한다', async () => {
   const user = userEvent.setup()
   open()
+  expect(
+    screen.getByRole('link', { name: '수동 검사·실행 목록' }),
+  ).toHaveAttribute('href', '/admin/checks')
   const list = within(
     await screen.findByRole('complementary', { name: '검토 목록' }),
   )
@@ -133,6 +136,11 @@ test('상태 탭·유형·검색을 결합하고 빈 결과에서도 전체 건�
     screen.getByRole('searchbox', { name: '후보 검색' }),
     '없는 후보',
   )
+  expect(screen.getByText('후보 1건')).toBeInTheDocument()
+  expect(screen.getByLabelText('적용된 후보 검색 조건')).not.toHaveTextContent(
+    '없는 후보',
+  )
+  await user.click(screen.getByRole('button', { name: '검색 적용' }))
   expect(
     await screen.findByText(
       '선택한 상태·유형·검색어에 해당하는 후보가 없습니다.',
@@ -275,7 +283,14 @@ test('서버에서는 100건씩 모든 쪽을 받아 집계·검색하고 화면
     screen.getByRole('searchbox', { name: '후보 검색' }),
     '후보 100',
   )
+  expect(screen.getByText('후보 101건')).toBeInTheDocument()
+  expect(list.getByText('2 / 6쪽 · 101건')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '검색 적용' }))
   expect(await screen.findByText('후보 1건')).toBeInTheDocument()
+  expect(list.getByText('1 / 1쪽 · 1건')).toBeInTheDocument()
+  expect(screen.getByLabelText('적용된 후보 검색 조건')).toHaveTextContent(
+    '검색어: 후보 100',
+  )
   expect(list.getByText('후보 100')).toBeInTheDocument()
 })
 
@@ -345,6 +360,7 @@ test('유형 탭 개수는 출처·반영 상태·검색을 적용한 목록 개
     screen.getByRole('searchbox', { name: '후보 검색' }),
     '인수인계',
   )
+  await user.click(screen.getByRole('button', { name: '검색 적용' }))
   expect(
     await types.findByRole('button', { name: '매핑 1' }),
   ).toBeInTheDocument()
@@ -357,21 +373,25 @@ test('검색은 보이는 칸만 찾고 내부 대조용 값은 찾지 않는다
   const user = userEvent.setup()
   open('/admin/rules?group=objects')
   await screen.findByText('후보 1건')
-  const search = screen.getByRole('searchbox', { name: '후보 검색' })
-  await user.type(search, 'fp-9f3a')
+  const search = () => screen.getByRole('searchbox', { name: '후보 검색' })
+  await user.type(search(), 'fp-9f3a')
+  await user.click(screen.getByRole('button', { name: '검색 적용' }))
   expect(
     await screen.findByText(
       '선택한 상태·유형·검색어에 해당하는 후보가 없습니다.',
     ),
   ).toBeVisible()
-  await user.clear(search)
-  await user.type(search, 'cand-77')
+  await user.clear(search())
+  await user.type(search(), 'cand-77')
+  await user.click(screen.getByRole('button', { name: '검색 적용' }))
   expect(screen.getByText('후보 0건')).toBeInTheDocument()
-  await user.clear(search)
-  await user.type(search, 'mes.work_order')
+  await user.clear(search())
+  await user.type(search(), 'mes.work_order')
+  await user.click(screen.getByRole('button', { name: '검색 적용' }))
   expect(await screen.findByText('후보 1건')).toBeInTheDocument()
-  await user.clear(search)
-  await user.type(search, '객체로 둡니다')
+  await user.clear(search())
+  await user.type(search(), '객체로 둡니다')
+  await user.click(screen.getByRole('button', { name: '검색 적용' }))
   expect(await screen.findByText('후보 1건')).toBeInTheDocument()
 })
 

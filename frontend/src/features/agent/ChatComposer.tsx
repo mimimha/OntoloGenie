@@ -66,23 +66,27 @@ function ChatComposer({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="border-t border-slate-200 p-3">
-      <SuggestedQuestions
-        questions={suggestedQuestions(reference, account?.roleCode ?? null)}
-        disabled={disabled}
-        onPick={handlePick}
-      />
-      <SavedQuestions
-        questions={saved.questions}
-        disabled={disabled}
-        onPick={handlePick}
-        onRemove={saved.remove}
-      />
-      {/* 화면에는 이름을 보이지 않고, 화면 읽기 프로그램용 이름(aria-label)만 둔다. 보내기 버튼은 입력 상자 안 오른쪽 아래에 둔다. */}
-      <div className="flex items-end gap-2 rounded-lg border border-slate-300 p-2 focus-within:border-slate-500">
+    <form onSubmit={handleSubmit} className="agent-composer">
+      <div className="agent-composer-inner">
+        <SuggestedQuestions
+          questions={suggestedQuestions(reference, account?.roleCode ?? null)}
+          disabled={disabled}
+          onPick={handlePick}
+        />
+        <SavedQuestions
+          questions={saved.questions}
+          disabled={disabled}
+          onPick={handlePick}
+          onRemove={saved.remove}
+        />
+        <div className="agent-composer-label">
+          <label htmlFor="agent-input">업무 질문</label>
+          <span id="agent-input-limit">{draft.length} / 2,000자</span>
+        </div>
         <textarea
           id="agent-input"
           aria-label="업무 질문"
+          aria-describedby="agent-input-help agent-input-limit"
           ref={inputRef}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -90,45 +94,51 @@ function ChatComposer({
           disabled={disabled}
           maxLength={2000}
           rows={3}
-          placeholder="궁금한 업무를 입력하세요. 필요하면 대상이나 조건을 다시 확인합니다. (Enter 보내기, Shift+Enter 줄바꿈)"
-          className="min-w-0 flex-1 resize-none bg-transparent text-sm outline-none"
+          placeholder="궁금한 업무를 입력하세요. 필요하면 대상이나 조건을 다시 확인합니다."
+          className="agent-question-input"
         />
-        {/* 지금 입력한 문장을 내 질문으로 저장한다. 로그인 전이거나, 비었거나, 이미 저장했거나, 가득 찼으면 누를 수 없다.
+        <div className="agent-composer-footer">
+          <p id="agent-input-help">Enter로 보내기 · Shift+Enter로 줄바꿈</p>
+          <div className="agent-composer-actions">
+            {/* 지금 입력한 문장을 내 질문으로 저장한다. 로그인 전이거나, 비었거나, 이미 저장했거나, 가득 찼으면 누를 수 없다.
             저장하면 버튼이 막히므로 다시 입력란으로 돌아가 이어서 쓸 수 있게 한다. 별 기호는 화면 읽기 프로그램이 읽지 않는다. */}
-        <button
-          type="button"
-          onClick={() => {
-            saved.save(content)
-            inputRef.current?.focus()
-          }}
-          disabled={!saved.canSave || !content || alreadySaved || saved.isFull}
-          title={
-            saved.isFull
-              ? `내 질문은 ${MAX_SAVED_QUESTIONS}개까지 저장할 수 있습니다. 하나를 지운 뒤 저장하세요.`
-              : '지금 입력한 질문을 이 브라우저에 계정별로 저장합니다.'
-          }
-          className="shrink-0 rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-700 hover:border-slate-900 disabled:opacity-40"
-        >
-          <span aria-hidden="true">{alreadySaved ? '★ ' : '☆ '}</span>
-          {alreadySaved
-            ? saved.storageFailed
-              ? '임시 보관 중'
-              : '저장됨'
-            : '내 질문 저장'}
-        </button>
-        <Button type="submit" disabled={disabled || !content}>
-          {disabled ? '처리 중…' : '보내기 ↑'}
-        </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                saved.save(content)
+                inputRef.current?.focus()
+              }}
+              disabled={
+                !saved.canSave || !content || alreadySaved || saved.isFull
+              }
+              title={
+                saved.isFull
+                  ? `내 질문은 ${MAX_SAVED_QUESTIONS}개까지 저장할 수 있습니다. 하나를 지운 뒤 저장하세요.`
+                  : '지금 입력한 질문을 이 브라우저에 계정별로 저장합니다.'
+              }
+            >
+              <span aria-hidden="true">{alreadySaved ? '★ ' : '☆ '}</span>
+              {alreadySaved
+                ? saved.storageFailed
+                  ? '임시 보관 중'
+                  : '저장됨'
+                : '내 질문 저장'}
+            </Button>
+            <Button type="submit" disabled={disabled || !content}>
+              {disabled ? '처리 중…' : '보내기 ↑'}
+            </Button>
+          </div>
+        </div>
+        {saved.storageFailed && (
+          <p role="status" className="agent-storage-notice">
+            {saved.capacityConflict
+              ? `다른 탭의 내 질문과 합치면 ${MAX_SAVED_QUESTIONS}개를 넘습니다. 기존 질문을 더 지운 뒤 저장해 주세요. `
+              : '브라우저에 저장하지 못했습니다. '}
+            내 질문의 변경 내용은 현재 화면에서만 유지되며, 새로고침하면
+            사라지거나 이전 내용으로 돌아갑니다.
+          </p>
+        )}
       </div>
-      {saved.storageFailed && (
-        <p role="status" className="mt-2 text-xs text-amber-700">
-          {saved.capacityConflict
-            ? `다른 탭의 내 질문과 합치면 ${MAX_SAVED_QUESTIONS}개를 넘습니다. 기존 질문을 더 지운 뒤 저장해 주세요. `
-            : '브라우저에 저장하지 못했습니다. '}
-          내 질문의 변경 내용은 현재 화면에서만 유지되며, 새로고침하면
-          사라지거나 이전 내용으로 돌아갑니다.
-        </p>
-      )}
     </form>
   )
 }

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import Button from '../../components/Button'
+import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import Pagination from '../../components/Pagination'
@@ -26,7 +27,7 @@ function Filters({
   const [draft, setDraft] = useState(initial)
   return (
     <form
-      className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto_auto]"
+      className="management-filter grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_auto_auto]"
       onSubmit={(event) => {
         event.preventDefault()
         onSearch(draft)
@@ -119,7 +120,7 @@ export default function AccountsPage() {
     content = (
       <>
         <DataTable label="계정 목록" className="min-w-[680px]">
-          <thead className="bg-slate-50 text-left text-xs text-slate-500">
+          <thead className="bg-slate-50 text-left text-sm text-slate-500">
             <tr>
               {['로그인 ID', '이름', '역할', '상태', '비밀번호 변경'].map(
                 (label) => (
@@ -172,16 +173,19 @@ export default function AccountsPage() {
       </>
     )
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-end gap-3">
-        <h1 className="sr-only">계정·권한</h1>
-        <Link
-          className="rounded-lg bg-violet-700 px-4 py-2 text-sm text-white"
-          to="/admin/accounts/new"
-        >
-          계정 생성
-        </Link>
-      </header>
+    <div className="management-page space-y-6">
+      <PageHeader
+        title="계정·권한"
+        description="계정의 역할, 사용 상태와 비밀번호 변경 필요 여부를 확인합니다."
+        action={
+          <Link
+            className="ui-button ui-button--primary"
+            to="/admin/accounts/new"
+          >
+            계정 생성
+          </Link>
+        }
+      />
       <Filters
         key={params.toString()}
         initial={filters}

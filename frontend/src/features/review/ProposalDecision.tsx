@@ -108,7 +108,7 @@ export default function ProposalDecision({
 
   return (
     <section
-      className="space-y-4 rounded-xl border border-violet-200 bg-violet-50/20 p-5"
+      className="proposal-decision space-y-4"
       aria-label="제안 검토 결정"
     >
       <h3 className="font-semibold">검토 결정</h3>

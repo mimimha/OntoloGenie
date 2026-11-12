@@ -22,19 +22,11 @@ const headerLinks = [
 ]
 
 function menuClassName({ isActive }: { isActive: boolean }) {
-  return `border-b-3 px-4 py-3 ${
-    isActive
-      ? 'border-slate-900 font-semibold text-slate-900'
-      : 'border-transparent text-slate-600 hover:text-slate-900'
-  }`
+  return `app-nav-link${isActive ? ' is-active' : ''}`
 }
 
 function headerLinkClassName({ isActive }: { isActive: boolean }) {
-  return `rounded-md px-3 py-1.5 text-sm ${
-    isActive
-      ? 'bg-slate-100 font-semibold text-slate-900'
-      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-  }`
+  return `app-header-link${isActive ? ' is-active' : ''}`
 }
 
 function AppLayout() {
@@ -43,19 +35,12 @@ function AppLayout() {
   const workspaceAllowed = canAccess(account, 'workspace')
   const administrationAllowed = canAccess(account, 'administration')
   return (
-    <div
-      className={
-        rulesWorkspace ? 'rules-shell' : 'min-h-screen bg-slate-100 p-4'
-      }
-    >
-      <div
-        className={
-          rulesWorkspace
-            ? 'rules-frame'
-            : 'mx-auto max-w-7xl overflow-clip rounded-lg border border-slate-300 bg-white'
-        }
-      >
-        <header className="app-header flex items-center justify-between border-b border-slate-300 px-5 py-4">
+    <div className={`app-shell${rulesWorkspace ? ' rules-shell' : ''}`}>
+      <a className="app-skip-link" href="#workspace-main">
+        본문으로 이동
+      </a>
+      <div className="app-frame">
+        <header className="app-header">
           <Link
             to="/explorer"
             className="app-brand font-semibold tracking-tight text-slate-900"
@@ -68,8 +53,8 @@ function AppLayout() {
               height="32"
             />
           </Link>
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <nav aria-label="계정 메뉴" className="flex flex-wrap gap-1">
+          <div className="app-header-actions">
+            <nav aria-label="계정 메뉴">
               {headerLinks
                 .filter((link) =>
                   link.to.startsWith('/admin/')
@@ -86,14 +71,11 @@ function AppLayout() {
                   </NavLink>
                 ))}
             </nav>
-            <AccountMenu compact={rulesWorkspace} />
+            <AccountMenu />
           </div>
         </header>
 
-        <nav
-          aria-label="주 메뉴"
-          className="main-nav flex items-center border-b border-slate-300 px-5"
-        >
+        <nav aria-label="주 메뉴" className="main-nav">
           {workspaceAllowed &&
             userMenus.map((menu) => (
               <NavLink key={menu.to} to={menu.to} className={menuClassName}>
@@ -109,7 +91,7 @@ function AppLayout() {
             ))}
         </nav>
 
-        <main className="workspace-main p-5">
+        <main id="workspace-main" tabIndex={-1} className="workspace-main">
           <Outlet />
         </main>
       </div>

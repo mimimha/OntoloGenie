@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router'
 import Button from '../../components/Button'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import Pagination from '../../components/Pagination'
+import PageHeader from '../../components/PageHeader'
 import StatusBadge from '../../components/StatusBadge'
 import AnalysisPanel from '../analysis/AnalysisPanel'
 import { fetchAnalysisProposals } from '../analysis/api'
@@ -103,6 +104,46 @@ function ProposalFlags({ item }: { item: Proposal }) {
   )
 }
 
+function ProposalSearch({
+  search,
+  onSearch,
+}: {
+  search: string
+  onSearch: (value: string) => void
+}) {
+  const [draft, setDraft] = useState(search)
+  return (
+    <form
+      className="rules-search"
+      aria-label="후보 검색 적용"
+      onSubmit={(event) => {
+        event.preventDefault()
+        onSearch(draft.trim())
+      }}
+    >
+      <label>
+        후보 검색
+        <input
+          type="search"
+          value={draft}
+          placeholder="후보명·원천·테이블 검색"
+          onChange={(event) => setDraft(event.target.value)}
+        />
+      </label>
+      <Button type="submit">검색 적용</Button>
+      <Button
+        variant="secondary"
+        onClick={() => {
+          setDraft('')
+          onSearch('')
+        }}
+      >
+        검색어 지우기
+      </Button>
+    </form>
+  )
+}
+
 export default function ProposalsPage() {
   const [params, setParams] = useSearchParams()
   const showingIssues = params.get('view') === 'issues'
@@ -195,28 +236,35 @@ export default function ProposalsPage() {
   }
   return (
     <div className="rules-workspace">
-      <h1 className="sr-only">연결 규칙</h1>
-      <div className="rules-list-heading">
-        <h2>연결 규칙 목록</h2>
-        <div className="rules-list-actions">
-          <Link className="rules-pill" to="/admin/checks">
-            수동 검사·실행 목록
-          </Link>
-          <AnalysisPanel
-            compact
-            currentId={analysisId}
-            joined={params.get('joined') === '1'}
-            onSelect={(id) => selectAnalysis(id)}
-            onStarted={(run) => {
-              const next = new URLSearchParams({ analysis: String(run.id) })
-              if (run.joined) next.set('joined', '1')
-              setParams(next)
-            }}
-          />
-          <Link className="rules-pill" to="/admin/rules/new">
-            직접 관계 제안
-          </Link>
-        </div>
+      <PageHeader
+        title="연결 규칙"
+        description="후보를 비교하고, 규칙·근거·검사 결과를 확인한 뒤 검토 결정을 남기세요."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Link className="ui-button ui-button--secondary" to="/admin/checks">
+              수동 검사·실행 목록
+            </Link>
+            <Link
+              className="ui-button ui-button--secondary"
+              to="/admin/rules/new"
+            >
+              직접 관계 제안
+            </Link>
+          </div>
+        }
+      />
+      <div className="rules-analysis-area">
+        <AnalysisPanel
+          compact
+          currentId={analysisId}
+          joined={params.get('joined') === '1'}
+          onSelect={(id) => selectAnalysis(id)}
+          onStarted={(run) => {
+            const next = new URLSearchParams({ analysis: String(run.id) })
+            if (run.joined) next.set('joined', '1')
+            setParams(next)
+          }}
+        />
       </div>
       <nav className="rules-tabs" aria-label="연결 규칙 상태">
         {statuses.map(([value, label]) => (
@@ -263,51 +311,49 @@ export default function ProposalsPage() {
         <IssuesPanel />
       ) : (
         <>
-          <div
-            className="rules-kind-tabs"
-            role="group"
-            aria-label="후보 유형 필터"
-          >
-            <button
-              type="button"
-              aria-pressed={group === 'objects' && !filters.itemKind}
-              onClick={() =>
-                update({
-                  group: 'objects',
-                  itemKind: '',
-                  candidate: '',
-                  page: '',
-                })
-              }
+          <div className="rules-filter-toolbar">
+            <div
+              className="rules-kind-tabs"
+              role="group"
+              aria-label="후보 유형 필터"
             >
-              객체 속성 {objectCount}
-            </button>
-            <button
-              type="button"
-              aria-pressed={group === 'mappings' && !filters.itemKind}
-              onClick={() =>
-                update({
-                  group: 'mappings',
-                  itemKind: '',
-                  candidate: '',
-                  page: '',
-                })
-              }
-            >
-              매핑 {mappingCount}
-            </button>
-          </div>
-          <label className="rules-search">
-            후보 검색
-            <input
-              type="search"
-              value={search}
-              placeholder="후보명·원천·테이블 검색"
-              onChange={(e) =>
-                update({ q: e.target.value, page: '', candidate: '' }, true)
+              <button
+                type="button"
+                aria-pressed={group === 'objects' && !filters.itemKind}
+                onClick={() =>
+                  update({
+                    group: 'objects',
+                    itemKind: '',
+                    candidate: '',
+                    page: '',
+                  })
+                }
+              >
+                객체 속성 {objectCount}
+              </button>
+              <button
+                type="button"
+                aria-pressed={group === 'mappings' && !filters.itemKind}
+                onClick={() =>
+                  update({
+                    group: 'mappings',
+                    itemKind: '',
+                    candidate: '',
+                    page: '',
+                  })
+                }
+              >
+                매핑 {mappingCount}
+              </button>
+            </div>
+            <ProposalSearch
+              key={search}
+              search={search}
+              onSearch={(value) =>
+                update({ q: value, page: '', candidate: '' })
               }
             />
-          </label>
+          </div>
           <details className="rules-extra-filters">
             <summary>상세 필터</summary>
             <ProposalFilterForm
@@ -335,6 +381,25 @@ export default function ProposalsPage() {
           ) : (
             <>
               <p className="rules-result-count">후보 {filtered.length}건</p>
+              <p
+                className="rules-filter-summary"
+                aria-label="적용된 후보 검색 조건"
+              >
+                적용 조건:{' '}
+                {[
+                  reviewLabels[filters.reviewStatus ?? ''] ?? '전체 검토 상태',
+                  filters.itemKind
+                    ? filterKindLabels[filters.itemKind]
+                    : group === 'objects'
+                      ? '객체 속성'
+                      : '매핑',
+                  filters.origin ? originLabels[filters.origin] : null,
+                  filters.applyStatus ? applyLabels[filters.applyStatus] : null,
+                  search ? `검색어: ${search}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
               {!selected ? (
                 <EmptyState message="선택한 상태·유형·검색어에 해당하는 후보가 없습니다." />
               ) : (
@@ -370,6 +435,7 @@ export default function ProposalsPage() {
                       page={page}
                       size={PROPOSAL_PAGE_SIZE}
                       totalElements={filtered.length}
+                      compact
                       onChange={(next) =>
                         update({ page: String(next), candidate: '' })
                       }

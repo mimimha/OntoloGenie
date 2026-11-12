@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useLocation, useNavigate, useSearchParams } from 'react-router'
+import Button from '../../components/Button'
+import PageHeader from '../../components/PageHeader'
 import { fetchObject } from '../explorer/api'
 import ExecutionHistory from './ExecutionHistory'
 
@@ -42,19 +44,18 @@ function AuditPage() {
   }
 
   return (
-    <div>
-      <h1 className="sr-only">실행 이력</h1>
-
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
-        <button
-          type="button"
-          onClick={goBack}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700"
-        >
-          이전 화면으로
-        </button>
-
-        <div className="mt-5">
+    <div className="management-page">
+      <PageHeader
+        title="실행 이력"
+        description="실행 결과와 처리 내용, 데이터 변경 전후를 확인합니다."
+        action={
+          <Button variant="secondary" onClick={goBack}>
+            이전 화면으로
+          </Button>
+        }
+      />
+      <section className="management-panel">
+        <div>
           {objectParam !== null && !hasObject ? (
             <p role="alert" className="text-sm text-red-600">
               올바른 객체 번호로 실행 이력을 조회해 주세요.

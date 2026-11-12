@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ApiError } from '../../api/errors'
 import Button from '../../components/Button'
+import PageHeader from '../../components/PageHeader'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import { fetchRuleForEdit, saveRule } from './api'
 import {
@@ -99,7 +100,7 @@ function RuleForm({
     )
   return (
     <form
-      className="space-y-5"
+      className="rules-editor-form space-y-5"
       onSubmit={(event) => {
         event.preventDefault()
         void submit()
@@ -354,13 +355,14 @@ export default function RuleEditorPage() {
     }
   }
   return (
-    <div className="space-y-5">
+    <div className="rules-editor-page">
       <Link className="text-sm text-violet-700 underline" to="/admin/rules">
         제안 목록으로 돌아가기
       </Link>
-      <h1 className="text-2xl font-semibold">
-        {editing ? '규칙 후보 수정' : '규칙 후보 추가'}
-      </h1>
+      <PageHeader
+        title={editing ? '규칙 후보 수정' : '규칙 후보 추가'}
+        description="연결 조건과 변환 순서를 입력하고 검토할 규칙 후보로 저장하세요."
+      />
       {content}
     </div>
   )

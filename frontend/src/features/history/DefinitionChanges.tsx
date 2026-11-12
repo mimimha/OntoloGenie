@@ -87,7 +87,7 @@ function DefinitionChanges() {
   } else {
     content = (
       <DataTable label="정의 변경 이력" className="table-fixed min-w-[640px]">
-        <thead className="bg-slate-50 text-xs text-slate-500">
+        <thead className="bg-slate-50 text-sm text-slate-500">
           <tr>
             <th className="w-[22%] px-3 py-2 font-normal">시각·실행자</th>
             <th className="w-[26%] px-3 py-2 font-normal">대상</th>
@@ -100,7 +100,7 @@ function DefinitionChanges() {
             <tr key={change.id}>
               <td className="px-3 py-3">
                 <p>{new Date(change.requestedAt).toLocaleString('ko-KR')}</p>
-                <p className="text-xs text-slate-500">{actorLabel(change)}</p>
+                <p className="text-sm text-slate-500">{actorLabel(change)}</p>
               </td>
               <td className="px-3 py-3">
                 <p>{tableLabel(change.tableName)}</p>
@@ -112,11 +112,11 @@ function DefinitionChanges() {
                 <p className="font-semibold">
                   {changeKindLabels[change.changeKind]}
                 </p>
-                <p className="break-all text-xs text-slate-500">
+                <p className="break-all text-sm text-slate-500">
                   {change.actionCode ?? '-'}
                 </p>
               </td>
-              <td className="px-3 py-3 text-xs">
+              <td className="px-3 py-3 text-sm">
                 <details>
                   <summary className="cursor-pointer text-slate-500">
                     내용 보기
@@ -132,9 +132,9 @@ function DefinitionChanges() {
   }
 
   return (
-    <div>
+    <div className="management-detail">
       <form
-        className="grid items-end gap-3 text-sm md:grid-cols-[1fr_1fr_1.2fr_auto_auto]"
+        className="management-filter grid items-end gap-3 text-sm md:grid-cols-[1fr_1fr_1.2fr_auto_auto]"
         onSubmit={(event) => {
           event.preventDefault()
           search()
@@ -173,17 +173,8 @@ function DefinitionChanges() {
             ))}
           </select>
         </label>
-        <Button
-          type="submit"
-          className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white"
-        >
-          검색
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={reset}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-slate-700"
-        >
+        <Button type="submit">검색</Button>
+        <Button variant="secondary" onClick={reset}>
           초기화
         </Button>
       </form>
@@ -192,12 +183,12 @@ function DefinitionChanges() {
           {formError}
         </p>
       )}
-      <p className="mt-2 text-xs text-slate-500">
+      <p className="mt-2 text-sm text-slate-500">
         객체 유형·속성·관계 유형·원천 매핑을 직접 바꾼 기록입니다. 연결 규칙의
         개정은 규칙 개정 탭에서 확인하세요.
       </p>
       {totalCount !== undefined && (
-        <p className="mt-3 text-xs text-slate-500">{`${totalCount}건`}</p>
+        <p className="mt-3 text-sm text-slate-500">{`${totalCount}건`}</p>
       )}
       <div className="mt-2 text-sm">{content}</div>
       {changePage && changePage.data.length > 0 && (

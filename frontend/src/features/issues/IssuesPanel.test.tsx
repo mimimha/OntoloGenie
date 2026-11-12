@@ -346,7 +346,7 @@ test('연결 규칙에서 문제를 열어 별도 상세 응답의 원천 근거
   await user.click(screen.getByRole('button', { name: '브라우저 뒤로 가기' }))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(
-    screen.getByRole('heading', { name: '연결 규칙 목록' }),
+    screen.getByRole('heading', { name: '연결 규칙', level: 1 }),
   ).toBeInTheDocument()
 })
 
@@ -399,7 +399,7 @@ test('상세 URL로 직접 들어오면 닫아도 목록 필터가 유지되고 
   await user.click(screen.getByRole('button', { name: '브라우저 뒤로 가기' }))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(
-    screen.getByRole('heading', { name: '연결 규칙 목록' }),
+    screen.getByRole('heading', { name: '연결 규칙', level: 1 }),
   ).toBeInTheDocument()
 })
 
@@ -531,4 +531,62 @@ test('상태 변경 충돌의 원인을 표시하고 재전송 없이 최신 상
   expect(dialog.getByText('확인중')).toBeInTheDocument()
   expect(dialog.getByLabelText('변경할 상태')).toHaveValue('')
   expect(change).toHaveBeenCalledTimes(1)
+})
+
+test('마지막 페이지의 유일한 문제를 상태 변경하면 첫 페이지를 다시 조회한다', async () => {
+  let changed = false
+  const pages: number[] = []
+  server.use(
+    http.get('/api/v1/issues', ({ request }) => {
+      const params = new URL(request.url).searchParams
+      expect(params.get('status')).toBe('NEW')
+      const page = Number(params.get('page'))
+      pages.push(page)
+      return HttpResponse.json({
+        data:
+          page === 1
+            ? changed
+              ? []
+              : [{ ...issueFixture, id: 21 }]
+            : [{ ...issueFixture, id: 1 }],
+        meta: {
+          page,
+          size: 20,
+          totalElements: changed ? 20 : 21,
+          hasNext: page === 0 && !changed,
+        },
+      })
+    }),
+    http.get('/api/v1/issues/21', () =>
+      HttpResponse.json({
+        data: {
+          ...issueFixture,
+          id: 21,
+          status: changed ? 'CHECKING' : 'NEW',
+          rowVersion: changed ? 1 : 0,
+        },
+      }),
+    ),
+    http.patch('/api/v1/issues/21/status', () => {
+      changed = true
+      return HttpResponse.json({
+        data: { ...issueFixture, id: 21, status: 'CHECKING', rowVersion: 1 },
+      })
+    }),
+  )
+  const user = userEvent.setup()
+  open('?view=issues&issueStatus=NEW&issuePage=1')
+  await user.click(await screen.findByRole('button', { name: '#21 · 미연결' }))
+  const dialog = within(await screen.findByRole('dialog'))
+  await user.selectOptions(
+    await dialog.findByLabelText('변경할 상태'),
+    'CHECKING',
+  )
+  await user.type(dialog.getByLabelText('변경 사유'), '확인 시작')
+  await user.click(dialog.getByRole('button', { name: '상태 변경' }))
+  expect(
+    await screen.findByRole('button', { name: '#1 · 미연결' }),
+  ).toBeInTheDocument()
+  expect(pages).toEqual([1, 1, 0])
+  expect(screen.getByText('1 / 1쪽 · 20건')).toBeInTheDocument()
 })

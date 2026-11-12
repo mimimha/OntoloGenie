@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router'
 import { ApiError } from '../../api/errors'
 import Button from '../../components/Button'
+import PageHeader from '../../components/PageHeader'
 import { ErrorState, LoadingState } from '../../components/Feedback'
 import StatusBadge from '../../components/StatusBadge'
 import { agentUsage, codeError } from './agentUsage'
@@ -33,9 +34,9 @@ import type {
 function UsagePanel({ definition }: { definition: ActionDefinition }) {
   const usage = agentUsage(definition)
   return (
-    <section className="space-y-2 rounded-lg bg-slate-50 p-4 text-sm">
+    <section className="space-y-2 management-subpanel text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-xs text-slate-500">
+        <span className="font-mono text-sm text-slate-500">
           {definition.code}
         </span>
         <StatusBadge tone={usage.usable ? 'success' : 'warning'}>
@@ -43,7 +44,7 @@ function UsagePanel({ definition }: { definition: ActionDefinition }) {
         </StatusBadge>
       </div>
       {!usage.usable && <p>{usage.reason}</p>}
-      <p className="text-xs text-slate-500">
+      <p className="text-sm text-slate-500">
         사용자별 권한은 따로 검사합니다. 필요 권한이 없는 사용자에게는 Agent가
         이 기능을 쓰지 않습니다.
       </p>
@@ -73,7 +74,7 @@ function RecordDefinitionView({
     ['사용', definition.isActive ? '사용' : '사용 안 함'],
   ]
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="management-form space-y-5">
       <UsagePanel definition={definition} />
       <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
         관리 작업의 정의는 시스템이 관리해 화면에서 바꿀 수 없습니다.
@@ -286,7 +287,7 @@ function ActionDefinitionForm({
 
   return (
     <form
-      className="max-w-3xl space-y-5"
+      className="management-form space-y-5"
       onSubmit={(event) => {
         event.preventDefault()
         void submit()
@@ -486,7 +487,7 @@ function ActionDefinitionForm({
           </Button>
         </>
       )}
-      <p className="text-xs text-slate-500">
+      <p className="text-sm text-slate-500">
         통신 오류가 발생하면 자동 재전송하지 않습니다. 목록에서 처리 여부를
         확인한 뒤 다시 시도하세요.
       </p>
@@ -545,16 +546,17 @@ export default function ActionDefinitionEditorPage() {
       />
     )
   return (
-    <div className="space-y-5">
+    <div className="management-page space-y-5">
       <Link
         className="text-sm text-violet-700 underline"
         to={`/admin/actions${location.search}`}
       >
         Action 정의 목록으로 돌아가기
       </Link>
-      <h1 className="text-2xl font-semibold">
-        {editing ? 'Action 정의 상세·변경' : 'Action 등록'}
-      </h1>
+      <PageHeader
+        title={editing ? 'Action 정의 상세·변경' : 'Action 등록'}
+        description="실행 조건과 입력 형식을 확인하고 Action 정의를 설정합니다."
+      />
       {content}
     </div>
   )

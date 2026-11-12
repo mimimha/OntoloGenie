@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Link, useParams, useLocation } from 'react-router'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
 import StatusBadge from '../../components/StatusBadge'
+import PageHeader from '../../components/PageHeader'
 import DocumentLinkView from '../analysis/DocumentLinkView'
 import { expressionLabels } from '../analysis/documentLink'
 import { cardinalityLabels } from '../explorer/labels'
@@ -94,7 +95,7 @@ function RecordView({ value }: { value: Record<string, unknown> }) {
   if (!entries.length)
     return <EmptyState message="정보가 제공되지 않았습니다." />
   return (
-    <dl className="divide-y divide-slate-100">
+    <dl className="candidate-records divide-y divide-slate-100">
       {entries.map(([key, entry]) => (
         <div key={key} className="grid gap-2 py-3 sm:grid-cols-[160px_1fr]">
           <dt className="break-words font-medium text-slate-600">
@@ -201,75 +202,86 @@ export default function ProposalDetail({
     const heldParams = new URLSearchParams(search)
     heldParams.set('view', 'held')
     content = (
-      <article
-        className={embeddedId ? 'candidate-detail space-y-6' : 'space-y-6'}
-      >
-        <header className="candidate-heading space-y-3">
+      <article className="candidate-detail">
+        <header className="candidate-heading">
           <p className="text-sm text-slate-500">
-            {String(item.payload.code ?? `#${item.id}`)}
+            {String(item.payload.code ?? `#${item.id}`)} · 개정 {item.revision}{' '}
+            · {kindLabels[item.itemKind] ?? item.itemKind} ·{' '}
+            {originLabels[item.origin] ?? item.origin}
           </p>
-          <h2 className="text-xl font-semibold">{proposalTitle(item)}</h2>
-          <p>개정 {item.revision}</p>
-          <p className="text-sm">
-            검토 상태: {reviewLabels[item.reviewStatus] ?? item.reviewStatus} ·
-            적용 여부: {applyLabels[item.applyStatus] ?? item.applyStatus}
-          </p>
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              className="candidate-history inline-block text-sm text-violet-700 underline"
-              to={`${historyUrl}${search}`}
-            >
+          <div className="candidate-title-line">
+            <h2 className="text-xl font-semibold">{proposalTitle(item)}</h2>
+            <Link className="candidate-history" to={`${historyUrl}${search}`}>
               이력
             </Link>
-            {!embeddedId &&
-              item.itemKind === 'LINK_RULE' &&
-              ['PENDING', 'HELD'].includes(item.reviewStatus) && (
-                <Link
-                  className="inline-block text-sm text-violet-700 underline"
-                  to={`/admin/rules/${item.id}/edit`}
-                >
-                  규칙 후보 수정
-                </Link>
-              )}
           </div>
-          <div className={embeddedId ? 'sr-only' : 'flex flex-wrap gap-2'}>
-            <StatusBadge>
-              {kindLabels[item.itemKind] ?? item.itemKind}
-            </StatusBadge>
-            <StatusBadge>
-              {originLabels[item.origin] ?? item.origin}
-            </StatusBadge>
-            <StatusBadge>
-              {reviewLabels[item.reviewStatus] ?? item.reviewStatus}
-            </StatusBadge>
-            <StatusBadge
-              tone={item.applyStatus === 'FAILED' ? 'danger' : 'neutral'}
-            >
-              {applyLabels[item.applyStatus] ?? item.applyStatus}
-            </StatusBadge>
-          </div>
+          <p className="candidate-state-line">
+            <span>
+              검토 상태:{' '}
+              <StatusBadge
+                tone={
+                  item.reviewStatus === 'HELD'
+                    ? 'warning'
+                    : item.reviewStatus === 'APPROVED'
+                      ? 'info'
+                      : 'neutral'
+                }
+              >
+                {reviewLabels[item.reviewStatus] ?? item.reviewStatus}
+              </StatusBadge>
+            </span>
+            <span>
+              적용 여부:{' '}
+              <StatusBadge
+                tone={
+                  item.applyStatus === 'FAILED'
+                    ? 'danger'
+                    : item.applyStatus === 'APPLIED'
+                      ? 'success'
+                      : 'neutral'
+                }
+              >
+                {applyLabels[item.applyStatus] ?? item.applyStatus}
+              </StatusBadge>
+            </span>
+          </p>
+          {!embeddedId &&
+            item.itemKind === 'LINK_RULE' &&
+            ['PENDING', 'HELD'].includes(item.reviewStatus) && (
+              <Link
+                className="inline-block text-sm text-violet-700 underline"
+                to={`/admin/rules/${item.id}/edit`}
+              >
+                규칙 후보 수정
+              </Link>
+            )}
         </header>
         {embeddedId && (
           <>
-            <strong className="candidate-confidence">
-              신뢰도: {confidence(item.aiConfidence)}
-            </strong>
-            <p className="candidate-apply-note">
-              {item.applyStatus === 'APPLIED'
-                ? '승인된 개정본이 적용되었습니다.'
-                : item.applyStatus === 'FAILED'
-                  ? '적용에 실패했습니다. 아래 실패 사유를 확인해 주세요.'
-                  : '아직 적용된 개정본이 없습니다. 승인 후 적용됩니다.'}
-            </p>
-            <p className="candidate-check-summary">
-              {item.checkRequired === false
-                ? '검사 대상이 아닌 후보입니다.'
-                : item.latestCheck?.status === 'SUCCEEDED' &&
-                    item.latestCheck.totalCount !== null &&
-                    item.latestCheck.matchedCount !== null
-                  ? `검사 요약: 전체 ${item.latestCheck.totalCount}행 · 성공 ${item.latestCheck.matchedCount}행 · 실패 ${item.latestCheck.totalCount - item.latestCheck.matchedCount}행`
-                  : '검사 요약: 완료된 검사 결과가 없습니다.'}
-            </p>
+            <div className="candidate-review-summary">
+              <p className="candidate-apply-note">
+                {item.applyStatus === 'APPLIED'
+                  ? '승인된 개정본이 적용되었습니다.'
+                  : item.applyStatus === 'FAILED'
+                    ? '적용에 실패했습니다. 아래 실패 사유를 확인해 주세요.'
+                    : '아직 적용된 개정본이 없습니다. 승인 후 적용됩니다.'}
+              </p>
+              <p className="candidate-check-summary">
+                {item.checkRequired === false
+                  ? '검사 대상이 아닌 후보입니다.'
+                  : item.latestCheck?.status === 'SUCCEEDED' &&
+                      item.latestCheck.totalCount !== null &&
+                      item.latestCheck.matchedCount !== null
+                    ? `검사 요약: 전체 ${item.latestCheck.totalCount}행 · 정상 ${item.latestCheck.matchedCount}행`
+                    : '검사 요약: 완료된 검사 결과가 없습니다.'}
+              </p>
+              <div className="candidate-confidence-row">
+                <span className="candidate-confidence">
+                  신뢰도: {confidence(item.aiConfidence)}
+                </span>
+                <span>AI 제안 지표 · 검사 통과·승인 여부와 별도</span>
+              </div>
+            </div>
             <div
               className="rules-tabs detail-tabs"
               role="group"
@@ -309,25 +321,23 @@ export default function ProposalDetail({
                   : (option) => setSelection({ key: selectionKey, option })
               }
             />
-            <section
-              className={
-                embeddedId
-                  ? 'sr-only'
-                  : 'rounded-xl border border-slate-200 p-5'
-              }
-            >
-              <h3 className="font-semibold">AI 신뢰도</h3>
-              <p className="mt-2 text-2xl font-semibold text-violet-700">
-                {confidence(item.aiConfidence)}
-              </p>
-              <p className="mt-2 text-sm text-slate-500">
-                AI가 제안한 신뢰도이며, 정합성 검사 통과나 승인 여부를 뜻하지
-                않습니다.
-              </p>
-              {item.analysisRunId !== null && (
-                <p className="mt-2 text-sm">분석 실행 #{item.analysisRunId}</p>
-              )}
-            </section>
+            {!embeddedId && (
+              <section className="candidate-confidence-section">
+                <h3 className="font-semibold">AI 신뢰도</h3>
+                <p className="mt-2 text-sm font-medium text-slate-700">
+                  {confidence(item.aiConfidence)}
+                </p>
+                <p className="mt-2 text-sm text-slate-500">
+                  AI가 제안한 신뢰도이며, 정합성 검사 통과나 승인 여부를 뜻하지
+                  않습니다.
+                </p>
+                {item.analysisRunId !== null && (
+                  <p className="mt-2 text-sm">
+                    분석 실행 #{item.analysisRunId}
+                  </p>
+                )}
+              </section>
+            )}
             {item.itemKind === 'DOCUMENT_LINK' && (
               <DocumentLinkView proposal={item} />
             )}
@@ -392,16 +402,23 @@ export default function ProposalDetail({
     )
   }
   if (embeddedId)
-    return <section aria-label="후보 검토 상세">{content}</section>
+    return (
+      <section className="candidate-detail-region" aria-label="후보 검토 상세">
+        {content}
+      </section>
+    )
   return (
-    <div className="space-y-5">
+    <div className="rules-detail-page">
       <Link
         to={`/admin/rules${search}`}
         className="text-sm text-violet-700 underline"
       >
         제안 목록으로 돌아가기
       </Link>
-      <h1 className="text-2xl font-semibold">제안 상세</h1>
+      <PageHeader
+        title="제안 상세"
+        description="규칙 내용과 근거·검사 결과를 확인하고 검토 결정을 남기세요."
+      />
       {content}
     </div>
   )

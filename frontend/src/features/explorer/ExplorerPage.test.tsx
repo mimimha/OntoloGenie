@@ -1338,6 +1338,69 @@ function AgentEntryProbe() {
   )
 }
 
+test('검색 조건을 입력만 하면 현재 결과·페이지를 유지하고 적용할 때 첫 페이지로 돌아간다', async () => {
+  const user = userEvent.setup()
+  mockManyObjects(25)
+  renderExplorerPage()
+  await user.click(await screen.findByRole('button', { name: '다음 페이지' }))
+  await screen.findByText('2 / 2쪽 · 25건')
+  await screen.findByText('설비 21')
+
+  await user.type(screen.getByLabelText('ID · 이름 검색'), '새 조건')
+  expect(screen.getByText('2 / 2쪽 · 25건')).toBeInTheDocument()
+  expect(screen.getByText('설비 21')).toBeInTheDocument()
+  expect(screen.getByLabelText('적용된 검색 조건')).not.toHaveTextContent(
+    '새 조건',
+  )
+
+  await user.click(screen.getByRole('button', { name: '검색' }))
+  await screen.findByText('1 / 2쪽 · 25건')
+  expect(screen.getByLabelText('적용된 검색 조건')).toHaveTextContent('새 조건')
+})
+
+test('유형 목록에서도 유형을 선택해 객체 검색과 관계 상세를 연결한다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+  const graph = within(screen.getByRole('region', { name: '관계도' }))
+  await user.click(await graph.findByRole('button', { name: '유형 목록' }))
+  await user.click(graph.getByRole('button', { name: '설비' }))
+  await screen.findByText('2건')
+  expect(screen.getByLabelText('객체 유형')).toHaveValue('3')
+  expect(
+    within(screen.getByRole('region', { name: '상세 정보' })).getByRole(
+      'heading',
+      { name: '설비' },
+    ),
+  ).toBeInTheDocument()
+})
+
+test('관계도를 확장해도 선택한 객체를 유지하고 분할 보기로 복원한다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+  await user.click(await screen.findByRole('button', { name: /프레스 3호기/ }))
+  await screen.findByRole('heading', { name: '프레스 3호기' })
+  await user.click(screen.getByRole('button', { name: '관계도 확장' }))
+  expect(
+    screen.queryByRole('region', { name: '객체 목록' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('region', { name: '상세 정보' }),
+  ).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '분할 보기' }))
+  expect(
+    within(screen.getByRole('region', { name: '상세 정보' })).getByRole(
+      'heading',
+      { name: '프레스 3호기' },
+    ),
+  ).toBeInTheDocument()
+  expect(
+    within(screen.getByRole('region', { name: '객체 목록' })).getByRole(
+      'button',
+      { name: /프레스 3호기/ },
+    ),
+  ).toHaveAttribute('aria-pressed', 'true')
+})
+
 test('객체 상세의 질문하기는 새 대화를 만들어 그 객체로 질문을 시작한다', async () => {
   const user = userEvent.setup()
   render(

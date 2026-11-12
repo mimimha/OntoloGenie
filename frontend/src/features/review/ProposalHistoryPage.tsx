@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams, useSearchParams } from 'react-router'
 import Button from '../../components/Button'
+import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import Pagination from '../../components/Pagination'
 import { EmptyState, ErrorState, LoadingState } from '../../components/Feedback'
@@ -210,7 +211,7 @@ export default function ProposalHistoryPage({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="management-page space-y-5">
       <Link
         className="text-sm text-violet-700 underline"
         to={
@@ -219,7 +220,10 @@ export default function ProposalHistoryPage({
       >
         {validId ? '제안 상세로 돌아가기' : '제안 목록으로 돌아가기'}
       </Link>
-      <h1 className="text-2xl font-semibold">규칙 이력</h1>
+      <PageHeader
+        title="규칙 이력"
+        description="제안의 승인 상태, 활동 기록과 보류 건을 확인합니다."
+      />
       {!validId ? (
         <EmptyState message="올바른 제안 주소가 아닙니다." />
       ) : query.isPending ? (
@@ -232,7 +236,7 @@ export default function ProposalHistoryPage({
           }}
         />
       ) : (
-        <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-5">
+        <section className="management-panel space-y-5">
           <h2 className="text-xl font-semibold">{proposalTitle(query.data)}</h2>
           <p className="text-sm text-slate-500">
             제안 #{proposalId} · 현재 개정 {query.data.revision}

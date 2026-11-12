@@ -13,8 +13,9 @@ function SuggestedQuestions({
   onPick,
 }: SuggestedQuestionsProps) {
   return (
-    <div className="mb-2">
-      <ul aria-label="추천 질문" className="flex gap-2 overflow-x-auto">
+    <div className="agent-question-shortcuts">
+      <span className="agent-shortcut-label">추천 질문</span>
+      <ul aria-label="추천 질문">
         {questions.map((question) => (
           <li key={question.label}>
             <button
@@ -22,7 +23,7 @@ function SuggestedQuestions({
               title={question.text}
               disabled={disabled}
               onClick={() => onPick(question.text)}
-              className="shrink-0 whitespace-nowrap rounded-full border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:border-slate-900 disabled:opacity-50"
+              className="agent-shortcut-button"
             >
               {question.label}
             </button>

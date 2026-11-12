@@ -72,7 +72,7 @@ export default function EvidenceView({ evidence }: { evidence: Row }) {
   if (!reason && !items.length && !rest.length && !judgement && !held)
     return <EmptyState message="정보가 제공되지 않았습니다." />
   return (
-    <dl className="divide-y divide-slate-100">
+    <dl className="proposal-evidence divide-y divide-slate-100">
       {reason && (
         <div className="grid gap-2 py-3 sm:grid-cols-[160px_1fr]">
           <dt className="font-medium text-slate-600">제안 이유</dt>
@@ -103,12 +103,12 @@ export default function EvidenceView({ evidence }: { evidence: Row }) {
                   key={`${index}:${String(item.locator)}`}
                   className="rounded-lg bg-slate-50 p-3"
                 >
-                  <p className="break-words font-mono text-xs text-slate-700">
+                  <p className="evidence-locator break-words font-mono text-slate-700">
                     {text(item.sourceId) ? `${String(item.sourceId)} · ` : ''}
                     {text(item.locator) ?? '위치 없음'}
                   </p>
                   {text(item.snippet) && (
-                    <p className="mt-1 break-words text-sm">
+                    <p className="evidence-text mt-1 break-words">
                       {String(item.snippet)}
                     </p>
                   )}

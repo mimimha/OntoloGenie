@@ -222,7 +222,7 @@ function ComparisonDialog({
               </section>
               <section>
                 <h4 className="font-semibold">AI 신뢰도</h4>
-                <p className="text-2xl font-semibold text-violet-700">
+                <p className="text-sm font-medium text-slate-700">
                   {confidence(option.aiConfidence)}
                 </p>
               </section>

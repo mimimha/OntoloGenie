@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Button from '../../components/Button'
+import DataTable from '../../components/DataTable'
 import {
   emptyRow,
   fieldTypeLabels,
@@ -128,6 +129,7 @@ function FieldRowEditor({
       <td className="px-2 py-2">
         <Button
           variant="secondary"
+          className="whitespace-nowrap"
           aria-label={`${number}번째 항목 삭제`}
           onClick={onRemove}
         >
@@ -199,47 +201,43 @@ export default function InputSchemaEditor({
       {value.mode === 'table' ? (
         <>
           {value.rows.length ? (
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table aria-label="입력 항목" className="w-full min-w-[760px]">
-                <thead className="whitespace-nowrap bg-slate-50 text-left text-xs text-slate-500">
-                  <tr>
-                    <th className="px-2 py-2">이름</th>
-                    <th className="px-2 py-2">자료형</th>
-                    <th className="px-2 py-2 text-center">필수</th>
-                    <th className="px-2 py-2">범위</th>
-                    <th className="px-2 py-2">설명</th>
-                    <th className="px-2 py-2">
-                      <span className="sr-only">삭제</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {value.rows.map((row, index) => (
-                    <FieldRowEditor
-                      key={row.key}
-                      row={row}
-                      index={index}
-                      onChange={(next) =>
-                        edit({
-                          mode: 'table',
-                          rows: value.rows.map((item) =>
-                            item.key === row.key ? next : item,
-                          ),
-                        })
-                      }
-                      onRemove={() =>
-                        edit({
-                          mode: 'table',
-                          rows: value.rows.filter(
-                            (item) => item.key !== row.key,
-                          ),
-                        })
-                      }
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable label="입력 항목" className="min-w-[760px]">
+              <thead className="whitespace-nowrap bg-slate-50 text-left text-sm text-slate-500">
+                <tr>
+                  <th className="px-2 py-2">이름</th>
+                  <th className="px-2 py-2">자료형</th>
+                  <th className="px-2 py-2 text-center">필수</th>
+                  <th className="px-2 py-2">범위</th>
+                  <th className="px-2 py-2">설명</th>
+                  <th className="px-2 py-2">
+                    <span className="sr-only">삭제</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {value.rows.map((row, index) => (
+                  <FieldRowEditor
+                    key={row.key}
+                    row={row}
+                    index={index}
+                    onChange={(next) =>
+                      edit({
+                        mode: 'table',
+                        rows: value.rows.map((item) =>
+                          item.key === row.key ? next : item,
+                        ),
+                      })
+                    }
+                    onRemove={() =>
+                      edit({
+                        mode: 'table',
+                        rows: value.rows.filter((item) => item.key !== row.key),
+                      })
+                    }
+                  />
+                ))}
+              </tbody>
+            </DataTable>
           ) : (
             <p className="text-slate-500">입력 항목이 없습니다.</p>
           )}
@@ -256,7 +254,7 @@ export default function InputSchemaEditor({
         <label className="flex flex-col gap-2">
           JSON Schema
           <textarea
-            className="min-h-40 rounded-lg border p-2 font-mono text-xs"
+            className="min-h-40 rounded-lg border p-2 font-mono text-sm"
             value={value.text}
             onChange={(event) =>
               edit({ mode: 'json', text: event.target.value })

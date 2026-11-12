@@ -1,0 +1,155 @@
+.management-page,
+.management-detail,
+.auth-utility-page {
+  color: var(--ui-text);
+  font: 14px / 21px var(--ui-font);
+}
+
+.management-page :is(.text-slate-400, .text-slate-500, .text-slate-600),
+.management-detail :is(.text-slate-400, .text-slate-500, .text-slate-600) {
+  color: var(--ui-text-secondary);
+}
+
+.management-page a:not(.ui-button) {
+  color: var(--ui-brand-strong);
+  text-underline-offset: 3px;
+}
+
+.management-page :is(h2, h3) {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.management-panel,
+.management-form,
+.management-filter {
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-panel-radius);
+  padding: 20px;
+  background: var(--ui-surface);
+}
+
+.management-form {
+  max-width: 1100px;
+}
+
+.management-form--account {
+  max-width: 880px;
+}
+
+.management-page > a:first-child {
+  display: inline-block;
+  margin-bottom: 16px;
+}
+
+.management-form label,
+.management-filter label {
+  font-weight: 500;
+}
+
+.management-form label :is(input, select, textarea, span) {
+  font-weight: 400;
+}
+
+.management-form textarea:not(.font-mono) {
+  font-size: 16px;
+  line-height: 26px;
+}
+
+.management-form fieldset fieldset {
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius);
+}
+
+.management-subpanel {
+  border-radius: var(--ui-radius);
+  padding: 16px;
+  background: var(--ui-surface-subtle);
+}
+
+.management-tabs,
+.management-selection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.management-tabs {
+  gap: 4px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.management-tabs button,
+.management-selection button {
+  min-height: 40px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  padding: 8px 16px;
+  background: var(--ui-surface);
+  color: var(--ui-text-secondary);
+  font: 500 14px / 21px var(--ui-font);
+  cursor: pointer;
+}
+
+.management-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+
+.management-tabs button[aria-pressed='true'] {
+  border-bottom-color: var(--ui-brand-strong);
+  color: var(--ui-brand-strong);
+  font-weight: 600;
+}
+
+.management-selection button[aria-pressed='true'] {
+  border-color: var(--ui-brand-strong);
+  background: var(--ui-brand-subtle);
+  color: var(--ui-brand-strong);
+}
+
+.management-tabs button:hover,
+.management-selection button:hover {
+  background: var(--ui-surface-subtle);
+}
+
+.management-detail summary {
+  min-height: 32px;
+  padding: 4px 0;
+  color: var(--ui-brand-strong);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.management-detail pre {
+  margin-top: 8px;
+  border-radius: var(--ui-radius);
+  padding: 12px;
+  background: var(--ui-surface-subtle);
+  font-size: 14px;
+  line-height: 21px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.management-detail :is(td, dd),
+.management-page .ui-table td {
+  overflow-wrap: anywhere;
+}
+
+.auth-utility-page {
+  min-height: 100vh;
+  padding: 48px 24px;
+  background: var(--ui-canvas);
+}
+
+.auth-utility-panel {
+  max-width: 640px;
+  margin: 0 auto;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-panel-radius);
+  padding: 32px;
+  background: var(--ui-surface);
+}
