@@ -20,7 +20,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.data.domain.Page;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.InitBinder;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
@@ -34,6 +36,12 @@ public class ObjectSearchController {
     private final ObjectSearchQuery objects;
     private final ObjectDetailQuery details;
     private final ObjectTypeOptionService typeOptions;
+
+    // record 생성자에서 조건 맵을 만든다. 이후 property binding이 불변 맵을 다시 수정하지 않게 한다.
+    @InitBinder("objectSearchRequest")
+    void configureSearchBinding(WebDataBinder binder) {
+        binder.setDeclarativeBinding(true);
+    }
 
     @GetMapping("/api/v1/objects")
     public ApiResponse<List<ObjectSearchResponse>> search(

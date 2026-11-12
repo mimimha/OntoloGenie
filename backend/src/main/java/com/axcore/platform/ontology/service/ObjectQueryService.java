@@ -41,11 +41,15 @@ public class ObjectQueryService
 
     private final DataAccessPolicy dataAccessPolicy;
     private final ObjectQueryRepository objects;
+    private final ObjectSearchFilterValidator filterValidator;
 
     // 권한, 목록, 전체 건수를 같은 스냅샷에서 읽는다.
     @Override
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Page<ObjectSearchResponse> search(LoginAccount actor, ObjectSearchRequest request) {
+        if (request.hasFilters() && request.objectTypeId() == null) {
+            throw BusinessException.invalidField("objectTypeId", "속성 또는 기간 조건에는 객체 유형을 지정해 주세요.");
+        }
         Status status = request.status() == null ? Status.ACTIVE : request.status();
         if (status == Status.DELETED_AT_SOURCE && !RoleCode.ADMIN.name().equals(actor.roleCode())) {
             throw new BusinessException(
@@ -73,7 +77,12 @@ public class ObjectQueryService
         String q = request.q();
         String pattern = q == null || q.isBlank() ? null : SearchPattern.contains(q);
         return objects.search(
-                        visibleTypeIds, maskedTypes(access, visibleTypeIds), status, pattern, page)
+                        visibleTypeIds,
+                        maskedTypes(access, visibleTypeIds),
+                        status,
+                        pattern,
+                        filterValidator.validate(request, access),
+                        page)
                 .map(row -> toResponse(row, access));
     }
 
