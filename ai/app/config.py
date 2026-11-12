@@ -43,6 +43,8 @@ class Settings:
         """LLM을 부르는 데 빠진 설정. 없으면 None."""
         if self.llm_provider == "mock":
             return None
+        if self.llm_provider == "none":
+            return "AI_ONTOLOGY_LLM_PROVIDER=none (LLM 사용 안 함)"
         if self.llm_provider not in LLM_DEFAULTS:
             return "AI_ONTOLOGY_LLM_PROVIDER"
         if LLM_DEFAULTS[self.llm_provider][2] and not self.llm_api_key:

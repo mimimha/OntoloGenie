@@ -296,3 +296,27 @@ def test_llm_action_with_found_id_in_front_is_kept_without_the_id():
     actions = [e for e in extraction.entities if e.type == EntityType.ACTION]
     assert [a.text for a in actions] == ["잔량 1,100개는 주간조에 넘김"]
     assert text[actions[0].start : actions[0].end] == actions[0].text
+
+
+def test_shift_date_with_time_part_still_gives_shift_start(tmp_path):
+    import pandas as pd
+    from test_links_general import write_table
+
+    from app.extractors.notes import load_documents
+
+    write_table(
+        tmp_path,
+        "mes",
+        "handover_note",
+        ["note_id"],
+        {
+            "note_id": ("varchar(10)", ["N1", "N2"]),
+            "shift_date": ("varchar(30)", ["2026-08-04 00:00:00", "8월 4일"]),
+            "shift": ("varchar(5)", ["야간", "야간"]),
+            "content": ("text", ["P101 이음", "P103 이음"]),
+        },
+    )
+    docs = {d.doc_id: d for d in load_documents(tmp_path)}
+    assert docs["N1"].start is not None  # 시각까지 든 날짜도 읽는다
+    assert docs["N2"].start is None  # 못 읽는 날짜는 시각 계산만 건너뛴다
+    assert pd.notna(docs["N2"].text)
