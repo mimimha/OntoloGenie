@@ -298,7 +298,7 @@ def build_prompt(tables: Tables, columns: list[Column], targets: list[dict]) -> 
             STEP_GUIDE,
             (
                 '형식: {"links": [{"source_table", "source_columns": [컬럼], "target": 도착 id, '
-                '"steps": [[컬럼1 단계], [컬럼2 단계]], "reason": 한국어 한 문장}]}. 이을 것이 없으면 빈 목록.'
+                '"steps": [[컬럼1 단계], [컬럼2 단계]], "reason": 이은 근거를 짧은 명사구로(예: 같은 제품 로트 참조)}]}. 이을 것이 없으면 빈 목록.'
             ),
             "",
             "출발 컬럼:",
@@ -478,7 +478,10 @@ def propose(
                     c.model_copy(
                         update={
                             "method": "llm",
-                            "llm_judgement": link.reason or None,
+                            # 다른 관계 의견과 같은 형식으로 쓴다
+                            "llm_judgement": f"업무상 관계 맞음 · {link.reason}"
+                            if link.reason
+                            else None,
                             "review_status": "HELD",
                             "hold_reason": rel.hold,
                         }
