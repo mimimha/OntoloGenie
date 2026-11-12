@@ -89,17 +89,7 @@ function AgentPage() {
 
   return (
     <div>
-      <header className="mb-6">
-        <p className="text-xs font-semibold tracking-widest text-slate-500">
-          INTELLIGENCE
-        </p>
-        <h1 className="mt-1 text-xl font-semibold text-slate-900">
-          AI 업무 도우미
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          연결된 데이터에서 답을 찾고, 다음 업무를 계획하세요.
-        </p>
-      </header>
+      <h1 className="sr-only">AI 업무 도우미</h1>
       {createMutation.isError && (
         <div className="mb-4">
           <ErrorState

@@ -43,15 +43,7 @@ function AuditPage() {
 
   return (
     <div>
-      <header className="mb-6">
-        <p className="text-xs font-semibold tracking-widest text-slate-500">
-          AUDIT
-        </p>
-        <h1 className="mt-1 text-xl font-semibold text-slate-900">실행 이력</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          실행 기록과 변경 내용을 조건별로 확인하세요.
-        </p>
-      </header>
+      <h1 className="sr-only">실행 이력</h1>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6">
         <button

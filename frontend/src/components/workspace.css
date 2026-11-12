@@ -21,8 +21,9 @@
     linear-gradient(125deg, #fafafc, #eeeef3 70%, #e8e7ee);
 }
 .app-header {
-  min-height: 88px;
-  padding: 22px 42px;
+  min-height: 83px;
+  padding: 19.5px 42px;
+  align-items: center;
   border-color: #ffffff70;
   gap: 24px;
 }
@@ -31,14 +32,17 @@
   align-items: center;
   flex-shrink: 0;
 }
-.app-brand:not(:has(img)) {
+.app-brand img {
+  display: block;
   width: 250px;
-  height: 34px;
-  font-size: 0;
-  background: url('/ontologenie-logo.svg') left center / contain no-repeat;
+  max-width: 100%;
+  height: auto;
 }
 .app-header nav a,
 .app-header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid #e2dfed;
   border-radius: 30px;
   background: white;
@@ -53,6 +57,7 @@
 }
 .app-header > div {
   flex-direction: row;
+  align-items: center;
 }
 .app-header .account-menu,
 .app-header .account-menu > div:first-child {
@@ -64,6 +69,7 @@
   font-size: 12px;
 }
 .app-header nav {
+  align-items: center;
   order: 1;
 }
 .app-header .account-menu button {
@@ -91,27 +97,6 @@
 .workspace-main {
   min-width: 0;
   padding: 34px 42px 42px;
-}
-.workspace-main > div > header:has(> h1) {
-  margin: 0;
-  padding: 2px 0 34px;
-}
-.workspace-main > div > header:has(> h1) > p:first-child {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  color: #8b8d9a;
-}
-.workspace-main > div > header > h1 {
-  margin: 12px 0;
-  font-size: 30px;
-  line-height: 1.4;
-  font-weight: 700;
-  letter-spacing: -1px;
-}
-.workspace-main > div > header:has(> h1) > p:last-child {
-  color: #8b8d9a;
-  font-size: 13px;
 }
 .workspace-main button {
   cursor: pointer;
@@ -594,8 +579,8 @@
     font-size: 16px;
   }
   .app-header {
-    min-height: 102px;
-    padding: 24px 48px;
+    min-height: 97px;
+    padding: 21.5px 48px;
   }
   .main-nav {
     min-height: 68px;
@@ -620,8 +605,7 @@
     border-radius: 24px;
   }
   .app-header {
-    padding: 20px;
-    align-items: start;
+    padding: 17.5px 20px;
     flex-wrap: wrap;
   }
   .app-header > div {
