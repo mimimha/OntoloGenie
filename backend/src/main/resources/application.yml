@@ -79,6 +79,11 @@ axcore:
       delay: 10s
       retry-delay: 5m
       max-failures: 3
+    # 자동 수집이 켜진 원천(API 072)의 FULL_COMPARE 테이블에 주기마다 전체 읽기(SCHEDULED)를 넣는 작업(batch, S15P31C106-318).
+    # 주기가 됐는지 delay마다 확인한다. 주기의 최소값이 1분이라 그보다 짧게 둔다. 끄려면 배포 설정 AXCORE_SOURCE_SCHEDULE_ENABLED=false.
+    schedule-watch:
+      enabled: ${AXCORE_SOURCE_SCHEDULE_ENABLED:true}
+      delay: 30s
   # 끝나지 않고 남은 분석 실행을 FAILED로 정리하는 기준(batch, S15P31C106-273). QUEUED는 요청 시각, RUNNING은 시작 시각부터 잰다.
   # AI 분석 소요 시간 측정(S15P31C106-55) 전 임시값이며, RUNNING 기준은 최대 소요 시간보다 길게 둔다.
   analysis:
@@ -86,43 +91,46 @@ axcore:
       queued: ${AXCORE_ANALYSIS_QUEUED_TIMEOUT:10m}
       running: ${AXCORE_ANALYSIS_RUNNING_TIMEOUT:60m}
       check-delay: 1m
-  # 재배정 계획(CREATE_REASSIGNMENT_PLAN) 업무 조건 검사가 읽는 온톨로지 객체 유형·속성 코드. 기본값은 시연 정답 온톨로지
-  # (ai/data/gold-v1.0/ontology.json)의 이름이다. 승인된 온톨로지의 이름이 다르면 여기만 바꾼다.
+  # 재배정 계획(CREATE_REASSIGNMENT_PLAN) 업무 조건 검사가 읽는 온톨로지 객체 유형·속성 코드.
+  # 유형 코드는 운영 온톨로지 코드다(2026-11-12 확인). 임시 하드코딩이며 업무 역할 묶기·관계 기반 구조를 도입하면 삭제한다.
+  # Notion '#Action·Agent 기능의 온톨로지 활용 개선안' 참고.
   reassignment:
     equipment:
-      type: Equipment
+      type: EQUIPMENT
       code: code
       kind: kind
       capacity: capacity_ton
     work-order:
-      type: WorkOrder
+      type: WORK_ORDER
       number: wo_no
       product: product_code
       status: status
       movable-statuses: [대기, 진행]
     operation:
-      type: WorkOrderOperation
+      type: WORK_ORDER_OPERATION
       work-order: wo_no
       sequence: op_seq
       equipment: equipment_code
       status: status
       finished-statuses: [완료]
     routing:
-      type: Routing
+      type: ROUTING
       product: product_code
       sequence: op_seq
       equipment-kind: equipment_kind
       min-capacity: min_tonnage
-  # Agent 완료 시각 계산(ESTIMATE_COMPLETION, FN-AGT-09)이 읽는 온톨로지 객체 유형·속성 코드. 기본값은 시연 정답 온톨로지의 이름이다.
+  # Agent 완료 시각 계산(ESTIMATE_COMPLETION, FN-AGT-09)이 읽는 온톨로지 객체 유형·속성 코드.
+  # 유형 코드는 운영 온톨로지 코드다(2026-11-12 확인). 임시 하드코딩이며 업무 역할 묶기·관계 기반 구조를 도입하면 삭제한다.
+  # Notion '#Action·Agent 기능의 온톨로지 활용 개선안' 참고.
   # 진행 중인 공정은 준비(금형 교체)를 마쳤다고 보고 준비 시간을 넣지 않는다. 설비를 주면 그 설비 종류로 하는 공정만 계산한다.
   agent:
     completion-estimate:
       work-order:
-        type: WorkOrder
+        type: WORK_ORDER
         number: wo_no
         product: product_code
       operation:
-        type: WorkOrderOperation
+        type: WORK_ORDER_OPERATION
         work-order: wo_no
         sequence: op_seq
         equipment: equipment_code
@@ -131,14 +139,14 @@ axcore:
         finished-statuses: [완료]
         running-statuses: [진행]
       routing:
-        type: Routing
+        type: ROUTING
         product: product_code
         sequence: op_seq
         equipment-kind: equipment_kind
         cycle-seconds: std_cycle_sec
         setup-minutes: std_setup_min
       equipment:
-        type: Equipment
+        type: EQUIPMENT
         code: code
         kind: kind
 

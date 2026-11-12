@@ -216,3 +216,100 @@ def test_credits_follow_model_and_unknown_model_counts_as_most_expensive():
     assert token_credits("gpt-6-astra", 1000, 200) == pytest.approx(200.0)
     # 표에 없는 모델은 적게 세지 않도록 가장 비싼 단가로 센다
     assert token_credits("gpt-new", 1000, 200) == pytest.approx(200.0)
+
+
+def test_timeout_and_broken_body_become_llm_error(monkeypatch):
+    # 응답을 기다리다 시간이 지나면 분석 전체가 아니라 그 호출만 실패해야 한다
+    import io
+
+    import pytest
+
+    from app.llm import client
+    from app.llm.client import LLMError
+
+    def slow(*_args, **_kwargs):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(client.urllib.request, "urlopen", slow)
+    with pytest.raises(LLMError, match="응답이 없습니다"):
+        client._post_json("http://llm", {}, {}, 1)
+
+    class Body(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(
+        client.urllib.request, "urlopen", lambda *a, **k: Body(b"<html>")
+    )
+    with pytest.raises(LLMError, match="JSON이 아닌"):
+        client._post_json("http://llm", {}, {}, 1)
+
+
+def test_error_body_that_cannot_be_read_still_gives_llm_error(monkeypatch):
+    import http.client
+    import urllib.error
+
+    from app.llm import client
+
+    class SlowBody:
+        def read(self, *args):
+            raise TimeoutError("timed out")
+
+        def close(self):
+            pass
+
+    def server_error(*_args, **_kwargs):
+        raise urllib.error.HTTPError("http://llm", 502, "Bad Gateway", {}, SlowBody())
+
+    monkeypatch.setattr(client.urllib.request, "urlopen", server_error)
+    with pytest.raises(LLMError, match=r"HTTP 502\): 본문을 읽지 못함\(TimeoutError\)"):
+        client._post_json("http://llm", {}, {}, 1)
+
+    def cut(*_args, **_kwargs):
+        raise http.client.IncompleteRead(b'{"output"')
+
+    monkeypatch.setattr(client.urllib.request, "urlopen", cut)
+    with pytest.raises(LLMError, match="응답이 없습니다: IncompleteRead"):
+        client._post_json("http://llm", {}, {}, 1)
+
+
+@pytest.mark.parametrize(
+    "client_class, usage",
+    [
+        (ResponsesLLMClient, {"input_tokens": None, "output_tokens": None}),
+        (ChatLLMClient, {"prompt_tokens": None, "completion_tokens": None}),
+    ],
+)
+def test_null_token_counts_are_counted_as_zero(client_class, usage):
+    from app.llm.client import token_credits
+
+    def send(url, headers, body, timeout):
+        return {
+            "usage": usage,
+            "output": [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": '{"ok": 1}'}],
+                }
+            ],
+            "choices": [{"message": {"content": '{"ok": 1}'}}],
+        }
+
+    client = client_class("k", "http://llm", "gpt-6-luna", send=send)
+
+    assert client.complete_json("prompt") == {"ok": 1}
+    used = client.last_usage
+    assert (used["input_tokens"], used["output_tokens"]) == (0, 0)
+    # 사용량을 셀 때 None * 단가로 TypeError가 나지 않는다
+    assert token_credits(client.model, used["input_tokens"], used["output_tokens"]) == 0
+
+
+def test_none_provider_is_reported_as_turned_off():
+    from app.config import Settings
+
+    settings = Settings(llm_provider="none")
+    assert not settings.llm_ready
+    assert "LLM 사용 안 함" in settings.llm_missing

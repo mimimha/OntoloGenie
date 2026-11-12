@@ -103,9 +103,14 @@ def load_documents(root: Path) -> list[Document]:
         shift = r.get("shift") or None
         start = None
         if shift in SHIFT_HOURS and r.get("shift_date"):
-            start = datetime.combine(
-                date.fromisoformat(r["shift_date"]), datetime.min.time()
-            ) + timedelta(hours=SHIFT_HOURS[shift])
+            try:
+                day = date.fromisoformat(str(r["shift_date"])[:10])
+            except ValueError:
+                day = None
+            if day:
+                start = datetime.combine(day, datetime.min.time()) + timedelta(
+                    hours=SHIFT_HOURS[shift]
+                )
         docs.append(
             Document(
                 doc_id=r["note_id"],

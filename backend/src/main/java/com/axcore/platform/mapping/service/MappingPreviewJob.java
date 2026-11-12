@@ -24,6 +24,7 @@ import com.axcore.platform.source.repository.SourceTableReader;
 import com.axcore.platform.source.repository.SourceTableReader.Table;
 import com.axcore.platform.source.service.SourceCredentialException;
 import com.axcore.platform.source.service.SourceCredentialService;
+import com.axcore.platform.source.service.SourceReadFailure;
 import com.axcore.platform.source.service.SourceRowConverter;
 import com.axcore.platform.source.service.SourceRowConverter.Conversion;
 import com.axcore.platform.source.service.SourceRowConverter.ValueFailure;
@@ -137,7 +138,7 @@ public class MappingPreviewJob implements QueuedJobHandler<MappingPreviewJob.Out
                     jobId,
                     resource.getId(),
                     e.getSQLState());
-            throw new QueuedJobFailure(failureMessage(e));
+            throw new QueuedJobFailure(SourceReadFailure.message(e));
         }
 
         List<Map<String, Object>> objects = new ArrayList<>();
@@ -219,27 +220,6 @@ public class MappingPreviewJob implements QueuedJobHandler<MappingPreviewJob.Out
         error.put("transform", transform);
         error.put("message", message);
         return error;
-    }
-
-    // 드라이버 메시지에는 주소·계정명·값이 들어갈 수 있어 SQLSTATE로 고른 문구만 남긴다(전체 읽기와 같다).
-    private static String failureMessage(SQLException e) {
-        String state = e.getSQLState() == null ? "" : e.getSQLState();
-        if (state.equals("28P01") || state.equals("28000")) {
-            return "SYNC 계정으로 원천에 로그인하지 못했습니다. 계정과 비밀번호를 확인해 주세요.";
-        }
-        if (state.startsWith("08")) {
-            return "원천에 접속하지 못했습니다. 주소와 네트워크를 확인해 주세요.";
-        }
-        if (state.equals("42501")) {
-            return "SYNC 계정에 원천 테이블이나 컬럼을 읽을 권한이 없습니다. 연결 검사를 다시 실행해 권한을 확인해 주세요.";
-        }
-        if (state.equals("42P01") || state.equals("42703") || state.equals("42P09")) {
-            return "원천에서 테이블이나 컬럼을 찾지 못했습니다. 연결 검사를 다시 실행해 카탈로그를 갱신해 주세요.";
-        }
-        if (state.equals("57014")) {
-            return "원천 테이블을 읽는 시간이 너무 오래 걸려 중단했습니다.";
-        }
-        return "원천 테이블을 읽지 못했습니다(SQLSTATE %s).".formatted(state.isEmpty() ? "없음" : state);
     }
 
     /**

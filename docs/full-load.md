@@ -7,7 +7,7 @@
 
 ## 실행을 만드는 쪽이 할 일
 
-이 작업은 이미 들어온 실행만 처리한다. 실행을 만드는 곳(API 073 수동 수집, 매핑 변경 뒤 다시 읽기, 복구)은 아래처럼 넣는다.
+이 작업은 이미 들어온 실행만 처리한다. 실행을 만드는 곳(API 073 수동 수집, 매핑 변경 뒤 다시 읽기, 복구, FULL_COMPARE 주기 수집([source-sync-schedule.md](source-sync-schedule.md)))은 아래처럼 넣는다.
 
 - `sync_run`: `status=QUEUED`, `trigger_kind`(MANUAL·RECOVERY·SCHEDULED·ON_DEMAND), 사람이 요청했으면 `requested_by`
 - `sync_run_resource`: 읽을 테이블마다 `mode=FULL`, `status=QUEUED`

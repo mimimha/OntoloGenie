@@ -78,13 +78,13 @@ test('수집 이력 탭에서 실제 어댑터로 073 요청·074 이력·075 �
     http.get('/api/v1/sources/1/sync-runs', ({ request }) => {
       const params = new URL(request.url).searchParams
       expect(params.get('page')).toBe('0')
-      expect(params.get('size')).toBe('20')
+      expect(['1', '20']).toContain(params.get('size'))
       expect(params.has('triggerKind')).toBe(false)
       return HttpResponse.json({
         data: requested ? [run] : [],
         meta: {
           page: 0,
-          size: 20,
+          size: Number(params.get('size')),
           totalElements: requested ? 1 : 0,
           hasNext: false,
         },
@@ -121,6 +121,10 @@ test('수집 이력 탭에서 실제 어댑터로 073 요청·074 이력·075 �
   await user.click(screen.getByRole('button', { name: '수동 수집 요청' }))
   await screen.findByText('수집 실행 #21을 접수했습니다.')
   await screen.findByRole('button', { name: '수집 실행 #21' })
+  const summary = within(
+    screen.getByRole('table', { name: '선택한 원천 수집 요약' }),
+  )
+  expect(await summary.findByText('전체 읽기 · 완료')).toBeInTheDocument()
   const detail = within(
     await screen.findByRole('region', { name: '수집 실행 #21 상세' }),
   )
@@ -252,11 +256,19 @@ test('목록의 수집 이력 바로 가기는 선택한 원천의 이력을 연
   const user = userEvent.setup()
   const requested: string[] = []
   server.use(
-    http.get('/api/v1/sources/:id/sync-runs', ({ params }) => {
-      requested.push(String(params.id))
+    http.get('/api/v1/sources/:id/sync-runs', ({ params, request }) => {
+      const size = Number(new URL(request.url).searchParams.get('size'))
+      // 요약(size=1)과 전체 이력(size=20) 요청을 구분한다.
+      if (size === 20) requested.push(String(params.id))
       return HttpResponse.json({
         data: [],
-        meta: { page: 0, size: 20, totalElements: 0, hasNext: false },
+        meta: {
+          page: 0,
+          size,
+          totalElements: 0,
+          hasNext: false,
+          cdcLastAppliedAt: null,
+        },
       })
     }),
   )

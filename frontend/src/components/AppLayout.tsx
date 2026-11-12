@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation } from 'react-router'
+import { Link, NavLink, Outlet, useLocation } from 'react-router'
 import AccountMenu from '../features/auth/AccountMenu'
 import { useAuth } from '../features/auth/auth-context'
 import { canAccess } from '../features/auth/access'
@@ -40,7 +40,8 @@ function AppLayout() {
       </a>
       <div className="app-frame">
         <header className="app-header">
-          <span
+          <Link
+            to="/explorer"
             className="app-brand font-semibold tracking-tight text-slate-900"
             aria-label="OntoloGenie"
           >
@@ -50,7 +51,7 @@ function AppLayout() {
               width="250"
               height="32"
             />
-          </span>
+          </Link>
           <div className="app-header-actions">
             <nav aria-label="계정 메뉴">
               {headerLinks

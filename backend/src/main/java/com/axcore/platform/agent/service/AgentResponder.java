@@ -6,6 +6,7 @@ import com.axcore.platform.ontology.service.ModelSummaryService;
 import com.axcore.platform.ontology.service.ObjectDetailQuery;
 import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
 import com.axcore.platform.ontology.service.ObjectSearchQuery;
+import com.axcore.platform.ontology.service.PropertyValueSampleService;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -49,12 +50,17 @@ public class AgentResponder {
             - 확인된 관계의 근거 조회 결과가 NO_DATA이고 근거 응답에 evidenceRestricted가 false이면 "이 관계에는 저장된 근거가 없습니다"라고 말한다.
             - 도구가 error를 돌려주면 그 정보는 확인하지 못했다고 말하고, 데이터가 없다고 바꿔 말하지 않는다.
             - 객체 ID는 "참고 객체 ID"나 이번 답변의 조회 도구 결과에 나온 값만 쓴다. 객체 ID를 지어내지 않는다.
-            - "종류 전체"가 비어 있지 않으면 객체 하나를 조회하는 도구는 부르지 않는다.
+            - "종류 전체"가 비어 있지 않으면 객체 하나를 조회하는 도구는 부르지 않는다. "정지 중인 설비", "10월 작업지시"처럼 종류 전체나
+              조건에 맞는 목록·건수를 물으면 객체 목록 조회로 답한다.
+            - "현재", "지금"은 목록을 거를 기간이 아니라 지금 상태를 묻는 말이다. "확인한 조건"에 기간이 있어도 사용자가 질문에서 날짜·기간을
+              말했을 때만 객체 목록 조회에 기간 조건을 넣는다.
+            - 객체 목록 결과의 total이 전체 건수다. objects가 total보다 적으면 "전체 N건 중 M건"처럼 일부만 보여 준다는 것을 함께 말한다.
+              어떤 조건으로 찾았는지(유형·속성 값·기간)도 다시 말한다.
             - 질문의 대상은 "참고 객체"로 이미 정해져 있다. 그 밖의 객체를 이름이나 코드로만 알면 객체 검색으로 먼저 찾는다. 후보가 여럿이면 어느 것인지 되묻는다.
             - 모델 요약은 사용자가 객체 유형이나 관계 유형을 이름으로 말해 그 유형으로 좁혀야 할 때만 부른다. 이름·코드로 객체를 찾거나 관계를 모두 볼 때는 부르지 않는다.
               유형 ID는 모델 요약 결과에 나온 값만 쓰고 지어내지 않는다.
             - 질문한 정보를 조회할 도구가 없으면 다른 도구 결과로 대신 답하지 않고, 아직 조회할 수 없는 정보라고 말한다.
-              예: 작업지시 목록을 조회할 도구가 없으면 "작업지시가 없다"가 아니라 "아직 조회할 수 없다"고 말한다.
+              예: 합계·평균을 구할 도구가 없으면 목록 몇 건을 직접 더해 답하지 않고 "아직 조회할 수 없다"고 말한다.
             - 객체에 연결된 정보(예: 설비에 배정된 작업지시)는 관계를 조회해 답한다. 관계 조회로 찾을 수 있으면 "아직 조회할 수 없다"고 말하지 않는다.
             - 비가동·센서 측정·생산 실적·작업지시·수주·고정자산 같은 업무 기록은 대상 객체의 관계로 찾는다. 객체 실행 이력은 플랫폼에서 실행한 Action·작업
               이력일 뿐 업무 기록이 아니다.
@@ -98,6 +104,7 @@ public class AgentResponder {
     private final DataAccessPolicy dataAccess;
     private final AgentActionTools actionTools;
     private final CompletionEstimator completionEstimator;
+    private final PropertyValueSampleService propertyValues;
     private final Clock clock;
 
     /**
@@ -118,6 +125,7 @@ public class AgentResponder {
             DataAccessPolicy dataAccess,
             AgentActionTools actionTools,
             CompletionEstimator completionEstimator,
+            PropertyValueSampleService propertyValues,
             Clock clock,
             @Value("${axcore.agent.reasoning-effort:none}") String reasoningEffort) {
         this.chatModels = chatModels;
@@ -129,6 +137,7 @@ public class AgentResponder {
         this.dataAccess = dataAccess;
         this.actionTools = actionTools;
         this.completionEstimator = completionEstimator;
+        this.propertyValues = propertyValues;
         this.clock = clock;
         this.reasoningEffort = reasoningEffort;
     }
@@ -167,6 +176,9 @@ public class AgentResponder {
         List<Object> tools = new ArrayList<>();
         tools.add(new AgentQueryTools(session, executions, objectSearch));
         tools.add(new AgentModelSummaryTools(session, modelSummary, dataAccess));
+        tools.add(
+                new AgentObjectListTools(
+                        session, objectSearch, modelSummary, dataAccess, propertyValues));
         objectDetails.ifAvailable(query -> tools.add(new AgentObjectDetailTools(session, query)));
         objectEvidence.ifAvailable(
                 query -> tools.add(new AgentObjectEvidenceTools(session, query)));

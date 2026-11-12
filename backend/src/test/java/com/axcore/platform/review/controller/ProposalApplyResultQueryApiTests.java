@@ -261,8 +261,9 @@ class ProposalApplyResultQueryApiTests {
                 .andExpect(jsonPath("$.data.result.targetTable").value("link_mapping"))
                 .andExpect(jsonPath("$.data.result.targetId").value(mapping))
                 .andExpect(jsonPath("$.data.result.applyStatus").value("APPLIED"))
-                .andExpect(jsonPath("$.data.result.summary.heldCount").value(1))
-                .andExpect(jsonPath("$.data.entityChanges.length()").value(4));
+                .andExpect(jsonPath("$.data.result.summary.heldCount").value(1));
+        read(AUDIT + "/" + execution + "/changes")
+                .andExpect(jsonPath("$.data.changes.length()").value(4));
         read("/api/v1/held-items/" + held)
                 .andExpect(jsonPath("$.data.proposalItemId").value(proposal))
                 .andExpect(jsonPath("$.data.linkMappingId").value(mapping))
@@ -336,14 +337,14 @@ class ProposalApplyResultQueryApiTests {
     private void assertFailure(long execution, String errorCode) throws Exception {
         read(AUDIT + "/" + execution)
                 .andExpect(jsonPath("$.data.status").value("FAILED"))
-                .andExpect(jsonPath("$.data.targetId").value(proposal))
                 .andExpect(jsonPath("$.data.input.proposalItemId").value(proposal))
                 .andExpect(jsonPath("$.data.input.decision").value("APPROVE"))
                 .andExpect(jsonPath("$.data.input.reason").value("결과 조회 검증"))
                 .andExpect(jsonPath("$.data.result.errorCode").value(errorCode))
                 .andExpect(jsonPath("$.data.result.reason").isNotEmpty())
-                .andExpect(jsonPath("$.data.result.decisionId").doesNotExist())
-                .andExpect(jsonPath("$.data.entityChanges").isEmpty());
+                .andExpect(jsonPath("$.data.failureReason").isNotEmpty())
+                .andExpect(jsonPath("$.data.result.decisionId").doesNotExist());
+        read(AUDIT + "/" + execution + "/changes").andExpect(jsonPath("$.data.changes").isEmpty());
     }
 
     private String candidateAudits() {

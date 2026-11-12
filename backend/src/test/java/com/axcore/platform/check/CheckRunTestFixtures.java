@@ -54,6 +54,32 @@ public record CheckRunTestFixtures(JdbcClient jdbc) {
                 .single();
     }
 
+    /** 반영 중 규칙을 새로 넣을 관계 유형. 관계 유형마다 반영 중 규칙은 하나라(V17), 이미 있으면 양 끝·관계 수가 같은 관계 유형을 새로 만들어 돌려준다. */
+    public long linkTypeForNewActiveRule(long linkTypeId) {
+        boolean taken =
+                jdbc.sql(
+                                "select exists (select 1 from link_mapping where link_type_id = :id and status = 'ACTIVE')")
+                        .param("id", linkTypeId)
+                        .query(Boolean.class)
+                        .single();
+        if (!taken) {
+            return linkTypeId;
+        }
+        return jdbc.sql(
+                        """
+                        insert into link_type (
+                            code, name, source_type_id, target_type_id, cardinality, description
+                        )
+                        select :code, name, source_type_id, target_type_id, cardinality, description
+                        from link_type where id = :id
+                        returning id
+                        """)
+                .param("code", "LINK_" + UUID.randomUUID())
+                .param("id", linkTypeId)
+                .query(Long.class)
+                .single();
+    }
+
     public long insertLinkType(long sourceTypeId, long targetTypeId, String cardinality) {
         return jdbc.sql(
                         """

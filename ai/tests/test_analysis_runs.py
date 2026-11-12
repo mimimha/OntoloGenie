@@ -1,5 +1,6 @@
 """분석 시작 알림 수신(API 018 하단)과 105 전송. 백엔드와 원천은 가짜로 바꾼다."""
 
+import http.client
 import json
 import logging
 import threading
@@ -12,8 +13,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.analysis.backend import BackendError, results_reporter
-from app.analysis.engine import AnalysisResult
-from app.analysis.runner import UNEXPECTED, AnalysisRunner
+from app.analysis.engine import AnalysisFailure, AnalysisResult
+from app.analysis.runner import RESULT_NOT_SENT, STOPPED, UNEXPECTED, AnalysisRunner
 from app.api.analysis_runs import get_runner
 from app.config import Settings, get_settings
 from app.models.analysis import AnalysisStartRequest
@@ -67,7 +68,33 @@ class Backend:
     def __call__(self, run_id, payload):
         self.reports.append((run_id, payload))
         if payload["status"] == self.fail_on:
-            raise BackendError("HTTP 409")
+            raise BackendError("HTTP 409", status=409)
+
+
+class FlakyBackend:
+    """105를 흉내 낸다. failures[상태]에 든 HTTP 상태(None은 접속 실패)를 차례로 내고, 다 쓰면 받는다."""
+
+    def __init__(self, **failures):
+        self.reports = []
+        self.failures = {k: list(v) for k, v in failures.items()}
+
+    def __call__(self, run_id, payload):
+        self.reports.append((run_id, payload))
+        left = self.failures.get(payload["status"])
+        if left:
+            status = left.pop(0)
+            message = "URLError" if status is None else f"HTTP {status}"
+            raise BackendError(message, status=status)
+
+
+def run_once(backend, run_id=7, **kwargs):
+    """재시도 대기 없이 실행 하나를 돌리고 105로 보낸 상태 순서를 돌려준다."""
+    runner = AnalysisRunner(
+        backend, connector=lambda c: FakeConn, retry_delays=(0, 0, 0), **kwargs
+    )
+    assert runner.claim(run_id)
+    runner.run(AnalysisStartRequest.model_validate(body(run_id=run_id)))
+    return [b["status"] for _, b in backend.reports]
 
 
 @pytest.fixture
@@ -345,8 +372,6 @@ def test_reporter_turns_http_and_connection_errors_into_backend_error(
 
 def test_stop_reports_running_analyses_as_failed_once_and_drops_late_result():
     # 재배포로 AI가 꺼지면 진행 중이던 실행을 백엔드에 FAILED로 알린다(안 알리면 RUNNING으로 남아 새 요청이 합류해 막힌다)
-    from app.analysis.runner import STOPPED
-
     backend = Backend()
     started, release = threading.Event(), threading.Event()
 
@@ -374,8 +399,6 @@ def test_stop_reports_running_analyses_as_failed_once_and_drops_late_result():
 
 
 def test_run_received_after_stop_is_reported_stopped_without_analysis():
-    from app.analysis.runner import STOPPED
-
     backend = Backend()
     called = []
     runner = AnalysisRunner(
@@ -387,3 +410,227 @@ def test_run_received_after_stop_is_reported_stopped_without_analysis():
 
     assert backend.reports == [(9, {"status": "FAILED", "errorMessage": STOPPED})]
     assert called == []
+
+
+def test_result_report_retries_connection_errors_and_5xx():
+    backend = FlakyBackend(SUCCEEDED=[None, 503])
+
+    statuses = run_once(backend)
+
+    assert statuses == ["RUNNING", "SUCCEEDED", "SUCCEEDED", "SUCCEEDED"]
+    assert backend.reports[1][1] == backend.reports[3][1]  # 같은 결과를 다시 보낸다
+
+
+def test_result_report_gives_up_when_run_is_unknown():
+    backend = FlakyBackend(SUCCEEDED=[404])
+
+    assert run_once(backend) == ["RUNNING", "SUCCEEDED"]
+
+
+def test_result_conflict_after_retry_means_earlier_try_was_saved():
+    # 앞선 시도가 저장됐는데 응답만 끊겼으면 다시 보낸 요청은 409가 된다. 실패로 덮어쓰지 않는다
+    backend = FlakyBackend(SUCCEEDED=[None, 409])
+
+    assert run_once(backend) == ["RUNNING", "SUCCEEDED", "SUCCEEDED"]
+
+
+def test_result_conflict_on_first_try_is_reported_as_short_failure():
+    # 첫 시도의 409는 저장 중 제약 위반일 수도 있다. 이미 끝난 실행이면 FAILED도 409로 무시된다
+    backend = FlakyBackend(SUCCEEDED=[409])
+
+    assert run_once(backend) == ["RUNNING", "SUCCEEDED", "FAILED"]
+    assert backend.reports[-1][1]["errorMessage"] == RESULT_NOT_SENT
+
+
+def test_result_rejected_as_invalid_is_reported_as_short_failure():
+    backend = FlakyBackend(SUCCEEDED=[400])
+
+    assert run_once(backend) == ["RUNNING", "SUCCEEDED", "FAILED"]
+    assert backend.reports[-1][1] == {
+        "status": "FAILED",
+        "errorMessage": RESULT_NOT_SENT,
+    }
+
+
+def test_result_still_unsent_after_retries_is_reported_as_failure(caplog):
+    # 결과를 못 보내고 끝나면 백엔드에서 실행이 시간 제한(60분)까지 RUNNING으로 묶인다
+    backend = FlakyBackend(SUCCEEDED=[502, 502, 502, 502], FAILED=[None])
+
+    with caplog.at_level(logging.WARNING):
+        statuses = run_once(backend)
+
+    assert statuses == ["RUNNING", *["SUCCEEDED"] * 4, "FAILED"]
+    assert backend.reports[-1][1]["errorMessage"] == RESULT_NOT_SENT
+    assert "실패 알림도 실패(URLError)" in caplog.text
+    assert PASSWORD not in caplog.text
+
+
+def test_failure_body_that_cannot_be_sent_is_also_reported_as_short_failure():
+    def analyze(request, sources):
+        raise AnalysisFailure("원천에 접속하지 못했습니다 (MES_MAIN)")
+
+    backend = FlakyBackend(FAILED=[None, None, None, None])
+
+    statuses = run_once(backend, analyze=analyze)
+
+    assert statuses == ["RUNNING", *["FAILED"] * 5]
+    assert backend.reports[-1][1]["errorMessage"] == RESULT_NOT_SENT
+
+
+def test_running_report_retries_connection_errors_then_analyzes():
+    backend = FlakyBackend(RUNNING=[None, 500])
+
+    assert run_once(backend) == ["RUNNING", "RUNNING", "RUNNING", "SUCCEEDED"]
+
+
+@pytest.mark.parametrize("status", [409, 404])
+def test_running_report_rejected_gives_up_at_once(status):
+    called = []
+    backend = FlakyBackend(RUNNING=[status])
+
+    statuses = run_once(backend, analyze=lambda r, s: called.append(1))
+
+    assert statuses == ["RUNNING"]
+    assert called == []
+
+
+def test_running_conflict_after_retry_means_earlier_try_was_saved():
+    # 첫 RUNNING이 저장됐는데 응답만 끊기면 다시 보낸 RUNNING은 409다. 분석은 이어 간다
+    backend = FlakyBackend(RUNNING=[None, 409])
+
+    assert run_once(backend) == ["RUNNING", "RUNNING", "SUCCEEDED"]
+
+
+def test_running_report_unreachable_after_retries_does_not_analyze():
+    called = []
+    backend = FlakyBackend(RUNNING=[None] * 4)
+
+    statuses = run_once(backend, analyze=lambda r, s: called.append(1))
+
+    assert statuses == ["RUNNING"] * 4
+    assert called == []
+
+
+def test_stop_during_retry_wait_ends_retries_without_extra_failure():
+    failed_once = threading.Event()
+
+    class SignalingBackend(FlakyBackend):
+        def __call__(self, run_id, payload):
+            try:
+                super().__call__(run_id, payload)
+            finally:
+                if payload["status"] == "SUCCEEDED":
+                    failed_once.set()
+
+    backend = SignalingBackend(SUCCEEDED=[503])
+    runner = AnalysisRunner(backend, connector=lambda c: FakeConn, retry_delays=(30,))
+    assert runner.claim(7)
+    worker = threading.Thread(
+        target=runner.run, args=(AnalysisStartRequest.model_validate(body()),)
+    )
+    worker.start()
+    assert failed_once.wait(30)
+
+    assert runner.stop() == [7]
+    worker.join(5)
+
+    assert not worker.is_alive()  # 30초 대기를 다 기다리지 않는다
+    statuses = [b["status"] for _, b in backend.reports]
+    assert statuses == ["RUNNING", "SUCCEEDED", "FAILED"]
+    assert backend.reports[-1][1]["errorMessage"] == STOPPED
+
+
+@pytest.mark.parametrize("resource_key", ["work_order", ".work_order", "mes.", ""])
+def test_resource_key_without_schema_and_name_is_400(token, resource_key):
+    backend = Backend()
+    use(AnalysisRunner(backend, connector=lambda c: FakeConn))
+
+    response = post(body(resource_key=resource_key))
+
+    assert response.status_code == 400
+    assert response.json()["error"]["details"]["fields"] == ["targets.0.resourceKey"]
+    assert backend.reports == []
+
+
+def test_sources_sharing_a_schema_name_fail_before_connecting(token):
+    payload = body(resource_key="public.item")
+    payload["sources"].append({**payload["sources"][0], "dataSourceCode": "ERP_MAIN"})
+    payload["targets"].append(
+        {**payload["targets"][0], "sourceResourceId": 12, "dataSourceCode": "ERP_MAIN"}
+    )
+    connected = []
+    backend = Backend()
+    use(AnalysisRunner(backend, connector=lambda c: connected.append(1) or FakeConn))
+
+    post(payload)
+
+    assert backend.reports[-1][1] == {
+        "status": "FAILED",
+        "errorMessage": "서로 다른 원천이 같은 스키마 이름(public)을 써서 함께 분석할 수 없습니다: "
+        "ERP_MAIN, MES_MAIN. 원천별로 나눠 분석해 주세요",
+    }
+    assert connected == []
+
+
+def test_reporter_marks_status_so_runner_can_tell_retry_from_give_up(backend_server):
+    port = backend_server.server_address[1]
+    report = results_reporter(Settings(backend_url=f"http://127.0.0.1:{port}"))
+    expected = {
+        409: (True, False),
+        404: (True, False),
+        400: (False, False),
+        503: (False, True),
+    }
+    for status, (gave_up, retryable) in expected.items():
+        _Recorder.status = status
+        with pytest.raises(BackendError) as caught:
+            report(7, {"status": "RUNNING"})
+        assert caught.value.status == status
+        assert (caught.value.gave_up, caught.value.retryable) == (gave_up, retryable)
+
+
+def test_reporter_turns_cut_response_into_retryable_backend_error(monkeypatch):
+    def cut(*args, **kwargs):
+        raise http.client.IncompleteRead(b"{")
+
+    monkeypatch.setattr(urllib.request, "urlopen", cut)
+    report = results_reporter(Settings(backend_url="http://127.0.0.1:1"))
+
+    with pytest.raises(BackendError) as caught:
+        report(7, {"status": "RUNNING"})
+    assert caught.value.status is None and caught.value.retryable
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [{"score": float("nan")}, {"tables": {"a", "b"}}, {"text": "\ud800"}],
+    ids=["nan", "set", "lone-surrogate"],
+)
+def test_reporter_turns_unserializable_body_into_backend_error(backend_server, summary):
+    port = backend_server.server_address[1]
+    report = results_reporter(Settings(backend_url=f"http://127.0.0.1:{port}"))
+
+    with pytest.raises(BackendError) as caught:
+        report(7, {"status": "SUCCEEDED", "resultSummary": summary, "proposals": []})
+
+    assert caught.value.invalid_body and not caught.value.retryable
+    assert _Recorder.received == []  # 보내지 않는다
+
+
+def test_unserializable_result_is_reported_as_short_failure(backend_server):
+    port = backend_server.server_address[1]
+    report = results_reporter(Settings(backend_url=f"http://127.0.0.1:{port}"))
+
+    def analyze(request, sources):
+        return AnalysisResult({"score": float("nan")}, [])
+
+    runner = AnalysisRunner(
+        report, connector=lambda c: FakeConn, analyze=analyze, retry_delays=(0,)
+    )
+    assert runner.claim(7)
+    runner.run(AnalysisStartRequest.model_validate(body()))
+
+    assert [b for _, _, b in _Recorder.received] == [
+        {"status": "RUNNING"},
+        {"status": "FAILED", "errorMessage": RESULT_NOT_SENT},
+    ]

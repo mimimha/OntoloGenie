@@ -1,5 +1,6 @@
 package com.axcore.platform.audit;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.empty;
@@ -23,6 +24,7 @@ import com.axcore.platform.audit.domain.ExecutionStatus;
 import com.axcore.platform.audit.service.AuditRecorder;
 import com.axcore.platform.global.security.LoginAccount;
 import jakarta.servlet.http.Cookie;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -41,6 +43,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * 실행·감사 이력 조회(API 096·097·098·080)를 실제 보안 설정과 DB로 확인한다. 다른 테스트와 DB를 같이 쓰므로 전체 범위 확인은 이 테스트가 시작한 시각
@@ -54,6 +58,46 @@ class AuditExecutionApiTests {
 
     private static final String PASSWORD = "Passw0rd!";
     private static final String AUDIT = "/api/v1/audit/actions";
+    private static final TypeReference<Map<String, Object>> JSON_OBJECT = new TypeReference<>() {};
+
+    /** 096·080 한 줄의 필드. 3단계(기존 필드 제거) 전까지 기존 필드를 모두 유지하고 changeCount만 더한다. */
+    private static final List<String> LIST_FIELDS =
+            List.of(
+                    "id",
+                    "requestId",
+                    "eventKind",
+                    "category",
+                    "actionDefinitionId",
+                    "actionCode",
+                    "actionName",
+                    "actorType",
+                    "actorId",
+                    "actorName",
+                    "actorRoleCode",
+                    "checkedPermissionCode",
+                    "entryPoint",
+                    "targetType",
+                    "targetId",
+                    "targetLabel",
+                    "input",
+                    "status",
+                    "blockedReason",
+                    "result",
+                    "requestedAt",
+                    "finishedAt",
+                    "entityChanges",
+                    "changeCount",
+                    "restrictedPropertyCodes");
+
+    private static final List<String> DETAIL_FIELDS =
+            List.of(
+                    "id",
+                    "status",
+                    "input",
+                    "result",
+                    "blockedReason",
+                    "failureReason",
+                    "restrictedPropertyCodes");
 
     @Autowired MockMvc mockMvc;
 
@@ -62,6 +106,8 @@ class AuditExecutionApiTests {
     @Autowired PasswordEncoder passwordEncoder;
 
     @Autowired AuditRecorder auditRecorder;
+
+    @Autowired JsonMapper json;
 
     private Instant startedAt;
     private TestAccount admin;
@@ -274,34 +320,136 @@ class AuditExecutionApiTests {
         mockMvc.perform(get(AUDIT)).andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void listRowsKeepTheirFieldsAndCountChanges() throws Exception {
+        Map<String, Object> direct =
+                rowOf(
+                        perform(
+                                withSession(get(AUDIT), login(admin, true))
+                                        .param("from", startedAt.toString())
+                                        .param("size", "100")),
+                        directRun);
+        assertThat(direct.keySet()).containsExactlyInAnyOrderElementsOf(LIST_FIELDS);
+        assertThat(direct).containsEntry("changeCount", 1);
+        assertThat((List<?>) direct.get("entityChanges")).hasSize(1);
+
+        Map<String, Object> blocked =
+                rowOf(
+                        perform(
+                                withSession(get(AUDIT), login(plannerB, true))
+                                        .param("size", "100")),
+                        blockedRun);
+        assertThat(blocked).containsEntry("changeCount", 0);
+
+        Map<String, Object> objectRow =
+                rowOf(
+                        perform(
+                                withSession(
+                                        get("/api/v1/objects/" + object + "/executions"),
+                                        login(plannerA, true))),
+                        directRun);
+        assertThat(objectRow.keySet()).containsExactlyInAnyOrderElementsOf(LIST_FIELDS);
+        assertThat(objectRow).containsEntry("changeCount", 1);
+    }
+
     // ---------------------------------------------------------------- 097·098 상세
 
     @Test
-    void adminGetsDetailAndChanges() throws Exception {
+    void adminOpensAnyDetailAndChanges() throws Exception {
         LoginSession session = login(admin, true);
 
-        for (String path : List.of(AUDIT + "/" + directRun, AUDIT + "/" + directRun + "/changes")) {
-            mockMvc.perform(withSession(get(path), session))
+        Map<String, Object> shown = dataOf(perform(withSession(get(detail(directRun)), session)));
+        assertThat(shown.keySet()).containsExactlyInAnyOrderElementsOf(DETAIL_FIELDS);
+        assertThat(shown)
+                .containsEntry("id", intValue(directRun))
+                .containsEntry("status", "SUCCEEDED")
+                .containsEntry("result", Map.of("planId", 3))
+                .containsEntry("blockedReason", null)
+                .containsEntry("failureReason", null)
+                .containsEntry("restrictedPropertyCodes", List.of());
+        Map<String, Object> changed =
+                dataOf(perform(withSession(get(changes(directRun)), session)));
+        assertThat(changed.keySet())
+                .containsExactlyInAnyOrder("changes", "restrictedPropertyCodes");
+        assertThat(changed).containsEntry("restrictedPropertyCodes", List.of());
+        mockMvc.perform(withSession(get(changes(directRun)), session))
+                .andExpect(jsonPath("$.data.changes.length()").value(1))
+                .andExpect(jsonPath("$.data.changes[0].tableName").value("reassignment_plan"))
+                .andExpect(jsonPath("$.data.changes[0].rowKey.id").value(3))
+                .andExpect(jsonPath("$.data.changes[0].changeKind").value("INSERT"))
+                .andExpect(jsonPath("$.data.changes[0].afterData.status").value("CREATED"));
+
+        mockMvc.perform(withSession(get(detail(blockedRun)), session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("BLOCKED"))
+                .andExpect(jsonPath("$.data.blockedReason").value("대체 설비 능력이 부족합니다."));
+        for (long other : List.of(blockedRun, analysisResultOfB, systemWithoutTarget)) {
+            mockMvc.perform(withSession(get(detail(other)), session))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.id").value(directRun))
-                    .andExpect(jsonPath("$.data.entityChanges[0].changeKind").value("INSERT"))
-                    .andExpect(
-                            jsonPath("$.data.entityChanges[0].afterData.status").value("CREATED"));
+                    .andExpect(jsonPath("$.data.id").value(other));
+            mockMvc.perform(withSession(get(changes(other)), session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.changes", empty()));
         }
-        mockMvc.perform(withSession(get(AUDIT + "/" + agentQuery), session))
-                .andExpect(status().isNotFound());
-        mockMvc.perform(withSession(get(AUDIT + "/999999999"), session))
-                .andExpect(status().isNotFound());
+        expectHidden(session, agentQuery);
+        expectHidden(session, 999_999_999L);
     }
 
     @Test
-    void detailIsAdminOnly() throws Exception {
-        mockMvc.perform(withSession(get(AUDIT + "/" + directRun), login(plannerA, true)))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(
-                        withSession(
-                                get(AUDIT + "/" + directRun + "/changes"), login(plannerA, true)))
-                .andExpect(status().isForbidden());
+    void otherRolesOpenOnlyTheirOwnRunsAndRequestedJobResults() throws Exception {
+        LoginSession session = login(plannerA, true);
+
+        for (long own : List.of(directRun, agentRun, analysisResultOfA)) {
+            mockMvc.perform(withSession(get(detail(own)), session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.id").value(own));
+            mockMvc.perform(withSession(get(changes(own)), session)).andExpect(status().isOk());
+        }
+        mockMvc.perform(withSession(get(changes(directRun)), session))
+                .andExpect(jsonPath("$.data.changes[0].afterData.status").value("CREATED"));
+        for (long hidden :
+                List.of(
+                        blockedRun,
+                        analysisResultOfB,
+                        systemWithoutTarget,
+                        recordAction,
+                        agentQuery,
+                        999_999_999L)) {
+            expectHidden(session, hidden);
+        }
+    }
+
+    @Test
+    void failureReasonPrefersErrorMessageOverReasonCode() throws Exception {
+        String timeoutMessage = "30분 동안 진행 신호가 없어 실패로 처리했습니다.";
+        // StaleJobCleaner가 남기는 시간 초과 결과 줄과 같은 모양이다.
+        long timedOut =
+                record(
+                        analysisResult(createAnalysisRun(plannerA.id()))
+                                .result(
+                                        Map.of(
+                                                "errorMessage",
+                                                timeoutMessage,
+                                                "reason",
+                                                "TIMEOUT")));
+        long reasonOnly =
+                record(
+                        analysisResult(createAnalysisRun(plannerA.id()))
+                                .result(Map.of("reason", "TIMEOUT")));
+        LoginSession session = login(plannerA, true);
+
+        mockMvc.perform(withSession(get(detail(timedOut)), session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("FAILED"))
+                .andExpect(jsonPath("$.data.failureReason").value(timeoutMessage))
+                .andExpect(jsonPath("$.data.result.reason").value("TIMEOUT"));
+        mockMvc.perform(withSession(get(detail(reasonOnly)), session))
+                .andExpect(jsonPath("$.data.failureReason").value("TIMEOUT"));
+        mockMvc.perform(withSession(get(detail(analysisResultOfA)), session))
+                .andExpect(jsonPath("$.data.failureReason").value("분석 실패"));
+        Map<String, Object> blocked =
+                dataOf(perform(withSession(get(detail(blockedRun)), login(plannerB, true))));
+        assertThat(blocked).containsEntry("failureReason", null);
     }
 
     // ---------------------------------------------------------------- 080 객체별
@@ -360,6 +508,46 @@ class AuditExecutionApiTests {
     }
 
     // ---------------------------------------------------------------- 도우미
+
+    private void expectHidden(LoginSession session, long id) throws Exception {
+        for (String path : List.of(detail(id), changes(id))) {
+            mockMvc.perform(withSession(get(path), session))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"))
+                    .andExpect(jsonPath("$.error.details.resource").value("action_execution"));
+        }
+    }
+
+    private static String detail(long id) {
+        return AUDIT + "/" + id;
+    }
+
+    private static String changes(long id) {
+        return AUDIT + "/" + id + "/changes";
+    }
+
+    private String perform(MockHttpServletRequestBuilder request) throws Exception {
+        return mockMvc.perform(request)
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> dataOf(String body) {
+        return (Map<String, Object>) json.readValue(body, JSON_OBJECT).get("data");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> rowOf(String body, long id) {
+        List<Map<String, Object>> rows =
+                (List<Map<String, Object>>) json.readValue(body, JSON_OBJECT).get("data");
+        return rows.stream()
+                .filter(row -> ((Number) row.get("id")).longValue() == id)
+                .findFirst()
+                .orElseThrow();
+    }
 
     private AuditEntry.AuditEntryBuilder action(
             TestAccount actor, EntryPoint entryPoint, long definitionId, ExecutionStatus status) {

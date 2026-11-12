@@ -19,6 +19,7 @@ import com.axcore.platform.ontology.repository.LinkMappingConditionRepository;
 import com.axcore.platform.ontology.repository.LinkMappingRepository;
 import com.axcore.platform.ontology.repository.LinkTypeRepository;
 import com.axcore.platform.ontology.repository.ObjectTypeRepository;
+import com.axcore.platform.ontology.repository.RuleLinkRepository;
 import com.axcore.platform.ontology.service.LinkRecomputeService;
 import com.axcore.platform.ontology.service.LinkRecomputeService.LinkRuleNotComputableException;
 import com.axcore.platform.ontology.service.ProposalApplier;
@@ -38,6 +39,7 @@ import org.springframework.stereotype.Component;
  * <ol>
  *   <li>관계 유형을 찾는다({@code linkTypeId} 또는 {@code linkTypeCode}). 없고 AI 묶음 {@code linkType}이 있으면 먼저
  *       만든다.
+ *   <li>관계 유형마다 반영 중인 규칙은 하나다(367). 같은 관계 유형에 다른 코드의 규칙이 반영 중이면 거절한다(규칙 충돌 예방).
  *   <li>같은 규칙 코드의 ACTIVE 개정본을 RETIRED로 바꾸고 다음 번호의 개정본과 비교 항목을 만든다(결정 U6, 이전 개정본은 보존).
  *   <li>그 관계 유형의 연결을 다시 계산한다({@link LinkRecomputeService#recomputeRules}). 옛 개정본 연결도 새 개정본 기준으로
  *       바뀐다.
@@ -65,6 +67,7 @@ class LinkRuleApplier implements ProposalApplier {
     private final LinkMappingRepository rules;
     private final LinkMappingConditionRepository conditions;
     private final LinkRecomputeService recompute;
+    private final RuleLinkRepository ruleLinks;
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
@@ -113,6 +116,25 @@ class LinkRuleApplier implements ProposalApplier {
         if (previous != null && !previous.getLinkTypeId().equals(linkType.getId())) {
             throw ApplySupport.invalid(
                     FIELD + ".linkTypeCode", "같은 규칙 코드의 현재 개정본과 관계 유형이 다릅니다: " + code);
+        }
+        // 관계 유형마다 반영 중인 규칙은 하나다(367). 같은 관계 유형에 규칙이 둘이면 한 출발을 서로 다른 도착으로 이으려 할 때 어느 쪽인지 정할 수
+        // 없어 연결이 빠진다(규칙 충돌). 그래서 다른 코드의 규칙은 받지 않고, 바꾸려면 그 규칙의 개정본으로 제안한다. 같은 관계 유형을 동시에 승인하는
+        // 두 요청이 모두 통과하지 않도록 연결 재계산과 같은 관계 유형 잠금을 먼저 잡고 본다.
+        ruleLinks.lockLinkType(linkType.getId());
+        List<String> otherCodes =
+                rules
+                        .findByStatusAndLinkTypeIdInOrderById(
+                                LinkMappingStatus.ACTIVE, List.of(linkType.getId()))
+                        .stream()
+                        .map(LinkMapping::getCode)
+                        .filter(other -> !other.equals(code))
+                        .toList();
+        if (!otherCodes.isEmpty()) {
+            throw ApplySupport.invalid(
+                    FIELD + ".code",
+                    "이 관계 유형에는 이미 반영 중인 규칙이 있습니다: "
+                            + String.join(", ", otherCodes)
+                            + ". 관계 유형마다 규칙은 하나이므로 그 규칙의 개정본으로 제안해 주세요.");
         }
         int revision =
                 rules.findTopByCodeOrderByRevisionDesc(code)

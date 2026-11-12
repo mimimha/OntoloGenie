@@ -271,6 +271,47 @@ class CheckRunJobTests {
     }
 
     @Test
+    void manualLinkPassReverificationRecordsTheManualTarget() {
+        long rule = rule("{}");
+        long detected =
+                fixtures.insertRun(
+                        "MANUAL", "SUCCEEDED", accountId, "detected-" + UUID.randomUUID());
+        long wo2 = woObject("WO2");
+        long issue = issueOn(new IssueTestFixtures(jdbc), detected, rule, wo2);
+        // 플랫폼에서 만든 객체라 규칙의 도착 행에는 없다(원천 키 없음).
+        long outside = fixtures.insertObject(null, eqType, "EQX", "{\"code\": \"ZZ\"}", "ACTIVE");
+        jdbc.sql(
+                        """
+                        insert into object_link (link_type_id, source_object_id, target_object_id, origin, confirmed_by)
+                        values (:type, :source, :target, 'MANUAL', :account)
+                        """)
+                .param("type", linkType)
+                .param("source", wo2)
+                .param("target", outside)
+                .param("account", accountId)
+                .update();
+        long runId =
+                fixtures.insertQueuedRun(
+                        "REVERIFY",
+                        "{\"kind\": \"ISSUES\", \"linkMappingIds\": [%d], \"issueIds\": [%d]}"
+                                .formatted(rule, issue),
+                        basis(),
+                        accountId);
+
+        assertThat(runner.runNext(job)).isTrue();
+
+        ArgumentCaptor<List<IssueReverification>> captured = ArgumentCaptor.captor();
+        verify(reverificationRecorder).record(eq(runId), captured.capture(), any());
+        IssueReverification verdict = captured.getValue().getFirst();
+        assertThat(verdict.verdict()).isEqualTo(Verdict.PASSED);
+        assertThat(verdict.detail())
+                .containsEntry("matchedBy", "MANUAL_LINK")
+                .containsEntry("manualTargetObjectIds", List.of(outside))
+                .containsEntry("targetFound", true)
+                .containsEntry("reason", CheckRunJob.MANUAL_LINK);
+    }
+
+    @Test
     void linksPreviousResultOfSameRuleRevision() {
         long rule = rule("{}");
         long first = queue("MANUAL", rule);
@@ -746,7 +787,13 @@ class CheckRunJobTests {
         return new TransactionTemplate(transactionManager)
                 .execute(
                         tx -> {
-                            long rule = fixtures.insertLinkMapping(linkType, status, sourceFilter);
+                            long rule =
+                                    fixtures.insertLinkMapping(
+                                            "ACTIVE".equals(status)
+                                                    ? fixtures.linkTypeForNewActiveRule(linkType)
+                                                    : linkType,
+                                            status,
+                                            sourceFilter);
                             fixtures.insertCondition(
                                     rule, 1, woEqCode, eqCode, sourceTransforms, "[]");
                             return rule;

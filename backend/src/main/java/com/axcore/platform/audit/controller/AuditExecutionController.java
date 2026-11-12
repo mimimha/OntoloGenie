@@ -1,6 +1,7 @@
 package com.axcore.platform.audit.controller;
 
-import com.axcore.platform.action.dto.ActionExecutionDetailResponse;
+import com.axcore.platform.audit.dto.AuditExecutionChangesResponse;
+import com.axcore.platform.audit.dto.AuditExecutionDetailResponse;
 import com.axcore.platform.audit.dto.AuditExecutionResponse;
 import com.axcore.platform.audit.dto.AuditExecutionSearchRequest;
 import com.axcore.platform.audit.service.AuditExecutionQueryService;
@@ -44,17 +45,16 @@ public class AuditExecutionController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<ActionExecutionDetailResponse> get(
+    public ApiResponse<AuditExecutionDetailResponse> get(
             @PathVariable("id") @Min(1) long id,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         return ApiResponse.of(auditExecutionQueryService.get(loginAccount, id));
     }
 
-    /** 098. 명세상 097과 같은 응답이다(실행 기록과 변경 전후). */
     @GetMapping("/{id}/changes")
-    public ApiResponse<ActionExecutionDetailResponse> changes(
+    public ApiResponse<AuditExecutionChangesResponse> changes(
             @PathVariable("id") @Min(1) long id,
             @AuthenticationPrincipal LoginAccount loginAccount) {
-        return ApiResponse.of(auditExecutionQueryService.get(loginAccount, id));
+        return ApiResponse.of(auditExecutionQueryService.changes(loginAccount, id));
     }
 }

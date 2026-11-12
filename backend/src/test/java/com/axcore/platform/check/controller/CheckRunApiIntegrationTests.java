@@ -681,7 +681,9 @@ class CheckRunApiIntegrationTests {
     }
 
     private long rule() {
-        long ruleId = fixtures.insertLinkMapping(linkType, "ACTIVE", "{}");
+        long ruleId =
+                fixtures.insertLinkMapping(
+                        fixtures.linkTypeForNewActiveRule(linkType), "ACTIVE", "{}");
         fixtures.insertCondition(
                 ruleId,
                 1,

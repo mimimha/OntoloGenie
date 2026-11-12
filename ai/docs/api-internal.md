@@ -32,7 +32,7 @@
 | `itemKind` | AI가 보내는 것은 OBJECT_TYPE · LINK_RULE · LINK_TYPE · DOCUMENT_LINK (아래 "묶음 후보"). PROPERTY · OBJECT_MAPPING · PROPERTY_MAPPING은 묶을 객체 후보가 없을 때만 따로 보냄 |
 | `payload` | 후보 내용. 객체·관계 유형 코드는 대문자(`WORK_ORDER`), 속성은 컬럼 이름 그대로. `sourceId`는 `data_source.code`(예: `MES_MAIN`), `resourceKey`는 `source_resource.resource_key`(예: `mes.work_order`). 표를 가리키는 값은 늘 `sourceId` + `resourceKey`. 속성 매핑 `sourceColumn`은 `{sourceId, resourceKey, table, column}`이고 `resourceKey`가 백엔드가 원천 표를 찾는 값(`table`은 `resourceKey`의 첫 점 뒤, 이전 후보와 맞추려고 남김) |
 | `evidence` | 아래 표 |
-| `aiConfidence` | 0~1. 근거 신호 점수의 합이고 정답 확률이 아님. 매칭률과 섞지 않음 |
+| `aiConfidence` | 0~1. 같은 근거로 나온 제안이 평가 데이터에서 실제로 맞은 비율. 매칭률과 섞지 않음 |
 | `options[]` | 같은 대상에 후보가 여럿일 때 `{optionNo, payload, evidence, aiConfidence}` |
 
 **`evidence` 안 (105는 evidence를 객체로만 받으므로 검토에 필요한 것을 여기에 담습니다)**
@@ -63,7 +63,7 @@
 - 객체 유형 코드가 겹치거나 한 객체에 객체 매핑이 둘 이상이면, 묶을 곳이 모호한 후보는 원래 종류로 따로 보냅니다(빠지지 않음).
 - `fingerprint`는 묶은 payload의 지문입니다. 이름·설명·다른 이름(`name`, `description`, `synonyms`)은 빼고 계산해 문구만 바뀐 재분석 결과를 변경으로 보지 않습니다. 대안(`options`)이 둘 이상이면 대안 지문도 함께 넣어, 대표 제안이 그대로여도 대안이 바뀌면 변경(CHANGED)으로 봅니다. 같은 문서 언급을 이미 승인했으면 대안이 바뀌어도 다시 내지 않습니다.
 - 연결 규칙이 없는 관계 유형(문서 연결용, 다른 표를 거치는 관계)은 지금처럼 LINK_TYPE 한 건으로 보냅니다.
-- 개수 예(개발용 데이터 A 전체): 구성 후보 653건 → 보내는 후보 93건(객체 31, 관계 59, 규칙 없는 관계 유형 3).
+- 개수 예(개발용 데이터 A 전체, LLM 없이, 11-12 확인): 구성 후보 649건 → 보내는 후보 95건(객체 31, 관계 57, 규칙 없는 관계 유형 7). 문서 연결(DOCUMENT_LINK) 39건은 따로 더해집니다.
 
 LINK_RULE·LINK_TYPE·DOCUMENT_LINK의 `name`(관계 유형은 `linkType.name`·`description`도)은 검토 화면 목록 제목용 한국어입니다(#327). 같은 분석의 객체 유형 이름과 속성 이름으로 만듭니다. 예: `작업지시 → 수주 (수주 참조 번호로 연결)`, `교대 인수인계 메모 HN-260820-N → 작업지시 JB2608-0129`. 분석 범위 밖이라 이름을 모르는 객체는 코드를 그대로 씁니다. 코드(`code`·`linkTypeCode`)는 바꾸지 않습니다.
 
@@ -82,8 +82,11 @@ DOCUMENT_LINK `payload`는 `name`, `linkTypeCode`, `documentId`, `spanStart`·`s
 **처리 (#271 Spring 전송, #272 수신)**
 
 - 토큰이 없거나 틀리면 401(공통 오류 형식). `AI_ONTOLOGY_INTERNAL_TOKEN`이 비어 있으면 모두 거절합니다. 토큰은 본문보다 먼저 봅니다.
-- 받으면 바로 202로 답하고 백그라운드에서 105 `RUNNING` → 원천 확인 → 분석 → 105 `SUCCEEDED`/`FAILED` 순서로 돕니다. `RUNNING` 알림이 실패하면(예: 백엔드가 이미 끝낸 실행, 409) 분석하지 않습니다.
-- 원천 확인: POSTGRES는 AI 계정으로 `schema`에 접속해 고른 표(`resourceKey`의 점 뒤)를 읽을 수 있는지 봅니다. CSV는 `path` 폴더에 `<표>.csv`가 있는지 봅니다. 실패 문구는 4절입니다.
+- 받으면 바로 202로 답하고 백그라운드에서 105 `RUNNING` → 원천 확인 → 분석 → 105 `SUCCEEDED`/`FAILED` 순서로 돕니다.
+- 105 전송이 접속 실패·시간 초과·5xx로 실패하면 2·5·10초 뒤 같은 본문을 다시 보냅니다(최대 4번). 404(없는 실행)는 바로 포기합니다. 다시 보낸 요청이 409를 받으면 앞선 시도가 이미 저장된 것으로 봅니다(`RUNNING`이면 분석을 이어 가고 결과면 끝냅니다). 첫 시도의 `RUNNING`이 409면 이미 끝난 실행이라 분석하지 않습니다. `RUNNING` 알림이 끝내 실패해도 분석하지 않습니다. 결과(`SUCCEEDED`/`FAILED`)가 끝내 실패하거나, 400(본문 검증 실패)이거나, 첫 시도에서 409(저장 중 제약 위반일 수 있음)를 받으면 `FAILED` + `분석 결과를 저장하지 못했습니다. 다시 분석해 주세요`를 한 번 더 보냅니다. 보내지 않으면 실행이 백엔드 시간 제한까지 RUNNING으로 남기 때문입니다. 재시도 중 종료(SIGTERM)되면 중단 알림만 보내고 재시도는 멈춥니다.
+- `targets[].resourceKey`는 `스키마.이름` 형식이어야 합니다. 점이 없거나 앞뒤가 비면 400(`VALIDATION_FAILED`)입니다.
+- 원천 확인: POSTGRES는 AI 계정으로 `schema`에 접속해 고른 표(`resourceKey`의 점 뒤)를 읽을 수 있는지 봅니다. 읽을 수 있는 표는 백엔드 연결 검사와 같은 기준입니다(표·파티션 부모·뷰·구체화 뷰, 파티션 자식 제외, 스키마 USAGE와 표 또는 컬럼 하나 이상의 SELECT 권한). 컬럼 단위로만 권한을 준 표는 SELECT 권한이 있는 컬럼만 읽습니다. CSV는 `path` 폴더에 `<표>.csv`가 있는지 봅니다. 실패 문구는 4절입니다.
+- 서로 다른 원천의 `resourceKey` 스키마 이름(점 앞)이 같으면 원천에 접속하기 전에 실패로 끝냅니다(4절). 임시 폴더와 후보 ID가 스키마 이름으로 갈리기 때문입니다.
 - 분석 엔진은 `app/analysis/engine.py`의 `analyze()`입니다(#168). 고른 표·컬럼만 임시 폴더로 옮겨 구조·분포를 분석하고 후보를 만듭니다. LLM 설정이 있으면 표 의미 해석을 더합니다. `mes.handover_note`·`mes.maintenance_order`를 고르면 글 속 언급을 DOCUMENT_LINK 후보로 더합니다(#166). 원천 키(설비 코드·작업지시 번호·정비 번호·로트 번호)는 코드로 찾고, LLM 설정이 있으면 설비 별명('3호기')·증상과 부정·추정도 뽑습니다. 문서 10개마다 LLM을 한 번 부르고, 호출이 실패한 묶음은 코드로 찾은 언급만 냅니다. 043 모델 요약은 분석 전에 받아 이미 있는 것과 같은 후보를 뺍니다(#281, `app/proposers/existing.py`). 재분석이면 같은 비교로 추가·변경을 표시합니다(#170, 기준 043). 과거 결정이 전달되면 승인·거절한 같은 내용은 제외합니다. 유효한 이전 후보가 전달되면 이번에 생성된 후보를 이전 후보와 비교합니다.
 - 진행 중인 `runId`는 프로세스 메모리에만 둡니다. AI 컨테이너는 하나만 띄웁니다.
 - Spring은 새로 접수된 `REANALYSIS`에 유효한 `pastDecisions`와 `previousProposals`를 보냅니다(11-03 전송 결정 갱신, #339). 빈 목록은 생략합니다. `allowedTransforms`·`options.useLlm`은 AI가 받아도 버립니다.
@@ -95,10 +98,10 @@ DOCUMENT_LINK `payload`는 `name`, `linkTypeCode`, `documentId`, `spanStart`·`s
 | `runKind` | O | INITIAL · REANALYSIS |
 | `targets[]` | O | `{sourceResourceId, dataSourceCode, resourceKey(원천.표), columns, sourceMetadata}` |
 | `sources[]` | O | `{dataSourceCode, sourceKind(POSTGRES·CSV), connection, schema, path}`. 아래 `sources[].connection` |
-| `allowedTransforms` | 선택 | 041 허용 변환. 목록 밖 변환을 쓰는 후보는 내지 않음 |
+| `allowedTransforms` | 선택 | 041 허용 변환. 지금은 받아도 쓰지 않음(AI 안의 허용 변환 목록 FN-MAP-05를 씀) |
 | `pastDecisions` | 선택 | `[{candidateId, itemKind, revision, fingerprint 또는 payload, decision, reason}]`. `decision`은 APPROVE·REJECT·HOLD. 같은 지문이 승인·거절됐으면 다시 내지 않음, 보류였으면 이유에 적음. 같은 후보 ID가 거절·보류됐는데 내용이 바뀌었으면 이유에 이전 결정을 적고 냄 |
 | `previousProposals` | 재분석 | `[{candidateId, fingerprint}]`. 이전 후보 evidence에서 꺼낸 값. 보내면 `changeType`을 이전 후보 기준(같은 ID·지문 UNCHANGED, ID만 같음 CHANGED, 새 ID ADDED)으로 붙이고, 없으면 043 기준 |
-| `options.useLlm` | 선택 | false면 코드 분석만 |
+| `options.useLlm` | 선택 | 지금은 받아도 쓰지 않음. LLM 사용은 AI 서버 설정(`AI_ONTOLOGY_LLM_PROVIDER`)으로 정함 |
 
 **`targets[].sourceMetadata`** (선택): `source_resource.source_metadata`를 그대로 보냅니다. 연동 구현은 #223입니다. AI는 아래 키만 읽고 나머지는 무시합니다.
 
@@ -148,16 +151,21 @@ DOCUMENT_LINK `payload`는 `name`, `linkTypeCode`, `documentId`, `spanStart`·`s
 | --- | --- |
 | AI 계정이 고른 표를 못 읽음 | `AI 계정이 이 테이블을 읽을 수 없습니다: mes.employee` (명세 018 E3) |
 | 원천 접속 실패 | `원천에 접속하지 못했습니다 (erp)` · `원천 계정 인증에 실패했습니다 (erp)` 등. SSL 없이 붙어 거절된 경우도 인증 실패. 접속 정보는 넣지 않음 |
+| 원천 조회 실패 | `원천 조회가 시간 제한(30초)을 넘었습니다 (erp)`(57014) · `원천에서 고른 테이블을 찾지 못했습니다 (erp)`(42P01, 확인 뒤 표가 없어짐) · `원천을 읽을 권한이 없습니다 (erp)`(42501) |
+| 원천 스키마 이름 겹침 | `서로 다른 원천이 같은 스키마 이름(public)을 써서 함께 분석할 수 없습니다: ERP_MAIN, MES_MAIN. 원천별로 나눠 분석해 주세요` |
+| 결과를 105로 보내지 못함 | `분석 결과를 저장하지 못했습니다. 다시 분석해 주세요` (재시도 뒤에도 실패했거나 400일 때 한 번 더 보냄) |
 | CSV 폴더·파일 없음 | `CSV 원천 폴더를 읽을 수 없습니다 (erp)` · `CSV 원천에서 이 테이블을 찾을 수 없습니다: erp.item` |
 | AI 재시작(재배포 SIGTERM) 때 진행 중이던 실행 | `AI 서비스가 다시 시작되어 분석이 중단되었습니다. 다시 분석해 주세요` (종료 직전에 보냄) |
 | 그 밖 | `분석 중 오류가 났습니다` (FastAPI 로그에는 오류 종류만 남김) |
 
-LLM 설정이 없거나 LLM 호출이 실패해도 실행은 실패로 끝내지 않고 코드 분석 후보만 `SUCCEEDED`로 보냅니다. `resultSummary`에 아래 값이 함께 갑니다.
+`errorMessage`는 백엔드가 비어 있는지만 검사하는 글자입니다(정해진 값 목록 없음).
+
+LLM 설정이 없거나 LLM 호출이 실패해도 실행은 실패로 끝내지 않고 코드 분석 후보만 `SUCCEEDED`로 보냅니다. LLM 호출이 실패하면 FastAPI 로그에 실행 번호·단계(표 의미 해석·시스템 간 연결·메모 추출)·오류 종류(HTTP 상태·시간 초과 등)와 건수만 남깁니다. 응답 본문·프롬프트·키는 남기지 않습니다. `resultSummary`에 아래 값이 함께 갑니다.
 
 | 필드 | 내용 |
 | --- | --- |
 | `llmUsed` | LLM 답을 하나라도 썼는지 |
-| `llmSkipReason` | LLM 없이 분석한 이유. `요청에서 LLM을 끔` · `LLM 설정 없음` · `LLM 호출이 모두 실패함` · `예상 크레딧 N이 한도 M를 넘음`(`AI_ONTOLOGY_LLM_CREDIT_LIMIT`, 기본 10,000), 아니면 null |
+| `llmSkipReason` | LLM 없이 분석한 이유. `LLM 설정 없음` · `LLM 호출이 모두 실패함` · `예상 크레딧 N이 한도 M를 넘음`(`AI_ONTOLOGY_LLM_CREDIT_LIMIT`, 기본 10,000), 아니면 null |
 | `llmCalls`, `llmFailedCalls` | 호출 수, 실패한 호출 수(표 의미 해석과 메모 추출을 합친 수) |
 | `llmCredits` | 사용량(GMS 크레딧 기준 환산) |
 | `llmRejectedLinks` | 규칙이 보류로 둔 관계를 LLM도 업무상 맞지 않다고 봐서 보내지 않은 수(관계 유형·연결 규칙 한 쌍을 1로 셈). 규칙이 대기로 둔 관계는 LLM이 반대해도 빼지 않고 보류로만 바꿈 |
@@ -167,7 +175,7 @@ LLM 설정이 없거나 LLM 호출이 실패해도 실행은 실패로 끝내지
 | `changeBasis`, `changeCounts` | 재분석 비교 기준과 수 `{"ADDED": n, "CHANGED": n, "UNCHANGED": n}`. `previousProposals`가 오면 `PREVIOUS_PROPOSALS`(유지도 후보로 보냄), 없으면 `MODEL_SUMMARY`(043, 유지는 보내지 않고 수만 셈). 첫 분석이거나 둘 다 없으면 null |
 | `pastDecisionSkipped` | 과거 결정과 같은 내용이라 보내지 않은 수 `{"APPROVE": n, "REJECT": n}` |
 | `modelSummarySkipReason` | 043 모델 요약 없이 분석한 이유. `내부 토큰 없음` · `모델 요약을 받지 못함(HTTP 403 등)`, 받았으면 null |
-| `missingColumns` | 고른 컬럼 중 원천에서 사라진 것 `{"mes.work_order": ["컬럼"]}`. 빼고 나머지로 분석함 |
+| `missingColumns` | 고른 컬럼 중 원천에서 사라졌거나 AI 계정의 컬럼 권한이 빠진 것 `{"mes.work_order": ["컬럼"]}`. 빼고 나머지로 분석함 |
 | `sampledTables` | 행이 많아 앞에서 자른 표 `{"mes.sensor_reading": 100000}`. 기본키가 있으면 기본키 순서 |
 
 ## 5. 정해야 할 것
@@ -180,6 +188,6 @@ LLM 설정이 없거나 LLM 호출이 실패해도 실행은 실패로 끝내지
 
 - 저장소에 있는 것: 시작 알림 수신·105 전송·원천 확인(#272), PostgreSQL 읽기(#163), CSV 읽기·스냅샷(#164), 구조·분포 분석(#165), 후보 모델·근거·신뢰도(#169), 후보 생성·LLM 해석·엔진(#168), 설비 별칭·원천 식별자(#167), 메모·정비 기록 추출(#166). 재분석 비교(#170)와 과거 결정 반영(#281)은 018에서 이력을 받아 사용합니다(#339).
 - LLM: `.env`의 `AI_ONTOLOGY_LLM_PROVIDER`·`_API_KEY`·`_BASE_URL`·`_MODEL`만 바꾸면 제공사를 바꿀 수 있습니다. `gms`(기본), `openai`(OpenAI·Azure OpenAI v1, Responses API 형식), `openai-chat`(사내 LLM 서버 등 Chat Completions 형식), `none`(코드 분석만). 실제 호출로 확인한 것은 GMS뿐입니다.
-- 원천: CSV 폴더와 PostgreSQL(읽기 전용, psycopg). 로컬 PostgreSQL 18.6(SSL만 허용, 조회 전용 계정)에 data-v1.0을 넣고 확인했습니다. CSV로 분석한 후보 653개와 같게 나옵니다. 조회 전용 계정은 `information_schema`의 제약 조건이 안 보여 기본키는 `pg_catalog`로 읽습니다.
-- 원천에서 고른 컬럼과 기본키만 SELECT 합니다(고르지 않은 개인정보 컬럼은 읽지 않음). 표 하나는 최대 10만 행까지 읽습니다(AI 계정 쿼리 30초 제한). 기본키가 있으면 기본키 순서로, 없으면 정렬 없이 앞에서 자릅니다. 고른 컬럼이 모두 사라지고 기본키도 없는 표는 건너뛰고 `missingColumns`로만 알립니다. 옮긴 임시 폴더는 분석이 끝나면 지웁니다.
+- 원천: CSV 폴더와 PostgreSQL(읽기 전용, psycopg). 로컬 PostgreSQL 18.6(SSL만 허용, 조회 전용 계정)에 data-v1.0을 넣고 확인했습니다. 확인 당시 CSV로 분석한 구성 후보(653개)와 같게 나왔습니다. 조회 전용 계정은 `information_schema`의 제약 조건이 안 보여 기본키는 `pg_catalog`로 읽습니다.
+- 원천에서 고른 컬럼과 기본키만 SELECT 합니다(고르지 않은 개인정보 컬럼은 읽지 않음). 표 하나는 최대 10만 행까지 읽습니다(AI 계정 쿼리 30초 제한). 기본키가 있으면 기본키 순서로, 없으면 정렬 없이 앞에서 자릅니다. 고른 컬럼이 모두 사라지고 기본키도 없는 표는 건너뛰고 `missingColumns`로만 알립니다. 쿼리마다 바로 끝내고(autocommit) 옮기기가 끝나면 원천 연결을 닫습니다. 그 뒤 분석·근거 확인·LLM 단계는 임시 폴더만 읽습니다. 값은 CSV와 같은 글자로 옮깁니다(불리언 `true`·`false`, JSON은 JSON 글자). 옮긴 임시 폴더(`ai-run-*`)는 분석이 끝나면 지우고, 강제 종료로 남은 폴더는 서버가 시작할 때 지웁니다.
 - 재분석: 원천 변경은 CDC로 수집하고 다시 분석할 표는 백엔드가 고릅니다(V5). 고른 표를 다시 분석하고, 018로 받은 유효한 이전 후보가 있으면 후보 ID·지문을 비교합니다(`changeBasis`=`PREVIOUS_PROPOSALS`). 이전 후보가 없으면 확정된 모델(043)과 비교합니다(`changeBasis`=`MODEL_SUMMARY`). 이전에 있다가 이번에 안 나온 후보는 판단하지 않습니다.

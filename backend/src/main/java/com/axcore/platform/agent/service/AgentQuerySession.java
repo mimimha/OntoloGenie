@@ -97,6 +97,16 @@ public class AgentQuerySession {
         }
     }
 
+    /**
+     * AI가 보낸 도구 입력이 잘못되어 조회하지 않았다. 실패로 기록하되 AI에게는 고칠 수 있게 이유를 돌려준다. 답변의 results에는 다른 실패와 같은 문구만
+     * 남긴다(359).
+     */
+    static final class InvalidInput extends RuntimeException {
+        InvalidInput(String reason, Throwable cause) {
+            super(reason, cause);
+        }
+    }
+
     /** 조회 결과. data는 AI에게 넘길 값이다. */
     public record Outcome(
             Object data,
@@ -186,6 +196,12 @@ public class AgentQuerySession {
             // AI가 계획의 기준 시점(dataAsOf)을 조회한 데이터의 시점으로 채울 수 있게 함께 알려 준다. 모르면 null이다(160).
             // 답변에 기준 시점을 한국 시간으로 말하게, 같은 순간을 한국 시간 오프셋으로 적어 준다(145).
             reply.put("dataAsOf", inUserZone(outcome.dataAsOf()));
+        } catch (InvalidInput ex) {
+            log.warn("Agent 조회 도구 {} 입력 오류 question={}: {}", toolCode, questionId, ex.getMessage());
+            result =
+                    new AgentQueryResult(
+                            label, toolCode, false, null, List.of(), null, false, QUERY_FAILED);
+            reply.put("error", QUERY_FAILED + " 입력 오류: " + ex.getMessage());
         } catch (RuntimeException ex) {
             log.error("Agent 조회 도구 {} 실패 question={}", toolCode, questionId, ex);
             result =

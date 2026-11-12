@@ -193,3 +193,12 @@
     max-height: 360px;
   }
 }
+
+.sources-summary {
+  border-bottom: 1px solid var(--ui-border);
+  padding: 16px 20px;
+}
+.sources-summary .text-xs {
+  font-size: 14px;
+  line-height: 21px;
+}

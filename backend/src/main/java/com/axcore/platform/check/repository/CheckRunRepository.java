@@ -132,6 +132,26 @@ public class CheckRunRepository {
                 .list();
     }
 
+    /**
+     * 검사 범위 규칙들의 관계 유형에 걸린 연결 상태 표시(367). 연결 행 수와 마지막 변경 시각을 잇는다. 수동 연결을 만들거나 끄면 수집 실행 없이도 바뀌므로 검사의
+     * 같은 기준 판단(work_key)에 넣는다. 규칙 연결은 수집·승인과 같은 트랜잭션에서 바뀌어 수집 기준과 함께 움직인다.
+     */
+    public String linkState(Collection<Long> linkTypeIds) {
+        if (linkTypeIds.isEmpty()) {
+            return "links:0";
+        }
+        return jdbc.sql(
+                        """
+                        select 'links:' || count(*) || '@'
+                               || coalesce(floor(extract(epoch from max(updated_at)) * 1000000)::bigint, 0)
+                        from object_link
+                        where link_type_id = any(cast(:types as bigint[]))
+                        """)
+                .param("types", linkTypeIds.toArray(Long[]::new))
+                .query(String.class)
+                .single();
+    }
+
     /** 같은 기준으로 성공한 가장 최근 검사. */
     public Optional<Long> findSucceeded(String workKey) {
         return jdbc.sql(

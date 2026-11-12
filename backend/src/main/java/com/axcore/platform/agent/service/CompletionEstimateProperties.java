@@ -10,7 +10,7 @@ import org.springframework.validation.annotation.Validated;
 
 /**
  * 완료 시각 계산(FN-AGT-09, S15P31C106-148)이 읽는 온톨로지 객체 유형 코드와 속성 코드. 실제 온톨로지는 AI 분석·관리자 승인으로 만들어지므로 코드에
- * 적지 않고 설정으로 둔다. 기본값은 시연 정답 온톨로지(ai/data/gold-v1.0/ontology.json)의 이름이다. 값이 빠지면 서버가 시작하지 않는다.
+ * 적지 않고 설정으로 둔다. 유형 코드 기본값은 운영 온톨로지 코드를 임시로 적은 것이다(application.yml 주석 참고). 값이 빠지면 서버가 시작하지 않는다.
  */
 @Validated
 @ConfigurationProperties("axcore.agent.completion-estimate")

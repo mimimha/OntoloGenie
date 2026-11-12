@@ -39,9 +39,23 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>판정은 도구 호출 기록으로 한다. 시나리오마다 꼭 조회해야 하는 객체(원천 키로 찾은 ID)를 정해 두고, 그 객체를 정해진 도구로 조회했는지 본다. AI 답은 실행마다
  * 달라질 수 있어 답변 문장과 정답(ai/data/gold-v1.0/scenario_answers.json)은 로그로만 비교한다. 실행 방법은
  * docs/agent-scenario-gms.md에 있다.
+ *
+ * <p>시험 데이터(agent-scenario/press-v1.0.json.gz)는 정답 온톨로지의 유형 코드(WorkOrder 등)를 쓴다. 운영 코드로 바뀐 설정 기본값
+ * 대신 이 클래스에서만 정답 코드로 덮어쓴다.
  */
 @Slf4j
-@SpringBootTest(properties = "test.context=agent-scenario-gms")
+@SpringBootTest(
+        properties = {
+            "test.context=agent-scenario-gms",
+            "axcore.reassignment.equipment.type=Equipment",
+            "axcore.reassignment.work-order.type=WorkOrder",
+            "axcore.reassignment.operation.type=WorkOrderOperation",
+            "axcore.reassignment.routing.type=Routing",
+            "axcore.agent.completion-estimate.work-order.type=WorkOrder",
+            "axcore.agent.completion-estimate.operation.type=WorkOrderOperation",
+            "axcore.agent.completion-estimate.routing.type=Routing",
+            "axcore.agent.completion-estimate.equipment.type=Equipment"
+        })
 @ActiveProfiles("api")
 @Import(TestcontainersConfiguration.class)
 @EnabledIfEnvironmentVariable(named = "AXCORE_AGENT_LLM", matches = "openai")
@@ -182,6 +196,51 @@ class AgentScenarioGmsTests {
                 data.object("Equipment", Map.of("code", "P101")));
         run.log("3,200개 × 11.5초 = 10.2시간 (준비 70분 포함 11.4시간)");
         run.verify();
+    }
+
+    /**
+     * L1(359): 종류 전체·조건 질문을 객체 목록 조회로 답한다. 진행 중인 작업지시는 JB2610-0138·0141·0142 세 건이다. 값("진행")은 AI가 목록
+     * 결과에서 골라야 한다.
+     */
+    @Test
+    void l1ListsWorkOrdersInProgress() {
+        Run run = ask("현재 진행 중인 작업지시 목록 보여줘", null);
+
+        run.expectInput(AgentObjectListTools.OBJECT_LIST, "objectTypeId", typeId("WorkOrder"));
+        for (String woNo : List.of("JB2610-0138", "JB2610-0141", "JB2610-0142")) {
+            run.expectReached(data.object("WorkOrder", Map.of("wo_no", woNo)));
+        }
+        run.log("진행 중 작업지시 3건: JB2610-0138, JB2610-0141, JB2610-0142");
+        run.verify();
+    }
+
+    /** L2(359): "정지 중인 설비"는 저장 값이 "정비중"이라 그대로 거르면 0건이다. 목록 값과 비교해 P103(정비중)을 찾아야 한다. */
+    @Test
+    void l2FindsStoppedEquipmentByStoredStatusValue() {
+        Run run = ask("지금 정지 중인 설비 있어?", null);
+
+        run.expectInput(AgentObjectListTools.OBJECT_LIST, "objectTypeId", typeId("Equipment"));
+        run.expectReached(press());
+        run.log("가동이 아닌 설비는 P103(1라인 3호 프레스, 상태 정비중) 1대");
+        run.verify();
+    }
+
+    /** L3(359): 10월 계획 시작 작업지시는 42건이다. 20건만 받으므로 전체 건수와 일부임을 함께 말해야 한다. */
+    @Test
+    void l3CountsWorkOrdersPlannedInOctober() {
+        Run run = ask("10월에 시작 예정이었던 작업지시는 몇 건이야?", null);
+
+        run.expectInput(AgentObjectListTools.OBJECT_LIST, "objectTypeId", typeId("WorkOrder"));
+        run.expectInput(AgentObjectListTools.OBJECT_LIST, "dateProperty", "planned_start");
+        run.log("42건 (planned_start 2026-10-01~10-31, 20건만 보여 주면 일부임을 말함)");
+        run.verify();
+    }
+
+    private long typeId(String code) {
+        return jdbc.sql("select id from object_type where code = :code")
+                .param("code", code)
+                .query(Long.class)
+                .single();
     }
 
     private long press() {

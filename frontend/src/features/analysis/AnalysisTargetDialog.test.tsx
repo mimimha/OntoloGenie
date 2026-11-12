@@ -406,3 +406,40 @@ test('컬럼이 없는 문서·자료는 자료 전체를 골라 컬럼 없이 �
     targets: [{ sourceResourceId: 9001 }],
   })
 })
+
+test('표가 200개를 넘는 원천도 모든 표를 고를 수 있게 다음 쪽까지 받는다', async () => {
+  const many = Array.from({ length: 205 }, (_, i) => ({
+    id: 5000 + i,
+    dataSourceId: 2,
+    resourceKey: `mes.t${String(i).padStart(3, '0')}`,
+    resourceKind: 'TABLE',
+    isReadable: true,
+    sourceMetadata: {},
+  }))
+  server.use(
+    http.get('/api/v1/sources/:id/resources', ({ params, request }) => {
+      const url = new URL(request.url)
+      const page = Number(url.searchParams.get('page') ?? 0)
+      const size = Number(url.searchParams.get('size') ?? 20)
+      const rows = Number(params.id) === 2 ? many : []
+      return HttpResponse.json({
+        data: rows.slice(page * size, (page + 1) * size),
+        meta: {
+          page,
+          size,
+          totalElements: rows.length,
+          hasNext: (page + 1) * size < rows.length,
+        },
+      })
+    }),
+  )
+  const user = userEvent.setup()
+  const dialog = await openFromSource(user)
+
+  await user.type(
+    within(dialog).getByLabelText('테이블·자료 이름 검색'),
+    'mes.t204',
+  )
+  const list = await within(dialog).findByRole('list', { name: '표·자료 목록' })
+  expect(within(list).getByText('mes.t204')).toBeInTheDocument()
+})

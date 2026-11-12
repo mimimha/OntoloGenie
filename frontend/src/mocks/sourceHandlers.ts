@@ -101,6 +101,20 @@ function notFound(message: string) {
 }
 
 export const sourceHandlers = [
+  // 074 원천 수집 이력. 기본 목에는 수집 기록이 없다.
+  http.get('/api/v1/sources/:id/sync-runs', ({ request }) => {
+    const params = new URL(request.url).searchParams
+    return HttpResponse.json({
+      data: [],
+      meta: {
+        page: Number(params.get('page') ?? 0),
+        size: Number(params.get('size') ?? 20),
+        totalElements: 0,
+        hasNext: false,
+        cdcLastAppliedAt: null,
+      },
+    })
+  }),
   // 009 원천 목록 조회
   http.get('/api/v1/sources', async () => {
     await delay(150)
