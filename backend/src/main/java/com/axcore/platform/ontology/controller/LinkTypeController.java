@@ -5,10 +5,12 @@ import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.response.ApiResponse;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.ontology.domain.DefinitionEditAction;
 import com.axcore.platform.ontology.dto.LinkTypeCreateRequest;
 import com.axcore.platform.ontology.dto.LinkTypeResponse;
 import com.axcore.platform.ontology.dto.LinkTypeSearchRequest;
 import com.axcore.platform.ontology.dto.LinkTypeUpdateRequest;
+import com.axcore.platform.ontology.service.DefinitionEditRecorder;
 import com.axcore.platform.ontology.service.LinkTypeService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -40,6 +42,7 @@ public class LinkTypeController {
     private static final int DEFAULT_PAGE_SIZE = 20;
 
     private final LinkTypeService linkTypeService;
+    private final DefinitionEditRecorder editRecorder;
 
     @GetMapping
     public ApiResponse<List<LinkTypeResponse>> search(
@@ -57,7 +60,13 @@ public class LinkTypeController {
             @Valid @RequestBody LinkTypeCreateRequest request,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        return ApiResponse.of(linkTypeService.create(request));
+        return ApiResponse.of(
+                editRecorder.create(
+                        loginAccount,
+                        DefinitionEditAction.CREATE_LINK_TYPE,
+                        editRecorder.input(null, request),
+                        () -> linkTypeService.create(request),
+                        LinkTypeResponse::id));
     }
 
     @PatchMapping("/{id}")
@@ -66,7 +75,13 @@ public class LinkTypeController {
             @Valid @RequestBody LinkTypeUpdateRequest request,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        return ApiResponse.of(linkTypeService.update(id, request));
+        return ApiResponse.of(
+                editRecorder.update(
+                        loginAccount,
+                        DefinitionEditAction.UPDATE_LINK_TYPE,
+                        id,
+                        editRecorder.input(id, request),
+                        () -> linkTypeService.update(id, request)));
     }
 
     @DeleteMapping("/{id}")
@@ -75,7 +90,15 @@ public class LinkTypeController {
             @PathVariable("id") @Min(1) long id,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        linkTypeService.delete(id);
+        editRecorder.delete(
+                loginAccount,
+                DefinitionEditAction.DELETE_LINK_TYPE,
+                id,
+                editRecorder.input(id, null),
+                () -> {
+                    linkTypeService.delete(id);
+                    return null;
+                });
     }
 
     private static void requireAdmin(LoginAccount loginAccount) {

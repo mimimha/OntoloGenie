@@ -12,6 +12,8 @@ import com.axcore.platform.mapping.dto.PropertyMappingSearchRequest;
 import com.axcore.platform.mapping.dto.PropertyMappingUpdateRequest;
 import com.axcore.platform.mapping.dto.PropertyMappingWriteResponse;
 import com.axcore.platform.mapping.service.PropertyMappingService;
+import com.axcore.platform.ontology.domain.DefinitionEditAction;
+import com.axcore.platform.ontology.service.DefinitionEditRecorder;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import java.util.List;
@@ -42,6 +44,7 @@ public class PropertyMappingController {
     private static final int DEFAULT_PAGE_SIZE = 20;
 
     private final PropertyMappingService mappingService;
+    private final DefinitionEditRecorder editRecorder;
 
     @GetMapping
     public ApiResponse<List<PropertyMappingResponse>> search(
@@ -60,7 +63,13 @@ public class PropertyMappingController {
             @Valid @RequestBody PropertyMappingCreateRequest request,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        return ApiResponse.of(mappingService.create(request));
+        return ApiResponse.of(
+                editRecorder.create(
+                        loginAccount,
+                        DefinitionEditAction.CREATE_PROPERTY_MAPPING,
+                        editRecorder.input(null, request),
+                        () -> mappingService.create(request),
+                        PropertyMappingWriteResponse::id));
     }
 
     @PatchMapping("/{id}")
@@ -69,7 +78,13 @@ public class PropertyMappingController {
             @Valid @RequestBody PropertyMappingUpdateRequest request,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        return ApiResponse.of(mappingService.update(id, request));
+        return ApiResponse.of(
+                editRecorder.update(
+                        loginAccount,
+                        DefinitionEditAction.UPDATE_PROPERTY_MAPPING,
+                        id,
+                        editRecorder.input(id, request),
+                        () -> mappingService.update(id, request)));
     }
 
     @DeleteMapping("/{id}")
@@ -77,7 +92,13 @@ public class PropertyMappingController {
             @PathVariable("id") @Min(1) long id,
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
-        return ApiResponse.of(mappingService.delete(id));
+        return ApiResponse.of(
+                editRecorder.delete(
+                        loginAccount,
+                        DefinitionEditAction.DELETE_PROPERTY_MAPPING,
+                        id,
+                        editRecorder.input(id, null),
+                        () -> mappingService.delete(id)));
     }
 
     private static void requireAdmin(LoginAccount loginAccount) {
