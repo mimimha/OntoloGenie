@@ -673,7 +673,7 @@ def queueSonarAnalysis() {
 }
 
 // Mattermost DM 전송. 받는 사람 = 이 빌드를 일으킨 GitLab 사용자(MR 작성자, 또는 develop에 머지한 사람).
-// SSAFY GitLab 아이디와 Mattermost 아이디가 같아서 "@아이디"로 바로 보낸다. 채널에는 올리지 않는다.
+// GitLab 아이디를 전송 함수에서 Mattermost 아이디로 변환해 DM으로 보낸다. 채널에는 올리지 않는다.
 // 아이디 변수는 이벤트마다 다르다: push(배포)는 gitlabUserUsername, MR 이벤트(검사)는 gitlabMergedByUser (2026-10-30 빌드 #44 로그로 확인).
 def notifyMattermost(String result) {
     def who = env.IS_SONAR_JOB == 'true' ? sonarGateRecipient() : (env.gitlabUserUsername ?: env.gitlabMergedByUser)
@@ -705,6 +705,9 @@ def notifyMattermost(String result) {
 }
 
 def sendMattermostDm(String who, String text) {
+    if (who == 'a4651001') {
+        who = 'ljh12160569'
+    }
     def payload = groovy.json.JsonOutput.toJson([channel: "@${who}", text: text])
     echo "Mattermost DM → @${who}"
     // 비밀값(MM_WEBHOOK)은 Groovy 문자열에 섞지 않고 셸 환경변수로만 읽는다. 알림 실패가 빌드 결과를 바꾸면 안 되므로 || echo.
