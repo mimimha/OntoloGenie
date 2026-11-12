@@ -9,7 +9,8 @@ import java.util.Objects;
 
 /**
  * 실행 하나의 내용 (API 097). 실행자·동작·대상 이름과 변경 내역은 넣지 않는다(목록 096·080과 098이 준다). failureReason은 FAILED일 때
- * result의 errorMessage, 없으면 reason을 그대로 준다. restrictedPropertyCodes는 input에서 값을 가린 민감 속성 코드다.
+ * result의 errorMessage, 없거나 비어 있으면 reason을 준다. 둘 다 없거나 비어 있으면 null이다. restrictedPropertyCodes는
+ * input에서 값을 가린 민감 속성 코드다.
  */
 @JsonInclude(JsonInclude.Include.ALWAYS)
 public record AuditExecutionDetailResponse(
@@ -44,10 +45,13 @@ public record AuditExecutionDetailResponse(
     }
 
     private static String failureReason(Map<String, Object> result) {
-        Object reason = result.get(ERROR_MESSAGE);
-        if (reason == null) {
-            reason = result.get(REASON);
-        }
-        return Objects.toString(reason, null);
+        String reason = textOf(result.get(ERROR_MESSAGE));
+        return reason != null ? reason : textOf(result.get(REASON));
+    }
+
+    /** 비어 있거나 공백뿐인 값은 없는 값으로 본다. */
+    private static String textOf(Object value) {
+        String text = Objects.toString(value, null);
+        return text == null || text.isBlank() ? null : text;
     }
 }

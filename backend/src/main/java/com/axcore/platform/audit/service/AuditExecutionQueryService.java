@@ -1,8 +1,8 @@
 package com.axcore.platform.audit.service;
 
-import com.axcore.platform.action.dto.ActionExecutionDetailResponse.EntityChangeResponse;
 import com.axcore.platform.audit.domain.ActionExecution;
 import com.axcore.platform.audit.domain.EventKind;
+import com.axcore.platform.audit.dto.AuditEntityChangeResponse;
 import com.axcore.platform.audit.dto.AuditExecutionChangesResponse;
 import com.axcore.platform.audit.dto.AuditExecutionDetailResponse;
 import com.axcore.platform.audit.dto.AuditExecutionResponse;
@@ -23,15 +23,14 @@ import java.util.Map;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 실행·감사 이력 조회 (API 096·097·098·080, FN-LOG-01~04·FN-EXP-03). Agent 조회 기록(AGENT_QUERY)은 어디에도 보여 주지
- * 않는다. 080은 역할의 객체 조회 범위(S15P31C106-205)를 따른다. 080·096·097·098은 ADMIN이 아니면 사용자가 볼 수 없는 민감 속성 값을
- * 가린다.
+ * 않는다. 080은 역할의 객체 조회 범위(S15P31C106-205)를 따른다. 097·098은 ADMIN이 아니면 사용자가 볼 수 없는 민감 속성 값을 가린다.
+ * 목록(096·080)은 입력값과 변경 내역을 주지 않아 가릴 값이 없다(S15P31C106-374).
  */
 @Service
 @RequiredArgsConstructor
@@ -74,9 +73,7 @@ public class AuditExecutionQueryService {
                         request.targetId(),
                         request.from(),
                         request.to());
-        Page<AuditExecutionResponse> page =
-                history.search(filter, admin ? null : viewer.id(), pageable);
-        return admin ? page : masked(page, dataAccessPolicy.of(viewer));
+        return history.search(filter, admin ? null : viewer.id(), pageable);
     }
 
     public static String scopeOf(LoginAccount viewer) {
@@ -103,14 +100,14 @@ public class AuditExecutionQueryService {
     /** 098. 실행 하나가 바꾼 행 전체. 열람 범위는 097과 같고, ADMIN이 아니면 변경 내역의 민감 속성 값을 가린다. */
     public AuditExecutionChangesResponse changes(LoginAccount viewer, long id) {
         visibleExecution(viewer, id);
-        List<EntityChangeResponse> found =
+        List<AuditEntityChangeResponse> found =
                 changes.findByActionExecutionIdOrderByIdAsc(id).stream()
-                        .map(EntityChangeResponse::from)
+                        .map(AuditEntityChangeResponse::from)
                         .toList();
         if (isAdmin(viewer)) {
             return new AuditExecutionChangesResponse(found, List.of());
         }
-        Masked<List<EntityChangeResponse>> masked =
+        Masked<List<AuditEntityChangeResponse>> masked =
                 masker.maskChanges(found, dataAccessPolicy.of(viewer));
         return new AuditExecutionChangesResponse(masked.value(), masked.restrictedPropertyCodes());
     }
@@ -152,16 +149,7 @@ public class AuditExecutionQueryService {
                         objectId,
                         request.from(),
                         request.to());
-        Page<AuditExecutionResponse> page = history.search(filter, null, pageable);
-        return isAdmin(viewer) ? page : masked(page, access);
-    }
-
-    private Page<AuditExecutionResponse> masked(
-            Page<AuditExecutionResponse> page, DataAccess access) {
-        return new PageImpl<>(
-                masker.mask(page.getContent(), access),
-                page.getPageable(),
-                page.getTotalElements());
+        return history.search(filter, null, pageable);
     }
 
     private static boolean isAdmin(LoginAccount viewer) {

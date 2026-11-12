@@ -478,17 +478,10 @@ class ActionExecutionApiTests {
                 .andExpect(jsonPath("$.data.status").value("SUCCEEDED"));
         long restricted = restrictProperty("WORK_ORDER", "wo_no");
         try {
+            // 096 목록은 요약만 주므로 민감 값이 실릴 자리가 없다.
             JsonNode plannerRow = historyRowOf(planner);
-            assertThat(plannerRow.get("restrictedPropertyCodes").toString())
-                    .isEqualTo("[\"wo_no\"]");
-            JsonNode plannerSnapshot = snapshotIn(plannerRow);
-            assertThat(plannerSnapshot.has("workOrderNo")).isTrue();
-            assertThat(plannerSnapshot.get("workOrderNo").isNull()).isTrue();
-            assertThat(plannerSnapshot.get("workOrderStatus").asString()).isEqualTo("진행");
-
-            JsonNode adminRow = historyRowOf(admin);
-            assertThat(adminRow.get("restrictedPropertyCodes").isEmpty()).isTrue();
-            assertThat(snapshotIn(adminRow).get("workOrderNo").asString()).isEqualTo(s4.orderNo);
+            assertHasNoDetailFields(plannerRow);
+            assertThat(plannerRow.get("changeCount").asInt()).isEqualTo(2);
 
             // 097은 입력값 기준이라 가린 것이 없고, 098은 변경 내역 기준으로 가린다.
             long executionId = plannerRow.get("id").asLong();
@@ -523,6 +516,7 @@ class ActionExecutionApiTests {
     @Test
     void objectHistoryHidesRestrictedOperationCodeEverywhereItWasRecorded() throws Exception {
         LoginSession planner = login(createAccount("PLANNER"));
+        LoginSession admin = login(createAccount("ADMIN"));
         execute(
                         PLAN,
                         planner,
@@ -547,14 +541,8 @@ class ActionExecutionApiTests {
             assertThat(rows.size()).isEqualTo(1);
             JsonNode row = rows.get(0);
 
-            assertThat(row.get("restrictedPropertyCodes").toString()).isEqualTo("[\"op_seq\"]");
-            assertThat(row.get("input").get("items").get(0).get("operationCode").isNull()).isTrue();
-            JsonNode item = itemChangeIn(row.get("entityChanges"));
-            assertThat(item.get("operation_code").isNull()).isTrue();
-            for (JsonNode operation : item.get("source_snapshot").get("operations")) {
-                assertThat(operation.get("sequence").isNull()).isTrue();
-                assertThat(operation.get("equipmentCode").asString()).isEqualTo(s4.p103Code);
-            }
+            // 080 목록은 요약만 주므로 민감 값이 실릴 자리가 없다.
+            assertHasNoDetailFields(row);
 
             // 097은 입력값만, 098은 변경 내역만 가리고 각자 가린 코드를 준다.
             long executionId = row.get("id").asLong();
@@ -571,7 +559,14 @@ class ActionExecutionApiTests {
             assertThat(changedItem.get("operation_code").isNull()).isTrue();
             for (JsonNode operation : changedItem.get("source_snapshot").get("operations")) {
                 assertThat(operation.get("sequence").isNull()).isTrue();
+                assertThat(operation.get("equipmentCode").asString()).isEqualTo(s4.p103Code);
             }
+
+            // ADMIN은 097에서 가리지 않은 원본 입력값을 받는다.
+            JsonNode adminDetail = auditData("/api/v1/audit/actions/" + executionId, admin);
+            assertThat(adminDetail.get("restrictedPropertyCodes").isEmpty()).isTrue();
+            assertThat(adminDetail.get("input").get("items").get(0).get("operationCode").asString())
+                    .isEqualTo("20");
         } finally {
             jdbcClient
                     .sql("delete from property_definition where id = :id")
@@ -1368,8 +1363,17 @@ class ActionExecutionApiTests {
         return rows.get(0);
     }
 
-    private static JsonNode snapshotIn(JsonNode row) {
-        return itemChangeIn(row.get("entityChanges")).get("source_snapshot");
+    /** 096·080 한 줄에는 097·098로 옮긴 상세 필드가 없다(S15P31C106-374). */
+    private static void assertHasNoDetailFields(JsonNode row) {
+        for (String field :
+                List.of(
+                        "input",
+                        "result",
+                        "blockedReason",
+                        "entityChanges",
+                        "restrictedPropertyCodes")) {
+            assertThat(row.has(field)).as(field).isFalse();
+        }
     }
 
     private static JsonNode itemChangeIn(JsonNode changes) {

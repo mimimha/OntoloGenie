@@ -254,10 +254,12 @@ class ProposalApplyResultQueryApiTests {
                 .andExpect(jsonPath("$.data[0].targetId").value(proposal))
                 .andExpect(jsonPath("$.data[0].actionCode").value("DECIDE_PROPOSAL"))
                 .andExpect(jsonPath("$.data[0].status").value("SUCCEEDED"))
-                .andExpect(jsonPath("$.data[0].result.decisionId").value(decision))
-                .andExpect(jsonPath("$.data[0].result.appliedEntityIds[0]").value(mapping))
-                .andExpect(jsonPath("$.data[0].result.heldItemIds[0]").value(held));
+                .andExpect(jsonPath("$.data[0].changeCount").value(4))
+                .andExpect(jsonPath("$.data[0].result").doesNotExist());
         read(AUDIT + "/" + execution)
+                .andExpect(jsonPath("$.data.result.decisionId").value(decision))
+                .andExpect(jsonPath("$.data.result.appliedEntityIds[0]").value(mapping))
+                .andExpect(jsonPath("$.data.result.heldItemIds[0]").value(held))
                 .andExpect(jsonPath("$.data.result.targetTable").value("link_mapping"))
                 .andExpect(jsonPath("$.data.result.targetId").value(mapping))
                 .andExpect(jsonPath("$.data.result.applyStatus").value("APPLIED"))
@@ -302,14 +304,13 @@ class ProposalApplyResultQueryApiTests {
         assertFailure(execution, errorCode);
         read(AUDIT + "?status=FAILED&from=2026-11-05T00:00:00Z&to=2026-11-06T00:00:00Z")
                 .andExpect(jsonPath("$.data[0].id").value(execution))
-                .andExpect(jsonPath("$.data[0].input.revision").value(1))
-                .andExpect(jsonPath("$.data[0].input.decision").value("APPROVE"))
-                .andExpect(jsonPath("$.data[0].result.errorCode").value(errorCode))
-                .andExpect(jsonPath("$.data[0].result.reason").isNotEmpty())
-                .andExpect(jsonPath("$.data[0].entityChanges").isEmpty());
+                .andExpect(jsonPath("$.data[0].changeCount").value(0));
+        long heldExecution = held.path("actionExecutionId").asLong();
         read(candidateAudits() + "&status=SUCCEEDED")
                 .andExpect(jsonPath("$.meta.totalElements").value(1))
-                .andExpect(jsonPath("$.data[0].result.decision").value("HOLD"));
+                .andExpect(jsonPath("$.data[0].id").value(heldExecution));
+        read(AUDIT + "/" + heldExecution)
+                .andExpect(jsonPath("$.data.result.decision").value("HOLD"));
     }
 
     private void assertUnapplied(String reviewStatus) throws Exception {
@@ -338,6 +339,7 @@ class ProposalApplyResultQueryApiTests {
         read(AUDIT + "/" + execution)
                 .andExpect(jsonPath("$.data.status").value("FAILED"))
                 .andExpect(jsonPath("$.data.input.proposalItemId").value(proposal))
+                .andExpect(jsonPath("$.data.input.revision").value(1))
                 .andExpect(jsonPath("$.data.input.decision").value("APPROVE"))
                 .andExpect(jsonPath("$.data.input.reason").value("결과 조회 검증"))
                 .andExpect(jsonPath("$.data.result.errorCode").value(errorCode))

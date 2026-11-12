@@ -1,6 +1,5 @@
 package com.axcore.platform.audit.dto;
 
-import com.axcore.platform.action.dto.ActionExecutionDetailResponse.EntityChangeResponse;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
@@ -10,4 +9,4 @@ import java.util.List;
  */
 @JsonInclude(JsonInclude.Include.ALWAYS)
 public record AuditExecutionChangesResponse(
-        List<EntityChangeResponse> changes, List<String> restrictedPropertyCodes) {}
+        List<AuditEntityChangeResponse> changes, List<String> restrictedPropertyCodes) {}

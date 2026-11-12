@@ -8,7 +8,7 @@ FN-REV-06·07의 결과는 기존 후보 상세(049), 결정 이력(055), 실행
 | --- | --- | --- |
 | 049 | `GET /api/v1/proposals/{id}` | 현재 `revision`, `reviewStatus`, `applyStatus`, `applyError`, `appliedAt` |
 | 055 | `GET /api/v1/proposals/{id}/decisions` | 커밋된 결정 ID·대상 revision·선택지·결정자·시각·사유 |
-| 096 | `GET /api/v1/audit/actions` | 성공·실패·차단된 실행, 대상 후보, 요청 `input`, 처리 `result`, 변경 내역 |
+| 096 | `GET /api/v1/audit/actions` | 성공·실패·차단된 실행의 요약(대상 후보, 상태, 시각, 변경 건수 `changeCount`). 입력·결과는 097, 변경 내역은 098로 본다 |
 | 097 | `GET /api/v1/audit/actions/{id}` | 실행 하나의 입력·결과·막힌 이유·실패 이유 |
 | 098 | `GET /api/v1/audit/actions/{id}/changes` | 실행 하나의 변경 내역 전체 |
 | 056·057 | `GET /api/v1/held-items`, `GET /api/v1/held-items/{id}` | 승인 과정에서 생성된 개별 보류 건의 현재 상태와 근거 |
@@ -19,7 +19,7 @@ FN-REV-06·07의 결과는 기존 후보 상세(049), 결정 이력(055), 실행
 
 - 제안 상세와 규칙 이력의 **승인 상태**는 049의 현재 상태를 표시한다.
 - 규칙 이력의 **활동 기록**은 055의 커밋된 승인·거절·보류 결정을 표시한다.
-- **실행 이력(`/audit`)**은 096의 `SUCCEEDED`·`FAILED`·`BLOCKED`를 성공·실패·차단으로 표시한다. 대상은 `proposal_item #후보ID`, 동작은 기존 Action 표시를 사용한다. **내용 보기**의 입력값과 처리 결과에서 revision·요청 결정·사유·반영 대상·보류 건 ID를 확인한다.
+- **실행 이력(`/audit`)**은 096의 `SUCCEEDED`·`FAILED`·`BLOCKED`를 성공·실패·차단으로 표시한다. 대상은 `proposal_item #후보ID`, 동작은 기존 Action 표시를 사용한다. **내용 보기**는 097의 입력값과 처리 결과로 revision·요청 결정·사유·반영 대상·보류 건 ID를 보여 주고, **변경 전후**는 098의 변경 내역을 보여 준다.
 - 현재 실행 이력 화면이 보내는 기간·상태 필터와 후보 필터 없는 기본 목록을 그대로 쓴다. 후보별 바로가기나 새 결과 화면은 추가하지 않는다. 기본 목록은 API 기본 페이지 범위이고, 전체 이력 탐색 UI를 새로 만드는 작업은 포함하지 않는다.
 - 제안 상세의 `applyError` 조건부 표시도 유지한다. 131 실패는 이 필드를 갱신하지 않으므로 해당 표시 대신 실행 이력에서 확인한다. `applyStatus=FAILED` 후보 목록 필터로 131의 실패 시도를 찾을 수는 없다.
 - 배포 화면의 054 결정 버튼 연동은 별도 작업이다. 이 문서는 승인 및 결과 조회 API를 검증한다.
