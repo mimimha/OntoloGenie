@@ -6,6 +6,7 @@ import { ApiError } from '../../api/client'
 import {
   fetchModelGraph,
   fetchObjects,
+  fetchObjectTypes,
   OBJECT_PAGE_SIZE,
   type ObjectFilters,
 } from './api'
@@ -77,20 +78,14 @@ function ExplorerPage() {
   const isModelGraphForbidden =
     modelGraphError instanceof ApiError && modelGraphError.status === 403
 
-  // 유형 선택지는 유형 관계도의 유형을 쓰고, 받지 못하면 조건 없이 받은 목록에 나온 유형으로 만든다.
-  const { data: allObjects } = useQuery({
-    queryKey: ['objects', {}, 0],
-    queryFn: () => fetchObjects({}),
+  const {
+    data: objectTypes = [],
+    error: objectTypesError,
+    refetch: refetchObjectTypes,
+  } = useQuery({
+    queryKey: ['objects', 'types'],
+    queryFn: fetchObjectTypes,
   })
-  const objectTypes = modelGraph
-    ? modelGraph.nodes.map((node) => ({ id: node.id, name: node.name }))
-    : [
-        ...new Map(
-          allObjects?.data.map(
-            (item) => [item.objectTypeId, item.objectTypeName] as const,
-          ),
-        ),
-      ].map(([id, name]) => ({ id, name }))
 
   function handleSearch(nextFilters: ObjectFilters) {
     setFilters(nextFilters)
@@ -99,7 +94,7 @@ function ExplorerPage() {
 
   // 유형 카드를 누르면 검색어는 그대로 두고 객체 유형만 바꾼다.
   function handleSelectType(typeId: number) {
-    handleSearch({ ...filters, objectTypeId: typeId })
+    handleSearch({ q: filters.q, objectTypeId: typeId })
   }
 
   const totalCount = objectPage?.meta?.totalElements ?? objectPage?.data.length
@@ -137,6 +132,18 @@ function ExplorerPage() {
         objectTypes={objectTypes}
         onSearch={handleSearch}
       />
+      {objectTypesError && (
+        <p role="alert" className="mt-2 text-sm text-red-600">
+          객체 유형을 불러오지 못했습니다.{' '}
+          <button
+            type="button"
+            onClick={() => void refetchObjectTypes()}
+            className="underline"
+          >
+            유형 다시 불러오기
+          </button>
+        </p>
+      )}
 
       <div className="mt-4 grid gap-6 xl:grid-cols-[minmax(200px,0.7fr)_minmax(480px,1.5fr)_minmax(280px,1fr)]">
         <section aria-label="객체 목록" className="flex flex-col gap-2">

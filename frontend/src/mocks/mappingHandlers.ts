@@ -10,7 +10,23 @@ const types: Definition[] = [
   { id: 501, code: 'ITEM', name: '품목' },
   { id: 502, code: 'VENDOR', name: '거래처' },
 ]
-const properties: Record<number, Definition[]> = {
+const properties: Record<number, (Definition & { dataType?: string })[]> = {
+  3: [
+    { id: 31, code: 'equipment_code', name: '설비 코드', dataType: 'STRING' },
+    { id: 32, code: 'process', name: '공정', dataType: 'STRING' },
+    { id: 33, code: 'status', name: '상태', dataType: 'STRING' },
+    { id: 34, code: 'maintenance_note', name: '정비 메모', dataType: 'STRING' },
+    { id: 35, code: 'purchase_price', name: '구매 가격', dataType: 'DECIMAL' },
+  ],
+  4: [
+    {
+      id: 41,
+      code: 'work_order_no',
+      name: '작업지시 번호',
+      dataType: 'STRING',
+    },
+    { id: 42, code: 'status', name: '상태', dataType: 'STRING' },
+  ],
   501: [
     { id: 601, code: 'ITEM_NAME', name: '품목명' },
     { id: 602, code: 'SPEC', name: '규격' },

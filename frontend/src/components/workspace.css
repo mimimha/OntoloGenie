@@ -187,7 +187,9 @@
   border-radius: 22px;
   background: #ffffff53;
 }
-.workspace-main form:has(#object-type-filter) > div:last-child {
+.workspace-main
+  form:has(#object-type-filter)
+  > div:has(> button[type='submit']) {
   grid-column: 1 / -1;
   justify-content: flex-end;
 }

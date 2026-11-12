@@ -794,11 +794,20 @@ export const handlers = [
     const page = Number(params.get('page') ?? 0)
     const size = Number(params.get('size') ?? 20)
     const objectTypeId = Number(params.get('objectTypeId'))
+    const propertyValues = [...params].flatMap(([key, value]) => {
+      const match = /^propertyValues\[(.+)\]$/.exec(key)
+      return match ? [[match[1], value]] : []
+    })
     const matched = objects.filter((item) => {
       const numbers = Object.values(item.sourceKey ?? {}).map(String)
       const matchesType = !objectTypeId || item.objectTypeId === objectTypeId
       return (
         matchesType &&
+        propertyValues.every(
+          ([code, value]) =>
+            item.properties[code] != null &&
+            String(item.properties[code]) === value,
+        ) &&
         [item.displayName, ...numbers].some((text) => text.includes(q))
       )
     })
@@ -813,6 +822,11 @@ export const handlers = [
       },
     })
   }),
+
+  // 347 권한 범위 객체 유형 선택지
+  http.get('/api/v1/objects/types', () =>
+    HttpResponse.json({ data: modelGraph.nodes }),
+  ),
 
   // 077 객체 상세 조회
   http.get('/api/v1/objects/:id', async ({ params }) => {

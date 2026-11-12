@@ -76,7 +76,7 @@ test('권한으로 가린 속성은 권한 없음, 값이 없는 속성은 -로 
 
 test('속성 표시 이름이 없으면 속성 코드를 보여준다', async () => {
   server.use(
-    http.get('/api/v1/objects/:id', () =>
+    http.get('/api/v1/objects/301', () =>
       HttpResponse.json({
         data: {
           id: 301,
@@ -160,11 +160,124 @@ test('초기화하면 검색 조건을 비우고 전체 목록을 보여준다',
   expect(screen.getByLabelText('ID · 이름 검색')).toHaveValue('')
 })
 
-test('속성 조건 검색은 백엔드 지원 전이라 막아 둔다', () => {
+test('객체 유형을 선택하기 전에는 속성 조건을 비활성화한다', () => {
   renderExplorerPage()
 
   expect(screen.getByLabelText('속성 조건')).toBeDisabled()
-  expect(screen.getByLabelText('속성 값 · 포함 검색')).toBeDisabled()
+  expect(screen.getByLabelText('속성 값 · 정확 일치')).toBeDisabled()
+})
+
+test('유형의 속성 값으로 정확 일치 검색하고 초기화한다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+  await screen.findByText('6건')
+  await user.selectOptions(screen.getByLabelText('객체 유형'), '설비')
+  await screen.findByRole('option', { name: '상태' })
+  await user.selectOptions(screen.getByLabelText('속성 조건'), '상태')
+  await user.type(screen.getByLabelText('속성 값 · 정확 일치'), '정')
+  await user.click(screen.getByRole('button', { name: '검색' }))
+  expect(await screen.findByText('0건')).toBeInTheDocument()
+
+  await user.type(screen.getByLabelText('속성 값 · 정확 일치'), '지')
+  await user.click(screen.getByRole('button', { name: '검색' }))
+  expect(await screen.findByText('1건')).toBeInTheDocument()
+  expect(screen.getByText('프레스 3호기')).toBeInTheDocument()
+  expect(screen.queryByText('프레스 1호기')).not.toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: '초기화' }))
+  expect(await screen.findByText('6건')).toBeInTheDocument()
+  expect(screen.getByLabelText('속성 조건')).toHaveValue('')
+  expect(screen.getByLabelText('속성 값 · 정확 일치')).toHaveValue('')
+  expect(screen.getByLabelText('속성 값 · 정확 일치')).toBeDisabled()
+})
+
+test('유형을 변경하면 이전 속성과 값을 제거한다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+  await screen.findByText('6건')
+  await user.selectOptions(screen.getByLabelText('객체 유형'), '설비')
+  await screen.findByRole('option', { name: '설비 코드' })
+  await user.selectOptions(screen.getByLabelText('속성 조건'), '설비 코드')
+  await user.type(screen.getByLabelText('속성 값 · 정확 일치'), 'PR-03')
+  await user.selectOptions(screen.getByLabelText('객체 유형'), '작업지시')
+  await screen.findByRole('option', { name: '작업지시 번호' })
+  expect(
+    screen.queryByRole('option', { name: '설비 코드' }),
+  ).not.toBeInTheDocument()
+  expect(screen.getByLabelText('속성 조건')).toHaveValue('')
+  expect(screen.getByLabelText('속성 값 · 정확 일치')).toHaveValue('')
+  await user.click(screen.getByRole('button', { name: '검색' }))
+  expect(await screen.findByText('1건')).toBeInTheDocument()
+  expect(screen.getByText('프레스 작업')).toBeInTheDocument()
+})
+
+test('유형 카드를 선택해도 이전 속성 조건을 제거한다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+  await screen.findByText('6건')
+  await user.selectOptions(screen.getByLabelText('객체 유형'), '설비')
+  await screen.findByRole('option', { name: '상태' })
+  await user.selectOptions(screen.getByLabelText('속성 조건'), '상태')
+  await user.type(screen.getByLabelText('속성 값 · 정확 일치'), '정지')
+  await user.click(screen.getByRole('button', { name: '검색' }))
+  expect(await screen.findByText('1건')).toBeInTheDocument()
+  const graph = within(screen.getByRole('region', { name: '관계도' }))
+  await user.click(await graph.findByRole('button', { name: /작업지시/ }))
+  expect(await screen.findByText('프레스 작업')).toBeInTheDocument()
+  expect(screen.getByLabelText('속성 조건')).toHaveValue('')
+  expect(screen.getByLabelText('속성 값 · 정확 일치')).toHaveValue('')
+})
+
+test('속성 조회 권한이 없어도 유형과 검색어 검색은 사용할 수 있다', async () => {
+  server.use(
+    http.get('/api/v1/ontology/object-types/:id/properties', () =>
+      HttpResponse.json({ error: { message: '권한 없음' } }, { status: 403 }),
+    ),
+  )
+  const user = userEvent.setup()
+  renderExplorerPage()
+  await screen.findByText('6건')
+  await user.selectOptions(screen.getByLabelText('객체 유형'), '설비')
+  expect(
+    await screen.findByText('이 계정은 속성 목록 조회 권한이 없습니다.'),
+  ).toBeInTheDocument()
+  expect(screen.getByLabelText('속성 조건')).toBeDisabled()
+  await user.type(screen.getByLabelText('ID · 이름 검색'), '3호기')
+  await user.click(screen.getByRole('button', { name: '검색' }))
+  expect(await screen.findByText('1건')).toBeInTheDocument()
+})
+
+test('속성 조회 실패 시 재시도로 복구하고 JSON 속성은 제외한다', async () => {
+  let failed = true
+  server.use(
+    http.get('/api/v1/ontology/object-types/:id/properties', () =>
+      failed
+        ? HttpResponse.json({}, { status: 500 })
+        : HttpResponse.json({
+            data: [
+              { id: 33, code: 'status', name: '상태', dataType: 'STRING' },
+              { id: 34, code: 'payload', name: '원문 JSON', dataType: 'JSON' },
+            ],
+          }),
+    ),
+  )
+  const user = userEvent.setup()
+  renderExplorerPage()
+  await screen.findByText('6건')
+  await user.selectOptions(screen.getByLabelText('객체 유형'), '설비')
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    '속성 목록을 불러오지 못했습니다.',
+  )
+  expect(screen.getByLabelText('속성 조건')).toBeDisabled()
+  failed = false
+  await user.click(screen.getByRole('button', { name: '속성 다시 불러오기' }))
+  expect(
+    await screen.findByRole('option', { name: '상태' }),
+  ).toBeInTheDocument()
+  expect(screen.getByLabelText('속성 조건')).toBeEnabled()
+  expect(
+    screen.queryByRole('option', { name: '원문 JSON' }),
+  ).not.toBeInTheDocument()
 })
 
 test('검색이 실패해도 오류와 함께 검색창을 보여준다', async () => {
@@ -196,7 +309,7 @@ test('검색이 실패해도 오류와 함께 검색창을 보여준다', async 
 
 test('상세 조회 권한이 없으면 서버가 준 안내를 보여준다', async () => {
   server.use(
-    http.get('/api/v1/objects/:id', () =>
+    http.get('/api/v1/objects/301', () =>
       HttpResponse.json(
         {
           error: {
