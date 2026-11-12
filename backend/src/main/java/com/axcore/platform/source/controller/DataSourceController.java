@@ -20,11 +20,14 @@ import com.axcore.platform.source.dto.SourceSearchRequest;
 import com.axcore.platform.source.dto.SourceUpdateRequest;
 import com.axcore.platform.source.dto.SyncRunAcceptedResponse;
 import com.axcore.platform.source.dto.SyncRunRequest;
+import com.axcore.platform.source.dto.SyncScheduleRequest;
+import com.axcore.platform.source.dto.SyncScheduleResponse;
 import com.axcore.platform.source.service.DataSourceService;
 import com.axcore.platform.source.service.SourceCatalogService;
 import com.axcore.platform.source.service.SourceConnectionCheckService;
 import com.axcore.platform.source.service.SourceSampleRequestService;
 import com.axcore.platform.source.service.SyncRunRequestService;
+import com.axcore.platform.source.service.SyncScheduleService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import java.util.List;
@@ -39,13 +42,15 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 원천 정보·연결 검사·자원 목록·수동 다시 읽기 (API 009~016, 073, 100, FN-SRC-01·02, FN-BAT-03). 모두 ADMIN만 쓸 수 있다.
+ * 원천 정보·연결 검사·자원 목록·표본 조회·수집 주기·수동 다시 읽기 (API 009~016, 071~073, 100, FN-SRC-01·02·03,
+ * FN-BAT-01·03). 모두 ADMIN만 쓸 수 있다.
  */
 @RestController
 @RequestMapping("/api/v1/sources")
@@ -60,6 +65,7 @@ public class DataSourceController {
     private final SourceCatalogService catalogService;
     private final SourceSampleRequestService sampleRequestService;
     private final SyncRunRequestService syncRunRequestService;
+    private final SyncScheduleService syncScheduleService;
 
     @GetMapping
     public ApiResponse<List<SourceResponse>> search(
@@ -116,6 +122,23 @@ public class DataSourceController {
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
         return ApiResponse.of(dataSourceService.reconnectCdc(id));
+    }
+
+    @GetMapping("/{id}/sync-schedule")
+    public ApiResponse<SyncScheduleResponse> syncSchedule(
+            @PathVariable("id") @Min(1) long id,
+            @AuthenticationPrincipal LoginAccount loginAccount) {
+        requireAdmin(loginAccount);
+        return ApiResponse.of(syncScheduleService.get(id));
+    }
+
+    /** 권한 검사는 서비스가 한다. 막힌 요청도 감사 기록(BLOCKED)에 남기기 위해서다. */
+    @PutMapping("/{id}/sync-schedule")
+    public ApiResponse<SyncScheduleResponse> updateSyncSchedule(
+            @PathVariable("id") @Min(1) long id,
+            @Valid @RequestBody SyncScheduleRequest request,
+            @AuthenticationPrincipal LoginAccount loginAccount) {
+        return ApiResponse.of(syncScheduleService.update(loginAccount, id, request));
     }
 
     /** 고른 테이블의 전체 다시 읽기를 접수한다. 대기·실행 중인 테이블은 그 실행에 합류한다. */

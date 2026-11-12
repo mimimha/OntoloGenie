@@ -1,7 +1,47 @@
 import { expect, test } from 'vitest'
+import { http, HttpResponse } from 'msw'
+import { server } from '../../mocks/node'
 import { ApiError } from '../../api/client'
 import { demoAccount, setMockAccount } from '../../mocks/auth'
-import { fetchModelGraph } from './api'
+import {
+  fetchModelGraph,
+  fetchObjects,
+  fetchObjectTypes,
+  fetchObjectProperties,
+} from './api'
+
+test('속성 조건의 공백·특수문자·빈 문자열을 보존해 전송한다', async () => {
+  let captured: URLSearchParams | undefined
+  server.use(
+    http.get('/api/v1/objects', ({ request }) => {
+      captured = new URL(request.url).searchParams
+      return HttpResponse.json({
+        data: [],
+        meta: { page: 0, size: 20, totalElements: 0, hasNext: false },
+      })
+    }),
+  )
+  await fetchObjects({
+    objectTypeId: 3,
+    propertyValues: { code: ' A+B & 한글 ', empty: '' },
+  })
+  expect(captured?.get('propertyValues[code]')).toBe(' A+B & 한글 ')
+  expect(captured?.get('propertyValues[empty]')).toBe('')
+  expect(captured?.has('propertyValues[empty]')).toBe(true)
+  expect(captured?.get('objectTypeId')).toBe('3')
+})
+
+test('객체가 없는 유형도 선택지로 받고 유형별 속성 정의를 조회한다', async () => {
+  const types = await fetchObjectTypes()
+  expect(types).toContainEqual({
+    id: 8,
+    code: 'INSPECTION_REQUEST',
+    name: '점검 요청',
+  })
+  expect(await fetchObjectProperties(3)).toContainEqual(
+    expect.objectContaining({ code: 'status', dataType: 'STRING' }),
+  )
+})
 
 test('042 ADMIN 응답은 객체 수 없이 노드와 전체·활성 연결 건수를 반환한다', async () => {
   setMockAccount({ ...demoAccount, roleCode: 'ADMIN' })

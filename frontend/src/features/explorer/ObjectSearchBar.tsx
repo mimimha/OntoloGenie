@@ -1,10 +1,8 @@
 import { useState } from 'react'
-import type { ObjectFilters } from './api'
-
-export type ObjectTypeOption = {
-  id: number
-  name: string
-}
+import { useQuery } from '@tanstack/react-query'
+import { ApiError } from '../../api/client'
+import { fetchObjectProperties, type ObjectFilters } from './api'
+import type { ObjectTypeOption } from './types'
 
 type ObjectSearchBarProps = {
   filters: ObjectFilters
@@ -25,10 +23,36 @@ function ObjectSearchBar({
     filters.objectTypeId ? String(filters.objectTypeId) : '',
   )
   const [keyword, setKeyword] = useState(filters.q ?? '')
+  const initialProperty = Object.entries(filters.propertyValues ?? {})[0]
+  const [propertyCode, setPropertyCode] = useState(initialProperty?.[0] ?? '')
+  const [propertyValue, setPropertyValue] = useState(initialProperty?.[1] ?? '')
+  const {
+    data: properties,
+    isPending,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['ontology', 'object-properties', typeId],
+    queryFn: () => fetchObjectProperties(Number(typeId)),
+    enabled: Boolean(typeId),
+    retry: false,
+  })
+  const searchableProperties =
+    properties?.filter((property) => property.dataType !== 'JSON') ?? []
+  const selectedProperty = searchableProperties.find(
+    (property) => property.code === propertyCode,
+  )
+  const isForbidden = error instanceof ApiError && error.status === 403
+  const showPropertyHelp =
+    !typeId || isPending || Boolean(error) || searchableProperties.length === 0
+  const propertyUnavailable =
+    Boolean(propertyCode) && (!selectedProperty || Boolean(error))
 
   function handleReset() {
     setTypeId('')
     setKeyword('')
+    setPropertyCode('')
+    setPropertyValue('')
     onSearch({})
   }
 
@@ -37,9 +61,13 @@ function ObjectSearchBar({
       className="grid gap-3 rounded-lg bg-white p-4 lg:grid-cols-[140px_minmax(190px,1.4fr)_150px_minmax(150px,1fr)_auto] lg:items-end"
       onSubmit={(event) => {
         event.preventDefault()
+        if (propertyUnavailable) return
         onSearch({
           q: keyword.trim() || undefined,
           objectTypeId: typeId ? Number(typeId) : undefined,
+          ...(selectedProperty
+            ? { propertyValues: { [propertyCode]: propertyValue } }
+            : {}),
         })
       }}
     >
@@ -50,7 +78,11 @@ function ObjectSearchBar({
         <select
           id="object-type-filter"
           value={typeId}
-          onChange={(event) => setTypeId(event.target.value)}
+          onChange={(event) => {
+            setTypeId(event.target.value)
+            setPropertyCode('')
+            setPropertyValue('')
+          }}
           className={fieldClass}
         >
           <option value="">전체</option>
@@ -76,24 +108,51 @@ function ObjectSearchBar({
         />
       </div>
 
-      {/* 076에 속성 조건 검색이 아직 없어서 Figma 자리만 두고 막아 둔다. */}
       <div>
         <label htmlFor="property-filter" className={labelClass}>
           속성 조건
         </label>
-        <select id="property-filter" disabled className={fieldClass}>
-          <option>전체 속성</option>
+        <select
+          id="property-filter"
+          value={selectedProperty ? propertyCode : ''}
+          disabled={
+            !typeId ||
+            isPending ||
+            Boolean(error) ||
+            searchableProperties.length === 0
+          }
+          onChange={(event) => {
+            setPropertyCode(event.target.value)
+            setPropertyValue('')
+          }}
+          aria-describedby={
+            showPropertyHelp ? 'property-filter-help' : undefined
+          }
+          className={fieldClass}
+        >
+          <option value="">전체 속성</option>
+          {searchableProperties.map((property) => (
+            <option key={property.id} value={property.code}>
+              {property.name}
+            </option>
+          ))}
         </select>
       </div>
 
       <div>
         <label htmlFor="property-value" className={labelClass}>
-          속성 값 · 포함 검색
+          속성 값 · 정확 일치
         </label>
         <input
           id="property-value"
-          disabled
-          placeholder="백엔드 지원 후 사용"
+          disabled={!selectedProperty || Boolean(error)}
+          value={propertyValue}
+          onChange={(event) => setPropertyValue(event.target.value)}
+          placeholder={
+            selectedProperty?.dataType === 'BOOLEAN'
+              ? 'true 또는 false'
+              : '일치하는 값을 입력하세요'
+          }
           className={fieldClass}
         />
       </div>
@@ -101,7 +160,8 @@ function ObjectSearchBar({
       <div className="flex gap-2">
         <button
           type="submit"
-          className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
+          disabled={propertyUnavailable}
+          className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
         >
           검색
         </button>
@@ -113,6 +173,34 @@ function ObjectSearchBar({
           초기화
         </button>
       </div>
+
+      {showPropertyHelp && (
+        <div
+          id="property-filter-help"
+          className="col-span-full text-xs text-slate-500"
+        >
+          {!typeId ? (
+            '객체 유형을 먼저 선택하면 속성 조건을 사용할 수 있습니다.'
+          ) : isPending ? (
+            '속성 목록을 불러오는 중…'
+          ) : isForbidden ? (
+            '이 계정은 속성 목록 조회 권한이 없습니다.'
+          ) : error ? (
+            <span role="alert">
+              속성 목록을 불러오지 못했습니다.{' '}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => void refetch()}
+              >
+                속성 다시 불러오기
+              </button>
+            </span>
+          ) : (
+            '정확 일치로 검색할 수 있는 속성이 없습니다.'
+          )}
+        </div>
+      )}
     </form>
   )
 }
