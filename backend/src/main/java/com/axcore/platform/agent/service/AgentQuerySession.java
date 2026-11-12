@@ -119,6 +119,16 @@ public class AgentQuerySession {
         return allowedObjectIds == null || allowedObjectIds.contains(objectId);
     }
 
+    /** 객체 여러 개를 한 번에 받는 도구(완료 시각 계산, 148)가 쓴다. 하나라도 이번 답변의 대상이 아니면 false다. */
+    synchronized boolean objectsAllowed(Collection<Long> objectIds) {
+        return objectIds.stream().allMatch(this::objectAllowed);
+    }
+
+    /** 도구가 "지금"을 정할 때 쓰는 시각. 기록 시각과 같은 시계다. */
+    Instant now() {
+        return Instant.now(clock);
+    }
+
     private void allowFound(List<Map<String, Object>> sources) {
         if (allowedObjectIds == null || !allowFoundObjects) {
             return;

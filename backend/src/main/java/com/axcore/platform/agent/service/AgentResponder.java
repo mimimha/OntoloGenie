@@ -73,6 +73,11 @@ public class AgentResponder {
             - "그럼 지난달은?"처럼 짧은 후속 질문도 "확인한 조건"의 목적·대상·기간으로 답한다. 조건은 이전 질문에서 이어 온 것이다.
             - "되물은 내용"이 있으면 "사용자의 답"은 되물은 것에 대한 답이다. "두 번째 거"는 되물은 후보 중 두 번째를 고른 말이고,
               이력의 순서나 개수가 아니다. 고른 대상·조건은 "확인한 조건"에 이미 들어 있으니 "확인한 조건"의 목적·대상·기간으로 처음 물은 것에 답한다.
+            - 작업지시를 끝내는 데 걸리는 시간이나 예상 완료 시각은 완료 시각 계산 도구로 구한다. 수량·시간을 직접 곱하거나 더해 계산하지 않는다.
+              작업지시 ID는 검색이나 관계 조회로 먼저 찾는다. 다른 작업지시를 먼저 끝내야 하면 그 작업지시를 목록 앞에 넣는다.
+              "P101에서 찍으면"처럼 설비를 정해 물으면 그 설비를 equipmentId로 넣는다.
+            - 완료 시각 계산 결과를 말할 때는 계산 근거(남은 수량, 개당 표준 가공 시간, 준비 시간)와 assumptions의 가정(연속 가동, 교대·휴무·비가동
+              미반영)을 함께 말한다. missingInputs가 있으면 계산하지 못한 이유로 그 항목을 말한다.
             - Action 도구(조회 도구가 아닌 것)는 사용자가 그 일을 해 달라고 분명히 요청했을 때만 부른다.
             - Action 입력의 기준 시점(dataAsOf)은 계획에 쓴 조회 결과의 기준 시점 중 가장 이른 값을 쓴다. 조회한 기준 시점이 없을 때만 "현재 시각"을 쓴다.
             - 그 밖에 시각이 필요하면 "현재 시각"을 기준으로 정한다. 사용자가 "지금"이라고 하면 현재 시각이다.
@@ -92,6 +97,7 @@ public class AgentResponder {
     private final ModelSummaryService modelSummary;
     private final DataAccessPolicy dataAccess;
     private final AgentActionTools actionTools;
+    private final CompletionEstimator completionEstimator;
     private final Clock clock;
 
     /**
@@ -111,6 +117,7 @@ public class AgentResponder {
             ModelSummaryService modelSummary,
             DataAccessPolicy dataAccess,
             AgentActionTools actionTools,
+            CompletionEstimator completionEstimator,
             Clock clock,
             @Value("${axcore.agent.reasoning-effort:none}") String reasoningEffort) {
         this.chatModels = chatModels;
@@ -121,6 +128,7 @@ public class AgentResponder {
         this.modelSummary = modelSummary;
         this.dataAccess = dataAccess;
         this.actionTools = actionTools;
+        this.completionEstimator = completionEstimator;
         this.clock = clock;
         this.reasoningEffort = reasoningEffort;
     }
@@ -162,6 +170,7 @@ public class AgentResponder {
         objectDetails.ifAvailable(query -> tools.add(new AgentObjectDetailTools(session, query)));
         objectEvidence.ifAvailable(
                 query -> tools.add(new AgentObjectEvidenceTools(session, query)));
+        tools.add(new AgentCompletionEstimateTools(session, completionEstimator));
         tools.add(actionTools.forAnswer(session));
         return tools.toArray();
     }

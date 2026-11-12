@@ -65,6 +65,7 @@ class AgentResultCategoryGmsTests {
     @Autowired ModelSummaryService modelSummary;
     @Autowired DataAccessPolicy dataAccess;
     @MockitoBean AgentActionTools actionTools;
+    @Autowired CompletionEstimator completionEstimator;
 
     @Value("${axcore.agent.reasoning-effort:none}")
     String reasoningEffort;
@@ -226,6 +227,7 @@ class AgentResultCategoryGmsTests {
                 modelSummary,
                 dataAccess,
                 actionTools,
+                completionEstimator,
                 Clock.systemUTC(),
                 reasoningEffort);
     }

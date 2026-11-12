@@ -66,6 +66,12 @@ public final class DataAccess {
         return scope != null && scope.visible();
     }
 
+    /** 유형 코드로 확인한다. 객체 ID 없이 유형 코드로 객체를 읽는 조회(Agent 완료 시각 계산 등)가 쓴다. 없는 유형이면 false다. */
+    public boolean canView(String objectTypeCode) {
+        ObjectTypeScope scope = scopesByCode.get(objectTypeCode);
+        return scope != null && scope.visible();
+    }
+
     /** 볼 수 없는 유형이면 false다. */
     public boolean canViewRestricted(long objectTypeId) {
         ObjectTypeScope scope = scopes.get(objectTypeId);

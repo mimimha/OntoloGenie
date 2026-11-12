@@ -131,6 +131,19 @@ class AgentResponderTests {
                 .contains("업무 데이터에 나오는 사람(작업자·정비 기술자 등)에 대한 질문은 업무 질문이다");
     }
 
+    /** 완료 시각은 AI가 직접 계산하지 않고 도구로 구한 뒤 근거·가정과 함께 말한다(148). */
+    @Test
+    void asksToEstimateCompletionWithToolAndTellBasis() {
+        Prompt prompt = askAboutPr03();
+
+        assertThat(prompt.getSystemMessage().getText())
+                .contains("예상 완료 시각은 완료 시각 계산 도구로 구한다")
+                .contains("직접 곱하거나 더해 계산하지 않는다")
+                .contains("assumptions의 가정")
+                .contains("missingInputs가 있으면")
+                .contains("그 설비를 equipmentId로 넣는다");
+    }
+
     @Test
     void writesQuestionAsIsWhenNotReplyingToClarification() {
         Prompt prompt = askAboutPr03();
@@ -148,7 +161,8 @@ class AgentResponderTests {
                 .containsExactlyInAnyOrder(
                         AgentQueryTools.OBJECT_EXECUTIONS,
                         AgentQueryTools.OBJECT_SEARCH,
-                        AgentModelSummaryTools.MODEL_SUMMARY);
+                        AgentModelSummaryTools.MODEL_SUMMARY,
+                        AgentCompletionEstimateTools.ESTIMATE_COMPLETION);
     }
 
     @Test
@@ -165,7 +179,8 @@ class AgentResponderTests {
                         AgentModelSummaryTools.MODEL_SUMMARY,
                         AgentObjectDetailTools.OBJECT_DETAIL,
                         AgentObjectDetailTools.OBJECT_LINKS,
-                        AgentObjectEvidenceTools.OBJECT_LINK_EVIDENCE);
+                        AgentObjectEvidenceTools.OBJECT_LINK_EVIDENCE,
+                        AgentCompletionEstimateTools.ESTIMATE_COMPLETION);
     }
 
     private static List<String> toolNames(Prompt prompt) {
@@ -203,6 +218,7 @@ class AgentResponderTests {
                         mock(ModelSummaryService.class),
                         mock(DataAccessPolicy.class),
                         actionTools,
+                        mock(CompletionEstimator.class),
                         CLOCK,
                         reasoningEffort);
 
