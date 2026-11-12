@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { lazy, Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import Pagination from '../../components/Pagination'
+import { ApiError } from '../../api/client'
 import {
   fetchModelGraph,
   fetchObjects,
@@ -60,13 +61,21 @@ function ExplorerPage() {
   })
 
   // 객체를 고르기 전 가운데에 보여 줄 객체 유형 관계도(042).
-  // 지금 명세는 관리자 전용이라, 실패하면 예전처럼 객체 선택 안내만 보여 준다.
-  const { data: modelGraph, isPending: isModelGraphPending } = useQuery({
+  // 관리자 전용 API의 403은 객체 선택 안내로 처리한다.
+  const {
+    data: modelGraph,
+    isPending: isModelGraphPending,
+    isFetching: isModelGraphFetching,
+    error: modelGraphError,
+    refetch: refetchModelGraph,
+  } = useQuery({
     queryKey: ['ontology', 'model-graph'],
     queryFn: fetchModelGraph,
     // 권한이 없으면 다시 시도해도 같은 결과라, 기다리지 않고 바로 안내로 넘어간다.
     retry: false,
   })
+  const isModelGraphForbidden =
+    modelGraphError instanceof ApiError && modelGraphError.status === 403
 
   // 유형 선택지는 유형 관계도의 유형을 쓰고, 받지 못하면 조건 없이 받은 목록에 나온 유형으로 만든다.
   const { data: allObjects } = useQuery({
@@ -166,6 +175,21 @@ function ExplorerPage() {
           aria-label="관계도"
           className="min-w-0 rounded-xl border border-slate-200 bg-white p-4"
         >
+          {selectedId === null && modelGraphError && !isModelGraphForbidden && (
+            <div role="alert" className="mb-3 text-sm text-red-600">
+              <p>
+                유형 관계도를 불러오지 못했습니다. {modelGraphError.message}
+              </p>
+              <button
+                type="button"
+                disabled={isModelGraphFetching}
+                onClick={() => void refetchModelGraph()}
+                className="mt-2 rounded-lg border border-slate-300 px-3 py-1.5 text-slate-700 disabled:opacity-50"
+              >
+                {isModelGraphFetching ? '다시 불러오는 중…' : '다시 시도'}
+              </button>
+            </div>
+          )}
           {selectedId !== null ? (
             <>
               <button
@@ -179,7 +203,7 @@ function ExplorerPage() {
             </>
           ) : isModelGraphPending ? (
             <p className="text-slate-500">유형 관계도를 불러오는 중…</p>
-          ) : modelGraph ? (
+          ) : modelGraph && !isModelGraphForbidden ? (
             <Suspense
               fallback={
                 <p className="text-slate-500">유형 관계도를 불러오는 중…</p>
@@ -191,13 +215,13 @@ function ExplorerPage() {
                 onSelect={handleSelectType}
               />
             </Suspense>
-          ) : (
+          ) : !modelGraphError || isModelGraphForbidden ? (
             <ObjectGraph objectId={null} onSelect={selectObject} />
-          )}
+          ) : null}
         </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-6">
-          {selectedId !== null || !modelGraph ? (
+          {selectedId !== null || !modelGraph || isModelGraphForbidden ? (
             <ObjectDetail objectId={selectedId} />
           ) : filters.objectTypeId ? (
             <TypeRelations graph={modelGraph} typeId={filters.objectTypeId} />

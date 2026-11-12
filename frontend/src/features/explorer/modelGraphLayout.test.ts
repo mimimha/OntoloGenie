@@ -4,6 +4,7 @@ import {
   layoutTypeGraph,
   TYPE_NODE_HEIGHT,
   TYPE_NODE_WIDTH,
+  selfRelationHeight,
 } from './modelGraphLayout'
 import type { ModelEdge, ModelNode } from './types'
 
@@ -29,7 +30,7 @@ function edge(id: number, sourceTypeId: number, targetTypeId: number) {
   return value
 }
 
-test('같은 출발·도착 유형 사이의 관계는 선 하나로 묶고, 자기 자신으로 가는 관계는 뺀다', () => {
+test('같은 출발·도착 유형 사이의 관계를 묶고 자기 유형 관계도 보존한다', () => {
   const lines = groupRelationLines([
     edge(1, 1, 2),
     edge(2, 1, 2),
@@ -37,8 +38,27 @@ test('같은 출발·도착 유형 사이의 관계는 선 하나로 묶고, 자
     edge(4, 3, 3),
   ])
 
-  expect(lines.map((line) => line.key)).toEqual(['1-2', '2-1'])
+  expect(lines.map((line) => line.key)).toEqual(['1-2', '2-1', '3-3'])
   expect(lines[0].edges.map((item) => item.id)).toEqual([1, 2])
+  expect(lines[2].edges.map((item) => item.id)).toEqual([4])
+})
+
+test('자기 유형 관계 이름이 많아도 카드 위 공간을 확보하고 연결 없는 유형과 겹치지 않는다', () => {
+  const lines = groupRelationLines(
+    Array.from({ length: 8 }, (_, id) => edge(id, 1, 1)),
+  )
+  const points = layoutTypeGraph(nodes, lines)
+  const height = TYPE_NODE_HEIGHT + selfRelationHeight(lines, 1)
+  expect(selfRelationHeight(lines, 1)).toBeGreaterThan(8 * 16)
+  expect(selfRelationHeight(lines, 2)).toBe(0)
+  for (const node of nodes.slice(1)) {
+    const first = points.get(1)!
+    const other = points.get(node.id)!
+    const overlapX = Math.abs(first.x - other.x) < TYPE_NODE_WIDTH
+    const overlapY =
+      first.y < other.y + TYPE_NODE_HEIGHT && other.y < first.y + height
+    expect(overlapX && overlapY).toBe(false)
+  }
 })
 
 test('따로 떨어진 묶음과 관계 없는 유형도 카드끼리 겹치지 않게 놓는다', () => {
