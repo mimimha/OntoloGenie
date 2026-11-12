@@ -162,6 +162,23 @@ class AgentResponderTests {
     }
 
     @Test
+    void passesPropertyConditionsAndTellsHowToFilterList() {
+        Prompt prompt = askAboutPr03();
+
+        // 해석한 속성 조건을 함께 넘기고, 저장된 값으로 맞춰 목록을 거르게 한다(360).
+        assertThat(prompt.getUserMessage().getText()).contains("종류 전체=[], 속성 조건=[], 기간=없음");
+        assertThat(prompt.getSystemMessage().getText())
+                // 날짜 속성·저장 값을 모르고 거르다 실패했다(360 GMS L3, "정비 중" 0건).
+                .contains("객체 목록 조회를 먼저 조건 없이 한 번 불러 properties")
+                .contains("\"정비 중\"=\"정비중\"")
+                .contains("0건이면 넣은 값이")
+                .contains("기준 시점이 있으면 함께 말한다")
+                // 대상이 있는 질문은 목록 조회로 유형 전체를 거르지 않는다(360 리뷰).
+                // 탐색 화면에서 객체를 들고 와 목록을 물으면 목록 규칙을 따른다(360 재리뷰).
+                .contains("\"종류 전체\"가 비어 있고 \"참고 객체\"가 있으면 속성 조건은 그 객체에 연결된 기록에서 확인한다");
+    }
+
+    @Test
     void hidesDetailAndEvidenceToolsUntilTheirQueriesExist() {
         Prompt prompt = askAboutPr03();
 

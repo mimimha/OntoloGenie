@@ -176,6 +176,51 @@ class QuestionInterpreterTests {
     }
 
     @Test
+    void keepsPropertyValuesOfWholeKindQuestion() {
+        QuestionInterpretation result =
+                QuestionInterpreter.verify(
+                        new Extracted(
+                                "작업지시 목록",
+                                List.of(),
+                                null,
+                                null,
+                                null,
+                                List.of("작업지시"),
+                                "BUSINESS",
+                                List.of(" 진행 중 ", "")),
+                        List.of());
+
+        // 속성 조건을 버리지 않고 남겨 답변 AI와 다음 질문에 넘긴다(360).
+        assertThat(result.kinds()).containsExactly("작업지시");
+        assertThat(result.propertyValues()).containsExactly("진행 중");
+        assertThat(result.hasPeriod()).isFalse();
+        assertThat(QuestionInterpreter.describe(result)).contains("속성 조건=[진행 중]");
+    }
+
+    @Test
+    void tellsNotToTurnPresentStateIntoTodayPeriod() {
+        // 배포 확인(2026-11-12): "현재 진행 중인 작업지시"에 오늘 하루 기간이 붙어 0건으로 답했다(360).
+        assertThat(QuestionInterpreter.SYSTEM_PROMPT)
+                .doesNotContain("from, to를 모두 오늘로 쓴다")
+                .contains("지금 상태를 물으면 기간이 아니다")
+                // "진행 상태"로 넘기면 답변 AI가 저장 값 "진행"과 맞추지 못해 조건을 빠뜨렸다(360 GMS).
+                .contains("\"진행 상태인\" → \"진행 중\"")
+                // 대상이 붙은 "진행 중인"에 오늘 하루 기간을 넣었다(360 GMS).
+                .contains(
+                        "\"P103에 배정된 진행 중인 작업지시\" → targets=[\"P103\"], propertyValues=[\"진행 중\"], from·to=null")
+                .contains("\"현재 진행 중인 작업지시\" → kinds=[\"작업지시\"], propertyValues=[\"진행 중\"]")
+                // 목록이든 대상 질문이든 좁히면 그대로 둘 조건도 함께 적는다(360 재리뷰).
+                .contains("속성 조건을 더하면 propertyValues에 이번에 적용할 조건을 모두 쓴다")
+                .contains("\"이전 답변의 조건\"의 속성 조건 중 그대로 둘 값도 함께 쓴다")
+                .contains("propertyValues=[\"진행 중\", \"1라인\"]")
+                // "시작 예정" 같은 날짜 표현을 속성값으로 넘겨 10월 건수를 못 셌다(360 GMS 1차).
+                .contains("어느 날짜로 거를지 말하는 표현은 속성값이 아니다")
+                // "작업지시 전체 몇 건"에 앞의 "완료" 조건을 이어 134건으로 답했다(360 GMS 2차).
+                .contains("다시 전체를 물으면 kinds만 쓰고 propertyValues=[]")
+                .contains("targets=[\"P103\"], kinds=[]");
+    }
+
+    @Test
     void readsPropertyClassificationFromModelResponseAndContinuesPreviousEquipment() {
         ChatModel chatModel = mock(ChatModel.class);
         when(chatModel.getOptions())
@@ -213,6 +258,7 @@ class QuestionInterpreterTests {
         assertThat(continued.from()).isEqualTo(previous.from());
         assertThat(continued.to()).isEqualTo(previous.to());
         assertThat(continued.purpose()).isEqualTo("가이드 마모 비가동 발생 시점");
+        assertThat(continued.propertyValues()).containsExactly("가이드 마모");
         assertThat(continued.missing()).isEmpty();
     }
 
