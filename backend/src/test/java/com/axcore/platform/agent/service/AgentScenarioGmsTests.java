@@ -164,6 +164,26 @@ class AgentScenarioGmsTests {
         run.verify();
     }
 
+    /**
+     * P1(148): 작업지시 JB2610-0141의 남은 성형·트리밍을 완료 시각 계산 도구로 구한다. 정답은 3,200개 × 11.5초 = 10.2시간, 준비 70분
+     * 포함 11.4시간. P101이 설비와 센서 측정에 함께 걸려 되물으면 설비라고 답한다.
+     */
+    @Test
+    void p1EstimatesHoursToFinishWorkOrderOnP101() {
+        Run run = ask("JB2610-0141 남은 수량을 P101에서 찍으면 몇 시간?", "1라인 1호 프레스(설비)요");
+
+        run.expectRead(
+                data.object("WorkOrder", Map.of("wo_no", "JB2610-0141")),
+                Set.of(AgentCompletionEstimateTools.ESTIMATE_COMPLETION));
+        // 설비를 넘기지 않으면 검사 공정까지 더해 16.3시간이 나온다(148 첫 GMS 실행).
+        run.expectInput(
+                AgentCompletionEstimateTools.ESTIMATE_COMPLETION,
+                "equipmentId",
+                data.object("Equipment", Map.of("code", "P101")));
+        run.log("3,200개 × 11.5초 = 10.2시간 (준비 70분 포함 11.4시간)");
+        run.verify();
+    }
+
     private long press() {
         return data.object("Equipment", Map.of("code", "P103"));
     }
@@ -334,6 +354,23 @@ class AgentScenarioGmsTests {
                                                     && tools.contains(call.tool()));
             if (!read) {
                 failures.add("객체 " + objectId + "를 " + tools + "로 조회하지 않음");
+            }
+        }
+
+        /** 그 도구를 그 입력 값으로 불렀어야 한다. 숫자는 Long·Integer를 구분하지 않고 비교한다. */
+        void expectInput(String tool, String key, Object value) {
+            boolean called =
+                    calls.stream()
+                            .anyMatch(
+                                    call ->
+                                            tool.equals(call.tool())
+                                                    && String.valueOf(value)
+                                                            .equals(
+                                                                    String.valueOf(
+                                                                            call.input()
+                                                                                    .get(key))));
+            if (!called) {
+                failures.add(tool + "를 " + key + "=" + value + "로 부르지 않음");
             }
         }
 

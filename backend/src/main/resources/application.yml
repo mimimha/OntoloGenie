@@ -113,6 +113,34 @@ axcore:
       sequence: op_seq
       equipment-kind: equipment_kind
       min-capacity: min_tonnage
+  # Agent 완료 시각 계산(ESTIMATE_COMPLETION, FN-AGT-09)이 읽는 온톨로지 객체 유형·속성 코드. 기본값은 시연 정답 온톨로지의 이름이다.
+  # 진행 중인 공정은 준비(금형 교체)를 마쳤다고 보고 준비 시간을 넣지 않는다. 설비를 주면 그 설비 종류로 하는 공정만 계산한다.
+  agent:
+    completion-estimate:
+      work-order:
+        type: WorkOrder
+        number: wo_no
+        product: product_code
+      operation:
+        type: WorkOrderOperation
+        work-order: wo_no
+        sequence: op_seq
+        equipment: equipment_code
+        status: status
+        remaining-quantity: remaining_qty
+        finished-statuses: [완료]
+        running-statuses: [진행]
+      routing:
+        type: Routing
+        product: product_code
+        sequence: op_seq
+        equipment-kind: equipment_kind
+        cycle-seconds: std_cycle_sec
+        setup-minutes: std_setup_min
+      equipment:
+        type: Equipment
+        code: code
+        kind: kind
 
 # 로그 줄마다 요청 추적 ID(RequestIdFilter)를 붙인다. 요청 밖의 로그는 빈 칸이다.
 logging:
