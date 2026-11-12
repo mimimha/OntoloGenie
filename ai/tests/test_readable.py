@@ -278,13 +278,13 @@ def test_descriptions_and_reasons_use_object_names_not_table_keys():
     )
     assert payload["description"] == (
         "연결 기준: 작업지시 수주 참조 번호 = 수주 수주 번호 "
-        "(비교: so_ref는 숫자만 남김 (예: 'SO-1' → '1'))"
+        "(비교: 수주 참조 번호는 숫자만 남김 (예: 'SO-1' → '1'))"
     )
     assert payload["linkType"]["description"] == (
         "작업지시에서 수주 참조 · 적용 조건: status = OPEN · "
         "데이터상 1:1, 업무상 1:N 여부 확인 필요"
     )
-    assert evidence["reason"] == "대상 키: 수주 so_no (기본키) · 일치율 100%"
+    assert evidence["reason"] == "대상 키: 수주 수주 번호 (기본키) · 일치율 100%"
     assert evidence["holdReason"] == "작업지시 경유 관계"
 
 
@@ -326,6 +326,50 @@ def test_fingerprint_ignores_llm_wording_but_not_content():
     assert fingerprint_payload(base) != fingerprint_payload(
         {**base, "category": "history"}
     )
+
+
+def test_same_column_name_on_both_sides_is_not_renamed_to_one_side():
+    from app.proposers.readable import Names, _column_names
+
+    names = Names(
+        [
+            {
+                "itemKind": "OBJECT_TYPE",
+                "payload": {
+                    "code": "LOT",
+                    "name": "재고",
+                    "properties": [{"code": "receipt_no", "name": "입고 문서"}],
+                },
+            },
+            {
+                "itemKind": "OBJECT_TYPE",
+                "payload": {
+                    "code": "RCPT",
+                    "name": "입고",
+                    "properties": [{"code": "receipt_no", "name": "입고 번호"}],
+                },
+            },
+        ]
+    )
+    payload = {
+        "conditions": [
+            {"sourceProperty": "LOT.receipt_no", "targetProperty": "RCPT.receipt_no"}
+        ]
+    }
+    # 비교 문구는 어느 쪽인지 알 수 없어 그대로, 대상 키는 대상 속성 이름으로
+    assert (
+        _column_names(
+            "대상 키: 입고 receipt_no (기본키) · receipt_no는 숫자만", payload, names
+        )
+        == "대상 키: 입고 입고 번호 (기본키) · receipt_no는 숫자만"
+    )
+
+
+def test_partial_match_is_never_rounded_up_to_100_percent():
+    from app.proposers.links import _floor_percent
+
+    assert _floor_percent(399 / 400) == "99%"
+    assert _floor_percent(1.0) == "100%"
 
 
 def test_korean_and_upper_case_table_keys_become_object_names():

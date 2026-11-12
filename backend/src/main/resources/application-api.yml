@@ -58,6 +58,8 @@ axcore:
   # 주소는 비밀값이라 환경 변수로만 넣는다. 비어 있으면 알리지 않는다. 실패는 로그만 남기고 다시 보내지 않는다.
   action-notify:
     webhook-url: ${AXCORE_ACTION_NOTIFY_WEBHOOK_URL:}
+    # 알림에 넣을 Action 정의 화면의 서비스 주소(일반 설정, 예: https://ontologenie.com). 비우면 링크 없이 보낸다(317)
+    screen-base-url: ${AXCORE_ACTION_NOTIFY_SCREEN_BASE_URL:}
     connect-timeout: 2s
     read-timeout: 5s
 
