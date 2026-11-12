@@ -138,6 +138,85 @@ class QuestionInterpreterTests {
     }
 
     @Test
+    void excludesPropertyValuesFromTargetsWithoutDroppingExplicitObjectCodes() {
+        QuestionInterpretation result =
+                QuestionInterpreter.verify(
+                        new Extracted(
+                                "가이드 마모 비가동 이력",
+                                List.of(" P104 ", "가이드 마모", "BRK"),
+                                null,
+                                null,
+                                null,
+                                List.of(),
+                                "BUSINESS",
+                                Arrays.asList(" 가이드 마모 ", "brk", "", null)),
+                        List.of());
+
+        assertThat(result.targets()).containsExactly("P104");
+        assertThat(result.purpose()).isEqualTo("가이드 마모 비가동 이력");
+    }
+
+    @Test
+    void asksForSubjectWhenOnlyPropertyValueIsKnown() {
+        QuestionInterpretation result =
+                QuestionInterpreter.verify(
+                        new Extracted(
+                                "가이드 마모 비가동 이력",
+                                List.of("가이드 마모"),
+                                null,
+                                null,
+                                null,
+                                List.of(),
+                                "BUSINESS",
+                                List.of("가이드 마모")),
+                        List.of());
+
+        assertThat(result.targets()).isEmpty();
+        assertThat(result.missing()).containsExactly(MissingCondition.TARGET);
+    }
+
+    @Test
+    void readsPropertyClassificationFromModelResponseAndContinuesPreviousEquipment() {
+        ChatModel chatModel = mock(ChatModel.class);
+        when(chatModel.getOptions())
+                .thenReturn(OpenAiChatOptions.builder().model("gpt-5.6-sol").build());
+        when(chatModel.call(any(Prompt.class)))
+                .thenReturn(
+                        new ChatResponse(
+                                List.of(
+                                        new Generation(
+                                                new AssistantMessage(
+                                                        """
+                                                        {"purpose":"가이드 마모 비가동 발생 시점","targets":["가이드 마모"],
+                                                        "from":null,"to":null,"vaguePeriod":null,"kinds":[],
+                                                        "scope":"BUSINESS","propertyValues":["가이드 마모"]}
+                                                        """)))));
+        StaticListableBeanFactory beans = new StaticListableBeanFactory();
+        beans.addBean("chatModel", chatModel);
+        QuestionInterpretation previous =
+                new QuestionInterpretation(
+                        "비가동 이력",
+                        List.of("P103"),
+                        LocalDate.parse("2026-08-01"),
+                        LocalDate.parse("2026-08-31"),
+                        List.of(new AgentReferenceObject(301L, "P103", "설비")),
+                        null);
+        QuestionInterpretation asked =
+                new QuestionInterpreter(beans.getBeanProvider(ChatModel.class), Clock.systemUTC())
+                        .interpret("가이드 마모는 언제 발생했어?", Map.of(), null, previous, List.of(), null);
+
+        QuestionInterpretation continued = asked.continueFrom(previous);
+
+        assertThat(asked.targets()).isEmpty();
+        assertThat(continued.targets()).containsExactly("P103");
+        assertThat(continued.referenceObjects()).isEqualTo(previous.referenceObjects());
+        assertThat(continued.from()).isEqualTo(previous.from());
+        assertThat(continued.to()).isEqualTo(previous.to());
+        assertThat(continued.purpose()).isEqualTo("가이드 마모 비가동 발생 시점");
+        assertThat(continued.missing()).isEmpty();
+    }
+
+    @Test
     void writesRecentTurnsOldestFirstWithoutFailedAnswers() {
         String text =
                 QuestionInterpreter.describeTurns(

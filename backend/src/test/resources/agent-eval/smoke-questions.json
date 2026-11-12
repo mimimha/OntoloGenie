@@ -1,0 +1,17 @@
+{
+  "now": "2026-11-12T02:29:00Z",
+  "turns": [
+    {
+      "id": "downtime",
+      "question": "P103에 연결된 비가동 기록 보여줘",
+      "targets": ["P103"], "status": "ANSWERED", "tools": ["OBJECT_LINKS", "OBJECT_DETAIL"],
+      "patterns": ["DT-0409", "가이드 마모"]
+    },
+    {
+      "id": "guide-wear-followup",
+      "question": "가이드 마모 부분만 요약해서 알려줘",
+      "targets": ["P103"], "status": "ANSWERED", "tools": ["OBJECT_LINKS", "OBJECT_DETAIL"],
+      "patterns": ["가이드 마모", "180|3시간", "06:00|6시", "09:00|9시"]
+    }
+  ]
+}
