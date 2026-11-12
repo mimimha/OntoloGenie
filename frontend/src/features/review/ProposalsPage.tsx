@@ -186,19 +186,24 @@ export default function ProposalsPage() {
     (item) =>
       !filters.reviewStatus || item.reviewStatus === filters.reviewStatus,
   )
-  const objectCount = statusItems.filter(isObjectProposal).length
-  const mappingCount = statusItems.length - objectCount
-  const group =
-    params.get('group') ?? (all.some(isObjectProposal) ? 'objects' : 'mappings')
   const search = params.get('q') ?? ''
-  const filtered = statusItems.filter(
+  // 유형 탭 개수와 아래 목록이 같은 조건(출처·반영 상태·검색)을 쓴다. 유형 조건만 빼고 센다.
+  const typeItems = statusItems.filter(
     (item) =>
       (!filters.origin || item.origin === filters.origin) &&
-      (!filters.itemKind
-        ? isObjectProposal(item) === (group === 'objects')
-        : item.itemKind === filters.itemKind) &&
       (!filters.applyStatus || item.applyStatus === filters.applyStatus) &&
       matchesProposal(item, search),
+  )
+  const objectCount = typeItems.filter(isObjectProposal).length
+  const mappingCount = typeItems.length - objectCount
+  // 기본 유형은 고른 검토 상태 안에 객체 후보가 있는지로 정한다(전체 기준이면 빈 목록이 열렸다).
+  const group =
+    params.get('group') ??
+    (statusItems.some(isObjectProposal) ? 'objects' : 'mappings')
+  const filtered = typeItems.filter((item) =>
+    !filters.itemKind
+      ? isObjectProposal(item) === (group === 'objects')
+      : item.itemKind === filters.itemKind,
   )
   const pageValue = Number(params.get('page') ?? 0)
   const requestedPage =
@@ -235,12 +240,17 @@ export default function ProposalsPage() {
         title="연결 규칙"
         description="후보를 비교하고, 규칙·근거·검사 결과를 확인한 뒤 검토 결정을 남기세요."
         action={
-          <Link
-            className="ui-button ui-button--secondary"
-            to="/admin/rules/new"
-          >
-            직접 관계 제안
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link className="ui-button ui-button--secondary" to="/admin/checks">
+              수동 검사·실행 목록
+            </Link>
+            <Link
+              className="ui-button ui-button--secondary"
+              to="/admin/rules/new"
+            >
+              직접 관계 제안
+            </Link>
+          </div>
         }
       />
       <div className="rules-analysis-area">

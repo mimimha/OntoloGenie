@@ -116,15 +116,18 @@ export const sourceHandlers = [
     })
   }),
   // 009 원천 목록 조회
-  http.get('/api/v1/sources', async () => {
+  http.get('/api/v1/sources', async ({ request }) => {
     await delay(150)
+    const url = new URL(request.url)
+    const page = Number(url.searchParams.get('page') ?? 0)
+    const size = Number(url.searchParams.get('size') ?? 20)
     return HttpResponse.json({
-      data: sources,
+      data: sources.slice(page * size, (page + 1) * size),
       meta: {
-        page: 0,
-        size: 100,
+        page,
+        size,
         totalElements: sources.length,
-        hasNext: false,
+        hasNext: (page + 1) * size < sources.length,
       },
     })
   }),

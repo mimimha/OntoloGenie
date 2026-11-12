@@ -3,6 +3,8 @@ package com.axcore.platform.ontology.service.apply;
 import com.axcore.platform.audit.domain.ChangeEntry;
 import com.axcore.platform.ontology.domain.DefinitionSource;
 import com.axcore.platform.ontology.domain.ObjectType;
+import com.axcore.platform.ontology.domain.PropertyDefinition;
+import com.axcore.platform.ontology.domain.PropertySensitivity;
 import com.axcore.platform.ontology.domain.ProposalItemKind;
 import com.axcore.platform.ontology.dto.ApplyCommand;
 import com.axcore.platform.ontology.dto.ApplyResult;
@@ -23,7 +25,8 @@ import org.springframework.stereotype.Component;
 /**
  * OBJECT_TYPE 후보 반영(Jira 189 1단계). 객체 유형 칸만 있으면 유형 하나를 만든다. AI 묶음 후보(API-105)는 {@code
  * properties[]}와 {@code objectMapping}을 함께 담으므로 유형 → 속성 → 객체 매핑 → 속성 매핑 순서로 한 번에 만든다. 하나라도 실패하면 묶음
- * 전체가 롤백된다.
+ * 전체가 롤백된다. {@code displayPropertyCode}가 있으면 묶음 속성 중 그 코드를 대표 속성으로 지정한다(S15P31C106-370). 대표 속성이 없으면
+ * 수집한 객체의 표시 이름이 원천 키 값이 된다.
  */
 @Component
 @RequiredArgsConstructor
@@ -116,11 +119,29 @@ class ObjectTypeApplier implements ProposalApplier {
             propertyMappings++;
         }
 
+        // 대표 속성: 등록 API(022)는 속성이 없어 지정할 수 없으므로, 묶음 속성을 만든 뒤 같은 트랜잭션에서 지정한다
+        String displayCode = support.optionalText(payload, "displayPropertyCode", FIELD);
+        if (displayCode != null) {
+            String field = FIELD + ".displayPropertyCode";
+            PropertyDefinition display = support.property(type, displayCode, field);
+            if (display.getSensitivity() == PropertySensitivity.RESTRICTED) {
+                throw ApplySupport.invalid(field, "민감 속성은 대표 속성으로 지정할 수 없습니다.");
+            }
+            type.update(
+                    type.getName(),
+                    type.getDescription(),
+                    type.getSynonyms(),
+                    type.getAccessGroup(),
+                    display.getId());
+            after.put("displayPropertyId", display.getId());
+        }
+
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("objectTypeCode", code);
         summary.put("propertyCount", bundled.size());
         summary.put("objectMappingId", objectMappingId);
         summary.put("propertyMappingCount", propertyMappings);
+        summary.put("displayPropertyCode", displayCode);
         return new ApplyResult(
                 "object_type", type.getId(), List.of(), List.copyOf(reload), summary, changes);
     }

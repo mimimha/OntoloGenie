@@ -51,7 +51,10 @@ function Candidates({ proposal }: { proposal: Proposal }) {
 // 문서 연결(DOCUMENT_LINK) 후보의 원문과 추출 결과 비교
 function DocumentLinkView({ proposal }: { proposal: Proposal }) {
   const link = readDocumentLink(proposal)
-  const undecided = proposal.reviewStatus === 'HELD' || link.holdRecommended
+  // 보류 권고는 아직 검토 전일 때만 미확정이다. 승인·거절한 뒤에는 결정이 났다.
+  const undecided =
+    proposal.reviewStatus === 'HELD' ||
+    (proposal.reviewStatus === 'PENDING' && link.holdRecommended)
 
   return (
     <section

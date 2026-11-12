@@ -1,16 +1,7 @@
 import { EmptyState } from '../../components/Feedback'
-import { isRow, type Row } from './bundle'
+import { INTERNAL_EVIDENCE_KEYS, isRow, type Row } from './bundle'
 import { changeLabels } from './labels'
 
-// 재분석·과거 결정 대조와 내부 감사에 쓰는 값. 검토 화면에는 보여 주지 않는다.
-const INTERNAL_KEYS = [
-  'candidateId',
-  'fingerprint',
-  'confidenceItems',
-  'confidenceCap',
-  'method',
-  'title',
-]
 // 아래에서 따로 그리는 칸
 const SHOWN_KEYS = [
   'reason',
@@ -73,7 +64,7 @@ export default function EvidenceView({ evidence }: { evidence: Row }) {
     : []
   const rest = Object.entries(evidence).filter(
     ([key, value]) =>
-      !INTERNAL_KEYS.includes(key) &&
+      !INTERNAL_EVIDENCE_KEYS.includes(key) &&
       !(SHOWN_KEYS.includes(key) && shownAs(key, value)) &&
       // 보류 권고가 아니면 보류 이유 칸은 비어 있는 값이므로 따로 보이지 않는다
       !(key === 'holdReason' && !held && value === null),

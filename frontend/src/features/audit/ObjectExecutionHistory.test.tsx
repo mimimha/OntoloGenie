@@ -21,11 +21,9 @@ function execution(id: number): Execution {
     targetType: 'object_instance',
     targetId: 301,
     targetLabel: '프레스 3호기',
-    input: {},
     status: 'SUCCEEDED',
-    result: { planId: id },
     requestedAt: '2026-11-11T01:00:00Z',
-    entityChanges: [],
+    changeCount: 0,
   }
 }
 
@@ -277,22 +275,26 @@ test('객체 실행 상세에서 성공 결과·차단 이유·실패 이유와 
       HttpResponse.json({
         data: [
           execution(1),
-          {
-            ...execution(2),
-            status: 'BLOCKED',
-            blockedReason: '설비 조건 불일치',
-          },
-          {
-            ...execution(3),
-            status: 'FAILED',
-            result: { errorMessage: '외부 응답 시간 초과' },
-            input: { unitCost: null },
-            restrictedPropertyCodes: ['unitCost'],
-          },
+          { ...execution(2), status: 'BLOCKED' },
+          { ...execution(3), status: 'FAILED' },
         ],
         meta: { page: 0, size: 20, totalElements: 3, hasNext: false },
       }),
     ),
+    http.get('/api/v1/audit/actions/:id', ({ params }) => {
+      const id = Number(params.id)
+      return HttpResponse.json({
+        data: {
+          id,
+          status: id === 1 ? 'SUCCEEDED' : id === 2 ? 'BLOCKED' : 'FAILED',
+          input: id === 3 ? { unitCost: null } : {},
+          result: id === 1 ? { planId: 1 } : {},
+          blockedReason: id === 2 ? '설비 조건 불일치' : null,
+          failureReason: id === 3 ? '외부 응답 시간 초과' : null,
+          restrictedPropertyCodes: id === 3 ? ['unitCost'] : [],
+        },
+      })
+    }),
   )
   const user = userEvent.setup()
   renderHistory()
@@ -301,9 +303,9 @@ test('객체 실행 상세에서 성공 결과·차단 이유·실패 이유와 
   for (const row of rows) {
     await user.click(within(row).getByText('내용 보기'))
   }
-  expect(within(rows[0]).getByText(/"planId": 1/)).toBeVisible()
-  expect(within(rows[1]).getByText('설비 조건 불일치')).toBeVisible()
-  expect(within(rows[2]).getByText('외부 응답 시간 초과')).toBeVisible()
+  expect(await within(rows[0]).findByText(/"planId": 1/)).toBeVisible()
+  expect(await within(rows[1]).findByText('설비 조건 불일치')).toBeVisible()
+  expect(await within(rows[2]).findByText('외부 응답 시간 초과')).toBeVisible()
   expect(
     within(rows[2]).getByText(/"unitCost": "\(권한으로 가림\)"/),
   ).toBeVisible()

@@ -33,7 +33,10 @@ type TabKey = (typeof tabs)[number]['key']
 // 데이터 연결: 원천 목록·등록·수정, 접속 정보·읽기 범위, 분석 대상 선택
 function SourcesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [registering, setRegistering] = useState(false)
+  // 다른 화면의 [+ 원천 등록]은 ?register=1로 들어와 등록 창을 바로 연다.
+  const [registering, setRegistering] = useState(
+    () => searchParams.get('register') === '1',
+  )
   const [createdId, setCreatedId] = useState<number>()
   const [analyzing, setAnalyzing] = useState(false)
   const navigate = useNavigate()
@@ -158,7 +161,14 @@ function SourcesPage() {
         </section>
         {registering && (
           <SourceFormDialog
-            onClose={() => setRegistering(false)}
+            onClose={() => {
+              setRegistering(false)
+              if (searchParams.has('register')) {
+                const next = new URLSearchParams(searchParams)
+                next.delete('register')
+                setSearchParams(next, { replace: true })
+              }
+            }}
             onSaved={(source) => {
               setRegistering(false)
               setCreatedId(source.id)

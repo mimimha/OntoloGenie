@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { resetAnalysisMocks } from '../../mocks/analysisHandlers'
 import { server } from '../../mocks/node'
 import { resetProposalMocks } from '../../mocks/proposalHandlers'
@@ -405,6 +405,97 @@ test('컬럼이 없는 문서·자료는 자료 전체를 골라 컬럼 없이 �
     runKind: 'INITIAL',
     targets: [{ sourceResourceId: 9001 }],
   })
+})
+
+function renderDialog() {
+  const onClose = vi.fn()
+  const onStarted = vi.fn()
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <AnalysisTargetDialog
+        initialSourceId={1}
+        onClose={onClose}
+        onStarted={onStarted}
+        onEditScope={() => {}}
+        onRegister={() => {}}
+      />
+    </QueryClientProvider>,
+  )
+  return {
+    onClose,
+    onStarted,
+    dialog: screen.getByRole('dialog', { name: '분석 대상 선택' }),
+  }
+}
+
+test('고른 것이 있으면 배경을 눌러도 닫히지 않고 닫기·Esc로는 닫힌다', async () => {
+  const user = userEvent.setup()
+  const { onClose, dialog } = renderDialog()
+  const backdrop = dialog.parentElement!
+
+  await user.click(backdrop)
+  expect(onClose).toHaveBeenCalledTimes(1)
+  onClose.mockClear()
+
+  await user.click(
+    await within(dialog).findByRole('checkbox', { name: 'item_code 선택' }),
+  )
+  await user.click(backdrop)
+  expect(onClose).not.toHaveBeenCalled()
+  expect(
+    within(dialog).getByRole('checkbox', { name: 'item_code 선택' }),
+  ).toBeChecked()
+
+  await user.keyboard('{Escape}')
+  expect(onClose).toHaveBeenCalledTimes(1)
+  await user.click(within(dialog).getByRole('button', { name: '닫기' }))
+  expect(onClose).toHaveBeenCalledTimes(2)
+})
+
+test('분석 접수 중에는 닫히지 않고 접수가 끝나면 화면을 넘긴다', async () => {
+  let release: () => void = () => {}
+  server.use(
+    http.post('/api/v1/analyses', async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      return HttpResponse.json(
+        {
+          data: {
+            id: 70,
+            runKind: 'INITIAL',
+            status: 'QUEUED',
+            targets: [{ sourceResourceId: 11 }],
+            requestedAt: '2026-11-11T01:00:00Z',
+            joined: false,
+          },
+        },
+        { status: 202 },
+      )
+    }),
+  )
+  const user = userEvent.setup()
+  const { onClose, onStarted, dialog } = renderDialog()
+  await user.click(
+    await within(dialog).findByRole('checkbox', { name: 'item_code 선택' }),
+  )
+  await user.click(
+    within(dialog).getByRole('button', { name: '분석하고 후보 받기' }),
+  )
+
+  await user.keyboard('{Escape}')
+  await user.click(within(dialog).getByRole('button', { name: '닫기' }))
+  await user.click(dialog.parentElement!)
+  expect(within(dialog).getByRole('button', { name: '취소' })).toBeDisabled()
+  expect(onClose).not.toHaveBeenCalled()
+
+  release()
+  await waitFor(() => expect(onStarted).toHaveBeenCalledTimes(1))
+  expect(onClose).not.toHaveBeenCalled()
 })
 
 test('표가 200개를 넘는 원천도 모든 표를 고를 수 있게 다음 쪽까지 받는다', async () => {

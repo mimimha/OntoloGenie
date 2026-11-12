@@ -9,6 +9,7 @@ import { server } from '../../mocks/node'
 import { resetProposalMocks } from '../../mocks/proposalHandlers'
 import { resetSourceMocks } from '../../mocks/sourceHandlers'
 import ProposalsPage from '../review/ProposalsPage'
+import SourcesPage from '../sources/SourcesPage'
 
 afterEach(() => {
   resetSourceMocks()
@@ -428,4 +429,140 @@ test('안내할 것이 없으면 안내 목록을 그리지 않는다', async ()
     within(current).queryByRole('list', { name: '분석 범위 안내' }),
   ).not.toBeInTheDocument()
   await screen.findByRole('complementary', { name: '검토 목록' })
+})
+
+function analysisRun(status: 'RUNNING' | 'SUCCEEDED') {
+  return {
+    id: 60,
+    runKind: 'INITIAL',
+    status,
+    targets: [{ sourceResourceId: 11 }],
+    analysisRange: null,
+    requestedAt: '2026-11-11T01:00:00Z',
+    startedAt: '2026-11-11T01:00:01Z',
+    finishedAt: status === 'SUCCEEDED' ? '2026-11-11T01:00:31Z' : null,
+    resultSummary: status === 'SUCCEEDED' ? { proposals: 0 } : null,
+    errorMessage: null,
+    requestedBy: 1,
+  }
+}
+
+function badGateway() {
+  return HttpResponse.json(
+    {
+      error: {
+        code: 'BAD_GATEWAY',
+        message: '잠시 연결이 끊겼습니다.',
+        details: {},
+        requestId: 'mock-analysis',
+      },
+    },
+    { status: 502 },
+  )
+}
+
+test('진행 확인 중 502가 한 번 나도 오류 화면으로 바꾸지 않고 계속 확인한다', async () => {
+  let calls = 0
+  server.use(
+    http.get('/api/v1/analyses/60', () => {
+      calls += 1
+      if (calls === 1)
+        return HttpResponse.json({ data: analysisRun('RUNNING') })
+      if (calls === 2) return badGateway()
+      return HttpResponse.json({ data: analysisRun('SUCCEEDED') })
+    }),
+  )
+  renderRules('/admin/rules?analysis=60')
+
+  const current = await screen.findByRole('region', { name: '이번 분석' })
+  expect(
+    await within(current).findByText('AI가 고른 범위를 분석하고 있습니다'),
+  ).toBeInTheDocument()
+  expect(
+    await within(current).findByText(
+      '이번 분석 후보 0건',
+      {},
+      { timeout: 8000 },
+    ),
+  ).toBeInTheDocument()
+  expect(calls).toBe(3)
+  expect(within(current).queryByRole('alert')).not.toBeInTheDocument()
+}, 15000)
+
+test('진행 확인이 계속 실패해도 받은 결과는 두고 안내 줄만 보이며 다시 확인한다', async () => {
+  let calls = 0
+  server.use(
+    http.get('/api/v1/analyses/60', () => {
+      calls += 1
+      return calls === 1
+        ? HttpResponse.json({ data: analysisRun('RUNNING') })
+        : badGateway()
+    }),
+  )
+  renderRules('/admin/rules?analysis=60')
+
+  const current = await screen.findByRole('region', { name: '이번 분석' })
+  expect(
+    await within(current).findByText(
+      /진행 상태를 새로 확인하지 못했습니다\. 잠시 연결이 끊겼습니다\. 잠시 뒤 다시 확인합니다\./,
+      {},
+      { timeout: 10000 },
+    ),
+  ).toBeInTheDocument()
+  expect(current).toHaveTextContent('AI가 고른 범위를 분석하고 있습니다')
+  expect(within(current).queryByRole('alert')).not.toBeInTheDocument()
+  const failed = calls
+  await waitFor(() => expect(calls).toBeGreaterThan(failed), {
+    timeout: 5000,
+  })
+}, 20000)
+
+test('이미 끝난 분석을 열면 불러오던 후보 목록을 다시 요청하지 않는다', async () => {
+  const requested: string[] = []
+  server.events.on('request:start', ({ request }) => {
+    requested.push(new URL(request.url).pathname)
+  })
+  renderRules('/admin/rules?analysis=50')
+
+  const current = await screen.findByRole('region', { name: '이번 분석' })
+  await within(current).findByText('이번 분석 후보 1건')
+  await screen.findByRole('complementary', { name: '검토 목록' })
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  expect(
+    requested.filter((path) => path === '/api/v1/analyses/50/proposals'),
+  ).toHaveLength(1)
+  server.events.removeAllListeners()
+})
+
+test('분석 대상 선택의 원천 등록은 데이터 연결 화면에서 등록 창을 연다', async () => {
+  const user = userEvent.setup()
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <MemoryRouter initialEntries={['/admin/rules']}>
+        <LocationProbe />
+        <Routes>
+          <Route path="/admin/rules" element={<ProposalsPage />} />
+          <Route path="/admin/sources" element={<SourcesPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  await user.click(screen.getByRole('button', { name: 'AI 관계 제안 받기' }))
+  const dialog = screen.getByRole('dialog', { name: '분석 대상 선택' })
+  await user.click(
+    await within(dialog).findByRole('button', { name: '+ 원천 등록' }),
+  )
+
+  expect(
+    await screen.findByRole('dialog', { name: '원천 등록' }),
+  ).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '취소' }))
+  expect(
+    screen.queryByRole('dialog', { name: '원천 등록' }),
+  ).not.toBeInTheDocument()
+  expect(screen.getByLabelText('조회 주소').textContent).toBe('')
 })

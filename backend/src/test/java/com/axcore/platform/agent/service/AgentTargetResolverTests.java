@@ -3,9 +3,11 @@ package com.axcore.platform.agent.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -303,6 +305,103 @@ class AgentTargetResolverTests {
                 .as("가린 키는 2단계에 걸리지 않아 속성 값 단계(3단계) 후보로 되묻는다")
                 .extracting(AgentReferenceObject::id)
                 .containsExactly(7001L, 3788L);
+    }
+
+    /** 372: 대표 속성이 비어 표시 이름이 P101인 설비를 name 속성 값으로 찾는다. 076이 0건일 때만 속성 값으로 다시 찾는다. */
+    @Test
+    void findsByPropertyValueWhenSearchFindsNothing() {
+        String name = "1라인 1호 프레스";
+        searchReturns(name);
+        propertyValueReturns(
+                name, sourced(2201L, "P101", "설비", Map.of("code", "P101", "name", name)));
+
+        AgentTargetResolver.Resolution resolution =
+                resolver.resolve(List.of(name), List.of(), session);
+
+        assertThat(resolution.found())
+                .containsExactly(new AgentReferenceObject(2201L, "P101", "설비"));
+        assertThat(resolution.issues()).isEmpty();
+        ArgumentCaptor<AgentQueryResult> recorded = ArgumentCaptor.forClass(AgentQueryResult.class);
+        verify(recorder)
+                .record(
+                        eq(ASKER),
+                        eq(11L),
+                        eq(2),
+                        eq(Map.of("q", name, "matchBy", AgentTargetResolver.PROPERTY_VALUE)),
+                        isNull(),
+                        isNull(),
+                        recorded.capture(),
+                        any());
+        assertThat(recorded.getValue().resultCategory()).isEqualTo(AgentResultCategory.FOUND);
+        assertThat(session.results()).isEmpty();
+    }
+
+    @Test
+    void asksAgainWithCandidatesWhenSeveralObjectsHaveTheValue() {
+        String name = "1라인 1호 프레스";
+        searchReturns(name);
+        propertyValueReturns(
+                name,
+                sourced(2201L, "P101", "설비", Map.of("code", "P101", "name", name)),
+                sourced(5101L, "D101", "금형", Map.of("die_code", "D101", "press_name", name)));
+
+        AgentTargetResolver.Resolution resolution =
+                resolver.resolve(List.of(name), List.of(), session);
+
+        assertThat(resolution.found()).isEmpty();
+        assertThat(resolution.issues().getFirst().candidates())
+                .extracting(AgentReferenceObject::id)
+                .containsExactly(2201L, 5101L);
+    }
+
+    /** 흔한 값이 여러 유형에 많이 걸려도 찾지 못함으로 끝내지 않고 앞의 후보 5개로 되묻는다(372, 2026-11-12 결정). */
+    @Test
+    void asksAgainWithFirstCandidatesWhenCommonValueMatchesMany() {
+        ObjectSearchResponse[] running = new ObjectSearchResponse[7];
+        for (int index = 0; index < running.length; index++) {
+            running[index] =
+                    sourced(
+                            900L + index,
+                            "P10" + index,
+                            index % 2 == 0 ? "설비" : "작업지시",
+                            Map.of("status", "가동"));
+        }
+        searchReturns("가동");
+        propertyValueReturns("가동", running);
+
+        AgentTargetResolver.Resolution resolution =
+                resolver.resolve(List.of("가동"), List.of(), session);
+
+        assertThat(resolution.found()).isEmpty();
+        assertThat(resolution.issues().getFirst().candidates())
+                .extracting(AgentReferenceObject::id)
+                .containsExactly(900L, 901L, 902L, 903L, 904L);
+    }
+
+    @Test
+    void doesNotSearchPropertyValuesWhenSearchFindsCandidates() {
+        searchReturns("P101", sourced(2201L, "P101", "설비", Map.of("code", "P101")));
+
+        assertThat(resolver.resolve(List.of("P101"), List.of(), session).found())
+                .extracting(AgentReferenceObject::id)
+                .containsExactly(2201L);
+        verify(objects, never()).findByPropertyValue(any(), any(), anyInt());
+    }
+
+    @Test
+    void reportsNotFoundWhenNoPropertyHasTheValueEither() {
+        searchReturns("없는 설비");
+
+        AgentTargetResolver.Resolution resolution =
+                resolver.resolve(List.of("없는 설비"), List.of(), session);
+
+        assertThat(resolution.issues())
+                .containsExactly(new AgentTargetResolver.TargetIssue("없는 설비", List.of()));
+        verify(objects).findByPropertyValue(ASKER, "없는 설비", 100);
+    }
+
+    private void propertyValueReturns(String value, ObjectSearchResponse... rows) {
+        when(objects.findByPropertyValue(ASKER, value, 100)).thenReturn(List.of(rows));
     }
 
     private static ObjectSearchResponse sensorReading(long id, String measuredAt, String metric) {

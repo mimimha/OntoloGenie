@@ -237,3 +237,59 @@ test('글 속 시각 표현을 원문에 표시하고 정한 시각이나 못 �
   // 원문 밖 위치는 원문에 표시하지 않는다
   expect(within(result).getByLabelText('원문')).toHaveTextContent(note)
 })
+
+test.each(['APPROVED', 'REJECTED'])(
+  '보류 권고였어도 %s로 결정한 뒤에는 미확정으로 보이지 않는다',
+  async (reviewStatus) => {
+    serve(
+      documentLink({
+        reviewStatus,
+        evidence: {
+          originalText: note,
+          holdRecommended: true,
+          holdReason: '후보 설비가 여럿',
+        },
+      }),
+    )
+    renderDetail()
+
+    const result = await screen.findByRole('region', {
+      name: '정보 추출 결과',
+    })
+    expect(within(result).queryByText('미확정')).not.toBeInTheDocument()
+    expect(within(result).getByText('equipment:P103')).toBeInTheDocument()
+    expect(within(result).queryByText('미확정 이유')).not.toBeInTheDocument()
+  },
+)
+
+test('검토 전 보류 권고는 미확정으로 둔다', async () => {
+  serve(
+    documentLink({
+      evidence: { originalText: note, holdRecommended: true },
+    }),
+  )
+  renderDetail()
+
+  const result = await screen.findByRole('region', { name: '정보 추출 결과' })
+  expect(within(result).getAllByText('미확정')).toHaveLength(2)
+})
+
+test('원문 위치는 글자(코드 포인트) 단위라 이모지 뒤 강조가 밀리지 않는다', () => {
+  expect(
+    splitOriginal({
+      originalText: '🔧 3호기 진동 😥 심함',
+      spanStart: 2,
+      spanEnd: 5,
+      observations: [
+        { text: '심함', spanStart: 11, spanEnd: 13, assertion: 'AFFIRMED' },
+      ],
+      times: [],
+      holdRecommended: false,
+    }),
+  ).toEqual([
+    { text: '🔧 ' },
+    { text: '3호기', mark: 'mention' },
+    { text: ' 진동 😥 ' },
+    { text: '심함', mark: 'AFFIRMED' },
+  ])
+})

@@ -6,6 +6,8 @@ import static org.mockito.Mockito.mockingDetails;
 
 import com.axcore.platform.TestcontainersConfiguration;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.ontology.dto.ObjectSearchRequest;
+import com.axcore.platform.ontology.service.ObjectSearchQuery;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -74,6 +76,7 @@ class AgentScenarioGmsTests {
     @Autowired AgentTargetResolver targetResolver;
     @Autowired AgentResponder responder;
     @Autowired DataAsOfResolver dataAsOfResolver;
+    @Autowired ObjectSearchQuery objectSearch;
     @Autowired JdbcClient jdbc;
     @Autowired JdbcTemplate jdbcTemplate;
     @Autowired TransactionTemplate transaction;
@@ -196,6 +199,76 @@ class AgentScenarioGmsTests {
                 data.object("Equipment", Map.of("code", "P101")));
         run.log("3,200개 × 11.5초 = 10.2시간 (준비 70분 포함 11.4시간)");
         run.verify();
+    }
+
+    /**
+     * P1 이름(372): 운영처럼 설비 유형의 대표 속성을 비워 표시 이름이 원천 키(P101)일 때, 설비 이름으로 물어도 서버가 대상을 찾는다. 076은 이 이름을
+     * 찾지 못하고 속성 값 검색이 찾는다. 같은 시험 DB를 다른 시나리오도 쓰므로 끝나면 대표 속성과 표시 이름을 되돌린다.
+     */
+    @Test
+    void p1ByNameFindsEquipmentWithoutDisplayProperty() {
+        String name = "1라인 1호 프레스";
+        long equipmentType =
+                jdbc.sql("select id from object_type where code = 'Equipment'")
+                        .query(Long.class)
+                        .single();
+        Long displayProperty =
+                jdbc.sql("select display_property_id from object_type where id = :type")
+                        .param("type", equipmentType)
+                        .query((rs, rowNum) -> rs.getObject(1, Long.class))
+                        .list()
+                        .getFirst();
+        Map<Long, String> displayNames = new LinkedHashMap<>();
+        jdbc.sql("select id, display_name from object_instance where object_type_id = :type")
+                .param("type", equipmentType)
+                .query((rs, rowNum) -> displayNames.put(rs.getLong(1), rs.getString(2)))
+                .list();
+        try {
+            jdbc.sql("update object_type set display_property_id = null where id = :type")
+                    .param("type", equipmentType)
+                    .update();
+            jdbc.sql(
+                            """
+                            update object_instance oi
+                            set display_name = (select string_agg(key_value.value, ' / ' order by key_value.key)
+                                                from jsonb_each_text(oi.source_key) key_value)
+                            where oi.object_type_id = :type
+                            """)
+                    .param("type", equipmentType)
+                    .update();
+            assertThat(
+                            objectSearch
+                                    .search(
+                                            admin,
+                                            new ObjectSearchRequest(name, null, null, 0, 100))
+                                    .getContent())
+                    .as("대표 속성이 비면 076은 설비 이름으로 찾지 못한다")
+                    .isEmpty();
+
+            Run run = ask("JB2610-0141 남은 수량을 " + name + "에서 찍으면 몇 시간 걸려?", null);
+
+            run.expectRead(
+                    data.object("WorkOrder", Map.of("wo_no", "JB2610-0141")),
+                    Set.of(AgentCompletionEstimateTools.ESTIMATE_COMPLETION));
+            run.expectInput(
+                    AgentCompletionEstimateTools.ESTIMATE_COMPLETION,
+                    "equipmentId",
+                    data.object("Equipment", Map.of("code", "P101")));
+            run.log("3,200개 × 11.5초 = 10.2시간 (준비 70분 포함 11.4시간)");
+            run.verify();
+        } finally {
+            jdbc.sql("update object_type set display_property_id = :property where id = :type")
+                    .param("property", displayProperty)
+                    .param("type", equipmentType)
+                    .update();
+            displayNames.forEach(
+                    (id, displayName) ->
+                            jdbc.sql(
+                                            "update object_instance set display_name = :name where id = :id")
+                                    .param("name", displayName)
+                                    .param("id", id)
+                                    .update());
+        }
     }
 
     /**

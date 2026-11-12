@@ -31,8 +31,9 @@ def camel_keys(value):
     return value
 
 
-# 화면에 보이는 이름·설명. LLM이 실행마다 다르게 써서 지문에서 뺀다(같은 원천이면 '유지')
-WORDING_KEYS = {"name", "description", "synonyms"}
+# 화면에 보이는 이름·설명. LLM이 실행마다 다르게 써서 지문에서 뺀다(같은 원천이면 '유지').
+# 대표 속성도 뺀다. 이 칸이 생기기 전에 승인한 유형이 재분석에서 모두 '변경'으로 다시 올라오지 않게 한다
+WORDING_KEYS = {"name", "description", "synonyms", "displayPropertyCode"}
 
 
 def _without_wording(value):
@@ -145,6 +146,46 @@ def _without(payload: dict, key: str) -> dict:
     return {k: v for k, v in payload.items() if k != key}
 
 
+# 대표 속성으로 고를 이름 성격 컬럼. 앞의 것이 우선이다:
+# name > 표 이름 + _name·_nm(vendor 표의 vendor_name) > 다른 *_name·*_nm > 한국어 이름이 '명'·'이름'으로 끝남
+_NAME_COLUMN = re.compile(r"(^|_)(name|nm)$", re.IGNORECASE)
+_NAME_LABEL = re.compile(r"(명|이름)$")
+# '명'으로 끝나도 이름이 아닌 낱말
+_NOT_NAME_LABELS = ("설명", "서명", "수명", "조명", "증명", "인원명")
+
+
+def _name_label(label: str) -> bool:
+    return bool(_NAME_LABEL.search(label)) and not label.endswith(_NOT_NAME_LABELS)
+
+
+def display_property(properties: list[dict], table: str = "") -> str | None:
+    """묶음 속성 중 대표 속성(수집한 객체의 표시 이름)으로 쓸 이름 성격 속성의 코드. 없으면 None.
+
+    민감 속성·식별 키·글자가 아닌 속성은 고르지 않는다. 대표 속성이 없으면 표시 이름이 원천 키 값(P101 등)이 된다.
+    """
+    ranked = []
+    for order, item in enumerate(properties):
+        if (
+            item.get("sensitivity") == "RESTRICTED"
+            or item.get("isIdentifier")
+            or item.get("dataType") != "STRING"
+        ):
+            continue
+        column = (item.get("sourceColumn") or {}).get("column") or item["code"]
+        if column.lower() == "name":
+            rank = 0
+        elif _NAME_COLUMN.search(column):
+            # item_group_name보다 item 표의 item_name을 먼저 고른다
+            own = {f"{table.lower()}_name", f"{table.lower()}_nm"} if table else set()
+            rank = 1 if column.lower() in own else 2
+        elif _name_label((item.get("name") or "").strip()):
+            rank = 3
+        else:
+            continue
+        ranked.append((rank, order, item["code"]))
+    return min(ranked)[2] if ranked else None
+
+
 def _object_bundle(
     head: Candidate,
     mappings: list[Candidate],
@@ -171,6 +212,10 @@ def _object_bundle(
             part["mapping"] = _part_evidence(mapped)
         payload["properties"].append(item)
         evidence["properties"].append(part)
+    table = (payload.get("objectMapping") or {}).get("resourceKey", "").split(".")[-1]
+    display = display_property(payload["properties"], table)
+    if display is not None:
+        payload["displayPropertyCode"] = display
     held, reason = _held(head, *mappings, *properties, *property_mappings.values())
     evidence["holdRecommended"], evidence["holdReason"] = held, reason
     evidence["fingerprint"] = fingerprint_payload(payload)

@@ -1,4 +1,4 @@
-import { apiGet } from '../../api/client'
+import { apiGet, ApiError } from '../../api/client'
 import type { DefinitionChange, RuleRevision, RuleSummary } from './types'
 
 export const DEFINITION_CHANGE_PAGE_SIZE = 20
@@ -36,9 +36,25 @@ export async function fetchRules() {
 }
 
 // 046 연결 규칙 개정 이력 조회
-export async function fetchRuleRevisions(code: string) {
-  const body = await apiGet<RuleRevision[]>(
-    `/ontology/rules/${encodeURIComponent(code)}/revisions`,
-  )
-  return body.data
+export async function fetchRuleRevisions(code: string, signal?: AbortSignal) {
+  const revisions: RuleRevision[] = []
+  for (let page = 0; ; page++) {
+    const params = new URLSearchParams({ page: String(page), size: '20' })
+    const body = await apiGet<RuleRevision[]>(
+      `/ontology/rules/${encodeURIComponent(code)}/revisions?${params}`,
+      { signal },
+    )
+    if (
+      !Array.isArray(body.data) ||
+      !body.meta ||
+      body.meta.page !== page ||
+      typeof body.meta.hasNext !== 'boolean' ||
+      (body.meta.hasNext && body.data.length === 0)
+    )
+      throw new ApiError('규칙 개정 이력의 페이지 정보를 확인할 수 없습니다.', {
+        kind: 'invalid-response',
+      })
+    revisions.push(...body.data)
+    if (!body.meta.hasNext) return revisions
+  }
 }

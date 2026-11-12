@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -19,7 +20,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * 질문에 나온 대상 이름·코드를 실제 객체로 찾는다(147). AI에게 맡기지 않고 서버가 질문한 사용자의 권한으로 076 객체 검색을 불러, 볼 수 없는 객체는 찾지 않는다.
- * 하나로 정해지지 않으면 후보를 돌려주어 사용자에게 되묻게 한다. 검색은 조회 기록에 남기지만 정보별 결과에는 넣지 않는다.
+ * 076이 0건이면 같은 권한으로 문자 속성 값이 똑같은 객체를 한 번 더 찾는다(372). 하나로 정해지지 않으면 후보를 돌려주어 사용자에게 되묻게 한다. 검색은 조회 기록에
+ * 남기지만 정보별 결과에는 넣지 않는다.
  */
 @Component
 @RequiredArgsConstructor
@@ -28,6 +30,9 @@ public class AgentTargetResolver {
     static final String TARGET_SEARCH = "TARGET_SEARCH";
 
     static final String LABEL = "대상 찾기";
+
+    /** 속성 값으로 다시 찾은 조회를 076 검색과 구별하는 기록 값(372). */
+    static final String PROPERTY_VALUE = "PROPERTY_VALUE";
 
     /** 되물을 때 보여 줄 후보 수. */
     static final int MAX_CANDIDATES = 5;
@@ -82,6 +87,9 @@ public class AgentTargetResolver {
                     query = shorter;
                     candidates = search(query, session);
                 }
+            }
+            if (candidates.isEmpty()) {
+                candidates = searchByPropertyValue(target, session);
             }
             Set<String> names = new HashSet<>(List.of(target, query));
             Optional<ObjectSearchResponse> picked = pick(candidates, names, knownIds);
@@ -196,18 +204,40 @@ public class AgentTargetResolver {
     }
 
     private List<ObjectSearchResponse> search(String query, AgentQuerySession session) {
+        return lookup(
+                Map.of("q", query),
+                session,
+                () ->
+                        objects.search(
+                                        session.asker(),
+                                        new ObjectSearchRequest(query, null, null, 0, SEARCH_SIZE))
+                                .getContent());
+    }
+
+    /**
+     * 076은 표시 이름과 식별 속성만 본다. 대표 속성이 비어 표시 이름이 원천 키(P101)이면 설비 이름('1라인 1호 프레스')으로 찾지 못한다. 그래서 076이
+     * 0건일 때만 문자 속성 값이 똑같은 객체를 다시 찾는다(372). '가동'처럼 흔한 값이 여럿에 걸려도 076과 같이 후보를 보여 주며 되묻는다. 찾지 못했다고 답하면
+     * 같은 이름의 설비가 여럿일 때 고를 기회가 없어서다.
+     */
+    private List<ObjectSearchResponse> searchByPropertyValue(
+            String value, AgentQuerySession session) {
+        return lookup(
+                Map.of("q", value, "matchBy", PROPERTY_VALUE),
+                session,
+                () -> objects.findByPropertyValue(session.asker(), value, SEARCH_SIZE));
+    }
+
+    private List<ObjectSearchResponse> lookup(
+            Map<String, Object> input,
+            AgentQuerySession session,
+            Supplier<List<ObjectSearchResponse>> query) {
         List<ObjectSearchResponse> rows = new ArrayList<>();
         session.lookup(
                 TARGET_SEARCH,
                 LABEL,
-                Map.of("q", query),
+                input,
                 () -> {
-                    rows.addAll(
-                            objects.search(
-                                            session.asker(),
-                                            new ObjectSearchRequest(
-                                                    query, null, null, 0, SEARCH_SIZE))
-                                    .getContent());
+                    rows.addAll(query.get());
                     return new AgentQuerySession.Outcome(
                             null,
                             rows.isEmpty()

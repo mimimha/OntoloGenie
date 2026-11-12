@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Link } from 'react-router'
 import Button from '../../components/Button'
 import DataTable from '../../components/DataTable'
 import Pagination from '../../components/Pagination'
@@ -26,7 +27,13 @@ function valueText(value: unknown) {
   return typeof value === 'object' ? JSON.stringify(value) : String(value)
 }
 
-export function Result({ result }: { result: CheckResult }) {
+export function Result({
+  result,
+  candidate = true,
+}: {
+  result: CheckResult
+  candidate?: boolean
+}) {
   return (
     <article className="space-y-4 rounded-xl border border-violet-200 bg-violet-50/20 p-4">
       <h4 className="font-semibold">
@@ -50,14 +57,15 @@ export function Result({ result }: { result: CheckResult }) {
         ))}
       </dl>
       <p>
-        시험 매칭률:{' '}
+        {candidate ? '시험 매칭률' : '매칭률'}:{' '}
         {result.matchRate == null || !Number.isFinite(result.matchRate)
           ? '계산할 수 없음'
           : `${(result.matchRate * 100).toFixed(1)}%`}
       </p>
       <p className="text-sm text-slate-600">
-        시험 매칭률은 검사 대상의 정상 비율이며 AI 신뢰도와 다릅니다. 아래는
-        서버가 제공한 표본이며 전체 행 목록이 아닙니다.
+        {candidate ? '시험 매칭률' : '매칭률'}은 검사 대상의 정상 비율이며 AI
+        신뢰도와 다릅니다. 아래는 서버가 제공한 표본이며 전체 행 목록이
+        아닙니다.
       </p>
       {!result.sampleRows.length ? (
         <EmptyState message="제공된 판정 근거 표본이 없습니다." />
@@ -86,7 +94,7 @@ export function Result({ result }: { result: CheckResult }) {
                   row.sourceKey ?? row.rowId ?? index + 1,
                   row.rawValue,
                   row.transformedValue,
-                  row.targetKey ?? row.targetValue,
+                  row.targetKey ?? row.targetValue ?? row.targetObjectIds,
                   typeof row.classification === 'string'
                     ? (outcomes[row.classification] ?? row.classification)
                     : undefined,
@@ -199,11 +207,12 @@ export default function CheckResults({
         </Button>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="secondary" disabled>
-          함께 재검사
-        </Button>
+        <Link to="/admin/checks" className="text-sm underline">
+          수동 검사·실행 목록
+        </Link>
         <p className="text-sm text-slate-500">
-          수동 검사 실행 기능은 준비 중입니다.
+          수동 검사는 반영 중인 연결 규칙을 점검합니다. 승인 전 후보 시험은
+          제안을 저장·수정할 때 자동으로 요청됩니다.
         </p>
       </div>
       {refreshError ? (

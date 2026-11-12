@@ -2,7 +2,12 @@ import { http, HttpResponse } from 'msw'
 import { expect, test } from 'vitest'
 import { demoAccount, setMockAccount } from '../../mocks/auth'
 import { server } from '../../mocks/node'
-import { fetchAuditExecutions, fetchObjectExecutions } from './api'
+import {
+  fetchAuditExecutions,
+  fetchObjectExecutions,
+  fetchExecutionDetail,
+  fetchExecutionChanges,
+} from './api'
 import type { ExecutionFilters } from './api'
 
 test('080은 기간·상태·페이지를 전송하고 096 전용 조건은 보내지 않는다', async () => {
@@ -101,3 +106,49 @@ test('096은 공용 이력 화면의 페이지와 종류·대상 조건을 함�
     size: '20',
   })
 })
+
+test.each([
+  ['097', fetchExecutionDetail],
+  ['098', fetchExecutionChanges],
+] as const)(
+  '%s은 일반 사용자 본인 기록을 조회하고 다른 사람·없는 기록은 404를 유지한다',
+  async (_api, fetchExecution) => {
+    setMockAccount({ ...demoAccount })
+    const mine = await fetchExecution(9002)
+    expect(mine.data).toBeDefined()
+    await expect(fetchExecution(9004)).rejects.toMatchObject({
+      status: 404,
+      code: 'RESOURCE_NOT_FOUND',
+    })
+    await expect(fetchExecution(999999)).rejects.toMatchObject({
+      status: 404,
+      code: 'RESOURCE_NOT_FOUND',
+    })
+    setMockAccount({ ...demoAccount, roleCode: 'ADMIN' })
+    expect((await fetchExecution(9004)).data).toBeDefined()
+  },
+)
+
+test.each([
+  ['097', fetchExecutionDetail],
+  ['098', fetchExecutionChanges],
+] as const)(
+  '%s은 인증 오류와 화면 이탈 시 요청 취소를 유지한다',
+  async (_api, fetchExecution) => {
+    setMockAccount(null)
+    await expect(fetchExecution(9002)).rejects.toMatchObject({
+      status: 401,
+      code: 'UNAUTHENTICATED',
+    })
+    setMockAccount({ ...demoAccount, mustChangePassword: true })
+    await expect(fetchExecution(9002)).rejects.toMatchObject({
+      status: 403,
+      code: 'FORBIDDEN',
+    })
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      fetchExecution(9002, { signal: controller.signal }),
+    ).rejects.toMatchObject({ kind: 'aborted' })
+  },
+)

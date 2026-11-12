@@ -19,6 +19,7 @@ import AccountsPage from './features/accounts/AccountsPage'
 import AccountEditorPage from './features/accounts/AccountEditorPage'
 import ActionDefinitionsPage from './features/actions/ActionDefinitionsPage'
 import ActionDefinitionEditorPage from './features/actions/ActionDefinitionEditorPage'
+import CheckRunsPage from './features/checks/CheckRunsPage'
 
 function App() {
   return (
@@ -48,6 +49,7 @@ function App() {
                 <Route path="history" element={<HistoryPage />} />
                 <Route path="sources" element={<SourcesPage />} />
                 <Route path="rules" element={<ProposalsPage />} />
+                <Route path="checks" element={<CheckRunsPage />} />
                 <Route path="rules/new" element={<RuleEditorPage />} />
                 <Route path="rules/:id/edit" element={<RuleEditorPage />} />
                 <Route

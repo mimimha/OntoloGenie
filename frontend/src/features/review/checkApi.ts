@@ -19,7 +19,7 @@ export const CHECK_PAGE_SIZE = 20
 
 export async function fetchRunResults(
   runId: number,
-  filter: { proposalItemId: number } | { linkMappingId: number },
+  filter: { proposalItemId: number } | { linkMappingId: number } | undefined,
   page: number,
   signal?: AbortSignal,
 ) {
@@ -27,7 +27,7 @@ export async function fetchRunResults(
     page: String(page),
     size: String(CHECK_PAGE_SIZE),
   })
-  for (const [key, value] of Object.entries(filter))
+  for (const [key, value] of Object.entries(filter ?? {}))
     params.set(key, String(value))
   const response = await apiGet<CheckResult[]>(
     `/checks/runs/${runId}/results?${params}`,
@@ -46,9 +46,10 @@ export async function fetchRunResults(
     response.data.some(
       (row) =>
         row.checkRunId !== runId ||
-        ('linkMappingId' in filter
-          ? row.linkMappingId !== filter.linkMappingId
-          : row.proposalItemId !== filter.proposalItemId),
+        (filter &&
+          ('linkMappingId' in filter
+            ? row.linkMappingId !== filter.linkMappingId
+            : row.proposalItemId !== filter.proposalItemId)),
     )
   ) {
     throw new ApiError('검사 결과의 대상이 일치하지 않습니다.', {

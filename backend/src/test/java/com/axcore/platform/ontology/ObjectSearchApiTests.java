@@ -2,6 +2,7 @@ package com.axcore.platform.ontology;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -13,7 +14,9 @@ import com.axcore.platform.TestcontainersConfiguration;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.ontology.dto.ObjectSearchResponse;
 import com.axcore.platform.ontology.service.ObjectEvidenceQuery;
+import com.axcore.platform.ontology.service.ObjectSearchQuery;
 import com.jayway.jsonpath.JsonPath;
 import java.util.List;
 import java.util.Locale;
@@ -44,6 +47,7 @@ class ObjectSearchApiTests {
     @Autowired MockMvc mvc;
     @Autowired JdbcClient jdbc;
     @Autowired ObjectProvider<ObjectEvidenceQuery> evidenceQuery;
+    @Autowired ObjectProvider<ObjectSearchQuery> searchQuery;
 
     @Test
     void combinesPropertyValuesAndDatesBeforeCountingAndPagination() throws Exception {
@@ -747,6 +751,91 @@ class ObjectSearchApiTests {
         mvc.perform(get(PATH).param("q", tag + "-private").with(actor("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.totalElements").value(1));
+    }
+
+    /** 372: 대표 속성이 없어 표시 이름이 원천 키(P101)인 설비를 name 값으로 찾는다. 076은 그대로 찾지 못한다. */
+    @Test
+    void findsActiveObjectsWhoseStringPropertyEqualsTheValueWithinScope() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long equipment = type(tag, tag);
+        long hidden = type(tag + "-hidden", tag + "-private");
+        allowViewer(tag);
+        identifierProperty(equipment, "code", "NORMAL");
+        property(equipment, "name", "STRING", "NORMAL", null);
+        property(hidden, "name", "STRING", "NORMAL", null);
+        String name = tag + " 1라인 1호 프레스";
+        long press =
+                object(equipment, "P101", "{\"code\":\"P101\",\"name\":\"%s\"}".formatted(name));
+        object(equipment, "P102", "{\"code\":\"P102\",\"name\":\"%s 옆\"}".formatted(name));
+        object(equipment, "P103", "{\"code\":\"P103\",\"alias\":\"%s\"}".formatted(name));
+        long hiddenPress = object(hidden, "H101", "{\"name\":\"%s\"}".formatted(name));
+
+        mvc.perform(get(PATH).param("q", name).with(actor("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.totalElements").value(0));
+        assertThat(searchQuery.getObject().findByPropertyValue(account("VIEWER"), " " + name, 100))
+                .as("값이 정확히 같은 정의된 문자 속성만, 볼 수 있는 유형에서만 찾는다")
+                .extracting(ObjectSearchResponse::id, ObjectSearchResponse::displayName)
+                .containsExactly(tuple(press, "P101"));
+        assertThat(searchQuery.getObject().findByPropertyValue(account("ADMIN"), name, 100))
+                .extracting(ObjectSearchResponse::id)
+                .containsExactly(press, hiddenPress);
+        assertThat(searchQuery.getObject().findByPropertyValue(account("ADMIN"), name, 1))
+                .extracting(ObjectSearchResponse::id)
+                .containsExactly(press);
+        assertThat(searchQuery.getObject().findByPropertyValue(account("ADMIN"), "  ", 100))
+                .isEmpty();
+    }
+
+    @Test
+    void findsByPropertyValueOnlyWhereTheActorCanReadTheValue() {
+        String tag = UUID.randomUUID().toString();
+        long type = type(tag, tag);
+        allowViewer(tag);
+        long serial = property(type, "serial", "STRING", "RESTRICTED", null);
+        property(type, "public_label", "STRING", "NORMAL", null);
+        long mapping = restrictedKeyMapping(type, serial, tag);
+        long active = sourceObject(type, mapping, tag + "-active", "ACTIVE");
+        sourceObject(type, mapping, tag + "-deleted", "DELETED_AT_SOURCE");
+        long keyOnly = sourceObject(type, mapping, tag + "-key-only", "ACTIVE");
+        jdbc.sql(
+                        """
+                        update object_instance
+                        set properties = jsonb_build_object('public_label', cast(:label as text))
+                        where id = :id
+                        """)
+                .param("label", tag + "-label")
+                .param("id", keyOnly)
+                .update();
+        LoginAccount viewer = account("VIEWER");
+        LoginAccount admin = account("ADMIN");
+        var search = searchQuery.getObject();
+
+        assertThat(search.findByPropertyValue(viewer, tag + "-active", 100))
+                .as("민감 속성 값으로는 찾지 않는다")
+                .isEmpty();
+        assertThat(search.findByPropertyValue(viewer, tag + "-key-only", 100))
+                .as("가린 원천 키·표시 이름 값으로는 찾지 않는다")
+                .isEmpty();
+        assertThat(search.findByPropertyValue(viewer, tag + "-label", 100))
+                .singleElement()
+                .satisfies(
+                        found -> {
+                            assertThat(found.id()).isEqualTo(keyOnly);
+                            assertThat(found.displayName()).isEqualTo("#" + keyOnly);
+                            assertThat(found.sourceKey()).containsEntry("serial", null);
+                        });
+        assertThat(search.findByPropertyValue(admin, tag + "-active", 100))
+                .extracting(ObjectSearchResponse::id)
+                .containsExactly(active);
+        assertThat(search.findByPropertyValue(admin, tag + "-deleted", 100))
+                .as("원천에서 삭제된 객체는 찾지 않는다")
+                .isEmpty();
+        assertThat(search.findByPropertyValue(admin, tag + "-key-only", 100)).isEmpty();
+    }
+
+    private static LoginAccount account(String role) {
+        return new LoginAccount(1L, "tester", role, false);
     }
 
     @Test

@@ -13,7 +13,7 @@ export type ExecutionPageMeta = PageMeta & {
   scope?: ExecutionScope
 }
 
-// 080·096 실행 하나가 바꾼 행의 전후 내용
+// 098 실행 하나가 바꾼 행의 전후 내용
 export type EntityChange = {
   tableName: string
   rowKey: Record<string, unknown>
@@ -49,13 +49,25 @@ export type Execution = {
   targetId?: number | null
   // 이름이 없는 대상(예: sync_run)은 null
   targetLabel?: string | null
-  input: Record<string, unknown>
   status: ExecutionStatus
-  blockedReason?: string | null
-  result: Record<string, unknown>
   requestedAt: string
   finishedAt?: string | null
-  entityChanges: EntityChange[]
-  // 권한으로 가린 속성 키. 이 목록에 있는 키의 null은 "권한으로 가림", 없으면 "값 없음"이다.
-  restrictedPropertyCodes?: string[]
+  changeCount: number
+}
+
+// 097 내용 보기. 표시 이름과 시각은 목록 행의 값을 사용한다.
+export type ExecutionDetail = {
+  id: number
+  status: ExecutionStatus
+  input: Record<string, unknown> | null
+  result: Record<string, unknown> | null
+  blockedReason: string | null
+  failureReason: string | null
+  // 097은 입력값, 098은 변경 내역에서 가린 속성 코드다.
+  restrictedPropertyCodes: string[]
+}
+
+export type ExecutionChanges = {
+  changes: EntityChange[]
+  restrictedPropertyCodes: string[]
 }

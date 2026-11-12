@@ -1,0 +1,50 @@
+{
+  "now": "2026-11-12T02:29:00Z",
+  "turns": [
+    {
+      "id": "asset-comparison",
+      "question": "FA-0001, FA-0002, FA-0003 장부가와 취득가를 표로 비교해줘",
+      "targets": ["FA-0001", "FA-0002", "FA-0003"],
+      "status": "ANSWERED", "tools": ["OBJECT_DETAIL"],
+      "patterns": ["FA-0001", "FA-0002", "FA-0003"]
+    },
+    {
+      "id": "maintenance",
+      "question": "P103에 연결된 정비 지시 보여줘",
+      "targets": ["P103"], "status": "ANSWERED", "tools": ["OBJECT_LINKS"],
+      "patterns": ["RP-26-004", "RP-26-005", "RP-26-012", "RP-26-041"]
+    },
+    {
+      "id": "greeting", "question": "아녀녕",
+      "targets": [], "status": "HELP", "tools": [], "patterns": []
+    },
+    {
+      "id": "downtime",
+      "question": "P103에 연결된 비가동 기록 보여줘",
+      "targets": ["P103"], "status": "ANSWERED", "tools": ["OBJECT_LINKS", "OBJECT_DETAIL"],
+      "patterns": ["DT-0409", "가이드 마모"]
+    },
+    {
+      "id": "guide-wear-followup",
+      "question": "가이드 마모 부분만 요약해서 알려줘",
+      "targets": ["P103"], "status": "ANSWERED", "tools": ["OBJECT_LINKS", "OBJECT_DETAIL"],
+      "patterns": ["가이드 마모", "180|3시간", "06:00|6시", "09:00|9시"]
+    },
+    {
+      "id": "work-order",
+      "question": "JB2610-0138 작업지시 진행 상황 알려줘",
+      "targets": ["JB2610-0138"], "status": "ANSWERED", "tools": ["OBJECT_DETAIL"],
+      "patterns": ["JB2610-0138", "진행"]
+    },
+    {
+      "id": "followup-help", "question": "방금 질문에 대한 후속 질문이 가능해?",
+      "targets": [], "status": "HELP", "tools": [], "patterns": []
+    },
+    {
+      "id": "explicit-downtime",
+      "question": "DT-0409: 08-31 06:00~09:00, 가이드 마모, 180분\n\n이 부분에 대해 요약해서 알려줘",
+      "targets": ["DT-0409"], "status": "ANSWERED", "tools": ["OBJECT_DETAIL"],
+      "patterns": ["DT-0409", "가이드 마모", "180|3시간"]
+    }
+  ]
+}

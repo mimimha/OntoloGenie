@@ -6,7 +6,10 @@ import type {
   ProposalWriteResult,
 } from './types'
 
+// 화면 목록 한 쪽에 보여 주는 후보 수
 export const PROPOSAL_PAGE_SIZE = 20
+// 목록·집계용으로 서버에서 한 번에 받는 후보 수(서버 제안 목록은 크기 상한이 없다)
+export const PROPOSAL_FETCH_SIZE = 100
 
 export function fetchProposals(
   filters: ProposalFilters,
@@ -15,7 +18,7 @@ export function fetchProposals(
 ) {
   const params = new URLSearchParams({
     page: String(page),
-    size: String(PROPOSAL_PAGE_SIZE),
+    size: String(PROPOSAL_FETCH_SIZE),
   })
   for (const [key, value] of Object.entries(filters)) {
     if (value) params.set(key, value)

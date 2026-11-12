@@ -10,6 +10,15 @@ export const BUNDLE_PAYLOAD_KEYS = [
   'conditions',
 ]
 export const BUNDLE_EVIDENCE_KEYS = ['objectMapping', 'properties']
+// 재분석·과거 결정 대조와 내부 감사에 쓰는 값. 검토 화면에 보여 주지 않고 검색 대상에서도 뺀다.
+export const INTERNAL_EVIDENCE_KEYS = [
+  'candidateId',
+  'fingerprint',
+  'confidenceItems',
+  'confidenceCap',
+  'method',
+  'title',
+]
 
 export type Row = Record<string, unknown>
 

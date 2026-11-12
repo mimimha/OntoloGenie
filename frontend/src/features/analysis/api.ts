@@ -1,5 +1,5 @@
 import { apiGet, apiPost, ApiError } from '../../api/client'
-import { PROPOSAL_PAGE_SIZE } from '../review/api'
+import { PROPOSAL_FETCH_SIZE } from '../review/api'
 import type { Proposal, ProposalFilters } from '../review/types'
 import type {
   Analysis,
@@ -50,7 +50,7 @@ export function fetchAnalysisProposals(
 ) {
   const params = new URLSearchParams({
     page: String(page),
-    size: String(PROPOSAL_PAGE_SIZE),
+    size: String(PROPOSAL_FETCH_SIZE),
   })
   for (const [key, value] of Object.entries(filters)) {
     if (value && key !== 'origin') params.set(key, value)
