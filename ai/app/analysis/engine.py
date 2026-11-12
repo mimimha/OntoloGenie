@@ -297,7 +297,7 @@ def _analyze(
         _log_llm_failures(request.run_id, "메모 추출", failed)
         credits += sum(call["credits"] for call in calls)
     # 표 후보와 같이 원천 위치를 다시 확인해 근거에 verified를 채운다
-    notes_kept, notes_dropped = verify(root, links + document_link_types(links))
+    notes_kept, notes_dropped = verify(root, links + document_link_types(links, root))
     kept += notes_kept
     dropped += notes_dropped
 

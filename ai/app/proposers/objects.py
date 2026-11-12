@@ -4,8 +4,10 @@
 표 종류(category)는 데이터 모델링 규칙(classify)으로 정하고, 정답셋을 보고 규칙을 고치지 않는다.
 """
 
+import hashlib
 import re
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
 
 from app.analyzers.structured import (
@@ -13,6 +15,7 @@ from app.analyzers.structured import (
     ColumnAnalysis,
     StructuredAnalysis,
     analyze_sources,
+    split_ref,
 )
 from app.llm.privacy import SURNAMES, is_person_column, looks_like_name, mask_value
 from app.models.candidate import (
@@ -62,7 +65,7 @@ def observed_pair_key(df, names: list[str]) -> list[str]:
 
 def key_like_columns(schema: TableSchema, columns: list[ColumnAnalysis]) -> list[str]:
     """키로 쓸 만한 컬럼: 문자형·정수형, 개인정보·날짜·소수가 아님."""
-    by_name = {c.ref.rsplit(".", 1)[1]: c for c in columns}
+    by_name = {c.column: c for c in columns}
     out = []
     for col in schema.columns:
         stats = by_name[col.name]
@@ -75,19 +78,146 @@ def key_like_columns(schema: TableSchema, columns: list[ColumnAnalysis]) -> list
     return out
 
 
-INT_TYPES = ("int", "integer", "bigint", "smallint")
+INT_TYPES = {
+    "int",
+    "integer",
+    "bigint",
+    "smallint",
+    "tinyint",
+    "mediumint",
+    "int2",
+    "int4",
+    "int8",
+    "serial",
+    "bigserial",
+    "smallserial",
+}
 PERSON_NAME = re.compile(rf"[{SURNAMES}][가-힣]{{1,3}}")
 
 
+def base_type(declared: str | None) -> str:
+    """선언 타입의 이름만. 'varchar(20)' → 'varchar', 'int unsigned' → 'int', 'interval' → 'interval'."""
+    return re.split(r"[\s(\[]", (declared or "").strip().lower(), maxsplit=1)[0]
+
+
+def is_integer_type(declared: str | None) -> bool:
+    """정수 타입인지 이름으로 정확히 본다. startswith('int')는 interval까지 정수로 본다."""
+    return base_type(declared) in INT_TYPES
+
+
+# 백엔드 검사(ObjectType·LinkType·PropertyCreateRequest)와 같은 코드 규칙
+TYPE_CODE = re.compile(r"[A-Z][A-Z0-9_]*")
+PROPERTY_CODE = re.compile(r"[a-z][a-z0-9_]*")
+CODE_MAX = 100
+_CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+
+
+def _short_hash(text: str) -> str:
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:8]
+
+
+def _snake(name: str) -> str:
+    """camelCase·대문자·하이픈·공백을 밑줄 소문자로. 영문·숫자가 아닌 글자(한글 등)는 원래 이름을 가리는 해시로 바꾼다."""
+    text = _CAMEL.sub("_", name)
+    snake = re.sub(r"_+", "_", re.sub(r"[^A-Za-z0-9]+", "_", text)).strip("_").lower()
+    # 한글처럼 코드에 못 쓰는 글자를 뺐으면 '검사_no'·'입고_no'가 같아지지 않게 해시를 붙인다.
+    # 영문·숫자가 하나도 없으면 빈 문자열(부르는 쪽이 col_·T_ 접두어와 해시로 만든다)
+    if snake and re.search(r"[^A-Za-z0-9_\-\s.]", name):
+        snake = f"{snake}_{_short_hash(name)}"
+    return snake
+
+
+def _fit(code: str, original: str) -> str:
+    if len(code) <= CODE_MAX:
+        return code
+    return f"{code[: CODE_MAX - 9].rstrip('_')}_{_short_hash(original)}"
+
+
+def property_code(column: str) -> str:
+    """속성 코드(백엔드 규칙 [a-z][a-z0-9_]*, 100자 이하). 맞는 이름은 그대로, 아니면 snake_case로 바꾼다.
+    원래 컬럼 이름은 속성 이름·원천 매핑(source_column)에 그대로 남는다."""
+    if PROPERTY_CODE.fullmatch(column) and len(column) <= CODE_MAX:
+        return column
+    code = _snake(column)
+    if not code or not code[0].isalpha() or not code.isascii():
+        code = f"col_{code}" if code else f"col_{_short_hash(column)}"
+    return _fit(code, column)
+
+
+def property_codes(columns: Iterable[str]) -> dict[str, str]:
+    """표 한 개의 컬럼 이름 → 속성 코드. 바꾼 코드가 다른 컬럼과 겹치면(itemCd·item_cd) 해시를 붙인다.
+    규칙에 맞는 이름이 먼저 자리를 잡아 원래 코드가 바뀌지 않는다."""
+    names = list(columns)
+    out: dict[str, str] = {}
+    used: set[str] = set()
+    for name in sorted(names, key=lambda n: property_code(n) != n):
+        code = property_code(name)
+        if code in used:
+            code = _fit(f"{code}_{_short_hash(name)}", name)
+        used.add(code)
+        out[name] = code
+    return {name: out[name] for name in names}
+
+
 def to_code(table: str) -> str:
-    """객체 유형 코드. 객체·관계 유형은 대문자(WORK_ORDER), 속성은 컬럼 이름 그대로."""
-    return table.upper()
+    """객체·관계 유형 코드(백엔드 규칙 [A-Z][A-Z0-9_]*, 100자 이하). 대문자로 바꿔 맞으면 그대로(WORK_ORDER),
+    아니면(하이픈·한글) snake_case 대문자로 바꾼다."""
+    upper = table.upper()
+    if TYPE_CODE.fullmatch(upper):
+        return _fit(upper, table)
+    code = _snake(table).upper()
+    if not code or not code[0].isalpha():
+        code = f"T_{code}" if code else f"T_{_short_hash(table).upper()}"
+    return _fit(code, table)
+
+
+def display_name(code: str, table: str) -> str:
+    """제목·설명에 보일 객체 유형 이름. 한글 표 이름처럼 코드가 해시로 바뀐 경우(T_728E454E)는
+    원천 표 이름(거래처)을 보인다. 코드 자체는 백엔드 규칙대로 둔다."""
+    return code if table.isascii() else table
+
+
+def type_codes(table_keys: Iterable[str]) -> dict[str, str]:
+    """'원천.표' → 객체 유형 코드. 다른 원천에 같은 코드가 되는 표가 있으면(erp.item, mes.item)
+    그 표들만 원천 이름을 앞에 붙인다(ERP_ITEM). 겹치지 않으면 to_code 그대로다."""
+    keys = list(table_keys)
+    plain = {key: to_code(key.split(".", 1)[1]) for key in keys}
+    counts: dict[str, int] = defaultdict(int)
+    for code in plain.values():
+        counts[code] += 1
+    out = {
+        key: code if counts[code] == 1 else to_code(key.replace(".", "_", 1))
+        for key, code in plain.items()
+    }
+    seen: dict[str, int] = defaultdict(int)
+    for code in out.values():
+        seen[code] += 1
+    return {
+        key: code
+        if seen[code] == 1
+        else _fit(f"{code}_{_short_hash(key).upper()}", key)
+        for key, code in out.items()
+    }
+
+
+def is_personal_column(
+    stats: ColumnAnalysis, name: str, comment: str | None, values: list
+) -> bool:
+    """개인정보 컬럼. 이름·주석, 값이 사람 이름 모양, 담당·검사자처럼 사람을 적는 칸에 이름이 섞인 경우."""
+    return (
+        stats.is_personal
+        or looks_like_person_names(values)
+        or (
+            is_person_column(f"{name} {comment or ''}")
+            and any(isinstance(v, str) and looks_like_name(v) for v in values)
+        )
+    )
 
 
 def data_type(column: ColumnAnalysis, values: list[str]) -> DataType:
     declared = (column.declared_type or "").lower()
     if declared:
-        if declared.startswith(INT_TYPES):
+        if is_integer_type(declared):
             return DataType.INTEGER
         if declared.startswith(("numeric", "decimal", "float", "double", "real")):
             return DataType.DECIMAL
@@ -157,7 +287,7 @@ def classify(
     pk_out: set[str],
 ) -> tuple[str | None, str]:
     """(표 종류, 판단 이유). 종류가 None이면 객체로 내지 않는다."""
-    names = {c.ref.rsplit(".", 1)[1]: c for c in columns}
+    names = {c.column: c for c in columns}
     if "row_key" in names and "operation" in names:
         return None, "변경 대상 행 키와 작업 종류 컬럼이 있는 동기화 기록"
     pk = schema.primary_key
@@ -231,10 +361,11 @@ def propose_objects(
     analysis = analysis or analyze_sources(root)
     in_tables, pk_out = defaultdict(set), defaultdict(set)
     for link in analysis.links:
-        from_table, from_col = link.from_ref.rsplit(".", 1)
-        to_table = link.to_ref.rsplit(".", 1)[0]
+        from_table, from_col = split_ref(link.from_ref)
+        to_table, _ = split_ref(link.to_ref)
         in_tables[to_table].add(from_table)
         pk_out[from_table].add(from_col)
+    codes = type_codes(analysis.tables)
     candidates = []
     for folder in sorted(p for p in root.iterdir() if p.is_dir()):
         reader = CsvSourceReader(folder.name, folder)
@@ -243,32 +374,44 @@ def propose_objects(
             if key not in analysis.tables:
                 continue
             candidates += _table_candidates(
-                reader, folder.name, table, analysis, in_tables[key], pk_out[key]
+                reader,
+                folder.name,
+                table,
+                analysis,
+                in_tables[key],
+                pk_out[key],
+                codes[key],
             )
     return candidates
 
 
 def _table_candidates(
-    reader, source, table, analysis, in_tables, pk_out
+    reader, source, table, analysis, in_tables, pk_out, code
 ) -> list[Candidate]:
     key = f"{source}.{table}"
-    schema = reader.read_schema(table)
-    df = reader.read_rows(table)
+    schema = analysis.schemas.get(key) or reader.read_schema(table)
+    df = analysis.frames[key] if key in analysis.frames else reader.read_rows(table)
     columns = analysis.tables[key]
     values = {c.name: df[c.name].dropna().astype(str).tolist() for c in schema.columns}
     category, why = classify(schema, columns, values, in_tables, pk_out)
     if category is None:
         return []
-    code = to_code(table)
+    observed = [k for k in analysis.table_keys.get(key, []) if k.source == "observed"]
+    # 값으로 찾은 키는 중복이 하나도 없을 때만 식별 키로 쓴다. 중복이 있으면 같은 객체를 다시 찾을 수 없다
     keys = (
         schema.primary_key
-        or [
-            k.columns[0]
-            for k in analysis.table_keys.get(key, [])
-            if k.source == "observed"
-        ][:1]
+        or [k.columns[0] for k in observed if k.duplicate_rows == 0][:1]
         or observed_pair_key(df, key_like_columns(schema, columns))
     )
+    duplicated_key = next((k for k in observed if k.duplicate_rows), None)
+    no_key_reason = (
+        f"값으로 찾은 키 후보 {_cols(duplicated_key.columns)}에 중복 {duplicated_key.duplicate_rows}행이 있어 "
+        "같은 객체를 다시 찾을 수 없음"
+        if duplicated_key
+        else "식별 키를 찾지 못해 같은 객체를 다시 찾을 수 없음"
+    )
+    prop_codes = property_codes(c.name for c in schema.columns)
+    shown_code = display_name(code, table)
     name = schema.description or table
     table_evidence = Evidence(
         source_id=source,
@@ -278,7 +421,7 @@ def _table_candidates(
     out = [
         Candidate(
             candidate_id=f"OT-{key}",
-            title=f"객체 유형 {code} ({name})",
+            title=f"객체 유형 {shown_code} ({name})",
             payload=ObjectTypePayload(
                 code=code,
                 name=name,
@@ -292,16 +435,14 @@ def _table_candidates(
                 hold=None if keys else "식별 키 없음",
             ),
             review_status="PENDING" if keys else "HELD",
-            hold_reason=None
-            if keys
-            else "식별 키를 찾지 못해 같은 객체를 다시 찾을 수 없음",
+            hold_reason=None if keys else no_key_reason,
         )
     ]
     if keys:
         out.append(
             Candidate(
                 candidate_id=f"OM-{key}",
-                title=f"{code} ← {key}",
+                title=f"{shown_code} ← {key}",
                 payload=ObjectMappingPayload(
                     object_type_code=code,
                     source_id=source,
@@ -315,19 +456,13 @@ def _table_candidates(
                 confidence=score.build(score.object_mapping(bool(schema.primary_key))),
             )
         )
-    by_name = {c.ref.rsplit(".", 1)[1]: c for c in columns}
+    by_name = {c.column: c for c in columns}
     for col in schema.columns:
         stats = by_name[col.name]
         col_values = values[col.name]
+        prop = prop_codes[col.name]
         # 담당·검사자처럼 사람을 적는 칸에 이름이 섞여 있으면(부서명 사이 '홍보람') 일부만 이름이어도 개인정보로 본다
-        personal = (
-            stats.is_personal
-            or looks_like_person_names(col_values)
-            or (
-                is_person_column(f"{col.name} {col.comment or ''}")
-                and any(isinstance(v, str) and looks_like_name(v) for v in col_values)
-            )
-        )
+        personal = is_personal_column(stats, col.name, col.comment, col_values)
         dtype = data_type(stats, col_values)
         # 다른 칸에 섞인 사람 이름 모양 값은 근거·LLM 질문에 그대로 쓰지 않는다
         hint = f"{col.name} {col.comment or ''}"
@@ -337,6 +472,8 @@ def _table_candidates(
         ]
         shown = [MASK] if personal else examples
         ref = f"{key}.{col.name}"
+        # 후보 ID의 컬럼 부분에 마침표가 있으면 표를 찾는 쪽('P-원천.표.컬럼'을 뒤에서 쪼갬)이 잘못 읽어 코드를 쓴다
+        id_ref = ref if "." not in col.name else f"{key}.{prop}"
         evidence = Evidence(
             source_id=source,
             locator=ref,
@@ -352,11 +489,11 @@ def _table_candidates(
         )
         out.append(
             Candidate(
-                candidate_id=f"P-{ref}",
-                title=f"속성 {code}.{col.name}",
+                candidate_id=f"P-{id_ref}",
+                title=f"속성 {shown_code}.{col.name}",
                 payload=PropertyPayload(
                     object_type_code=code,
-                    code=col.name,
+                    code=prop,
                     name=property_name(col.name, col.comment),
                     data_type=dtype,
                     description=col.comment or "",
@@ -390,11 +527,11 @@ def _table_candidates(
         )
         out.append(
             Candidate(
-                candidate_id=f"PM-{ref}",
-                title=f"{code}.{col.name} ← {ref}",
+                candidate_id=f"PM-{id_ref}",
+                title=f"{shown_code}.{col.name} ← {ref}",
                 payload=PropertyMappingPayload(
                     object_type_code=code,
-                    property_code=col.name,
+                    property_code=prop,
                     source_column=ColumnRef(
                         source_id=source,
                         table=table,

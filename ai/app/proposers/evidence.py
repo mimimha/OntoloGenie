@@ -5,15 +5,22 @@
 
 from pathlib import Path
 
+import pandas as pd
+
 from app.models.candidate import Candidate, Evidence
+from app.proposers import confidence as score
 from app.sources.csv_reader import CsvSourceReader, UnknownTableError
+
+PARTLY_MISSING = "근거 일부를 원천에서 다시 찾지 못함"
 
 
 class SourceLookup:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, frames: dict[str, pd.DataFrame] | None = None):
         self.root = Path(root)
         self._columns: dict[str, set[str] | None] = {}
         self._values: dict[str, set[str]] = {}
+        # 같은 실행에서 이미 읽은 원천 표(분석 결과). 없으면 CSV를 읽는다
+        self._frames = dict(frames or {})
 
     def _reader(self, source: str) -> CsvSourceReader | None:
         folder = self.root / source
@@ -31,15 +38,18 @@ class SourceLookup:
         return self._columns[key]
 
     def values(self, source: str, table: str, column: str) -> set[str]:
-        key = f"{source}.{table}.{column}"
+        key = (source, table, column)
         if key not in self._values:
-            # 근거 하나를 확인하려고 표 전체를 읽지 않고 그 컬럼만 읽는다
-            df = self._reader(source).read_rows(table, columns=[column])
+            # 분석 때 읽어 둔 표가 있으면 그대로 쓰고, 없으면 표 전체를 읽지 않고 그 컬럼만 읽는다
+            df = self._frames.get(f"{source}.{table}")
+            if df is None:
+                df = self._reader(source).read_rows(table, columns=[column])
             self._values[key] = set(df[column].dropna().astype(str))
         return self._values[key]
 
     def check(self, evidence: Evidence) -> bool:
-        parts = evidence.locator.split(".")
+        # 컬럼 이름에 마침표가 있을 수 있어(spec.size) 원천·표 뒤는 더 쪼개지 않는다
+        parts = evidence.locator.split(".", 2)
         if len(parts) < 2 or parts[0] != evidence.source_id:
             return False
         source, table = parts[0], parts[1]
@@ -48,7 +58,7 @@ class SourceLookup:
             return False
         if len(parts) == 2:
             return not evidence.values
-        names = parts[2].split("+")
+        names = [parts[2]] if parts[2] in columns else parts[2].split("+")
         if any(n not in columns for n in names):
             return False
         if not evidence.values:
@@ -59,10 +69,12 @@ class SourceLookup:
 
 
 def verify(
-    root: Path, candidates: list[Candidate]
+    root: Path,
+    candidates: list[Candidate],
+    frames: dict[str, pd.DataFrame] | None = None,
 ) -> tuple[list[Candidate], list[Candidate]]:
-    """(내보낼 후보, 근거가 없어 뺀 후보)."""
-    lookup = SourceLookup(root)
+    """(내보낼 후보, 근거가 없어 뺀 후보). frames: 이미 읽은 원천 표('원천.표' → 표)."""
+    lookup = SourceLookup(root, frames)
     kept, dropped = [], []
     for candidate in candidates:
         checked = [
@@ -78,7 +90,9 @@ def verify(
             candidate = candidate.model_copy(
                 update={
                     "review_status": "HELD",
-                    "hold_reason": "근거 일부를 원천에서 다시 찾지 못함",
+                    "hold_reason": PARTLY_MISSING,
+                    # 보류는 0.6을 넘기지 않는다(confidence.HOLD_CAPS)
+                    "confidence": score.with_hold(candidate.confidence, PARTLY_MISSING),
                 }
             )
         kept.append(candidate)
