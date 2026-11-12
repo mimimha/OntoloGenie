@@ -264,6 +264,7 @@ function AnalysisTargetDialog({
   const [activeId, setActiveId] = useState<number>()
   const [selection, setSelection] = useState<Selection>({})
   const requesting = useRef(false)
+  const backdropClicked = useRef(false)
 
   const sources = useQuery({
     queryKey: ['sources', 'list'],
@@ -444,183 +445,206 @@ function AnalysisTargetDialog({
     )
   }
 
-  return (
-    <Dialog
-      title={runKind === 'REANALYSIS' ? '변경 데이터 재분석' : '분석 대상 선택'}
-      size="wide"
-      onClose={onClose}
-    >
-      <div className="mt-4 space-y-4 text-sm">
-        {runKind === 'REANALYSIS' && (
-          <p className="rounded-lg bg-amber-50 p-3 text-amber-900">
-            변경된 테이블·컬럼을 직접 선택하세요. 선택한 범위의 현재 데이터를
-            다시 분석합니다. 변경 행만 분석하는 방식은 아니며, 기존 확정 내용은
-            자동으로 변경하지 않습니다.
-          </p>
-        )}
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex w-full max-w-sm flex-col gap-2">
-            등록된 원천
-            <select
-              value={sourceId ?? ''}
-              onChange={(event) => {
-                setChosenSourceId(Number(event.target.value))
-                setActiveId(undefined)
-                setListPage(0)
-              }}
-              className={inputClass}
-            >
-              {(sources.data ?? []).map((item, index) => {
-                const count = sourceResources[index]?.data?.length
-                return (
-                  <option key={item.id} value={item.id}>
-                    {count === undefined
-                      ? item.name
-                      : `${item.name} · ${count}개 자료`}
-                  </option>
-                )
-              })}
-            </select>
-          </label>
-          <div className="ml-auto flex gap-2">
-            {source && (
-              <Button
-                variant="secondary"
-                onClick={() => onEditScope(source.id)}
-              >
-                이 원천의 수집 대상 변경
-              </Button>
-            )}
-            <Button variant="secondary" onClick={onRegister}>
-              + 원천 등록
-            </Button>
-          </div>
-        </div>
-        {missingInitialSource && (
-          <p role="status" className="text-amber-800">
-            열려던 원천을 찾을 수 없어 첫 원천을 보여 줍니다.
-          </p>
-        )}
+  // 접수 중에는 닫지 않는다(닫아도 접수가 끝나면 화면이 넘어갔다). 고른 것이 있으면 배경 클릭 한 번으로 선택을 잃지 않게 한다.
+  function close() {
+    const fromBackdrop = backdropClicked.current
+    backdropClicked.current = false
+    if (requesting.current || start.isPending) return
+    if (fromBackdrop && picked.length > 0) return
+    onClose()
+  }
 
-        <div className="grid gap-4 md:grid-cols-[16rem_1fr]">
-          <section
-            aria-label="테이블·자료 찾기"
-            className="space-y-3 rounded-lg bg-slate-50 p-3"
-          >
-            <h3 className="font-semibold text-slate-900">테이블·자료 찾기</h3>
-            <input
-              value={tableQuery}
-              onChange={(event) => {
-                setTableQuery(event.target.value)
-                setListPage(0)
-              }}
-              placeholder="테이블·자료 이름 검색"
-              aria-label="테이블·자료 이름 검색"
-              className={`${inputClass} bg-white`}
-            />
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={onlyPicked}
+  return (
+    <div
+      className="contents"
+      onClickCapture={(event) => {
+        backdropClicked.current =
+          event.target === event.currentTarget.firstElementChild
+      }}
+    >
+      <Dialog
+        title={
+          runKind === 'REANALYSIS' ? '변경 데이터 재분석' : '분석 대상 선택'
+        }
+        size="wide"
+        onClose={close}
+      >
+        <div className="mt-4 space-y-4 text-sm">
+          {runKind === 'REANALYSIS' && (
+            <p className="rounded-lg bg-amber-50 p-3 text-amber-900">
+              변경된 테이블·컬럼을 직접 선택하세요. 선택한 범위의 현재 데이터를
+              다시 분석합니다. 변경 행만 분석하는 방식은 아니며, 기존 확정
+              내용은 자동으로 변경하지 않습니다.
+            </p>
+          )}
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex w-full max-w-sm flex-col gap-2">
+              등록된 원천
+              <select
+                value={sourceId ?? ''}
                 onChange={(event) => {
-                  setOnlyPicked(event.target.checked)
+                  setChosenSourceId(Number(event.target.value))
+                  setActiveId(undefined)
                   setListPage(0)
                 }}
-              />
-              이 원천에서 선택한 자료만
+                className={inputClass}
+              >
+                {(sources.data ?? []).map((item, index) => {
+                  const count = sourceResources[index]?.data?.length
+                  return (
+                    <option key={item.id} value={item.id}>
+                      {count === undefined
+                        ? item.name
+                        : `${item.name} · ${count}개 자료`}
+                    </option>
+                  )
+                })}
+              </select>
             </label>
-            {resourceList}
-            {resources.data && shownResources.length > RESOURCE_PAGE_SIZE && (
-              <Pagination
-                page={page}
-                size={RESOURCE_PAGE_SIZE}
-                totalElements={shownResources.length}
-                onChange={setListPage}
-              />
-            )}
-          </section>
-          <section aria-label="컬럼 선택">
-            {active && source ? (
-              <ColumnPicker
-                key={active.id}
-                sourceId={source.id}
-                resource={active}
-                sourceName={source.name}
-                picked={selection[active.id]?.columns ?? []}
-                onChange={(columns, allColumns) =>
-                  pickColumns(active, columns, allColumns)
-                }
-                included={selection[active.id]?.whole ?? false}
-                onInclude={(include) => includeWhole(active, include)}
-              />
-            ) : (
-              <EmptyState message="왼쪽에서 표를 골라 주세요." />
-            )}
-          </section>
-        </div>
-
-        {start.isError && <ErrorState error={start.error} />}
-
-        {runKind === 'REANALYSIS' && (
-          <section
-            aria-label="재분석 범위 확인"
-            className="space-y-2 rounded-lg bg-slate-50 p-3"
-          >
-            <h3 className="font-semibold">재분석 범위 확인</h3>
-            {picked.length ? (
-              <ul className="space-y-2">
-                {picked.map((item) => (
-                  <li key={item.resource.id}>
-                    <p>
-                      {sources.data?.find(
-                        (source) => source.id === item.resource.dataSourceId,
-                      )?.name ?? `원천 #${item.resource.dataSourceId}`}{' '}
-                      · {item.resource.resourceKey}
-                    </p>
-                    <p className="break-words">
-                      {item.whole
-                        ? '자료 전체'
-                        : item.columns.length === item.allColumns
-                          ? '전체 컬럼'
-                          : item.columns.join(', ')}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>변경된 자료와 컬럼을 선택해 주세요.</p>
-            )}
-            <p className="text-slate-500">
-              같은 범위의 분석이 진행 중이면 기존 실행에 합류합니다.
+            <div className="ml-auto flex gap-2">
+              {source && (
+                <Button
+                  variant="secondary"
+                  onClick={() => onEditScope(source.id)}
+                >
+                  이 원천의 수집 대상 변경
+                </Button>
+              )}
+              <Button variant="secondary" onClick={onRegister}>
+                + 원천 등록
+              </Button>
+            </div>
+          </div>
+          {missingInitialSource && (
+            <p role="status" className="text-amber-800">
+              열려던 원천을 찾을 수 없어 첫 원천을 보여 줍니다.
             </p>
-          </section>
-        )}
+          )}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
-          <p aria-live="polite" className="text-slate-700">
-            {`${summary.sources}개 원천 · ${summary.tables}개 테이블 · ${summary.columns}개 컬럼 · ${summary.documents}개 문서·자료`}
-          </p>
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={onClose}>
-              취소
-            </Button>
-            <Button
-              disabled={picked.length === 0}
-              pending={start.isPending}
-              onClick={() => {
-                if (requesting.current || picked.length === 0) return
-                requesting.current = true
-                start.mutate()
-              }}
+          <div className="grid gap-4 md:grid-cols-[16rem_1fr]">
+            <section
+              aria-label="테이블·자료 찾기"
+              className="space-y-3 rounded-lg bg-slate-50 p-3"
             >
-              {runKind === 'REANALYSIS'
-                ? '재분석하고 후보 받기'
-                : '분석하고 후보 받기'}
-            </Button>
+              <h3 className="font-semibold text-slate-900">테이블·자료 찾기</h3>
+              <input
+                value={tableQuery}
+                onChange={(event) => {
+                  setTableQuery(event.target.value)
+                  setListPage(0)
+                }}
+                placeholder="테이블·자료 이름 검색"
+                aria-label="테이블·자료 이름 검색"
+                className={`${inputClass} bg-white`}
+              />
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={onlyPicked}
+                  onChange={(event) => {
+                    setOnlyPicked(event.target.checked)
+                    setListPage(0)
+                  }}
+                />
+                이 원천에서 선택한 자료만
+              </label>
+              {resourceList}
+              {resources.data && shownResources.length > RESOURCE_PAGE_SIZE && (
+                <Pagination
+                  page={page}
+                  size={RESOURCE_PAGE_SIZE}
+                  totalElements={shownResources.length}
+                  onChange={setListPage}
+                />
+              )}
+            </section>
+            <section aria-label="컬럼 선택">
+              {active && source ? (
+                <ColumnPicker
+                  key={active.id}
+                  sourceId={source.id}
+                  resource={active}
+                  sourceName={source.name}
+                  picked={selection[active.id]?.columns ?? []}
+                  onChange={(columns, allColumns) =>
+                    pickColumns(active, columns, allColumns)
+                  }
+                  included={selection[active.id]?.whole ?? false}
+                  onInclude={(include) => includeWhole(active, include)}
+                />
+              ) : (
+                <EmptyState message="왼쪽에서 표를 골라 주세요." />
+              )}
+            </section>
+          </div>
+
+          {start.isError && <ErrorState error={start.error} />}
+
+          {runKind === 'REANALYSIS' && (
+            <section
+              aria-label="재분석 범위 확인"
+              className="space-y-2 rounded-lg bg-slate-50 p-3"
+            >
+              <h3 className="font-semibold">재분석 범위 확인</h3>
+              {picked.length ? (
+                <ul className="space-y-2">
+                  {picked.map((item) => (
+                    <li key={item.resource.id}>
+                      <p>
+                        {sources.data?.find(
+                          (source) => source.id === item.resource.dataSourceId,
+                        )?.name ?? `원천 #${item.resource.dataSourceId}`}{' '}
+                        · {item.resource.resourceKey}
+                      </p>
+                      <p className="break-words">
+                        {item.whole
+                          ? '자료 전체'
+                          : item.columns.length === item.allColumns
+                            ? '전체 컬럼'
+                            : item.columns.join(', ')}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>변경된 자료와 컬럼을 선택해 주세요.</p>
+              )}
+              <p className="text-slate-500">
+                같은 범위의 분석이 진행 중이면 기존 실행에 합류합니다.
+              </p>
+            </section>
+          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+            <p aria-live="polite" className="text-slate-700">
+              {`${summary.sources}개 원천 · ${summary.tables}개 테이블 · ${summary.columns}개 컬럼 · ${summary.documents}개 문서·자료`}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                disabled={start.isPending}
+                onClick={close}
+              >
+                취소
+              </Button>
+              <Button
+                disabled={picked.length === 0}
+                pending={start.isPending}
+                onClick={() => {
+                  if (requesting.current || picked.length === 0) return
+                  requesting.current = true
+                  start.mutate()
+                }}
+              >
+                {runKind === 'REANALYSIS'
+                  ? '재분석하고 후보 받기'
+                  : '분석하고 후보 받기'}
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
-    </Dialog>
+      </Dialog>
+    </div>
   )
 }
 

@@ -11,10 +11,14 @@ import type {
   SourceUpdateRequest,
 } from './types'
 
-// 009 원천 목록 조회
+// 009 원천 목록 조회. 100개가 넘어도 모든 쪽을 받는다.
 export async function fetchSources() {
-  const body = await apiGet<Source[]>('/sources?page=0&size=100')
-  return body.data
+  const sources: Source[] = []
+  for (let page = 0; ; page += 1) {
+    const body = await apiGet<Source[]>(`/sources?page=${page}&size=100`)
+    sources.push(...body.data)
+    if (!body.meta?.hasNext) return sources
+  }
 }
 
 // 011 원천 상세 조회
@@ -75,11 +79,6 @@ export function fetchResourcePage(
   return apiGet<SourceResource[]>(
     `/sources/${sourceId}/resources?page=${page}&size=${size}`,
   )
-}
-
-export async function fetchResources(sourceId: number) {
-  const body = await fetchResourcePage(sourceId, 0, 200)
-  return body.data
 }
 
 export async function fetchAllResources(sourceId: number) {

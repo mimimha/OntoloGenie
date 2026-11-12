@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import Button from '../../components/Button'
 import Dialog from '../../components/Dialog'
+import { ApiError } from '../../api/errors'
 import { ErrorState } from '../../components/Feedback'
 import { createSource, updateSource } from './api'
 import { parseEndpoint } from './endpoint'
@@ -29,35 +30,47 @@ function formatEndpoint(config: Source['connectionConfig']) {
   return `${config.host}${config.port ? `:${config.port}` : ''}/${config.database ?? ''}`
 }
 
+// 창을 연 때(또는 최신 내용을 다시 불러온 때)의 값. 사용자가 이 값에서 바꾼 칸만 보낸다.
+function snapshot(source?: SourceDetail) {
+  const username = (purpose: AccountPurpose) =>
+    source?.credentials.find((item) => item.purpose === purpose)?.username ?? ''
+  return {
+    name: source?.name ?? '',
+    endpoint: source ? formatEndpoint(source.connectionConfig) : '',
+    usernames: { SYNC: username('SYNC'), AI: username('AI') },
+  }
+}
+
 type Props = {
   // 없으면 등록, 있으면 수정
   source?: SourceDetail
   onClose: () => void
-  onSaved: (source: Source, reconnectNeeded: boolean) => void
+  // reconnectNeeded: 접속 대상이나 계정이 바뀌어 연결을 다시 확인해야 한다. endpointChanged: 접속 대상이 바뀌었다.
+  onSaved: (
+    source: Source,
+    reconnectNeeded: boolean,
+    endpointChanged: boolean,
+  ) => void
 }
 
 // 원천 등록(010)·정보 변경(012). 비밀번호는 요청에만 담고 화면에 다시 보여 주지 않는다.
 function SourceFormDialog({ source, onClose, onSaved }: Props) {
   const queryClient = useQueryClient()
   const editing = source !== undefined
-  const [name, setName] = useState(source?.name ?? '')
+  const [opened, setOpened] = useState(() => snapshot(source))
+  const [name, setName] = useState(opened.name)
   const [code, setCode] = useState(source?.code ?? '')
   const [kind, setKind] = useState<SourceKind>(source?.sourceKind ?? 'POSTGRES')
-  const [endpoint, setEndpoint] = useState(
-    source ? formatEndpoint(source.connectionConfig) : '',
-  )
+  const [endpoint, setEndpoint] = useState(opened.endpoint)
   const [accounts, setAccounts] = useState<
     Record<AccountPurpose, { username: string; password: string }>
-  >(() => {
-    const username = (purpose: AccountPurpose) =>
-      source?.credentials.find((item) => item.purpose === purpose)?.username ??
-      ''
-    return {
-      SYNC: { username: username('SYNC'), password: '' },
-      AI: { username: username('AI'), password: '' },
-    }
-  })
+  >(() => ({
+    SYNC: { username: opened.usernames.SYNC, password: '' },
+    AI: { username: opened.usernames.AI, password: '' },
+  }))
   const [formError, setFormError] = useState('')
+  // 다른 곳에서 먼저 바뀌어(409) 최신 내용을 다시 불러왔다
+  const [reloaded, setReloaded] = useState(false)
   const usesDatabase = kind === 'POSTGRES'
 
   const save = useMutation({
@@ -65,10 +78,11 @@ function SourceFormDialog({ source, onClose, onSaved }: Props) {
       const config = usesDatabase ? parseEndpoint(endpoint) : {}
       const credentials: CredentialInput[] = []
       for (const purpose of usesDatabase ? purposes : []) {
-        const account = accounts[purpose]
-        const before = source?.credentials.find(
-          (item) => item.purpose === purpose,
-        )?.username
+        const account = {
+          username: accounts[purpose].username.trim(),
+          password: accounts[purpose].password,
+        }
+        const before = opened.usernames[purpose]
         // 수정에서는 비밀번호를 새로 넣은 계정만 바꾼다.
         if (!editing || account.password) {
           credentials.push({ purpose, ...account })
@@ -88,24 +102,52 @@ function SourceFormDialog({ source, onClose, onSaved }: Props) {
             credentials,
           }),
           reconnectNeeded: false,
+          endpointChanged: false,
         }
       }
       const configChanged =
-        usesDatabase &&
-        formatEndpoint(config ?? {}) !== formatEndpoint(source.connectionConfig)
+        usesDatabase && formatEndpoint(config ?? {}) !== opened.endpoint
       return {
         saved: await updateSource(source.id, {
           rowVersion: source.rowVersion,
-          ...(name.trim() !== source.name ? { name: name.trim() } : {}),
+          ...(name.trim() !== opened.name ? { name: name.trim() } : {}),
           ...(configChanged ? { connectionConfig: config ?? {} } : {}),
           ...(credentials.length ? { credentials } : {}),
         }),
         reconnectNeeded: configChanged || credentials.length > 0,
+        endpointChanged: configChanged,
       }
     },
-    onSuccess: ({ saved, reconnectNeeded }) => {
+    onMutate: () => setReloaded(false),
+    onSuccess: ({ saved, reconnectNeeded, endpointChanged }) => {
       void queryClient.invalidateQueries({ queryKey: ['sources'] })
-      onSaved(saved, reconnectNeeded)
+      onSaved(saved, reconnectNeeded, endpointChanged)
+    },
+    // 다른 곳에서 먼저 저장했으면(rowVersion 충돌) 최신 내용을 받아 와야 같은 창에서 다시 저장할 수 있다.
+    onError: async (error) => {
+      if (!editing || !(error instanceof ApiError) || error.status !== 409)
+        return
+      const key = ['sources', source.id, 'detail']
+      await queryClient.invalidateQueries({ queryKey: key })
+      const latest = queryClient.getQueryData<SourceDetail>(key)
+      if (latest) {
+        // 손대지 않은 칸은 최신 값으로 바꿔, 다시 저장할 때 다른 곳에서 바꾼 값을 옛 값으로 되돌리지 않는다
+        const next = snapshot(latest)
+        if (name === opened.name) setName(next.name)
+        if (endpoint === opened.endpoint) setEndpoint(next.endpoint)
+        setAccounts((current) => ({
+          SYNC:
+            current.SYNC.username === opened.usernames.SYNC
+              ? { ...current.SYNC, username: next.usernames.SYNC }
+              : current.SYNC,
+          AI:
+            current.AI.username === opened.usernames.AI
+              ? { ...current.AI, username: next.usernames.AI }
+              : current.AI,
+        }))
+        setOpened(next)
+      }
+      setReloaded(true)
     },
   })
 
@@ -242,6 +284,12 @@ function SourceFormDialog({ source, onClose, onSaved }: Props) {
           </p>
         )}
         {save.isError && <ErrorState error={save.error} />}
+        {save.isError && reloaded && (
+          <p role="status" className="text-slate-700">
+            다른 곳에서 바뀐 내용을 불러왔습니다. 입력한 내용을 확인하고 다시
+            저장해 주세요.
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
             취소

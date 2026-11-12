@@ -160,35 +160,37 @@ export function readDocumentLink(proposal: Proposal): DocumentLink {
 export type Segment = { text: string; mark?: 'mention' | 'time' | Assertion }
 
 // 원문을 언급·관찰 표현·시각 위치로 나눈다. 겹치는 구간은 먼저 나온 것만 표시한다.
+// AI가 주는 위치는 파이썬 문자열 기준(코드 포인트)이라 UTF-16 단위로 자르면 이모지 뒤 강조가 밀린다. 코드 포인트로 자른다.
 export function splitOriginal(link: DocumentLink): Segment[] {
-  const source = link.originalText ?? ''
+  const chars = Array.from(link.originalText ?? '')
+  const slice = (start: number, end?: number) =>
+    chars.slice(start, end).join('')
   const marks: { start: number; end: number; mark: Segment['mark'] }[] = []
   if (
     link.spanStart !== undefined &&
     link.spanEnd !== undefined &&
-    link.spanEnd <= source.length
+    link.spanEnd <= chars.length
   )
     marks.push({ start: link.spanStart, end: link.spanEnd, mark: 'mention' })
   for (const item of link.observations)
-    if (item.spanEnd <= source.length)
+    if (item.spanEnd <= chars.length)
       marks.push({
         start: item.spanStart,
         end: item.spanEnd,
         mark: item.assertion,
       })
   for (const item of link.times)
-    if (item.spanEnd <= source.length)
+    if (item.spanEnd <= chars.length)
       marks.push({ start: item.spanStart, end: item.spanEnd, mark: 'time' })
   marks.sort((a, b) => a.start - b.start)
   const segments: Segment[] = []
   let cursor = 0
   for (const item of marks) {
     if (item.start < cursor) continue
-    if (item.start > cursor)
-      segments.push({ text: source.slice(cursor, item.start) })
-    segments.push({ text: source.slice(item.start, item.end), mark: item.mark })
+    if (item.start > cursor) segments.push({ text: slice(cursor, item.start) })
+    segments.push({ text: slice(item.start, item.end), mark: item.mark })
     cursor = item.end
   }
-  if (cursor < source.length) segments.push({ text: source.slice(cursor) })
+  if (cursor < chars.length) segments.push({ text: slice(cursor) })
   return segments
 }

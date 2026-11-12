@@ -145,19 +145,24 @@ export default function ProposalsPage() {
     (item) =>
       !filters.reviewStatus || item.reviewStatus === filters.reviewStatus,
   )
-  const objectCount = statusItems.filter(isObjectProposal).length
-  const mappingCount = statusItems.length - objectCount
-  const group =
-    params.get('group') ?? (all.some(isObjectProposal) ? 'objects' : 'mappings')
   const search = params.get('q') ?? ''
-  const filtered = statusItems.filter(
+  // 유형 탭 개수와 아래 목록이 같은 조건(출처·반영 상태·검색)을 쓴다. 유형 조건만 빼고 센다.
+  const typeItems = statusItems.filter(
     (item) =>
       (!filters.origin || item.origin === filters.origin) &&
-      (!filters.itemKind
-        ? isObjectProposal(item) === (group === 'objects')
-        : item.itemKind === filters.itemKind) &&
       (!filters.applyStatus || item.applyStatus === filters.applyStatus) &&
       matchesProposal(item, search),
+  )
+  const objectCount = typeItems.filter(isObjectProposal).length
+  const mappingCount = typeItems.length - objectCount
+  // 기본 유형은 고른 검토 상태 안에 객체 후보가 있는지로 정한다(전체 기준이면 빈 목록이 열렸다).
+  const group =
+    params.get('group') ??
+    (statusItems.some(isObjectProposal) ? 'objects' : 'mappings')
+  const filtered = typeItems.filter((item) =>
+    !filters.itemKind
+      ? isObjectProposal(item) === (group === 'objects')
+      : item.itemKind === filters.itemKind,
   )
   const pageValue = Number(params.get('page') ?? 0)
   const requestedPage =
