@@ -11,6 +11,8 @@ import java.util.Objects;
  * 질문에서 뽑은 조회 조건(142). AI 출력을 서버에서 검사한 뒤의 값이다. 답변의 answerMeta.conditions로 저장해 다음 질문 때 읽는다(대화방 상태,
  * 2026-11-04 결정). referenceObjects는 이 답변이 대상으로 삼은 객체다(147). kinds는 특정 대상이 아니라 "전체 설비"처럼 종류 전체를 물을
  * 때의 종류 이름이다(147). scope는 질문이 Agent가 다루는 범위인가이며, 해석 직후에만 본다. 조건을 합치거나 바꾸면 업무(BUSINESS)로 둔다.
+ * propertyValues는 "진행 중", "1라인", "가이드 마모"처럼 조회 조건으로 말한 속성값이다(360). 어느 속성의 값인지는 답변 AI가 목록·관계 결과의 속성
+ * 정보로 맞춘다.
  */
 public record QuestionInterpretation(
         String purpose,
@@ -20,10 +22,29 @@ public record QuestionInterpretation(
         List<AgentReferenceObject> referenceObjects,
         String vaguePeriod,
         List<String> kinds,
-        QuestionScope scope) {
+        QuestionScope scope,
+        List<String> propertyValues) {
 
     public QuestionInterpretation {
         scope = scope == null ? QuestionScope.BUSINESS : scope;
+        propertyValues = propertyValues == null ? List.of() : List.copyOf(propertyValues);
+    }
+
+    private static boolean sameValue(String left, String right) {
+        return left.replaceAll("\\s+", "").equalsIgnoreCase(right.replaceAll("\\s+", ""));
+    }
+
+    /** 속성 조건이 없는 해석. */
+    public QuestionInterpretation(
+            String purpose,
+            List<String> targets,
+            LocalDate from,
+            LocalDate to,
+            List<AgentReferenceObject> referenceObjects,
+            String vaguePeriod,
+            List<String> kinds,
+            QuestionScope scope) {
+        this(purpose, targets, from, to, referenceObjects, vaguePeriod, kinds, scope, List.of());
     }
 
     /** 업무 질문의 해석. */
@@ -87,10 +108,18 @@ public record QuestionInterpretation(
 
     /**
      * 되물은 뒤 받은 답과 합친다(143). 이번 답에서 새로 확인한 값만 이전 조건을 덮는다. "전체 설비로"처럼 종류 전체로 답하면 이전 대상과 객체는 쓰지 않는다
-     * (147).
+     * (147). 되묻기의 답은 새로 알려 준 값만 담으므로 속성 조건은 이전 값에 더한다(360).
      */
     public QuestionInterpretation fillFrom(QuestionInterpretation previous) {
         boolean wholeKind = !kinds.isEmpty();
+        List<String> mergedValues = new ArrayList<>(previous.propertyValues);
+        for (String value : propertyValues) {
+            // 띄어쓰기만 다른 값("진행 중"·"진행중")은 같은 조건으로 보고 한 번만 둔다. 해석 결과와 같은 개수 상한을 지킨다.
+            boolean known = mergedValues.stream().anyMatch(kept -> sameValue(kept, value));
+            if (!known && mergedValues.size() < QuestionInterpreter.MAX_TARGETS) {
+                mergedValues.add(value);
+            }
+        }
         return new QuestionInterpretation(
                 purpose != null ? purpose : previous.purpose,
                 !targets.isEmpty() || wholeKind ? targets : previous.targets,
@@ -100,13 +129,18 @@ public record QuestionInterpretation(
                         ? referenceObjects
                         : previous.referenceObjects,
                 vaguePeriod != null ? vaguePeriod : previous.vaguePeriod,
-                namesSubject() ? kinds : previous.kinds);
+                namesSubject() ? kinds : previous.kinds,
+                QuestionScope.BUSINESS,
+                mergedValues);
     }
 
     /**
      * 같은 대화의 후속 질문을 직전 답변의 조건에 이어 붙인다(147). 이번 질문에서 새로 말한 값만 바꾸고 나머지는 이어 쓴다. 대상을 새로 말하면 이전 대상과 참고
      * 객체를 함께 버린다. 다른 대상을 물었는데 이전 객체로 답하지 않게 하기 위해서다. "전체 설비"처럼 종류 전체를 물어도 이전 대상을 잇지 않는다. "최근"처럼 범위
      * 없는 기간을 말하면 이전 기간을 쓰지 않고 되묻는다.
+     *
+     * <p>속성 조건(360)은 해석이 이번 질문에 적용할 값을 모두 적는다("그중 1라인만" → 이전의 "진행"과 새 "1라인"). 그래서 값이 있으면 그대로 쓰고,
+     * 없으면 이전 값을 잇는다. 새 대상·종류를 물으면 이전 속성 조건은 잇지 않는다.
      */
     public QuestionInterpretation continueFrom(QuestionInterpretation previous) {
         boolean newSubject = namesSubject();
@@ -118,18 +152,22 @@ public record QuestionInterpretation(
                 keepPeriod ? previous.to : to,
                 newSubject ? referenceObjects : previous.referenceObjects,
                 vaguePeriod,
-                newSubject ? kinds : previous.kinds);
+                newSubject ? kinds : previous.kinds,
+                QuestionScope.BUSINESS,
+                newSubject || !propertyValues.isEmpty() ? propertyValues : previous.propertyValues);
     }
 
     /** 서버가 찾은 대상 객체로 바꾼다(147). */
     public QuestionInterpretation withReferenceObjects(List<AgentReferenceObject> found) {
-        return new QuestionInterpretation(purpose, targets, from, to, found, vaguePeriod, kinds);
+        return new QuestionInterpretation(
+                purpose, targets, from, to, found, vaguePeriod, kinds, scope, propertyValues);
     }
 
     /** 대상 이름과 객체를 함께 바꾼다. 되물은 대상만 채울 때 쓴다(147). */
     public QuestionInterpretation withTargets(
             List<String> newTargets, List<AgentReferenceObject> found) {
-        return new QuestionInterpretation(purpose, newTargets, from, to, found, vaguePeriod, kinds);
+        return new QuestionInterpretation(
+                purpose, newTargets, from, to, found, vaguePeriod, kinds, scope, propertyValues);
     }
 
     /**
@@ -148,6 +186,7 @@ public record QuestionInterpretation(
                 "referenceObjects",
                 referenceObjects.stream().map(AgentReferenceObject::toMap).toList());
         conditions.put("kinds", kinds);
+        conditions.put("propertyValues", propertyValues);
         return conditions;
     }
 
@@ -174,7 +213,9 @@ public record QuestionInterpretation(
                 date(period.get("to")),
                 references(conditions),
                 text(clarification.get("vaguePeriod")),
-                strings(conditions.get("kinds")));
+                strings(conditions.get("kinds")),
+                QuestionScope.BUSINESS,
+                strings(conditions.get("propertyValues")));
     }
 
     private static List<AgentReferenceObject> references(Map<?, ?> conditions) {

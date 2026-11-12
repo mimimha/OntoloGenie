@@ -55,8 +55,13 @@ public class AgentResponder {
               조건에 맞는 목록·건수를 물으면 객체 목록 조회로 답한다.
             - "현재", "지금"은 목록을 거를 기간이 아니라 지금 상태를 묻는 말이다. "확인한 조건"에 기간이 있어도 사용자가 질문에서 날짜·기간을
               말했을 때만 객체 목록 조회에 기간 조건을 넣는다.
+            - 목록 질문("종류 전체"가 있음)은 객체 목록 조회를 먼저 조건 없이 한 번 불러 properties(속성 코드·자료형·values)를 받은 뒤,
+              "확인한 조건"의 속성 조건과 기간을 넣어 다시 부른다. 속성 값은 values의 저장 값을 쓴다(띄어쓰기·표현만 다르면 같은 값: "진행 중"=
+              "진행", "정비 중"="정비중"). 기간은 질문에 맞는 날짜 속성(dateProperty)으로 거른다(예: "시작 예정"은 계획 시작일). 0건이면 넣은 값이
+              values에 있는지 다시 확인한다. 같은 뜻의 값이 없으면 지어내지 않고 있는 값을 알려 준다.
+            - "종류 전체"가 비어 있고 "참고 객체"가 있으면 속성 조건은 그 객체에 연결된 기록에서 확인한다. 객체 목록 조회로 유형 전체를 거르지 않는다.
             - 객체 목록 결과의 total이 전체 건수다. objects가 total보다 적으면 "전체 N건 중 M건"처럼 일부만 보여 준다는 것을 함께 말한다.
-              어떤 조건으로 찾았는지(유형·속성 값·기간)도 다시 말한다.
+              어떤 조건으로 찾았는지(유형·속성 값·기간)도 다시 말한다. 기준 시점이 있으면 함께 말한다.
             - 질문의 대상은 "참고 객체"로 이미 정해져 있다. 그 밖의 객체를 이름이나 코드로만 알면 객체 검색으로 먼저 찾는다. 후보가 여럿이면 어느 것인지 되묻는다.
             - 모델 요약은 사용자가 객체 유형이나 관계 유형을 이름으로 말해 그 유형으로 좁혀야 할 때만 부른다. 이름·코드로 객체를 찾거나 관계를 모두 볼 때는 부르지 않는다.
               유형 ID는 모델 요약 결과에 나온 값만 쓰고 지어내지 않는다.
@@ -199,7 +204,7 @@ public class AgentResponder {
                         : "되물은 내용: " + askedClarification + "\n사용자의 답: " + question;
         return """
                 현재 시각: %s
-                확인한 조건: 목적=%s, 대상=%s, 종류 전체=%s, 기간=%s, 참고 객체 ID=%s, 참고 객체=%s
+                확인한 조건: 목적=%s, 대상=%s, 종류 전체=%s, 속성 조건=%s, 기간=%s, 참고 객체 ID=%s, 참고 객체=%s
                 %s"""
                 .formatted(
                         OffsetDateTime.now(clock.withZone(USER_ZONE))
@@ -207,6 +212,7 @@ public class AgentResponder {
                         interpretation.purpose(),
                         interpretation.targets(),
                         interpretation.kinds(),
+                        interpretation.propertyValues(),
                         interpretation.hasPeriod()
                                 ? interpretation.from() + " ~ " + interpretation.to()
                                 : "없음",

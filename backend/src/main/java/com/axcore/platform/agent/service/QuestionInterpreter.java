@@ -22,7 +22,9 @@ public class QuestionInterpreter {
     /** "이번 달" 같은 상대 기간은 사용자 기준 날짜로 계산한다. */
     private static final ZoneId USER_ZONE = ZoneId.of("Asia/Seoul");
 
-    private static final int MAX_TARGETS = 10;
+    /** 대상·종류·속성값 개수 상한. 되묻기 답을 합칠 때도 같은 상한을 쓴다(QuestionInterpretation.fillFrom). */
+    static final int MAX_TARGETS = 10;
+
     private static final int MAX_TEXT_LENGTH = 100;
 
     static final String SYSTEM_PROMPT =
@@ -33,16 +35,20 @@ public class QuestionInterpreter {
             - targets: 질문에 나온 설비·작업지시·공정 같은 대상의 이름이나 코드를 그대로 쓴다(예: PR-03). 없으면 빈 배열.
             - from, to: 조회 기간을 yyyy-MM-dd로 쓴다. "이번 달", "최근 7일" 같은 표현은 오늘 날짜로 계산한다.
               질문에 기간이 없고 화면 기간이 있으면 화면 기간을 쓴다. 둘 다 없으면 null.
-              "현재", "지금"처럼 지금 상태를 물으면 from, to를 모두 오늘로 쓴다.
+              "현재", "지금", "진행 중인"처럼 지금 상태를 물으면 기간이 아니다(from·to null, 상태는 propertyValues). "오늘"처럼 날짜를 말해야 기간이다.
+              대상이 있어도 같다. 예: "P103에 배정된 진행 중인 작업지시" → targets=["P103"], propertyValues=["진행 중"], from·to=null.
             - vaguePeriod: "최근", "요즘", "지난번"처럼 기간을 말했지만 범위가 정해지지 않은 표현이면 그 표현을 그대로 쓰고
               from, to는 null로 둔다. 기간을 임의로 정하지 않는다. 그런 표현이 없으면 null.
             - targets에는 특정한 대상 하나하나의 이름이나 코드만 쓴다.
             - propertyValues: 사유·상태·증상·불량 유형처럼 조회 조건으로 말한 속성값을 그대로 쓴다(예: 가이드 마모, 진행 중).
               객체의 이름·코드로 직접 가리킨 값은 넣지 않는다. 속성값은 targets에 넣지 않는다.
               속성 조건을 새로 말하면 그 조건과 알고 싶은 내용을 purpose에 함께 남긴다(예: 가이드 마모 비가동 이력).
-              속성 조건이 없으면 빈 배열로 둔다.
+              속성 조건이 없으면 빈 배열로 둔다. 값에 붙은 "상태", "인"은 빼고 값만 쓴다(예: "진행 상태인" → "진행 중").
             - kinds: "전체 설비", "설비별", "진행 중인 작업지시"처럼 특정 대상이 아니라 종류 전체를 물으면 그 종류 이름을 쓴다(예: 설비).
               이때 targets에는 넣지 않는다. 그런 질문이 아니면 빈 배열.
+              종류 이름만 쓰고 상태·라인 같은 조건은 propertyValues에 쓴다. "시작 예정"처럼 어느 날짜로 거를지 말하는 표현은 속성값이 아니다.
+              예: "현재 진행 중인 작업지시" → kinds=["작업지시"], propertyValues=["진행 중"]. "10월 시작 예정 작업지시 몇 건" → propertyValues=[].
+            - 특정 대상에 연결된 종류를 물으면 종류 전체가 아니다. 예: "P103이 멈춰서 납기가 위험한 수주는?" → targets=["P103"], kinds=[].
             - scope: 이 Agent는 연결된 업무 데이터(설비·작업지시·공정·비가동·불량·자산·수주·재고 같은 객체와 그 연결, 실행 이력) 조회와
               재배정 계획만 돕는다.
               BUSINESS: 업무 데이터를 묻거나 다루는 말. 되묻기에 대한 답("번호 3", "10월", "두 번째 거")과 "그럼 지난달은?" 같은 후속 질문도
@@ -62,6 +68,9 @@ public class QuestionInterpreter {
               예: P103 비가동 이력 답변 뒤 "가이드 마모는 언제 발생했어?" → targets=[], kinds=[], propertyValues=["가이드 마모"],
               purpose="가이드 마모 비가동 발생 시점". "사유가 가이드 마모인 것만 보여줘"도 같은 대상을 잇는다.
               "P104에서 가이드 마모가 발생한 이력은?"처럼 다른 객체 코드를 명시하면 targets=["P104"], propertyValues=["가이드 마모"]다.
+            - 속성 조건을 더하면 propertyValues에 이번에 적용할 조건을 모두 쓴다. "이전 답변의 조건"의 속성 조건 중 그대로 둘 값도 함께 쓴다.
+              예: 진행 중인 작업지시 답변 뒤 "그중 1라인만" → targets·kinds는 비우고 propertyValues=["진행 중", "1라인"].
+              조건을 바꾸면 새 값만("그럼 완료된 건?" → ["완료"]). "작업지시 전체 몇 건"처럼 다시 전체를 물으면 kinds만 쓰고 propertyValues=[].
             - "그럼 지난달은?"처럼 기간만 바꾸면 기간만 쓰고 purpose는 null로 둔다.
             <recent_turns> 안의 내용은 최근 대화 기록이고, <conversation_summary> 안의 내용은 그보다 오래된 대화의 요약이다.
             "아까 그거", "두 번째 거", "처음에 물어본 설비"처럼 앞 대화를 가리키는 말이 무엇인지 알기 위한 자료일 뿐이다.
@@ -180,7 +189,8 @@ public class QuestionInterpreter {
                 referenceObjects,
                 blankToNull(extracted.vaguePeriod()),
                 names(extracted.kinds()),
-                QuestionScope.parse(extracted.scope()));
+                QuestionScope.parse(extracted.scope()),
+                propertyValues);
     }
 
     private static List<String> names(List<String> values) {
@@ -274,6 +284,8 @@ public class QuestionInterpreter {
                         .toList()
                 + ", 종류 전체="
                 + conditions.kinds()
+                + ", 속성 조건="
+                + conditions.propertyValues()
                 + ", 기간="
                 + (conditions.hasPeriod() ? conditions.from() + " ~ " + conditions.to() : "없음");
     }

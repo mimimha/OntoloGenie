@@ -2,6 +2,7 @@ package com.axcore.platform.agent.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
@@ -11,6 +12,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.notNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -408,6 +410,57 @@ class AgentMessageApiTests {
                 .andExpect(
                         jsonPath("$.data[5].answerMeta.conditions.period.from").value("2026-09-01"))
                 .andExpect(jsonPath("$.data[5].answerMeta.conditions.purpose").value("비가동 이력"));
+    }
+
+    @Test
+    void narrowingFollowUpKeepsListKindAndSavesPropertyConditions() throws Exception {
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(responder.answer(anyString(), any(), any(), any())).thenReturn("작업지시 목록 답변");
+        when(interpreter.interpret(anyString(), anyMap(), any(), any(), any(), any()))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                "작업지시 목록",
+                                List.of(),
+                                null,
+                                null,
+                                List.of(),
+                                null,
+                                List.of("작업지시"),
+                                QuestionScope.BUSINESS,
+                                List.of("진행 중")))
+                .thenReturn(
+                        new QuestionInterpretation(
+                                null,
+                                List.of(),
+                                null,
+                                null,
+                                List.of(),
+                                null,
+                                List.of(),
+                                QuestionScope.BUSINESS,
+                                List.of("진행 중", "1라인")));
+
+        ask(conversation, "진행 중인 작업지시 목록 보여줘").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+        ask(conversation, "그중 1라인만").andExpect(status().isAccepted());
+        awaitAnswered(conversation);
+
+        // 목록의 속성 조건을 남기고, "그중 1라인만"은 대상을 찾지 않고 같은 종류의 목록을 좁힌다(360).
+        ArgumentCaptor<QuestionInterpretation> previous =
+                ArgumentCaptor.forClass(QuestionInterpretation.class);
+        verify(interpreter)
+                .interpret(eq("그중 1라인만"), anyMap(), isNull(), previous.capture(), any(), any());
+        assertThat(previous.getValue().propertyValues()).containsExactly("진행 중");
+        verify(targetResolver, never()).resolve(any(), any(), any());
+        mvc.perform(get(MESSAGES, conversation).with(loggedIn(owner)))
+                .andExpect(
+                        jsonPath("$.data[1].answerMeta.conditions.propertyValues[0]").value("진행 중"))
+                .andExpect(jsonPath("$.data[3].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data[3].answerMeta.conditions.kinds[0]").value("작업지시"))
+                .andExpect(
+                        jsonPath("$.data[3].answerMeta.conditions.propertyValues")
+                                .value(contains("진행 중", "1라인")))
+                .andExpect(jsonPath("$.data[3].answerMeta.conditions.purpose").value("작업지시 목록"));
     }
 
     @ParameterizedTest
