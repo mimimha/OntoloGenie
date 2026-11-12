@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.axcore.platform.TestcontainersConfiguration;
 import com.jayway.jsonpath.JsonPath;
 import jakarta.servlet.http.Cookie;
+import java.sql.Types;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -197,6 +198,29 @@ class ObjectTypeApiTests {
     }
 
     @Test
+    void marksMappedTablesForReloadOnlyWhenDisplayPropertyChanges() throws Exception {
+        LoginSession admin = loginAs("ADMIN");
+        long typeId = createObjectType(admin, uniqueCode());
+        long propertyId = insertProperty(typeId);
+        long mappedTable = insertCdcTable(100L);
+        long stoppedTable = insertCdcTable(200L);
+        insertMapping(mappedTable, typeId, true);
+        insertMapping(stoppedTable, typeId, false);
+
+        send(admin, patch(BASE_PATH + "/" + typeId), "{\"name\": \"프레스 설비\", \"rowVersion\": 0}")
+                .andExpect(status().isOk());
+        assertThat(loadedLsn(mappedTable)).isEqualTo(100L);
+
+        send(
+                        admin,
+                        patch(BASE_PATH + "/" + typeId),
+                        "{\"displayPropertyId\": %d, \"rowVersion\": 1}".formatted(propertyId))
+                .andExpect(status().isOk());
+        assertThat(loadedLsn(mappedTable)).isNull();
+        assertThat(loadedLsn(stoppedTable)).isEqualTo(200L);
+    }
+
+    @Test
     void rejectsRestrictedPropertyAsDisplayProperty() throws Exception {
         LoginSession admin = loginAs("ADMIN");
         long typeId = createObjectType(admin, uniqueCode());
@@ -262,6 +286,54 @@ class ObjectTypeApiTests {
                 .param("objectTypeId", objectTypeId)
                 .query(Long.class)
                 .single();
+    }
+
+    private long insertCdcTable(Long loadedLsn) {
+        long source =
+                jdbcClient
+                        .sql(
+                                """
+                                insert into data_source (code, name, source_kind)
+                                values (:code, 'MES', 'POSTGRES') returning id
+                                """)
+                        .param("code", uniqueCode())
+                        .query(Long.class)
+                        .single();
+        return jdbcClient
+                .sql(
+                        """
+                        insert into source_resource
+                            (data_source_id, resource_key, resource_kind, is_readable, sync_strategy, loaded_lsn)
+                        values (:source, 'mes.equipment', 'TABLE', true, 'CDC', :lsn)
+                        returning id
+                        """)
+                .param("source", source)
+                .param("lsn", loadedLsn, Types.BIGINT)
+                .query(Long.class)
+                .single();
+    }
+
+    private void insertMapping(long resourceId, long objectTypeId, boolean active) {
+        jdbcClient
+                .sql(
+                        """
+                        insert into object_source_mapping
+                            (source_resource_id, object_type_id, key_columns, is_active)
+                        values (:resource, :type, '["code"]'::jsonb, :active)
+                        """)
+                .param("resource", resourceId)
+                .param("type", objectTypeId)
+                .param("active", active)
+                .update();
+    }
+
+    private Long loadedLsn(long resourceId) {
+        return jdbcClient
+                .sql("select loaded_lsn from source_resource where id = :id")
+                .param("id", resourceId)
+                .query((rs, row) -> rs.getObject(1, Long.class))
+                .list()
+                .getFirst();
     }
 
     private ResultActions send(

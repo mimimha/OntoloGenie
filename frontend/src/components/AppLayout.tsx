@@ -11,6 +11,7 @@ const userMenus = [
 
 const adminMenus = [
   { to: '/admin/sources', label: '데이터 연결' },
+  { to: '/admin/object-types', label: '객체 유형' },
   { to: '/admin/rules', label: '연결 규칙' },
   { to: '/admin/actions', label: 'Action 정의' },
 ]

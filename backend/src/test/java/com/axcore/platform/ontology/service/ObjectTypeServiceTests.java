@@ -5,13 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
+import com.axcore.platform.mapping.repository.ObjectSourceMappingRepository;
 import com.axcore.platform.ontology.domain.ObjectType;
 import com.axcore.platform.ontology.domain.PropertyDefinition;
 import com.axcore.platform.ontology.domain.PropertySensitivity;
@@ -21,10 +24,13 @@ import com.axcore.platform.ontology.dto.ObjectTypeUpdateRequest;
 import com.axcore.platform.ontology.repository.DefinitionReferenceRepository;
 import com.axcore.platform.ontology.repository.ObjectTypeRepository;
 import com.axcore.platform.ontology.repository.PropertyDefinitionRepository;
+import com.axcore.platform.source.domain.SourceResource;
+import com.axcore.platform.source.service.SourceCatalogService;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -44,6 +50,10 @@ class ObjectTypeServiceTests {
     @Mock PropertyDefinitionRepository propertyDefinitionRepository;
 
     @Mock DefinitionReferenceRepository referenceRepository;
+
+    @Mock ObjectSourceMappingRepository mappingRepository;
+
+    @Mock SourceCatalogService catalogService;
 
     @InjectMocks ObjectTypeService objectTypeService;
 
@@ -151,6 +161,64 @@ class ObjectTypeServiceTests {
         var response = objectTypeService.update(TYPE_ID, displayProperty(21L));
 
         assertThat(response.displayPropertyId()).isEqualTo(21L);
+    }
+
+    @Test
+    void marksMappedTablesForReloadWhenDisplayPropertyChanges() {
+        givenObjectType(existing(null));
+        SourceResource first = mock(SourceResource.class);
+        SourceResource second = mock(SourceResource.class);
+        given(mappingRepository.findActiveSourceResourceIds(TYPE_ID)).willReturn(List.of(5L, 7L));
+        given(catalogService.lockResource(5L)).willReturn(Optional.of(first));
+        given(catalogService.lockResource(7L)).willReturn(Optional.of(second));
+        PropertyDefinition property = property(TYPE_ID, PropertySensitivity.NORMAL);
+        given(propertyDefinitionRepository.findForUpdate(21L)).willReturn(Optional.of(property));
+
+        objectTypeService.update(TYPE_ID, displayProperty(21L));
+
+        InOrder order = inOrder(catalogService, propertyDefinitionRepository);
+        order.verify(catalogService).lockResource(5L);
+        order.verify(catalogService).lockResource(7L);
+        order.verify(propertyDefinitionRepository).findForUpdate(21L);
+        verify(catalogService).requireFullReload(first);
+        verify(catalogService).requireFullReload(second);
+    }
+
+    @Test
+    void marksMappedTablesForReloadWhenDisplayPropertyIsCleared() {
+        givenObjectType(existing(21L));
+        SourceResource resource = mock(SourceResource.class);
+        given(mappingRepository.findActiveSourceResourceIds(TYPE_ID)).willReturn(List.of(5L));
+        given(catalogService.lockResource(5L)).willReturn(Optional.of(resource));
+
+        objectTypeService.update(TYPE_ID, displayProperty(null));
+
+        verify(catalogService).requireFullReload(resource);
+        verify(propertyDefinitionRepository, never()).findForUpdate(anyLong());
+    }
+
+    @Test
+    void doesNotReloadWhenDisplayPropertyStaysTheSame() {
+        givenObjectType(existing(21L));
+
+        objectTypeService.update(TYPE_ID, displayProperty(21L));
+        objectTypeService.update(TYPE_ID, rename("프레스 설비", 0L));
+
+        verifyNoInteractions(mappingRepository, catalogService);
+    }
+
+    @Test
+    void doesNotReloadWhenDisplayPropertyIsRejected() {
+        givenObjectType(existing(null));
+        SourceResource resource = mock(SourceResource.class);
+        given(mappingRepository.findActiveSourceResourceIds(TYPE_ID)).willReturn(List.of(5L));
+        given(catalogService.lockResource(5L)).willReturn(Optional.of(resource));
+        PropertyDefinition property = property(TYPE_ID, PropertySensitivity.RESTRICTED);
+        given(propertyDefinitionRepository.findForUpdate(21L)).willReturn(Optional.of(property));
+
+        assertThatThrownBy(() -> objectTypeService.update(TYPE_ID, displayProperty(21L)))
+                .isInstanceOf(BusinessException.class);
+        verify(catalogService, never()).requireFullReload(any());
     }
 
     @Test
