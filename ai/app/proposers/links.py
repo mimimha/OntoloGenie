@@ -18,7 +18,7 @@ from app.analyzers.structured import (
     analyze_sources,
     value_pattern,
 )
-from app.llm.privacy import mask_value
+from app.llm.privacy import MASK, mask_value
 from app.models.candidate import (
     Candidate,
     Evidence,
@@ -1190,6 +1190,10 @@ def _cardinality(rel: Relation, tables: Tables) -> str:
         return "MANY_TO_MANY"
     df = tables.frames[rel.source[0].table]
     cols = [c.name for c in rel.source]
+    own_key = tables.pk.get(rel.source[0].table) or []
+    if not rel.via and set(cols) < set(own_key):
+        # 출발 기본키의 일부만 가리키면(발주 상세의 발주 번호, 창고별 재고의 품번) 업무상 여러 행이 한 대상을 가리킨다
+        return "MANY_TO_ONE"
     sub = df.dropna(subset=cols)
     if rel.condition:
         sub = sub[sub[rel.condition[0].name].astype(str) == rel.condition[1]]
@@ -1293,8 +1297,12 @@ def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
             parts.append(
                 f"경유: {rel.via[0].table} ({rel.source[0].name} → {rel.via[1].name})"
             )
-        if unmatched:
-            parts.append(f"불일치 예: {', '.join(unmatched)}")
+        shown = [v for v in unmatched if v != MASK]
+        if shown:
+            parts.append(f"불일치 예: {', '.join(shown)}")
+        elif unmatched:
+            # 가린 값만 남으면 "***" 대신 무엇을 가렸는지 적는다
+            parts.append("불일치 값은 개인정보라 표시하지 않음")
         reason = " · ".join(parts)
         single = len(rel.source) == 1
         evidence = [
