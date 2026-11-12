@@ -71,9 +71,13 @@ public class ObjectQueryService
         }
 
         String q = request.q();
-        String pattern = q == null || q.isBlank() ? null : SearchPattern.contains(q);
+        String exactPattern = q == null || q.isBlank() ? null : SearchPattern.exact(q);
         return objects.search(
-                        visibleTypeIds, maskedTypes(access, visibleTypeIds), status, pattern, page)
+                        visibleTypeIds,
+                        maskedTypes(access, visibleTypeIds),
+                        status,
+                        exactPattern,
+                        page)
                 .map(row -> toResponse(row, access));
     }
 
