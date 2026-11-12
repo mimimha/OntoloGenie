@@ -326,3 +326,42 @@ def test_fingerprint_ignores_llm_wording_but_not_content():
     assert fingerprint_payload(base) != fingerprint_payload(
         {**base, "category": "history"}
     )
+
+
+def test_korean_and_upper_case_table_keys_become_object_names():
+    from app.proposers.readable import Names, _table_names
+
+    names = Names(
+        [
+            {
+                "itemKind": "OBJECT_TYPE",
+                "payload": {
+                    "code": "ITEM",
+                    "name": "품목",
+                    "objectMapping": {"resourceKey": "erp.품목"},
+                },
+            },
+            {
+                "itemKind": "OBJECT_TYPE",
+                "payload": {
+                    "code": "QC",
+                    "name": "검사 의뢰",
+                    "objectMapping": {"resourceKey": "qms.QC_INSP_HDR"},
+                },
+            },
+        ]
+    )
+    text = "대상 키: erp.품목 품목코드 · qms.QC_INSP_HDR INSP_NO · erp.품목.품목코드 · erp.품목."
+    assert (
+        _table_names(text, names)
+        == "대상 키: 품목 품목코드 · 검사 의뢰 INSP_NO · erp.품목.품목코드 · 품목."
+    )
+
+
+def test_property_name_prefers_korean_column_over_unit_comment():
+    from app.proposers.objects import property_name
+
+    assert property_name("지시수량", "EA") == "지시수량"
+    assert property_name("emp_no", "사번") == "사번"
+    assert property_name("qty", "수량 (EA)") == "수량"
+    assert property_name("receipt_no", None) == "receipt_no"
