@@ -1,9 +1,10 @@
-# 연결 규칙 개정 이력·개정본 상세 — S15P31C106-186
+# 연결 규칙 목록·개정 이력·개정본 상세 — S15P31C106-186
 
 FN-RUL-01. 승인된 연결 규칙(`link_mapping`)이 시간에 따라 어떻게 바뀌었는지 보여 준다. 읽기만 한다.
 
 | API | 요청 | 결과 |
 | --- | --- | --- |
+| 규칙 목록(375, 명세 번호 미정) | `GET /api/v1/ontology/rules` | 규칙 코드마다 최신 개정본 요약 배열(코드 순, `meta` 없음) |
 | 046 | `GET /api/v1/ontology/rules/{code}/revisions` | 그 코드의 개정본 배열(개정 번호 오름차순)과 `meta` |
 | 047 | `GET /api/v1/ontology/rules/{code}/revisions/{revision}` | 개정본 하나 |
 
@@ -21,6 +22,15 @@ FN-RUL-01. 승인된 연결 규칙(`link_mapping`)이 시간에 따라 어떻게
 
 - `conditions[]`: `sequenceNo` 순. `sourcePropertyId`, `targetPropertyId`, `operator`(EQ), `sourceTransforms`·`targetTransforms`(041 형식, 없으면 빈 배열). 항목끼리는 AND.
 - 비어 있을 수 있는 칸(`retiredAt`, `description`, `createdBy`, `proposalItemId`)도 `null`로 내보낸다(명세 예시와 같음).
+
+## 규칙 목록
+
+정의·규칙 이력 화면(`frontend/src/features/history`)이 규칙을 고를 때 쓴다. 규칙 수는 관계 유형 수 정도라 페이지를 나누지 않는다.
+
+- 한 줄: `code`, `revision`(최신 개정 번호), `linkTypeId`, `linkTypeName`(지금 이름), `status`(최신 개정본의 상태), `description`.
+- 조건: `linkTypeId`(1 이상), `status`(ACTIVE·RETIRED). 비우면 거르지 않는다. RETIRED는 최신 개정본이 폐기된 규칙, 곧 대체 없이 폐기된 규칙만 나온다.
+- 관계 유형마다 반영 중인 규칙은 하나라(367, V17) 같은 관계 유형에 ACTIVE는 하나, 나머지는 RETIRED다.
+- JPA 쿼리(`LinkMappingRepository.findLatestRevisions`, 코드별 최대 개정 번호)와 관계 유형 이름 한 번 조회로 만든다.
 
 ## 조건과 오류
 
@@ -41,6 +51,7 @@ FN-RUL-01. 승인된 연결 규칙(`link_mapping`)이 시간에 따라 어떻게
 - 047: 1판·2판 각각, 비교 항목 수
 - 없는 코드·없는 번호·integer보다 큰 번호 404, `revision` 0·`size` 101·`page` -1은 400
 - 401, 403
+- 규칙 목록: 같은 관계 유형에 "개정한 규칙(1판 RETIRED·2판 ACTIVE)"과 "대체 없이 폐기된 규칙" → 코드 순 두 줄, 최신 개정·상태·설명·관계 유형 이름, `status` 조건, `linkTypeId` 0·잘못된 `status` 400, 401, 403
 
 ## 기준
 
