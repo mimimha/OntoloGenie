@@ -1,10 +1,12 @@
-import { apiGet } from '../../api/client'
+import { apiGet, type ApiRequestOptions } from '../../api/client'
 import type {
   Execution,
   ExecutionCategory,
   ExecutionPageMeta,
   ExecutionStatus,
 } from './types'
+
+export const EXECUTION_PAGE_SIZE = 20
 
 export type ExecutionFilters = {
   from?: string
@@ -16,8 +18,13 @@ export type ExecutionFilters = {
   targetId?: number
 }
 
+export type ObjectExecutionFilters = Pick<
+  ExecutionFilters,
+  'from' | 'to' | 'status'
+>
+
 // 조회 조건을 주소 뒤의 ?from=…&status=… 글자로 만든다.
-function toQuery(filters: ExecutionFilters) {
+function toQuery(filters: ExecutionFilters, page: number) {
   const params = new URLSearchParams()
   if (filters.from) {
     params.set('from', filters.from)
@@ -35,19 +42,32 @@ function toQuery(filters: ExecutionFilters) {
     params.set('targetType', filters.targetType)
     params.set('targetId', String(filters.targetId))
   }
-  return params.toString() ? `?${params}` : ''
+  params.set('page', String(page))
+  params.set('size', String(EXECUTION_PAGE_SIZE))
+  return `?${params}`
 }
 
 // 080 객체 관련 실행 이력 조회
-export function fetchObjectExecutions(id: number, filters: ExecutionFilters) {
+export function fetchObjectExecutions(
+  id: number,
+  { from, to, status }: ObjectExecutionFilters,
+  page = 0,
+  options: ApiRequestOptions = {},
+) {
   return apiGet<Execution[], ExecutionPageMeta>(
-    `/objects/${id}/executions${toQuery(filters)}`,
+    `/objects/${id}/executions${toQuery({ from, to, status }, page)}`,
+    options,
   )
 }
 
 // 096 실행·감사 이력. 관리자면 전체, 그 밖의 역할은 본인 실행을 서버가 골라 준다.
-export function fetchAuditExecutions(filters: ExecutionFilters) {
+export function fetchAuditExecutions(
+  filters: ExecutionFilters,
+  page = 0,
+  options: ApiRequestOptions = {},
+) {
   return apiGet<Execution[], ExecutionPageMeta>(
-    `/audit/actions${toQuery(filters)}`,
+    `/audit/actions${toQuery(filters, page)}`,
+    options,
   )
 }

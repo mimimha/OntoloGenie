@@ -1,8 +1,9 @@
 import Button from '../../components/Button'
 import StatusBadge from '../../components/StatusBadge'
 import DataTable from '../../components/DataTable'
+import Pagination from '../../components/Pagination'
 import { LoadingState, EmptyState, ErrorState } from '../../components/Feedback'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
   fetchAuditExecutions,
@@ -200,6 +201,7 @@ function ExecutionHistory({
   const [status, setStatus] = useState<ExecutionStatus | ''>('')
   const [formError, setFormError] = useState('')
   const [filters, setFilters] = useState<ExecutionFilters>({})
+  const [page, setPage] = useState(0)
   const {
     data: executionPage,
     isPending,
@@ -209,18 +211,21 @@ function ExecutionHistory({
   } = useQuery({
     queryKey:
       objectId === undefined
-        ? ['audit', 'actions', target, category, filters]
-        : ['objects', objectId, 'executions', filters],
-    queryFn: () =>
+        ? ['audit', 'actions', target, category, filters, page]
+        : ['objects', objectId, 'executions', filters, page],
+    queryFn: ({ signal }) =>
       objectId === undefined
-        ? fetchAuditExecutions({
-            ...filters,
-            category: category || undefined,
-            targetType: target?.type,
-            targetId: target?.id,
-          })
-        : fetchObjectExecutions(objectId, filters),
-    placeholderData: keepPreviousData,
+        ? fetchAuditExecutions(
+            {
+              ...filters,
+              category: category || undefined,
+              targetType: target?.type,
+              targetId: target?.id,
+            },
+            page,
+            { signal },
+          )
+        : fetchObjectExecutions(objectId, filters, page, { signal }),
   })
 
   function search() {
@@ -234,6 +239,7 @@ function ExecutionHistory({
       to: toDate ? startOfNextDay(toDate) : undefined,
       status: status || undefined,
     })
+    setPage(0)
   }
 
   function reset() {
@@ -242,6 +248,7 @@ function ExecutionHistory({
     setStatus('')
     setFormError('')
     setFilters({})
+    setPage(0)
   }
 
   let content
@@ -333,7 +340,10 @@ function ExecutionHistory({
               key={tab.value}
               type="button"
               aria-pressed={category === tab.value}
-              onClick={() => setCategory(tab.value)}
+              onClick={() => {
+                setCategory(tab.value)
+                setPage(0)
+              }}
               className={`rounded-lg border px-3 py-1.5 text-sm ${
                 category === tab.value
                   ? 'border-slate-900 bg-slate-900 text-white'
@@ -424,12 +434,22 @@ function ExecutionHistory({
       <p className="mt-2 text-xs text-slate-500">
         {`${scopeText(objectId, target !== undefined, executionPage?.meta?.scope)} · Agent 조회 기록은 제외됩니다.`}
       </p>
-      {executionPage && (
+      {executionPage && !isError && (
         <p className="mt-3 text-xs text-slate-500">
           {`${executionPage.meta?.totalElements ?? executionPage.data.length}건`}
         </p>
       )}
       <div className="mt-2 text-sm">{content}</div>
+      {executionPage?.meta && !isError && (
+        <div className="mt-4">
+          <Pagination
+            page={executionPage.meta.page}
+            size={executionPage.meta.size}
+            totalElements={executionPage.meta.totalElements}
+            onChange={setPage}
+          />
+        </div>
+      )}
     </div>
   )
 }
