@@ -410,11 +410,12 @@ Agent 답변(API 085)은 오래 걸리는 작업의 예외다. 202로 접수하�
 |---|---|
 | 빌드·테스트·포맷 검사 | `./gradlew build` |
 | 테스트 | `./gradlew test` |
+| 관련 테스트만 | `./gradlew test --tests '<클래스·패키지 패턴>'` |
 | 포맷 적용 | `./gradlew spotlessApply` |
 | 포맷 검사 | `./gradlew spotlessCheck` |
 | 로컬 DB 없이 실행 (Testcontainers) | `./gradlew bootTestRun --args='--spring.profiles.active=api'` |
 
-테스트와 `bootTestRun`은 Docker가 실행 중이어야 한다.
+테스트와 `bootTestRun`은 Docker가 실행 중이어야 한다. 작업 중에는 관련 테스트만 실행하고, 구현을 마칠 때 `./gradlew build`를 한 번 실행한다.
 
 ---
 
