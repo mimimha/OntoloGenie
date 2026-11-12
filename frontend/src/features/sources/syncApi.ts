@@ -3,6 +3,59 @@ import { ApiError } from '../../api/errors'
 import type { PageMeta } from '../../api/types'
 import type { CheckStatus } from './types'
 
+export type SourceSyncSummary = {
+  latestRun: Pick<
+    SyncRun,
+    'syncRunId' | 'status' | 'triggerKind' | 'finishedAt'
+  > | null
+  cdcLastAppliedAt: string | null
+}
+
+// 074는 접수 시각 내림차순이며 기본 조회에서 CDC 실행을 제외한다.
+// 최근 접수한 전체 읽기 실행과 CDC 반영 시각을 별도로 반환한다.
+export async function fetchSourceSyncSummary(
+  sourceId: number,
+  signal?: AbortSignal,
+): Promise<SourceSyncSummary> {
+  const body = await apiGet<SyncRun[], NonNullable<SyncPage['meta']>>(
+    `/sources/${sourceId}/sync-runs?page=0&size=1`,
+    { signal },
+  )
+  const run = body.data?.[0]
+  const meta = body.meta
+  const validTime = (value: unknown) =>
+    value == null ||
+    (typeof value === 'string' && Number.isFinite(Date.parse(value)))
+  if (
+    !Array.isArray(body.data) ||
+    body.data.length > 1 ||
+    !meta ||
+    meta.page !== 0 ||
+    meta.size !== 1 ||
+    !Number.isSafeInteger(meta.totalElements) ||
+    meta.totalElements < body.data.length ||
+    !validTime(meta.cdcLastAppliedAt) ||
+    (run &&
+      (run.dataSourceId !== sourceId ||
+        !Number.isSafeInteger(run.syncRunId) ||
+        run.syncRunId < 1 ||
+        !['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED'].includes(run.status) ||
+        !['MANUAL', 'SCHEDULED', 'ON_DEMAND', 'RECOVERY'].includes(
+          run.triggerKind,
+        ) ||
+        !validTime(run.finishedAt))) ||
+    (!run && meta.totalElements !== 0)
+  ) {
+    throw new ApiError('수집 요약 응답을 확인할 수 없습니다.', {
+      kind: 'invalid-response',
+    })
+  }
+  return {
+    latestRun: run ?? null,
+    cdcLastAppliedAt: meta.cdcLastAppliedAt ?? null,
+  }
+}
+
 export type SyncTrigger =
   'CDC' | 'MANUAL' | 'SCHEDULED' | 'ON_DEMAND' | 'RECOVERY'
 export type SyncResource = {

@@ -14,6 +14,7 @@ import { connectionStatusLabels, sourceKindLabels } from './labels'
 import ReadableScope from './ReadableScope'
 import SourceFormDialog from './SourceFormDialog'
 import SourceSyncRuns from './SourceSyncRuns'
+import SourceSyncSummary from './SourceSyncSummary'
 import SourceSamples from './SourceSamples'
 import { sourceSyncApi } from './syncApi'
 
@@ -82,10 +83,10 @@ function SourcesPage() {
               접속 확인
             </th>
             <th scope="col" className="px-4 py-3 font-normal">
-              수집 상태
+              최근 수집 실행
             </th>
             <th scope="col" className="px-4 py-3 font-normal">
-              마지막 수집
+              수집 시각
             </th>
           </tr>
         </thead>
@@ -112,9 +113,10 @@ function SourcesPage() {
                 <td className={`px-4 py-3 ${status.className}`}>
                   {status.label}
                 </td>
-                {/* 수집 상태·시각은 수집 실행 이력과 연결한다. */}
-                <td className="px-4 py-3 text-slate-400">-</td>
-                <td className="px-4 py-3 text-slate-400">-</td>
+                <SourceSyncSummary
+                  sourceId={source.id}
+                  sourceName={source.name}
+                />
               </tr>
             )
           })}
@@ -142,6 +144,14 @@ function SourcesPage() {
           </Button>
         </div>
         <div className="text-sm">{list}</div>
+        {sources && sources.length > 0 && (
+          <p className="text-xs text-slate-500">
+            전체 읽기는 가장 최근에 접수한 실행 기준입니다. 실패한 실행의 종료
+            시각은 성공 수집 시각이 아닙니다. CDC 반영은 마지막 반영한 원천
+            트랜잭션의 커밋 시각이며, 현재 CDC 정상 여부나 반영 지연을 뜻하지
+            않습니다.
+          </p>
+        )}
       </section>
       {registering && (
         <SourceFormDialog
