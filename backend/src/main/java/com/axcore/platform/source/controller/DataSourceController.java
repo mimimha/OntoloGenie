@@ -14,6 +14,8 @@ import com.axcore.platform.source.dto.SourceDetailResponse;
 import com.axcore.platform.source.dto.SourceResourceResponse;
 import com.axcore.platform.source.dto.SourceResourceSearchRequest;
 import com.axcore.platform.source.dto.SourceResponse;
+import com.axcore.platform.source.dto.SourceSampleAcceptedResponse;
+import com.axcore.platform.source.dto.SourceSampleRequest;
 import com.axcore.platform.source.dto.SourceSearchRequest;
 import com.axcore.platform.source.dto.SourceUpdateRequest;
 import com.axcore.platform.source.dto.SyncRunAcceptedResponse;
@@ -23,6 +25,7 @@ import com.axcore.platform.source.dto.SyncScheduleResponse;
 import com.axcore.platform.source.service.DataSourceService;
 import com.axcore.platform.source.service.SourceCatalogService;
 import com.axcore.platform.source.service.SourceConnectionCheckService;
+import com.axcore.platform.source.service.SourceSampleRequestService;
 import com.axcore.platform.source.service.SyncRunRequestService;
 import com.axcore.platform.source.service.SyncScheduleService;
 import jakarta.validation.Valid;
@@ -46,8 +49,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 원천 정보·연결 검사·자원 목록·수집 주기·수동 다시 읽기 (API 009~015, 071~073, 100, FN-SRC-01·02, FN-BAT-01·03). 모두
- * ADMIN만 쓸 수 있다.
+ * 원천 정보·연결 검사·자원 목록·표본 조회·수집 주기·수동 다시 읽기 (API 009~016, 071~073, 100, FN-SRC-01·02·03,
+ * FN-BAT-01·03). 모두 ADMIN만 쓸 수 있다.
  */
 @RestController
 @RequestMapping("/api/v1/sources")
@@ -60,6 +63,7 @@ public class DataSourceController {
     private final DataSourceService dataSourceService;
     private final SourceConnectionCheckService connectionCheckService;
     private final SourceCatalogService catalogService;
+    private final SourceSampleRequestService sampleRequestService;
     private final SyncRunRequestService syncRunRequestService;
     private final SyncScheduleService syncScheduleService;
 
@@ -176,6 +180,21 @@ public class DataSourceController {
             @AuthenticationPrincipal LoginAccount loginAccount) {
         requireAdmin(loginAccount);
         return ApiResponse.of(catalogService.columns(id, resourceId));
+    }
+
+    @PostMapping("/{id}/resources/{resourceId}/samples")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ApiResponse<SourceSampleAcceptedResponse> requestSample(
+            @PathVariable("id") @Min(1) long id,
+            @PathVariable("resourceId") @Min(1) long resourceId,
+            @Valid @RequestBody(required = false) SourceSampleRequest request,
+            @AuthenticationPrincipal LoginAccount loginAccount) {
+        requireAdmin(loginAccount);
+        int rowLimit =
+                request == null || request.rowLimit() == null
+                        ? SourceSampleRequest.DEFAULT_ROW_LIMIT
+                        : request.rowLimit();
+        return ApiResponse.of(sampleRequestService.request(id, resourceId, rowLimit, loginAccount));
     }
 
     private static PageRequest page(Integer page, Integer size) {

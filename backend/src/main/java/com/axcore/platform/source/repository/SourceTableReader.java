@@ -19,6 +19,7 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +58,13 @@ public class SourceTableReader {
             select quote_ident(n.nspname) || '.' || quote_ident(c.relname)
             from pg_class c join pg_namespace n on n.oid = c.relnamespace
             where n.nspname || '.' || c.relname = ? and c.relkind in ('r', 'p', 'v', 'm')
+            """;
+
+    private static final String READABLE_COLUMNS_SQL =
+            """
+            select attname from pg_attribute
+            where attrelid = cast(? as regclass) and attnum > 0 and not attisdropped
+              and has_column_privilege(attrelid, attnum, 'SELECT')
             """;
 
     private final String sslMode;
@@ -103,23 +111,68 @@ public class SourceTableReader {
         }
     }
 
-    /**
-     * 표 하나에서 앞 행 몇 개만 읽는다(매핑 미리보기 040). 순서는 정하지 않는다. 읽기 전용 트랜잭션에서 읽고 되돌린다. 접속·읽기 실패는 {@link
-     * SQLException}이다.
-     */
+    /** 매핑 미리보기(040)는 지정한 컬럼의 앞 행 몇 개를 읽는다. 순서는 정하지 않는다. 읽기 전용 트랜잭션에서 읽고 되돌린다. */
     public List<SourceRow> sample(
             SourceEndpoint endpoint, SourceAccount account, Table table, int limit)
+            throws SQLException {
+        return sample(endpoint, account, table, limit, false).rows();
+    }
+
+    /** 원천 표본(016)은 현재 계정이 읽을 수 있는 컬럼만 선택하고 그 목록과 행을 반환한다. */
+    public Sample sampleReadable(
+            SourceEndpoint endpoint, SourceAccount account, Table table, int limit)
+            throws SQLException {
+        return sample(endpoint, account, table, limit, true);
+    }
+
+    private Sample sample(
+            SourceEndpoint endpoint,
+            SourceAccount account,
+            Table table,
+            int limit,
+            boolean readableOnly)
             throws SQLException {
         try (Connection connection =
                 DriverManager.getConnection(endpoint.jdbcUrl(), properties(account))) {
             connection.setAutoCommit(false);
             connection.setReadOnly(true);
             try {
-                return readTable(connection, table, limit, limit);
+                String relation = relation(connection, table.resourceKey());
+                Table selected = table;
+                if (readableOnly) {
+                    var readable = readableColumns(connection, relation);
+                    var columns = table.columns().stream().filter(readable::contains).toList();
+                    if (columns.isEmpty()) {
+                        throw new SQLException("no readable sample columns", "42501");
+                    }
+                    selected =
+                            new Table(
+                                    table.resourceId(),
+                                    table.resourceKey(),
+                                    columns,
+                                    table.keyColumns());
+                }
+                return new Sample(
+                        selected.columns(),
+                        readTable(connection, relation, selected, limit, limit));
             } finally {
                 connection.rollback();
             }
         }
+    }
+
+    private static Set<String> readableColumns(Connection connection, String relation)
+            throws SQLException {
+        Set<String> names = new HashSet<>();
+        try (PreparedStatement statement = connection.prepareStatement(READABLE_COLUMNS_SQL)) {
+            statement.setString(1, relation);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    names.add(rs.getString(1));
+                }
+            }
+        }
+        return names;
     }
 
     /**
@@ -138,6 +191,12 @@ public class SourceTableReader {
         }
     }
 
+    private List<SourceRow> readTable(
+            Connection connection, Table table, int remaining, Integer limit) throws SQLException {
+        return readTable(
+                connection, relation(connection, table.resourceKey()), table, remaining, limit);
+    }
+
     /**
      * 표 하나를 읽는다. 표·컬럼 이름은 SQL 문법상 바인딩 변수로 넘길 수 없어 문자열로 만든다. 사용자 입력은 들어가지 않는다: 표 이름은 원천이 {@code
      * quote_ident}로 따옴표 처리한 값({@link #relation}, 카탈로그 키는 바인딩 변수로 넘김)이고, 컬럼 이름은 카탈로그 값을 {@link
@@ -148,8 +207,8 @@ public class SourceTableReader {
      */
     @SuppressWarnings("java:S2077")
     private List<SourceRow> readTable(
-            Connection connection, Table table, int remaining, Integer limit) throws SQLException {
-        String relation = relation(connection, table.resourceKey());
+            Connection connection, String relation, Table table, int remaining, Integer limit)
+            throws SQLException {
         String sql =
                 "select "
                         + table.columns().stream()
@@ -290,6 +349,8 @@ public class SourceTableReader {
      * @param rows 원천 테이블 ID → 행
      */
     public record Result(String snapshot, long lsn, Map<Long, List<SourceRow>> rows) {}
+
+    public record Sample(List<String> columns, List<SourceRow> rows) {}
 
     /** 한 번에 읽을 수 있는 행 수를 넘었다. */
     public static class TooManyRowsException extends RuntimeException {
