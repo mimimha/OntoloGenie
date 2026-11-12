@@ -10,7 +10,7 @@ import org.springframework.validation.annotation.Validated;
 
 /**
  * 재배정 계획 Handler가 업무 조건을 검사할 때 쓰는 온톨로지 객체 유형 코드와 속성 코드. 실제 온톨로지는 AI 분석·관리자 승인으로 만들어지므로 코드에 적지 않고
- * 설정으로 둔다. 기본값은 시연 정답 온톨로지(ai/data/gold-v1.0/ontology.json)의 이름이다. 값이 빠지면 실행 중 실패하지 않도록 서버가 시작하지
+ * 설정으로 둔다. 유형 코드 기본값은 운영 온톨로지 코드를 임시로 적은 것이다(application.yml 주석 참고). 값이 빠지면 실행 중 실패하지 않도록 서버가 시작하지
  * 않는다.
  */
 @Validated
