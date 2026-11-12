@@ -199,6 +199,9 @@ export default function ProposalsPage() {
       <div className="rules-list-heading">
         <h2>연결 규칙 목록</h2>
         <div className="rules-list-actions">
+          <Link className="rules-pill" to="/admin/checks">
+            수동 검사·실행 목록
+          </Link>
           <AnalysisPanel
             compact
             currentId={analysisId}

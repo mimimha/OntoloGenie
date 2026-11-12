@@ -27,6 +27,7 @@ const adminPages = [
   ['/admin/history', '정의·규칙 이력'],
   ['/admin/accounts', '계정·권한'],
   ['/admin/actions', 'Action 정의'],
+  ['/admin/checks', '정합성 검사'],
 ] as const
 
 const clients: QueryClient[] = []
@@ -80,10 +81,12 @@ test.each(
     const sources = vi.fn(() => HttpResponse.json({ data: [] }))
     const changes = vi.fn(() => HttpResponse.json({ data: [] }))
     const actions = vi.fn(() => HttpResponse.json({ data: [] }))
+    const checks = vi.fn(() => HttpResponse.json({ data: [] }))
     server.use(
       http.get('/api/v1/sources', sources),
       http.get('/api/v1/ontology/changes', changes),
       http.get('/api/v1/actions', actions),
+      http.get('/api/v1/checks/runs', checks),
     )
     openAt(path, role)
     await screen.findByRole('heading', { name: '접근 권한이 없습니다.' })
@@ -95,6 +98,7 @@ test.each(
     expect(sources).not.toHaveBeenCalled()
     expect(changes).not.toHaveBeenCalled()
     expect(actions).not.toHaveBeenCalled()
+    expect(checks).not.toHaveBeenCalled()
   },
 )
 

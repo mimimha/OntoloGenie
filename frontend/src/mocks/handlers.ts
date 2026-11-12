@@ -1,5 +1,6 @@
 import { delay, http, HttpResponse } from 'msw'
 import { actionHandlers } from './actionHandlers'
+import { checkHandlers } from './checkHandlers'
 import { agentHandlers } from './agentHandlers'
 import { analysisHandlers } from './analysisHandlers'
 import { authHandlers, getMockAccount } from './auth'
@@ -712,6 +713,7 @@ function ruleSummaries(): RuleSummary[] {
 export const handlers = [
   ...accountHandlers,
   ...actionHandlers,
+  ...checkHandlers,
   ...proposalHandlers,
   ...issueHandlers,
   ...authHandlers,
@@ -781,10 +783,25 @@ export const handlers = [
   }),
 
   // 046 연결 규칙 개정 이력 조회
-  http.get('/api/v1/ontology/rules/:code/revisions', async ({ params }) => {
-    await delay()
-    return HttpResponse.json({ data: ruleRevisions[String(params.code)] ?? [] })
-  }),
+  http.get(
+    '/api/v1/ontology/rules/:code/revisions',
+    async ({ params, request }) => {
+      await delay()
+      const search = new URL(request.url).searchParams
+      const page = Number(search.get('page') ?? 0)
+      const size = Number(search.get('size') ?? 20)
+      const revisions = ruleRevisions[String(params.code)] ?? []
+      return HttpResponse.json({
+        data: revisions.slice(page * size, (page + 1) * size),
+        meta: {
+          page,
+          size,
+          totalElements: revisions.length,
+          hasNext: (page + 1) * size < revisions.length,
+        },
+      })
+    },
+  ),
 
   // 076 권한 범위 객체 검색
   http.get('/api/v1/objects', async ({ request }) => {
