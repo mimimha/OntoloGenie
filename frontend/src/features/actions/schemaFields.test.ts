@@ -183,6 +183,27 @@ test('필수 이름의 차이는 순서가 아니라 구성으로 판단한다',
   ).toBe(false)
 })
 
+test('대소문자나 밑줄만 다른 이름도 서로 다른 항목으로 보고 순서와 상관없이 비교한다', () => {
+  const names = ['plan_id', 'planId', 'PlanId', 'a']
+  const properties = (order: string[]) =>
+    Object.fromEntries(order.map((name) => [name, { type: 'string' }]))
+  const left = {
+    type: 'object',
+    required: names,
+    properties: properties(names),
+  }
+  const reversed = [...names].reverse()
+  const right = {
+    type: 'object',
+    required: reversed,
+    properties: properties(reversed),
+  }
+  expect(sameJson(left, right)).toBe(true)
+  expect(
+    sameJson(left, { ...right, required: ['plan_id', 'planId', 'a'] }),
+  ).toBe(false)
+})
+
 test.each([
   [
     { type: 'object', properties: { a: { type: 'object' } } },

@@ -229,6 +229,9 @@ export function rowsToSchema(rows: FieldRow[]): SchemaResult {
   }
 }
 
+// 비교용 정렬이라 문자 코드 순서를 쓴다. localeCompare는 서로 다른 문자열을 같다고 볼 수 있다.
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+
 /**
  * 키 순서와 상관없이 같은 JSON인지 본다. 표로 다시 만든 형식이 원래와 같으면 변경으로 보내지 않는다.
  * required는 순서 없는 이름 모음이라 정렬해서 비교한다. 저장소(jsonb)가 properties 키 순서를 바꿔 돌려주므로
@@ -240,13 +243,13 @@ export function sameJson(left: unknown, right: unknown): boolean {
       const items = value.map((item) => canonical(item))
       return key === 'required' &&
         items.every((item) => typeof item === 'string')
-        ? [...items].sort()
+        ? [...(items as string[])].sort(byCodeUnit)
         : items
     }
     return isRecord(value)
       ? Object.fromEntries(
           Object.keys(value)
-            .sort()
+            .sort(byCodeUnit)
             .map((name) => [name, canonical(value[name], name)]),
         )
       : value

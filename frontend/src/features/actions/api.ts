@@ -57,7 +57,7 @@ export async function fetchActionEditorOptions(): Promise<ActionEditorOptions> {
   ])
   const permissions = [
     ...new Set(roles.flatMap((role) => role.permissions)),
-  ].sort()
+  ].sort((a, b) => a.localeCompare(b))
   return { objectTypes, permissions }
 }
 
