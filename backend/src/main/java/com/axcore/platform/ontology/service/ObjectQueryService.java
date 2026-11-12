@@ -88,6 +88,27 @@ public class ObjectQueryService
 
     @Override
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public List<ObjectSearchResponse> findByPropertyValue(
+            LoginAccount actor, String value, int limit) {
+        String exact = value == null ? "" : value.strip();
+        if (exact.isEmpty()) {
+            return List.of();
+        }
+        DataAccess access = dataAccessPolicy.of(actor);
+        Set<Long> visibleTypeIds = access.visibleObjectTypeIds();
+        if (visibleTypeIds.isEmpty()) {
+            return List.of();
+        }
+        return objects
+                .findByPropertyValue(
+                        visibleTypeIds, maskedTypes(access, visibleTypeIds), exact, limit)
+                .stream()
+                .map(row -> toResponse(row, access))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ObjectDetailResponse detail(LoginAccount actor, long objectId) {
         DataAccess access = dataAccessPolicy.of(actor);
         Set<Long> visibleTypeIds = access.visibleObjectTypeIds();
