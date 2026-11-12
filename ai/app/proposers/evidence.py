@@ -33,7 +33,8 @@ class SourceLookup:
     def values(self, source: str, table: str, column: str) -> set[str]:
         key = f"{source}.{table}.{column}"
         if key not in self._values:
-            df = self._reader(source).read_rows(table)
+            # 근거 하나를 확인하려고 표 전체를 읽지 않고 그 컬럼만 읽는다
+            df = self._reader(source).read_rows(table, columns=[column])
             self._values[key] = set(df[column].dropna().astype(str))
         return self._values[key]
 
