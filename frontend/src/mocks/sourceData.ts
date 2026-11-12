@@ -1651,6 +1651,7 @@ export const sourceColumns: Record<number, SourceColumn[]> = {
       isKeyPart: true,
       isPresent: true,
       ordinalPosition: 1,
+      sourceComment: '설비 코드',
     },
     {
       id: 1129,
@@ -1661,6 +1662,7 @@ export const sourceColumns: Record<number, SourceColumn[]> = {
       isKeyPart: false,
       isPresent: true,
       ordinalPosition: 2,
+      sourceComment: '설비 이름',
     },
     {
       id: 1130,
