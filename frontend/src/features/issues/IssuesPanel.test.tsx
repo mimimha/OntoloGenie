@@ -21,13 +21,18 @@ test.each(['linkMappingId', 'proposalItemId'] as const)(
         request: Request
       }) => {
         const runId = Number(params.runId)
-        expect(new URL(request.url).searchParams.get(filter)).toBe('12')
+        const expectedFilter = runId === 2 ? 'linkMappingId' : filter
+        expect(new URL(request.url).searchParams.get(expectedFilter)).toBe(
+          runId === 2 ? '24' : '12',
+        )
         return HttpResponse.json({
           data: [
             {
               id: runId,
               checkRunId: runId,
-              ...scope,
+              ...(runId === 2
+                ? { linkMappingId: 24, proposalItemId: null }
+                : scope),
               totalCount: 1,
               matchedCount: runId === 2 ? 1 : 0,
               unmatchedCount: runId === 2 ? 0 : 1,
@@ -50,6 +55,33 @@ test.each(['linkMappingId', 'proposalItemId'] as const)(
             status: 'RESOLVED',
             resolvedCheckRunId: 2,
           },
+        }),
+      ),
+      http.get('/api/v1/issues/1/verifications', () =>
+        HttpResponse.json({
+          data: [
+            {
+              issueId: 1,
+              checkRunId: 2,
+              triggerKind: 'REVERIFY',
+              status: 'SUCCEEDED',
+              outcome: 'PASSED',
+              detail: { linkMappingId: 24 },
+              checkedAt: '2026-11-11T06:00:00Z',
+            },
+          ],
+          meta: { page: 0, size: 20, totalElements: 1, hasNext: false },
+        }),
+      ),
+      http.get('/api/v1/checks/runs/2/comparison', () =>
+        HttpResponse.json({
+          data: {
+            comparedToRunId: 1,
+            coverage: 'UNAVAILABLE',
+            hasBaselinePassEvidence: false,
+            rows: [],
+          },
+          meta: { page: 0, size: 20, totalElements: 0, hasNext: false },
         }),
       ),
       http.get('/api/v1/checks/runs/:runId/results', results),
@@ -177,7 +209,7 @@ test('재검증 결과와 상태 변경 이력을 함께 표시하고 해결 후
                 triggerKind: 'REVERIFY',
                 status: 'SUCCEEDED',
                 outcome: 'PASSED',
-                detail: { rawValue: 'E023' },
+                detail: { rawValue: 'E023', linkMappingId: 12 },
                 checkedAt: '2026-11-11T06:00:00Z',
               },
             ]
