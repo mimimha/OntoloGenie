@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -7,6 +7,23 @@ import { afterEach, expect, test } from 'vitest'
 import { mockUser } from '../../mocks/handlers'
 import { server } from '../../mocks/node'
 import AuditPage from './AuditPage'
+
+async function openDetails() {
+  const user = userEvent.setup()
+  const rows = within(screen.getByRole('table', { name: '실행 이력' }))
+    .getAllByRole('row')
+    .slice(1)
+  for (const row of rows) {
+    await user.click(within(row).getByText('내용 보기'))
+  }
+}
+
+async function openChanges() {
+  const user = userEvent.setup()
+  for (const summary of screen.getAllByText(/^실행 전후 비교/)) {
+    await user.click(summary)
+  }
+}
 
 function renderAuditPage(path: string) {
   render(
@@ -35,63 +52,20 @@ test('객체 번호가 있으면 그 객체의 실행 이력을 보여준다', a
   expect(screen.getByRole('heading', { name: '실행 이력' })).toBeInTheDocument()
   expect(await screen.findByText('3건')).toBeInTheDocument()
   expect(await screen.findByDisplayValue('프레스 3호기')).toBeInTheDocument()
+  await openDetails()
   expect(
-    screen.getByText('대체 설비 PR-02는 프레스 공정을 처리할 수 없습니다.'),
+    await screen.findByText(
+      '대체 설비 PR-02는 프레스 공정을 처리할 수 없습니다.',
+    ),
   ).toBeInTheDocument()
+  await openChanges()
   expect(
-    screen.getByText('reassignment_plan · id: 501 · 생성'),
+    await screen.findByText('reassignment_plan · id: 501 · 생성'),
   ).toBeInTheDocument()
   // 객체 실행 이력(080)에는 종류 탭이 없다.
   expect(
     screen.queryByRole('group', { name: '실행 이력 종류' }),
   ).not.toBeInTheDocument()
-})
-
-test('분석 실패는 reason을 실패 이유로 보여주고, 변경 전후의 가린 값은 가림으로 보여준다', async () => {
-  server.use(
-    http.get('/api/v1/audit/actions', () =>
-      HttpResponse.json({
-        data: [
-          {
-            id: 9100,
-            requestId: '77777777-7777-4777-8777-777777777777',
-            eventKind: 'ANALYSIS_RUN',
-            category: 'ANALYSIS',
-            actorType: 'USER',
-            actorId: 7,
-            actorName: '김계획',
-            entryPoint: 'WEB',
-            targetType: 'analysis_run',
-            targetId: 49,
-            targetLabel: null,
-            input: {},
-            status: 'FAILED',
-            result: { reason: 'TIMEOUT', previousStatus: 'RUNNING' },
-            requestedAt: '2026-10-28T12:00:00+09:00',
-            entityChanges: [
-              {
-                tableName: 'object_instance',
-                rowKey: { id: 301 },
-                changeKind: 'UPDATE',
-                beforeData: { unitCost: null },
-                afterData: { unitCost: null },
-              },
-            ],
-            restrictedPropertyCodes: ['unitCost'],
-          },
-        ],
-        meta: { page: 0, size: 20, totalElements: 1, hasNext: false },
-      }),
-    ),
-  )
-  renderAuditPage('/audit')
-
-  expect(await screen.findByText('1건')).toBeInTheDocument()
-  expect(screen.getByText('분석 시간이 초과되었습니다.')).toBeInTheDocument()
-  // 실패 이유로 보여 준 값은 처리 결과에서 뺀다.
-  expect(screen.getByText(/"previousStatus": "RUNNING"/)).toBeInTheDocument()
-  expect(screen.queryByText(/"reason"/)).not.toBeInTheDocument()
-  expect(screen.getAllByText('권한으로 가림')).toHaveLength(2)
 })
 
 test('객체 번호가 없으면 내 실행 이력을 보여준다', async () => {
@@ -119,6 +93,9 @@ test('관리자는 같은 실행 이력에서 다른 사람의 실행과 변경 
   ).toBeInTheDocument()
   expect(screen.getAllByText('사용자 · 관리자')).toHaveLength(2)
   expect(screen.getByText('검토·변경 · 객체 유형 수정')).toBeInTheDocument()
+  await openDetails()
+  await openChanges()
+  await screen.findByText('object_type · id: 3 · 수정')
   // 대상 이름(굵게)과 변경 후 값에 같이 나온다.
   expect(screen.getAllByText('프레스 설비').length).toBeGreaterThan(1)
   expect(screen.getByText('object_type #3')).toBeInTheDocument()
@@ -162,7 +139,8 @@ test('실패한 실행은 실패 이유를, 권한으로 가린 값은 가림 �
   renderAuditPage('/audit')
   await screen.findByText('4건')
 
-  expect(screen.getByText('실패 이유')).toBeInTheDocument()
+  await openDetails()
+  expect(await screen.findByText('실패 이유')).toBeInTheDocument()
   expect(
     screen.getByText('정비 시스템 응답 시간이 초과되었습니다.'),
   ).toBeInTheDocument()

@@ -11,7 +11,7 @@ import {
   type ExecutionFilters,
 } from './api'
 import { startOfDay, startOfNextDay } from './dateRange'
-import EntityChangeTable from './EntityChangeTable'
+import ExecutionDetail from './ExecutionDetail'
 import {
   actorTypeLabels,
   categoryLabels,
@@ -24,19 +24,6 @@ import type {
   ExecutionScope,
   ExecutionStatus,
 } from './types'
-
-// 권한으로 가린 키(restricted)의 null은 "(권한으로 가림)"으로 바꿔 보여 준다.
-function formatJson(value: Record<string, unknown>, restricted: string[]) {
-  if (Object.keys(value).length === 0) {
-    return null
-  }
-  return JSON.stringify(
-    value,
-    (key, item) =>
-      item === null && restricted.includes(key) ? '(권한으로 가림)' : item,
-    2,
-  )
-}
 
 // "분류 · 동작 이름". 수집·검사 같은 데이터 작업은 분류 대신 작업 종류(데이터 수집 등)를 쓴다.
 function actionLabel(execution: Execution) {
@@ -92,86 +79,6 @@ function scopeText(
     return '조회 범위: 현재 계정의 실행 이력'
   }
   return '조회 범위: 권한에 따라 볼 수 있는 실행 이력'
-}
-
-// 실패 이유 중 코드로 오는 값을 읽을 수 있는 문장으로 바꾼다.
-const failureReasonTexts: Record<string, string> = {
-  TIMEOUT: '분석 시간이 초과되었습니다.',
-}
-
-// 실패 이유는 업무 실행·데이터 작업은 result.errorMessage, 분석은 result.reason에 온다.
-function failureReason(result: Record<string, unknown>) {
-  const raw =
-    typeof result.errorMessage === 'string'
-      ? result.errorMessage
-      : typeof result.reason === 'string'
-        ? result.reason
-        : null
-  return raw === null ? null : (failureReasonTexts[raw] ?? raw)
-}
-
-type ExecutionDetailProps = {
-  execution: Execution
-}
-
-function ExecutionDetail({ execution }: ExecutionDetailProps) {
-  const restricted = execution.restrictedPropertyCodes ?? []
-  const failed = execution.status === 'FAILED'
-  // 실패 이유(errorMessage·reason)는 따로 보여 주므로 처리 결과에서는 뺀다.
-  const { errorMessage, reason, ...restResult } = execution.result
-  const input = formatJson(execution.input, restricted)
-  const result = formatJson(failed ? restResult : execution.result, restricted)
-
-  return (
-    <details className="text-xs">
-      <summary className="cursor-pointer text-slate-500">내용 보기</summary>
-      <p className="mt-2 font-semibold text-slate-700">입력값</p>
-      <pre className="whitespace-pre-wrap break-all text-slate-900">
-        {input ?? '기록된 입력값 없음'}
-      </pre>
-      {execution.status === 'BLOCKED' && (
-        <>
-          <p className="mt-2 font-semibold text-slate-700">차단 이유</p>
-          <p className="text-slate-900">
-            {execution.blockedReason ?? '기록된 이유가 없습니다.'}
-          </p>
-        </>
-      )}
-      {failed && (
-        <>
-          <p className="mt-2 font-semibold text-slate-700">실패 이유</p>
-          <p className="text-slate-900">
-            {failureReason({ errorMessage, reason }) ??
-              '기록된 이유가 없습니다.'}
-          </p>
-        </>
-      )}
-      {result && (
-        <>
-          <p className="mt-2 font-semibold text-slate-700">처리 결과</p>
-          <pre className="whitespace-pre-wrap break-all text-slate-900">
-            {result}
-          </pre>
-        </>
-      )}
-      {execution.entityChanges.length > 0 ? (
-        <details className="mt-2">
-          <summary className="cursor-pointer text-slate-500">
-            {`실행 전후 비교 ${execution.entityChanges.length}건`}
-          </summary>
-          {execution.entityChanges.map((change, index) => (
-            <EntityChangeTable
-              key={index}
-              change={change}
-              restrictedCodes={restricted}
-            />
-          ))}
-        </details>
-      ) : (
-        <p className="mt-2 text-slate-500">변경 전후: 기록된 변경 없음</p>
-      )}
-    </details>
-  )
 }
 
 // 종류 탭. 데이터 작업(DATA_JOB)은 [전체]에서만 보인다.

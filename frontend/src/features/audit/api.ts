@@ -1,6 +1,8 @@
 import { apiGet, type ApiRequestOptions } from '../../api/client'
 import type {
   Execution,
+  ExecutionChanges,
+  ExecutionDetail,
   ExecutionCategory,
   ExecutionPageMeta,
   ExecutionStatus,
@@ -70,4 +72,20 @@ export function fetchAuditExecutions(
     `/audit/actions${toQuery(filters, page)}`,
     options,
   )
+}
+
+// 097 내용 보기
+export function fetchExecutionDetail(
+  id: number,
+  options: ApiRequestOptions = {},
+) {
+  return apiGet<ExecutionDetail>(`/audit/actions/${id}`, options)
+}
+
+// 098 변경 전후
+export function fetchExecutionChanges(
+  id: number,
+  options: ApiRequestOptions = {},
+) {
+  return apiGet<ExecutionChanges>(`/audit/actions/${id}/changes`, options)
 }
