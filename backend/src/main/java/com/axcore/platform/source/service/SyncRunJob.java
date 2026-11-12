@@ -11,12 +11,14 @@ import com.axcore.platform.ontology.service.ObjectSyncService.FinishResult;
 import com.axcore.platform.source.domain.CredentialPurpose;
 import com.axcore.platform.source.domain.FullLoadPlan;
 import com.axcore.platform.source.domain.FullLoadPlan.MappingPlan;
+import com.axcore.platform.source.domain.LoadFailure;
 import com.axcore.platform.source.domain.SourceAccount;
 import com.axcore.platform.source.domain.SourceEndpoint;
 import com.axcore.platform.source.domain.SourceKind;
 import com.axcore.platform.source.domain.SourceRow;
 import com.axcore.platform.source.domain.SyncStrategy;
 import com.axcore.platform.source.repository.CdcConsumerRepository;
+import com.axcore.platform.source.repository.SourceLoadFailureRepository;
 import com.axcore.platform.source.repository.SourceTableReader;
 import com.axcore.platform.source.repository.SourceTableReader.Table;
 import com.axcore.platform.source.repository.SourceTableReader.TooManyRowsException;
@@ -49,6 +51,8 @@ import org.springframework.stereotype.Component;
  *       나온 객체는 삭제 표시하고, CDC 테이블은 끝난 세대와 읽기 시점 LSN을 올린다. 마지막에 읽은 매핑의 객체 유형으로 연결을 다시 계산한다(181 {@link
  *       LinkRecomputeService#recomputeObjectTypes}, 198-7, 결정 문서 9.4). 트랜잭션당 한 번, 객체를 다 쓴 뒤에만
  *       부른다(관계 유형 잠금 순서).
+ *   <li>같은 트랜잭션에서 변환 실패를 수집 실패 기록({@code source_load_failure}, 결정 문서 9.2)에 남기고, 이번 읽기에서 다시 나오지 않은 그
+ *       매핑의 열린 실패를 닫는다(S15P31C106-362). 읽기 시작 뒤 CDC가 남긴 실패는 이 스냅샷이 보지 못한 변경일 수 있어 닫지 않는다.
  * </ol>
  *
  * <p>세대는 sync_run.id다. 쓰기 조건(스냅샷 가시성·세대·삭제 흔적)은 decisions/2026-11-05-cdc-initial-load.md와 V11을 따른다.
@@ -73,6 +77,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
     private final SourceCredentialService credentialService;
     private final ObjectSyncService objectSyncService;
     private final LinkRecomputeService linkRecomputeService;
+    private final SourceLoadFailureRepository failureRepository;
     private final Clock clock;
     private final int maxRows;
 
@@ -85,6 +90,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
             SourceCredentialService credentialService,
             ObjectSyncService objectSyncService,
             LinkRecomputeService linkRecomputeService,
+            SourceLoadFailureRepository failureRepository,
             Clock clock,
             @Value("${axcore.source-load.max-rows}") int maxRows) {
         this.syncRunRepository = syncRunRepository;
@@ -95,6 +101,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
         this.credentialService = credentialService;
         this.objectSyncService = objectSyncService;
         this.linkRecomputeService = linkRecomputeService;
+        this.failureRepository = failureRepository;
         this.clock = clock;
         this.maxRows = maxRows;
     }
@@ -169,6 +176,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
             }
             List<SourceRow> rows = read.rows().get(plan.resourceId());
             List<SyncedObject> objects = new ArrayList<>();
+            List<RowFailure> failures = new ArrayList<>();
             int skippedRows = 0;
             int failedValues = 0;
             int duplicateKeyRows = 0;
@@ -180,10 +188,14 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
                     failedValues += conversion.failedValues();
                     if (conversion.object() == null) {
                         skippedRows++;
+                        addFailures(failures, mapping, null, conversion);
                     } else if (byKey.putIfAbsent(
                                     conversion.object().sourceKey(), conversion.object())
                             != null) {
+                        // 쓰지 않은 행이라 그 행의 변환 실패도 남기지 않는다.
                         duplicateKeyRows++;
+                    } else {
+                        addFailures(failures, mapping, conversion.object().sourceKey(), conversion);
                     }
                 }
                 objects.addAll(byKey.values());
@@ -200,6 +212,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
                             plan,
                             rows.size(),
                             objects,
+                            failures,
                             skippedRows,
                             failedValues,
                             duplicateKeyRows));
@@ -228,6 +241,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
             Long toLsn = null;
             if (!plan.mappings().isEmpty()) {
                 counts = write(plan, resource, outcome.load());
+                recordFailures(plan, resource, jobId);
                 if (plan.strategy() == SyncStrategy.CDC) {
                     syncRunRepository.markLoaded(plan.resourceId(), jobId, outcome.lsn());
                     toLsn = outcome.lsn();
@@ -264,6 +278,34 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
                                         dataSourceId,
                                         jobId,
                                         resumeAfter));
+    }
+
+    private static void addFailures(
+            List<RowFailure> failures,
+            MappingPlan mapping,
+            Map<String, Object> sourceKey,
+            Conversion conversion) {
+        for (LoadFailure failure : conversion.failures()) {
+            failures.add(new RowFailure(mapping.mappingId(), sourceKey, failure));
+        }
+    }
+
+    /**
+     * 이번 읽기의 변환 실패를 남기고(같은 실패는 열린 기록 하나에 횟수만 올림), 이번에 다시 나오지 않은 그 매핑의 열린 실패를 닫는다(362). 읽기 시작 뒤 CDC가
+     * 남긴 실패는 닫지 않는다.
+     */
+    private void recordFailures(FullLoadPlan plan, ResourceLoad resource, long jobId) {
+        for (RowFailure failure : resource.failures()) {
+            failureRepository.record(
+                    plan.resourceId(),
+                    failure.mappingId(),
+                    failure.sourceKey(),
+                    failure.failure(),
+                    jobId);
+        }
+        for (MappingPlan mapping : plan.mappings()) {
+            failureRepository.closeNotSeenInFullLoad(mapping.mappingId(), jobId);
+        }
     }
 
     private Counts write(FullLoadPlan plan, ResourceLoad resource, FullLoad load) {
@@ -343,6 +385,7 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
     public record Outcome(FullLoad load, long lsn, List<ResourceLoad> resources) {}
 
     /**
+     * @param failures 수집 실패 기록에 남길 변환 실패(키를 만들지 못한 행은 키 없이)
      * @param skippedRows 원천 키가 비어 객체로 만들지 않은 행 수(매핑마다 셈)
      * @param failedValues 자료형으로 바꾸지 못해 뺀 속성 값 수
      * @param duplicateKeyRows 같은 매핑에서 앞 행과 원천 키가 같아 쓰지 않은 행 수(매핑마다 셈). 키가 원천에서 유일하지 않은 뷰 등
@@ -351,12 +394,18 @@ public class SyncRunJob implements QueuedJobHandler<SyncRunJob.Outcome> {
             FullLoadPlan plan,
             int rowsRead,
             List<SyncedObject> objects,
+            List<RowFailure> failures,
             int skippedRows,
             int failedValues,
             int duplicateKeyRows) {
 
         static ResourceLoad empty(FullLoadPlan plan) {
-            return new ResourceLoad(plan, 0, List.of(), 0, 0, 0);
+            return new ResourceLoad(plan, 0, List.of(), List.of(), 0, 0, 0);
         }
     }
+
+    /**
+     * @param sourceKey 원천 키. 키를 만들지 못한 행이면 null
+     */
+    public record RowFailure(long mappingId, Map<String, Object> sourceKey, LoadFailure failure) {}
 }
