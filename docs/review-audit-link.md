@@ -10,7 +10,7 @@
 2. `ProposalDecisionCheckRepository.findSuccessfulCheckRunId`는 `Optional<Long>`을 반환한다. Validator는 잠긴 후보와 근거를 `ValidatedDecision(ProposalItem item, Long basisCheckRunId)`로, HistoryService는 저장한 결정과 근거를 `RecordedDecision(long decisionId, Long basisCheckRunId)`로 전달한다. 검증·검사 선택은 한 번만 수행한다.
 3. DecisionService는 전달받은 검사 ID를 기존 `action_execution.result.basisCheckRunId`에 넣는다. 실패 처리에 필요한 ID도 요청별 `Attempt`에 보관한다. `AuditRecorder`가 성공과 변경 내역을 업무 트랜잭션에서, 차단·실패를 롤백 후 별도 트랜잭션에서 저장한다.
 
-새 테이블·컬럼·의존성은 추가하지 않는다. 054 요청·응답 필드는 그대로이며, 기존 096·097·098의 자유 형식 `result`에 필드가 추가된다. API 원본 명세에는 이 필드의 의미와 예시를 반영해야 한다. 원격 명세를 이번 작업에서 수정하지 않는다. ERD 구조 변경은 없다.
+새 테이블·컬럼·의존성은 추가하지 않는다. 054 요청·응답 필드는 그대로이며, 기존 097의 자유 형식 `result`에 필드가 추가된다(작성 당시에는 096 목록에도 `result`가 있었으나 S15P31C106-374에서 목록에서 빠졌다). API 원본 명세에는 이 필드의 의미와 예시를 반영해야 한다. 원격 명세를 이번 작업에서 수정하지 않는다. ERD 구조 변경은 없다.
 
 ## 검사 선택
 
@@ -36,4 +36,4 @@
 ## 남은 작업
 
 - 종류별 반영기(189)가 구현되면 실제 반영기로 승인·감사 연결을 통합 검증한다. 지금은 모든 종류가 `APPLY_KIND_NOT_SUPPORTED`이고 테스트는 대체 반영기를 쓴다.
-- API 원본 명세(096·097·098)에 `result.basisCheckRunId`의 의미와 예시를 반영한다.
+- API 원본 명세(097)에 `result.basisCheckRunId`의 의미와 예시를 반영한다.
