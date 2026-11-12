@@ -128,17 +128,7 @@ function ExplorerPage() {
 
   return (
     <div>
-      <header className="mb-6">
-        <p className="text-xs font-semibold tracking-widest text-slate-500">
-          WORKSPACE
-        </p>
-        <h1 className="mt-1 text-xl font-semibold text-slate-900">
-          업무 데이터
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          흩어진 업무 데이터를 연결하고, 객체 간 관계를 한눈에 탐색하세요.
-        </p>
-      </header>
+      <h1 className="sr-only">업무 데이터</h1>
 
       {/* 유형 카드로 조건이 바뀌면 검색 줄 칸도 그 조건으로 다시 채운다. */}
       <ObjectSearchBar

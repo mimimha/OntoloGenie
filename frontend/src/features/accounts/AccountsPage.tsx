@@ -173,13 +173,8 @@ export default function AccountsPage() {
     )
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">계정·권한</h1>
-          <p className="mt-2 text-sm text-slate-500">
-            계정을 발급하고 역할·로그인 상태를 관리합니다.
-          </p>
-        </div>
+      <header className="flex flex-wrap items-center justify-end gap-3">
+        <h1 className="sr-only">계정·권한</h1>
         <Link
           className="rounded-lg bg-violet-700 px-4 py-2 text-sm text-white"
           to="/admin/accounts/new"

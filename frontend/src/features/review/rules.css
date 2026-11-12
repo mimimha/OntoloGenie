@@ -17,8 +17,8 @@
     linear-gradient(125deg, #fafafc, #eeeef3 70%, #e8e7ee);
 }
 .rules-shell .app-header {
-  min-height: 88px;
-  padding: 22px 42px;
+  min-height: 83px;
+  padding: 19.5px 42px;
   border-color: #ffffff70;
   gap: 24px;
 }
@@ -66,26 +66,6 @@
 }
 .rules-shell .workspace-main {
   padding: 34px 42px 42px;
-}
-.rules-page-heading {
-  padding: 2px 0 34px;
-}
-.rules-eyebrow {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  color: #8b8d9a;
-}
-.rules-page-heading h1 {
-  margin: 12px 0;
-  font-size: 30px;
-  line-height: 1.4;
-  font-weight: 700;
-  letter-spacing: -1px;
-}
-.rules-page-heading > p:last-child {
-  color: #8b8d9a;
-  font-size: 13px;
 }
 .rules-list-heading {
   display: flex;
@@ -427,17 +407,14 @@
     font-size: 16px;
   }
   .rules-shell .app-header {
-    min-height: 102px;
-    padding: 24px 48px;
+    min-height: 97px;
+    padding: 21.5px 48px;
   }
   .rules-shell .main-nav {
     min-height: 68px;
   }
   .rules-shell .workspace-main {
     padding: 38px 48px 48px;
-  }
-  .rules-page-heading {
-    padding-bottom: 40px;
   }
   .rules-kind-tabs {
     margin: 38px 0 32px;
@@ -457,8 +434,8 @@
     border-radius: 24px;
   }
   .rules-shell .app-header {
-    padding: 20px;
-    align-items: start;
+    padding: 17.5px 20px;
+    align-items: center;
     flex-wrap: wrap;
   }
   .rules-shell .app-header > div {

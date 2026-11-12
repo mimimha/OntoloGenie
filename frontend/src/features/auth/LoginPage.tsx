@@ -58,7 +58,12 @@ function LoginPage() {
   return (
     <main className="auth-page">
       <header className="auth-brand">
-        Ontolo<span>Genie</span>
+        <img
+          src="/ontologenie-logo.svg"
+          alt="OntoloGenie"
+          width="250"
+          height="32"
+        />
       </header>
       <div className="auth-columns">
         <section className="auth-introduction" aria-label="서비스 소개">

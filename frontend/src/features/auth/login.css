@@ -6,13 +6,11 @@
     radial-gradient(ellipse at 95% 15%, #e2dcf4, transparent 60%),
     linear-gradient(130deg, #faf9fc, #efedf5);
 }
-.auth-brand {
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -1.5px;
-}
-.auth-brand span {
-  color: #7560cb;
+.auth-brand img {
+  display: block;
+  width: 250px;
+  max-width: 100%;
+  height: auto;
 }
 .auth-columns {
   display: grid;

@@ -202,14 +202,8 @@ export default function ActionDefinitionsPage() {
     )
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Action 정의</h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Agent와 화면이 쓰는 기능을 등록하고 구현 상태를 확인합니다. 새
-            기능을 등록하면 개발자에게 구현 요청이 갑니다.
-          </p>
-        </div>
+      <header className="flex flex-wrap items-center justify-end gap-3">
+        <h1 className="sr-only">Action 정의</h1>
         <Link
           className="rounded-lg bg-violet-700 px-4 py-2 text-sm text-white"
           to="/admin/actions/new"

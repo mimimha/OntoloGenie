@@ -125,17 +125,7 @@ function SourcesPage() {
 
   return (
     <div>
-      <header className="mb-6">
-        <p className="text-xs font-semibold tracking-widest text-slate-500">
-          SOURCES
-        </p>
-        <h1 className="mt-1 text-xl font-semibold text-slate-900">
-          데이터 연결
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          원천을 연결하고 수집 대상을 저장한 뒤 관계 분석에 사용하세요.
-        </p>
-      </header>
+      <h1 className="sr-only">데이터 연결</h1>
 
       <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-6">
         <div className="flex items-center justify-between gap-2">

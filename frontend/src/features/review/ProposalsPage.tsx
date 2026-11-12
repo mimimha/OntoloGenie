@@ -190,11 +190,7 @@ export default function ProposalsPage() {
   }
   return (
     <div className="rules-workspace">
-      <header className="rules-page-heading">
-        <p className="rules-eyebrow">ONTOLOGY</p>
-        <h1>연결 규칙</h1>
-        <p>원천 데이터를 분석하고, 신뢰할 수 있는 관계를 만들어 보세요.</p>
-      </header>
+      <h1 className="sr-only">연결 규칙</h1>
       <div className="rules-list-heading">
         <h2>연결 규칙 목록</h2>
         <div className="rules-list-actions">

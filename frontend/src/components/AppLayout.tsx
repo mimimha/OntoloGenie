@@ -59,16 +59,12 @@ function AppLayout() {
             className="app-brand font-semibold tracking-tight text-slate-900"
             aria-label="OntoloGenie"
           >
-            {rulesWorkspace ? (
-              <img
-                src="/ontologenie-logo.svg"
-                alt="OntoloGenie"
-                width="250"
-                height="34"
-              />
-            ) : (
-              'OntoloGenie'
-            )}
+            <img
+              src="/ontologenie-logo.svg"
+              alt="OntoloGenie"
+              width="250"
+              height="32"
+            />
           </span>
           <div className="flex flex-wrap items-center justify-end gap-3">
             <nav aria-label="계정 메뉴" className="flex flex-wrap gap-1">
