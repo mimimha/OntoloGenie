@@ -109,6 +109,19 @@ class AgentResponderTests {
     }
 
     @Test
+    void saysNotLinkedWhenRelationGroupsLackTheAskedType() {
+        Prompt prompt = askAboutPr03();
+
+        // 관계 묶음에 고정자산이 없으면 "아직 조회할 수 없다"가 아니라 연결이 없다고 말하고, 조회 방식은 말하지 않는다(배포 확인 2026-11-12).
+        assertThat(prompt.getSystemMessage().getText())
+                .contains("groups에 찾는 정보에 맞는 묶음(상대 객체")
+                .contains("groups는 관계를 일부만 받았어도 그 객체에 직접 연결된 관계 유형을 모두 담는다")
+                .contains("\"아직 조회할 수 없다\"는 그 정보를 조회할 도구가 없을 때만 쓴다")
+                .contains("조회 방식은 빼고 확인한 기록 수만")
+                .contains("어떻게 조회했는지(관계 유형별 건수만 봤다");
+    }
+
+    @Test
     void answersOnlyBusinessPartOfMixedRequest() {
         Prompt prompt = askAboutPr03();
 
