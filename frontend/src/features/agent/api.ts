@@ -6,10 +6,18 @@ export const MESSAGE_PAGE_SIZE = 100
 
 // 081 내 대화 목록
 export async function fetchConversations() {
-  const body = await apiGet<AgentConversation[]>(
-    `/agent/conversations?page=0&size=${CONVERSATION_PAGE_SIZE}`,
-  )
-  return body.data
+  const conversations: AgentConversation[] = []
+  let page = 0
+  let hasNext = true
+  while (hasNext) {
+    const body = await apiGet<AgentConversation[]>(
+      `/agent/conversations?page=${page}&size=${CONVERSATION_PAGE_SIZE}`,
+    )
+    conversations.push(...body.data)
+    hasNext = body.meta?.hasNext === true && body.data.length > 0
+    page += 1
+  }
+  return conversations
 }
 
 // 082 대화 생성
