@@ -157,7 +157,8 @@ def _option_fingerprint(option: dict) -> str:
 
 def _promote_remaining_option(p: dict, by_fingerprint: dict) -> dict | None:
     """거절된 본문 대신 거절되지 않은 첫 대안을 본문으로. 남은 대안이 없으면 None."""
-    main = p["evidence"].get("fingerprint")
+    # 지문에는 대안도 들어 있어 거절된 대표 제안과 같은 대안은 payload 지문으로 가린다
+    main = fingerprint_payload(p.get("payload") or {})
     remaining = [
         o
         for o in p.get("options") or []
@@ -212,10 +213,17 @@ def skip_past_decisions(
         if same and same["decision"] in skipped:
             skipped[same["decision"]] += 1
             continue
-        if p.get("itemKind") == "DOCUMENT_LINK" and any(
-            by_fingerprint.get(_option_fingerprint(option), {}).get("decision")
-            == "APPROVE"
-            for option in p.get("options") or []
+        approved_before = by_candidate.get(evidence.get("candidateId"), {}).get(
+            "decision"
+        )
+        if p.get("itemKind") == "DOCUMENT_LINK" and (
+            # 같은 언급을 이미 승인했으면 대안이 바뀌어도 다시 묻지 않는다
+            approved_before == "APPROVE"
+            or any(
+                by_fingerprint.get(_option_fingerprint(option), {}).get("decision")
+                == "APPROVE"
+                for option in p.get("options") or []
+            )
         ):
             skipped["APPROVE"] += 1
             continue
