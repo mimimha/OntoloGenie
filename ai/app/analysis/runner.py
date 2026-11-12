@@ -6,7 +6,7 @@
 import logging
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
@@ -25,7 +25,11 @@ log = logging.getLogger(__name__)
 
 UNEXPECTED = "분석 중 오류가 났습니다"
 STOPPED = "AI 서비스가 다시 시작되어 분석이 중단되었습니다. 다시 분석해 주세요"
+# 결과를 보내지 못하면 이 실패로라도 알린다. 알리지 않으면 백엔드 시간 제한(60분)까지 RUNNING으로 남는다
+RESULT_NOT_SENT = "분석 결과를 저장하지 못했습니다. 다시 분석해 주세요"
 STOP_WAIT_SEC = 5  # 컨테이너 종료 유예(기본 10초) 안에 알림을 끝낸다
+# 접속 실패·5xx일 때 다시 보내기 전 기다리는 초. 실패하면 차례로 기다리고 모두 쓰면 포기한다
+RETRY_DELAYS_SEC = (2, 5, 10)
 
 Connector = Callable[[dict], Callable[[], Any]]
 Analyze = Callable[[AnalysisStartRequest, Sources], AnalysisResult]
@@ -37,13 +41,16 @@ class AnalysisRunner:
         report: Report,
         connector: Connector = psycopg_connector,
         analyze: Analyze = engine.analyze,
+        retry_delays: Sequence[float] = RETRY_DELAYS_SEC,
     ):
         self._report = report
         self._connector = connector
         self._analyze = analyze
+        self._retry_delays = tuple(retry_delays)
         self._active: set[int] = set()
         self._stopped: set[int] = set()
         self._stopping = False
+        self._stop_event = threading.Event()  # 종료 중이면 재시도 대기를 끊는다
         self._lock = threading.Lock()
 
     def claim(self, run_id: int) -> bool:
@@ -61,6 +68,7 @@ class AnalysisRunner:
             self._stopping = True  # 이 뒤에 받은 실행은 run()이 바로 중단으로 알린다
             runs = sorted(self._active - self._stopped)
             self._stopped.update(runs)
+        self._stop_event.set()
 
         def send(run_id: int) -> None:
             try:
@@ -90,23 +98,19 @@ class AnalysisRunner:
                 except BackendError as error:
                     log.warning("분석 실행 %s 중단 알림 실패(%s)", run_id, error)
                 return
-            try:
-                self._report(run_id, {"status": "RUNNING"})
-            except BackendError as error:
-                # 백엔드가 이미 끝낸 실행(409)이거나 닿지 않으면 분석하지 않는다
+            error = self._send(run_id, {"status": "RUNNING"})
+            if error is not None:
+                # 백엔드가 이미 끝낸 실행(409)·없는 실행(404)이거나 다시 보내도 닿지 않으면 분석하지 않는다
                 log.warning(
                     "분석 실행 %s RUNNING 알림 실패(%s), 분석하지 않음", run_id, error
                 )
                 return
             body = self._analyze_to_body(request)
-            with self._lock:
-                stopped = run_id in self._stopped
-            if stopped:
+            if self._is_stopped(run_id):
                 return  # 이미 중단으로 알린 실행
-            try:
-                self._report(run_id, body)
-            except BackendError as error:
-                log.warning("분석 실행 %s 결과 알림 실패(%s)", run_id, error)
+            error = self._send(run_id, body)
+            if error is not None:
+                self._report_unsent(run_id, body["status"], error)
                 return
             log.info(
                 "분석 실행 %s %s (%.1fs)",
@@ -119,8 +123,56 @@ class AnalysisRunner:
                 self._active.discard(run_id)
                 self._stopped.discard(run_id)
 
+    def _is_stopped(self, run_id: int) -> bool:
+        with self._lock:
+            return run_id in self._stopped
+
+    def _send(self, run_id: int, body: dict) -> BackendError | None:
+        """105로 보낸다. 접속 실패·5xx면 잠시 뒤 다시 보낸다. 성공하면 None, 끝내 실패하면 마지막 오류."""
+        retried = False
+        for delay in (*self._retry_delays, None):
+            try:
+                self._report(run_id, body)
+                return None
+            except BackendError as error:
+                # 앞선 시도가 저장됐는데 응답만 못 받았으면 다시 보낸 요청은 409가 된다
+                error.after_retry = retried
+                if error.status == 409 and retried and body["status"] == "RUNNING":
+                    return None  # 앞선 RUNNING 알림이 이미 반영됨
+                if delay is None or not error.retryable:
+                    return error
+                retried = True
+                log.warning(
+                    "분석 실행 %s %s 알림 실패(%s), %s초 뒤 다시 보냄",
+                    run_id,
+                    body["status"],
+                    error,
+                    delay,
+                )
+                self._stop_event.wait(delay)
+                if self._is_stopped(run_id):
+                    return error  # stop()이 중단으로 알렸으니 더 보내지 않는다
+
+    def _report_unsent(self, run_id: int, status: str, error: BackendError) -> None:
+        """결과를 끝내 보내지 못했을 때. 백엔드가 받지 않는 실행이 아니면 짧은 FAILED를 한 번 더 보내 본다."""
+        if self._is_stopped(run_id):
+            return  # 재시도 중에 stop()이 중단으로 알림
+        # 404(없는 실행)와 다시 보낸 뒤의 409(앞선 시도가 저장됐거나 이미 끝난 실행)는 받지 않는 실행이다.
+        # 첫 시도의 409는 저장 중 제약 위반일 수도 있어 FAILED를 한 번 보내 본다(이미 끝났으면 다시 409로 무시됨)
+        if error.status == 404 or (error.status == 409 and error.after_retry):
+            log.warning("분석 실행 %s %s 알림 거절(%s), 포기", run_id, status, error)
+            return
+        log.warning(
+            "분석 실행 %s %s 알림 실패(%s), 실패로 다시 알림", run_id, status, error
+        )
+        try:
+            self._report(run_id, {"status": "FAILED", "errorMessage": RESULT_NOT_SENT})
+        except BackendError as fallback:
+            log.warning("분석 실행 %s 실패 알림도 실패(%s)", run_id, fallback)
+
     def _analyze_to_body(self, request: AnalysisStartRequest) -> dict:
         try:
+            engine.check_targets(request)  # 원천에 접속하기 전에 막는다
             with ExitStack() as stack:
                 sources = {
                     source.data_source_code: self._open(request, source, stack)

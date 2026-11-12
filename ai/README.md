@@ -46,6 +46,23 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
+## 테스트·로컬 실행
+
+`ai/`에서 실행합니다. 테스트 도구(pytest·Ruff·httpx)는 `requirements-dev.txt`에 있습니다. 테스트는 가짜 LLM·가짜 원천만 쓰고 GMS를 부르지 않습니다(전체 약 3분).
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\ruff.exe check .
+.\.venv\Scripts\ruff.exe format --check app tests main.py
+```
+
+서버는 아래 명령으로 띄웁니다. `.env`가 있으면 아직 없는 환경변수만 채웁니다. 확인은 `http://127.0.0.1:8000/health`입니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
+```
+
 ## FastAPI Docker 이미지 (5-1b)
 
 저장소 루트에서 실행합니다. Python 3.11 slim 이미지에 운영 의존성과 `main.py` · `app/`만 복사하고 UID 10001인 `app` 사용자로 실행합니다. 소스 복사 전에 의존성을 설치해 해당 레이어를 재사용합니다. 데이터셋·정답셋·결과 샘플·테스트·가상환경은 이미지에 포함하지 않습니다.

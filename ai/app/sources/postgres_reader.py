@@ -3,6 +3,7 @@
 읽기 전용 세션으로 SELECT 권한이 있는 표·뷰만 보여 주고, 오류에는 접속 정보를 넣지 않는다.
 """
 
+import json
 from collections.abc import Callable
 from typing import Any
 
@@ -11,19 +12,27 @@ import pandas as pd
 from app.models.source import ColumnSchema, TableSchema
 from app.sources.base import UnknownTableError
 
+# 백엔드 연결 검사(SourceCatalogReader)와 같은 기준: 표·파티션 부모·뷰·구체화 뷰 중 파티션 자식은 빼고,
+# 스키마 USAGE와 표 또는 컬럼 하나 이상의 SELECT 권한이 있는 것
 LIST_RESOURCES = """
-SELECT table_name, table_type FROM information_schema.tables
-WHERE table_schema = %s AND table_type IN ('BASE TABLE', 'VIEW')
-  AND has_table_privilege(format('%%I.%%I', table_schema, table_name), 'SELECT')
-ORDER BY table_name
+SELECT c.relname, c.relkind
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = %s AND c.relkind IN ('r', 'p', 'v', 'm')
+  AND NOT c.relispartition
+  AND has_schema_privilege(n.oid, 'USAGE')
+  AND has_any_column_privilege(c.oid, 'SELECT')
+ORDER BY c.relname
 """
 TABLE_COMMENT = "SELECT obj_description(format('%%I.%%I', %s::text, %s::text)::regclass, 'pg_class')"
-# 제약 조건 정보(information_schema)는 표 주인에게만 보여 조회 전용 계정은 pg_catalog로 읽는다
+# 제약 조건 정보(information_schema)는 표 주인에게만 보여 조회 전용 계정은 pg_catalog로 읽는다.
+# 컬럼 단위로만 권한을 준 표는 SELECT할 수 있는 컬럼만 보인다(백엔드 연결 검사와 같음)
 COLUMNS = """
 SELECT a.attname, format_type(a.atttypid, a.atttypmod), col_description(a.attrelid, a.attnum)
 FROM pg_attribute a
 WHERE a.attrelid = format('%%I.%%I', %s::text, %s::text)::regclass
   AND a.attnum > 0 AND NOT a.attisdropped
+  AND has_column_privilege(a.attrelid, a.attnum, 'SELECT')
 ORDER BY a.attnum
 """
 PRIMARY_KEY = """
@@ -55,6 +64,8 @@ ERROR_MESSAGES = {
     "SOURCE_AUTH_FAILED": "원천 계정 인증에 실패했습니다",
     "SOURCE_PERMISSION_DENIED": "원천을 읽을 권한이 없습니다",
     "SOURCE_UNREACHABLE": "원천에 접속하지 못했습니다",
+    "SOURCE_TIMEOUT": "원천 조회가 시간 제한(30초)을 넘었습니다",
+    "SOURCE_TABLE_MISSING": "원천에서 고른 테이블을 찾지 못했습니다",
     "SOURCE_DRIVER_MISSING": "PostgreSQL 드라이버가 설치되지 않았습니다",
     "SOURCE_UNSUPPORTED": "이 원천 종류는 아직 읽을 수 없습니다",
 }
@@ -73,7 +84,7 @@ AUTH_MESSAGES = ("authentication failed", "pg_hba.conf")
 
 
 def error_code(error: Exception) -> str:
-    """PostgreSQL 오류 상태값(sqlstate)으로 원인만 구분한다. 28xxx 인증, 42501 권한."""
+    """PostgreSQL 오류 상태값(sqlstate)으로 원인만 구분한다. 28xxx 인증, 42501 권한, 57014 시간 초과, 42P01 표 없음."""
     if isinstance(error, SourceError):
         return error.code
     state = getattr(error, "sqlstate", None) or ""
@@ -81,6 +92,10 @@ def error_code(error: Exception) -> str:
         return "SOURCE_AUTH_FAILED"
     if state == "42501":
         return "SOURCE_PERMISSION_DENIED"
+    if state == "57014":  # statement_timeout으로 취소됨
+        return "SOURCE_TIMEOUT"
+    if state == "42P01":  # 목록을 읽은 뒤 표가 없어짐
+        return "SOURCE_TABLE_MISSING"
     return "SOURCE_UNREACHABLE"
 
 
@@ -103,6 +118,8 @@ def psycopg_connector(
             # 원천 AI 계정은 SSL만 받는다
             sslmode=connection.get("sslmode") or "prefer",
             connect_timeout=timeout_sec,
+            # 쿼리마다 바로 끝내 스냅샷 사이에 트랜잭션을 열어 두지 않는다
+            autocommit=True,
             options=(
                 "-c default_transaction_read_only=on"
                 f" -c statement_timeout={statement_timeout_ms}"
@@ -110,6 +127,17 @@ def psycopg_connector(
         )
 
     return connect
+
+
+def _text(value: Any) -> str | None:
+    """원천 값 → CSV 원천과 같은 글자. bool은 true·false, JSON(dict·list)은 JSON 글자로 둔다."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, dict | list):
+        return json.dumps(value, ensure_ascii=False, default=str)
+    return str(value)
 
 
 def _quote(name: str) -> str:
@@ -134,6 +162,7 @@ class PostgresSourceReader:
         self._kinds: dict[str, str] | None = None
 
     def close(self) -> None:
+        """여러 번 불러도 된다(스냅샷 뒤 엔진이 먼저 닫고 runner가 다시 닫는다)."""
         self._conn.close()
 
     def __enter__(self):
@@ -154,7 +183,7 @@ class PostgresSourceReader:
         """읽을 수 있는 표·뷰 → TABLE · VIEW."""
         if self._kinds is None:
             self._kinds = {
-                name: "VIEW" if kind == "VIEW" else "TABLE"
+                name: "VIEW" if kind in ("v", "m") else "TABLE"
                 for name, kind in self._query(LIST_RESOURCES, (self.schema,))
             }
         return self._kinds
@@ -211,7 +240,7 @@ class PostgresSourceReader:
             sql += f" LIMIT {int(limit)}"
         rows = self._query(sql)
         frame = pd.DataFrame(
-            [[None if v is None else str(v) for v in row] for row in rows],
+            [[_text(v) for v in row] for row in rows],
             columns=names,
             dtype=object,
         )

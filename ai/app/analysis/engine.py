@@ -3,8 +3,11 @@
 LLM이 없거나 실패해도 코드 분석 후보는 그대로 낸다. AnalysisFailure의 사유는 105 FAILED의 errorMessage가 된다.
 """
 
+import logging
+import re
 import shutil
 import tempfile
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -36,8 +39,12 @@ from app.sources.csv_reader import CsvSourceReader
 from app.sources.postgres_reader import PostgresSourceReader, SourceError
 from app.sources.snapshot import SnapshotReport, write_snapshot
 
+log = logging.getLogger(__name__)
+
 # 글을 읽어 DOCUMENT_LINK 후보를 만드는 표
 NOTE_TABLES = {"mes.handover_note", "mes.maintenance_order"}
+# 원천 값을 옮겨 두는 임시 폴더 이름 앞부분. 강제 종료로 남은 폴더는 서버가 시작할 때 지운다
+WORKDIR_PREFIX = "ai-run-"
 
 
 class AnalysisFailure(Exception):
@@ -77,14 +84,19 @@ def analyze(
     llm: LLMClient | None = None,
     model_summary: dict | None = None,
 ) -> AnalysisResult:
+    check_targets(request)
     if llm is None:
         llm = get_llm()
     summary_skip = None
     if model_summary is None:
         model_summary, summary_skip = get_model_summary()
-    workdir = Path(tempfile.mkdtemp(prefix="ai-run-"))
+    workdir = Path(tempfile.mkdtemp(prefix=WORKDIR_PREFIX))
     try:
-        report = _snapshot(request, sources, workdir)
+        try:
+            report = _snapshot(request, sources, workdir)
+        finally:
+            # 원천 값은 임시 폴더로 옮겼으니 LLM 단계까지 원천 연결을 잡아 두지 않는다
+            _close_readers(sources)
         result = _analyze(request, workdir, llm, get_settings().llm_credit_limit)
         # 확정 모델(043)과 같은 후보는 빼고, 재분석이면 추가·변경·유지를 표시한다
         reanalysis = request.run_kind == "REANALYSIS"
@@ -123,9 +135,43 @@ def analyze(
         shutil.rmtree(workdir, ignore_errors=True)  # 옮겨 온 원천 값은 남기지 않는다
 
 
+def remove_stale_workdirs(root: Path | None = None) -> int:
+    """강제 종료로 남은 임시 폴더(원천 값 복사본)를 지운다. 분석이 돌지 않는 서버 시작 때만 부른다."""
+    removed = 0
+    for path in Path(root or tempfile.gettempdir()).glob(f"{WORKDIR_PREFIX}*"):
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+            removed += not path.exists()
+    return removed
+
+
 def _prefix(resource_key: str) -> str:
     """원천.테이블의 원천 부분(예: mes). 후보의 resourceKey가 이 이름으로 시작한다."""
     return resource_key.split(".", 1)[0]
+
+
+def check_targets(request: AnalysisStartRequest) -> None:
+    """서로 다른 원천이 같은 스키마 이름(resourceKey 앞부분)을 쓰면 막는다.
+
+    임시 폴더와 후보 ID·resourceKey가 스키마 이름으로 갈려서, 겹치면 표 정의가 덮어써지고 sourceId가 틀린다.
+    """
+    owners: dict[str, set[str]] = {}
+    for target in request.targets:
+        owners.setdefault(_prefix(target.resource_key), set()).add(
+            target.data_source_code
+        )
+    for prefix, codes in sorted(owners.items()):
+        if len(codes) > 1:
+            raise AnalysisFailure(
+                f"서로 다른 원천이 같은 스키마 이름({prefix})을 써서 함께 분석할 수 없습니다: "
+                f"{', '.join(sorted(codes))}. 원천별로 나눠 분석해 주세요"
+            )
+
+
+def _close_readers(sources: Sources) -> None:
+    for source in sources.values():
+        if isinstance(source, PostgresSourceReader):
+            source.close()
 
 
 def _snapshot(
@@ -224,6 +270,7 @@ def _analyze(
         kept, report = interpret(root, kept, llm, only=scope)
         llm_calls, credits = report["tables"], report["credits_used"]
         llm_failed = len(report["failed"])
+        _log_llm_failures(request.run_id, "표 의미 해석", report["failed"])
         llm_rejected = len(report["rejected_links"])
         # 규칙이 못 이은 시스템 간 참조 컬럼은 LLM에게 묻고 값으로 확인한다(보류로만 낸다)
         cross, cross_report = cross_links(root, kept, llm, cross_tables)
@@ -232,6 +279,7 @@ def _analyze(
         dropped += cross_dropped
         llm_calls += cross_report["calls"]
         llm_failed += len(cross_report["failed"])
+        _log_llm_failures(request.run_id, "시스템 간 연결", cross_report["failed"])
         credits += cross_report["credits_used"]
         llm_cross = len([c for c in cross_kept if c.payload.kind.value == "LINK_RULE"])
     documents, links = 0, []
@@ -240,6 +288,7 @@ def _analyze(
         documents, links, calls, failed = document_links(root, llm)
         llm_calls += len(calls)
         llm_failed += len(failed)
+        _log_llm_failures(request.run_id, "메모 추출", failed)
         credits += sum(call["credits"] for call in calls)
     # 표 후보와 같이 원천 위치를 다시 확인해 근거에 verified를 채운다
     notes_kept, notes_dropped = verify(root, links + document_link_types(links))
@@ -267,6 +316,42 @@ def _analyze(
         "llmCrossLinks": llm_cross,
     }
     return AnalysisResult(summary=summary, proposals=proposals)
+
+
+# LLM 실패 문구(app/llm/client.py) → 로그에 남길 종류. 문구 뒤에 붙는 응답 본문은 남기지 않는다
+LLM_HTTP_STATUS = re.compile(r"요청 실패 \(HTTP (\d{3})\)")
+LLM_NO_ANSWER = re.compile(r"응답이 없습니다: (\w+)")
+LLM_ERROR_KINDS = (
+    ("접속하지 못했습니다", "접속 실패"),
+    ("JSON이 아닌", "JSON 아님"),
+    ("글자가 없습니다", "빈 응답"),
+    ("응답 오류", "응답 오류"),
+    ("validation error", "답 형식 오류"),
+)
+
+
+def llm_error_kind(error: object) -> str:
+    """실패 목록의 오류 문구에서 종류(HTTP 상태·시간 초과 등)만 꺼낸다."""
+    text = error if isinstance(error, str) else ""
+    if match := LLM_HTTP_STATUS.search(text):
+        return f"HTTP {match[1]}"
+    if match := LLM_NO_ANSWER.search(text):
+        return f"응답 없음({match[1]})"
+    return next((kind for part, kind in LLM_ERROR_KINDS if part in text), "기타")
+
+
+def _log_llm_failures(run_id: int, stage: str, failed: list[dict]) -> None:
+    """LLM 실패 원인을 실행·단계·종류만 남긴다. 응답 본문·프롬프트·키는 남기지 않는다."""
+    if not failed:
+        return
+    kinds = Counter(llm_error_kind(f.get("error")) for f in failed)
+    log.warning(
+        "분석 실행 %s LLM %s 실패 %d건: %s",
+        run_id,
+        stage,
+        len(failed),
+        ", ".join(f"{kind} {count}건" for kind, count in sorted(kinds.items())),
+    )
 
 
 def _llm_skip_reason(llm: LLMClient | None, calls: int, failed: int) -> str | None:
