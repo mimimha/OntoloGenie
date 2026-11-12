@@ -226,6 +226,70 @@ class AgentAnswerProcessorTests {
     }
 
     @Test
+    void keepsPreviousEquipmentAndQueriesWhenReasonIsAlsoExtractedAsTarget() {
+        AgentAnswerRequested followUp = followUp("사유가 가이드 마모인 것만 보여줘");
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(interpreter.interpret(any(), any(), any(), any(), any(), any()))
+                .thenReturn(
+                        QuestionInterpreter.verify(
+                                new QuestionInterpreter.Extracted(
+                                        "가이드 마모 비가동 이력",
+                                        List.of("가이드 마모"),
+                                        null,
+                                        null,
+                                        null,
+                                        List.of(),
+                                        "BUSINESS",
+                                        List.of("가이드 마모")),
+                                List.of()));
+        when(responder.answer(any(), any(), any(), any())).thenReturn("가이드 마모 비가동 기록입니다.");
+
+        processor.onRequested(followUp);
+
+        verify(targetResolver, never()).resolve(any(), any(), any());
+        verify(answers, never()).answerClarification(anyLong(), any(), any(), any());
+        QuestionInterpretation used = answeredWith();
+        assertThat(used.targets()).containsExactly("PR-03");
+        assertThat(used.referenceObjectIds()).containsExactly(301L);
+        assertThat(used.from()).isEqualTo(followUp.previous().from());
+        assertThat(used.to()).isEqualTo(followUp.previous().to());
+        assertThat(used.purpose()).isEqualTo("가이드 마모 비가동 이력");
+        verify(responder).answer(eq(followUp.question()), eq(used), any(), isNull());
+    }
+
+    @Test
+    void asksAboutUnknownExplicitEquipmentEvenWhenReasonIsKnown() {
+        AgentAnswerRequested followUp = followUp("P999에서 가이드 마모가 발생한 이력은?");
+        when(interpreter.isConfigured()).thenReturn(true);
+        when(interpreter.interpret(any(), any(), any(), any(), any(), any()))
+                .thenReturn(
+                        QuestionInterpreter.verify(
+                                new QuestionInterpreter.Extracted(
+                                        "가이드 마모 비가동 이력",
+                                        List.of("P999", "가이드 마모"),
+                                        null,
+                                        null,
+                                        null,
+                                        List.of(),
+                                        "BUSINESS",
+                                        List.of("가이드 마모")),
+                                List.of()));
+        List<AgentTargetResolver.TargetIssue> issues =
+                List.of(new AgentTargetResolver.TargetIssue("P999", List.of()));
+        when(targetResolver.resolve(eq(List.of("P999")), any(), any()))
+                .thenReturn(new AgentTargetResolver.Resolution(List.of(), issues));
+
+        processor.onRequested(followUp);
+
+        ArgumentCaptor<QuestionInterpretation> used =
+                ArgumentCaptor.forClass(QuestionInterpretation.class);
+        verify(answers).answerClarification(eq(900L), used.capture(), eq(issues), any());
+        assertThat(used.getValue().targets()).containsExactly("P999");
+        assertThat(used.getValue().referenceObjects()).isEmpty();
+        verify(responder, never()).answer(any(), any(), any(), any());
+    }
+
+    @Test
     void switchesToNewTargetInsteadOfPreviousObject() {
         AgentAnswerRequested followUp = followUp("06번의 실행 이력은?");
         when(interpreter.isConfigured()).thenReturn(true);

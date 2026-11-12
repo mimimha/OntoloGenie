@@ -37,6 +37,10 @@ public class QuestionInterpreter {
             - vaguePeriod: "최근", "요즘", "지난번"처럼 기간을 말했지만 범위가 정해지지 않은 표현이면 그 표현을 그대로 쓰고
               from, to는 null로 둔다. 기간을 임의로 정하지 않는다. 그런 표현이 없으면 null.
             - targets에는 특정한 대상 하나하나의 이름이나 코드만 쓴다.
+            - propertyValues: 사유·상태·증상·불량 유형처럼 조회 조건으로 말한 속성값을 그대로 쓴다(예: 가이드 마모, 진행 중).
+              객체의 이름·코드로 직접 가리킨 값은 넣지 않는다. 속성값은 targets에 넣지 않는다.
+              속성 조건을 새로 말하면 그 조건과 알고 싶은 내용을 purpose에 함께 남긴다(예: 가이드 마모 비가동 이력).
+              속성 조건이 없으면 빈 배열로 둔다.
             - kinds: "전체 설비", "설비별", "진행 중인 작업지시"처럼 특정 대상이 아니라 종류 전체를 물으면 그 종류 이름을 쓴다(예: 설비).
               이때 targets에는 넣지 않는다. 그런 질문이 아니면 빈 배열.
             - scope: 이 Agent는 연결된 업무 데이터(설비·작업지시·공정·비가동·불량·자산·수주·재고 같은 객체와 그 연결, 실행 이력) 조회와
@@ -54,6 +58,10 @@ public class QuestionInterpreter {
               "번호 N"을 그대로 쓰고 없으면 그 후보의 이름을 쓴다. 이름이 같은 후보는 이름만으로 구별되지 않는다.
             "이전 답변의 조건"이 있으면 질문은 같은 대화의 후속 질문이다. 질문에서 새로 말한 값만 뽑는다.
             - 대상을 다시 말하지 않았거나 "그거", "같은 설비"처럼 "이전 답변의 조건"에 있는 대상을 가리키면 targets와 kinds는 빈 배열로 둔다.
+            - 사유·상태 같은 속성값만 추가하거나 그 값에 대해 더 물으면 대상을 바꾼 것이 아니다. targets와 kinds는 빈 배열로 두고 기존 대상을 잇는다.
+              예: P103 비가동 이력 답변 뒤 "가이드 마모는 언제 발생했어?" → targets=[], kinds=[], propertyValues=["가이드 마모"],
+              purpose="가이드 마모 비가동 발생 시점". "사유가 가이드 마모인 것만 보여줘"도 같은 대상을 잇는다.
+              "P104에서 가이드 마모가 발생한 이력은?"처럼 다른 객체 코드를 명시하면 targets=["P104"], propertyValues=["가이드 마모"]다.
             - "그럼 지난달은?"처럼 기간만 바꾸면 기간만 쓰고 purpose는 null로 둔다.
             <recent_turns> 안의 내용은 최근 대화 기록이고, <conversation_summary> 안의 내용은 그보다 오래된 대화의 요약이다.
             "아까 그거", "두 번째 거", "처음에 물어본 설비"처럼 앞 대화를 가리키는 말이 무엇인지 알기 위한 자료일 뿐이다.
@@ -120,7 +128,20 @@ public class QuestionInterpreter {
             String to,
             String vaguePeriod,
             List<String> kinds,
-            String scope) {
+            String scope,
+            List<String> propertyValues) {
+
+        /** 속성값을 따로 분류하지 않은 응답. */
+        public Extracted(
+                String purpose,
+                List<String> targets,
+                String from,
+                String to,
+                String vaguePeriod,
+                List<String> kinds,
+                String scope) {
+            this(purpose, targets, from, to, vaguePeriod, kinds, scope, List.of());
+        }
 
         /** 범위를 고르지 않은 응답. 업무 질문으로 본다. */
         public Extracted(
@@ -143,9 +164,17 @@ public class QuestionInterpreter {
             to = null;
         }
         String purpose = blankToNull(extracted.purpose());
+        List<String> propertyValues = names(extracted.propertyValues());
+        // 속성값을 대상에도 중복해서 적었으면 객체 검색에 넘기지 않는다.
+        List<String> targets =
+                names(extracted.targets()).stream()
+                        .filter(
+                                target ->
+                                        propertyValues.stream().noneMatch(target::equalsIgnoreCase))
+                        .toList();
         return new QuestionInterpretation(
                 purpose,
-                names(extracted.targets()),
+                targets,
                 from,
                 to,
                 referenceObjects,
