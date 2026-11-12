@@ -160,7 +160,7 @@ function ConversationPanel({
   return (
     <section
       aria-label="현재 대화"
-      className="flex h-[45rem] flex-col rounded-xl border border-slate-200 bg-white"
+      className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white"
     >
       <h2 className="border-b border-slate-200 p-3 text-sm font-semibold text-slate-900">
         {conversation.title ?? NEW_CONVERSATION_TITLE}

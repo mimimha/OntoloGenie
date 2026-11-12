@@ -68,7 +68,7 @@ function AgentPage() {
       )
     }
     return (
-      <div className="grid gap-4 md:grid-cols-[16rem_1fr]">
+      <div className="grid auto-rows-[45rem] gap-4 md:grid-cols-[16rem_minmax(0,1fr)]">
         <ConversationList
           conversations={conversations}
           selectedId={selected?.id ?? null}
