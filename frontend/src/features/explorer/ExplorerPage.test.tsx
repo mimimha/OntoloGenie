@@ -597,7 +597,8 @@ test('객체를 고르기 전에는 객체 유형 관계도를 보여준다', as
     await graph.findByRole('heading', { name: '객체 유형 간 관계' }),
   ).toBeInTheDocument()
   expect(graph.getByRole('button', { name: /작업지시/ })).toBeInTheDocument()
-  expect(graph.getByText('생산 대상 수주 · 1건')).toBeInTheDocument()
+  // 이름표는 유형을 고른 뒤 그 유형의 선에만 보인다.
+  expect(graph.queryByText('생산 대상 수주 · 1건')).not.toBeInTheDocument()
   expect(graph.getByText('객체 유형 6개 · 관계 유형 5개')).toBeInTheDocument()
   expect(
     graph.queryByText(/각 카드는 개별 객체가 아닌/),
@@ -650,13 +651,42 @@ test('유형 목록으로 바꾼 보기는 객체를 골랐다 돌아와도 유�
 })
 
 test('같은 두 유형 사이의 관계는 선 하나에 이름을 모아 보여준다', async () => {
+  const user = userEvent.setup()
   renderExplorerPage()
 
   const graph = within(screen.getByRole('region', { name: '관계도' }))
+  await user.click(await graph.findByRole('button', { name: '객체 유형 설비' }))
   const assigned = await graph.findByText('현재 배정 설비 · 1건')
   const alternative = graph.getByText('대체 가능 설비 · 1건')
 
   expect(assigned.parentElement).toBe(alternative.parentElement)
+})
+
+test('고른 유형의 선은 카드 아래에 두고 다른 선보다 위에 그린다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+
+  const graph = within(screen.getByRole('region', { name: '관계도' }))
+  await user.click(await graph.findByRole('button', { name: '객체 유형 설비' }))
+  await graph.findByText('현재 배정 설비 · 1건')
+
+  const edges = [...document.querySelectorAll('.react-flow__edge')]
+  for (const edge of edges) {
+    expect(Number(edge.closest('svg')?.style.zIndex || 0)).toBeLessThan(1)
+  }
+  const lastPath = edges.at(-1)?.querySelector('.react-flow__edge-path')
+  expect(lastPath?.getAttribute('style')).toMatch(/6f5adf|111, 90, 223/i)
+})
+
+test('유형을 고르면 그 유형의 관계 이름표만 보여준다', async () => {
+  const user = userEvent.setup()
+  renderExplorerPage()
+
+  const graph = within(screen.getByRole('region', { name: '관계도' }))
+  await user.click(await graph.findByRole('button', { name: '객체 유형 설비' }))
+
+  expect(await graph.findByText('현재 배정 설비 · 1건')).toBeInTheDocument()
+  expect(graph.queryByText('생산 대상 수주 · 1건')).not.toBeInTheDocument()
 })
 
 test('유형 카드를 누르면 그 유형의 객체 목록과 관계를 보여준다', async () => {
@@ -861,11 +891,13 @@ test('자기 유형 관계도 관계선과 유형 상세에 표시한다', async
   const user = userEvent.setup()
   renderExplorerPage()
   const graph = within(screen.getByRole('region', { name: '관계도' }))
-  expect(await graph.findByText('연관 작업 · 0건')).toBeInTheDocument()
+  await graph.findByRole('button', { name: /작업지시/ })
   const edge = document.querySelector('.react-flow__edge path')
   expect(edge?.getAttribute('d')).not.toMatch(/NaN/)
   expect(edge?.getAttribute('d')).toContain('C')
   await user.click(graph.getByRole('button', { name: /작업지시/ }))
+  // 이름표는 유형을 고른 뒤에 보인다.
+  expect(await graph.findByText('연관 작업 · 0건')).toBeInTheDocument()
   expect(
     await screen.findByText('작업지시 → 작업지시 · N:M'),
   ).toBeInTheDocument()

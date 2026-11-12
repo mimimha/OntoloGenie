@@ -13,13 +13,15 @@ import {
   type NodeProps,
   type ReactFlowInstance,
 } from '@xyflow/react'
-import { useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import Button from '../../components/Button'
+import type { Route } from './edgeRoute'
 import { formatCount } from './format'
 import '@xyflow/react/dist/style.css'
 import {
   groupRelationLines,
   layoutTypeGraph,
+  routeRelationLines,
   selfRelationHeight,
   TYPE_NODE_HEIGHT,
   TYPE_NODE_WIDTH,
@@ -85,6 +87,10 @@ function TypeNode({ data }: NodeProps<TypeFlowNode>) {
 type RelationEdgeData = {
   edges: ModelEdge[]
   loopHeight: number
+  // 카드를 피해 가도록 계산한 경로. 자기 유형 관계에는 없다.
+  route?: Route
+  // 이름표는 고른 유형에 붙은 선에만 보인다.
+  showLabel: boolean
 }
 
 type RelationFlowEdge = Edge<RelationEdgeData, 'relation'>
@@ -114,28 +120,41 @@ function RelationEdge({
     labelX = (sourceX + targetX) / 2
     labelY = sourceY - TYPE_NODE_HEIGHT / 2 - data.loopHeight / 2
     path = `M ${sourceX} ${sourceY} C ${sourceX + 24} ${sourceY}, ${sourceX + 24} ${labelY}, ${labelX} ${labelY} C ${targetX - 24} ${labelY}, ${targetX - 24} ${targetY}, ${targetX} ${targetY}`
+  } else if (data?.route && !data.route.fallback) {
+    // 계산한 경로가 있으면 그 경로로 그린다. 길을 찾지 못한 선은 위의 곡선을 그대로 쓴다.
+    path = data.route.d
+    labelX = data.route.labelAt.x
+    labelY = data.route.labelAt.y
   }
 
   return (
     <>
       <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />
-      <EdgeLabelRenderer>
-        <div
-          className="absolute rounded bg-white/90 px-1 text-center text-xs leading-tight whitespace-nowrap text-slate-600"
-          style={{
-            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-          }}
-        >
-          {data?.edges.map((edge) => (
-            <span key={edge.id} className="block">
-              {`${edge.name} · ${formatCount(edge.activeLinkCount)}건`}
-            </span>
-          ))}
-        </div>
-      </EdgeLabelRenderer>
+      {data?.showLabel && (
+        <EdgeLabelRenderer>
+          <div
+            className="absolute rounded bg-white/90 px-1 text-center text-xs leading-tight whitespace-nowrap text-slate-600"
+            style={{
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            }}
+          >
+            {data.edges.map((edge) => (
+              <span key={edge.id} className="block">
+                {`${edge.name} · ${formatCount(edge.activeLinkCount)}건`}
+              </span>
+            ))}
+          </div>
+        </EdgeLabelRenderer>
+      )}
     </>
   )
 }
+
+// 선 색. 고른 유형에 붙은 선은 키컬러로 강조한다.
+const LINE_COLOR = '#94a3b8'
+const SELECTED_LINE_COLOR = '#6f5adf'
+// 그림 칸 크기가 이만큼 이상 바뀌어야 고른 유형에 다시 맞춘다.
+const RESIZE_REFIT_PX = 40
 
 const nodeTypes = { type: TypeNode }
 const edgeTypes = { relation: RelationEdge }
@@ -159,8 +178,86 @@ function ModelGraph({
   const flow = useRef<ReactFlowInstance<TypeFlowNode, RelationFlowEdge> | null>(
     null,
   )
-  const lines = groupRelationLines(graph.edges)
-  const points = layoutTypeGraph(graph.nodes, lines)
+  const canvas = useRef<HTMLDivElement | null>(null)
+  // 배치와 선 경로는 관계도 데이터가 바뀔 때만 다시 계산한다. 유형을 고를 때는 다시 계산하지 않는다.
+  const { lines, points, routes } = useMemo(() => {
+    const lines = groupRelationLines(graph.edges)
+    const points = layoutTypeGraph(graph.nodes, lines)
+    const routes = routeRelationLines(graph.nodes, lines, points)
+    return { lines, points, routes }
+  }, [graph])
+
+  // 고른 유형과 그 유형에 연결된 유형이 모두 보이게 맞춘다. 고른 유형이 없으면 전체를 맞춘다.
+  const fitSelection = useCallback(() => {
+    const instance = flow.current
+    if (!instance) return
+    if (selectedTypeId === null) {
+      void instance.fitView({ padding: 0.15 })
+      return
+    }
+    const ids = new Set([selectedTypeId])
+    for (const edge of graph.edges) {
+      if (edge.sourceTypeId === selectedTypeId) ids.add(edge.targetTypeId)
+      if (edge.targetTypeId === selectedTypeId) ids.add(edge.sourceTypeId)
+    }
+    const boxes = [...ids].flatMap((id) => {
+      const point = points.get(id)
+      if (!point) return []
+      return [
+        {
+          left: point.x,
+          top: point.y,
+          right: point.x + TYPE_NODE_WIDTH,
+          bottom: point.y + TYPE_NODE_HEIGHT + selfRelationHeight(lines, id),
+        },
+      ]
+    })
+    if (boxes.length === 0) return
+    if (boxes.length === 1) {
+      // 연결 없는 유형은 카드 하나만 크게 확대하지 않고 읽기 크기(1배)로 가운데에 둔다.
+      const [box] = boxes
+      void instance.setCenter(
+        (box.left + box.right) / 2,
+        (box.top + box.bottom) / 2,
+        { zoom: 1 },
+      )
+      return
+    }
+    const left = Math.min(...boxes.map((box) => box.left))
+    const top = Math.min(...boxes.map((box) => box.top))
+    void instance.fitBounds(
+      {
+        x: left,
+        y: top,
+        width: Math.max(...boxes.map((box) => box.right)) - left,
+        height: Math.max(...boxes.map((box) => box.bottom)) - top,
+      },
+      { padding: 0.15 },
+    )
+  }, [selectedTypeId, graph.edges, points, lines])
+
+  // 유형을 고르면 맞추고, 관계도 확장·창 크기 변경으로 그림 칸 크기가 바뀌면 바뀐 크기에 다시 맞춘다.
+  useEffect(() => {
+    const element = canvas.current
+    if (view !== 'graph' || !element) {
+      flow.current = null
+      return
+    }
+    fitSelection()
+    // 스크롤바가 생기고 없어지는 정도(약 15px)의 작은 변화로는 다시 맞추지 않는다.
+    // 그래야 사용자가 직접 확대·이동한 화면이 유지된다. 확장·창 크기 변경처럼 크게 바뀔 때만 맞춘다.
+    let last = { width: element.clientWidth, height: element.clientHeight }
+    const observer = new ResizeObserver(() => {
+      const size = { width: element.clientWidth, height: element.clientHeight }
+      const changed =
+        Math.abs(size.width - last.width) >= RESIZE_REFIT_PX ||
+        Math.abs(size.height - last.height) >= RESIZE_REFIT_PX
+      last = size
+      if (changed) fitSelection()
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [fitSelection, view])
 
   // 카드 크기와 선이 붙을 자리를 미리 알려 주면, 화면에서 크기를 재기 전에도 선을 그릴 수 있다.
   const nodes: TypeFlowNode[] = graph.nodes.map((type) => ({
@@ -195,27 +292,44 @@ function ModelGraph({
     },
   }))
 
-  const edges: RelationFlowEdge[] = lines.map((line) => ({
-    id: line.key,
-    type: 'relation',
-    source: String(line.sourceTypeId),
-    target: String(line.targetTypeId),
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8' },
-    style: {
-      stroke: '#94a3b8',
-      strokeWidth: 1.5,
-      strokeDasharray: line.edges.every((edge) => edge.activeLinkCount === 0)
-        ? '4 4'
-        : undefined,
-    },
-    data: {
-      edges: line.edges,
-      loopHeight:
-        line.sourceTypeId === line.targetTypeId
-          ? selfRelationHeight(lines, line.sourceTypeId)
-          : 0,
-    },
-  }))
+  // 유형을 고르면 그 유형에 붙은 선만 강조하고 이름표를 보여 준다. 나머지 선은 흐리게 둔다.
+  // 강조한 선은 목록 끝에 두어 다른 선보다 위에 그린다. zIndex를 올리면 카드보다 위로 올라가므로 쓰지 않는다.
+  const isRelated = (line: (typeof lines)[number]) =>
+    selectedTypeId !== null &&
+    (line.sourceTypeId === selectedTypeId ||
+      line.targetTypeId === selectedTypeId)
+  const orderedLines = [
+    ...lines.filter((line) => !isRelated(line)),
+    ...lines.filter(isRelated),
+  ]
+  const edges: RelationFlowEdge[] = orderedLines.map((line) => {
+    const related = isRelated(line)
+    const color = related ? SELECTED_LINE_COLOR : LINE_COLOR
+    return {
+      id: line.key,
+      type: 'relation',
+      source: String(line.sourceTypeId),
+      target: String(line.targetTypeId),
+      markerEnd: { type: MarkerType.ArrowClosed, color },
+      style: {
+        stroke: color,
+        strokeWidth: related ? 2 : 1.5,
+        opacity: selectedTypeId !== null && !related ? 0.3 : 1,
+        strokeDasharray: line.edges.every((edge) => edge.activeLinkCount === 0)
+          ? '4 4'
+          : undefined,
+      },
+      data: {
+        edges: line.edges,
+        route: routes.get(line.key),
+        showLabel: related,
+        loopHeight:
+          line.sourceTypeId === line.targetTypeId
+            ? selfRelationHeight(lines, line.sourceTypeId)
+            : 0,
+      },
+    }
+  })
 
   return (
     <div>
@@ -234,7 +348,7 @@ function ModelGraph({
         </div>
       ) : (
         <>
-          <div className="explorer-graph-canvas">
+          <div ref={canvas} className="explorer-graph-canvas">
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -242,6 +356,7 @@ function ModelGraph({
               edgeTypes={edgeTypes}
               onInit={(instance) => {
                 flow.current = instance
+                fitSelection()
               }}
               fitView
               fitViewOptions={{ padding: 0.15 }}

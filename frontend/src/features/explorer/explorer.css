@@ -424,3 +424,7 @@
     max-height: 320px;
   }
 }
+/* 관계도 확장일 때만 그림을 더 높게 해서, 세로로 긴 유형 관계도를 더 크게 보여 준다. */
+.explorer-workbench.is-expanded .explorer-graph-canvas {
+  height: max(360px, calc(100vh - 230px));
+}
