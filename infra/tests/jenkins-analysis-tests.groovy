@@ -102,17 +102,58 @@ environment.gitlabActionType = 'MERGE'
 assert !allowed('SonarQube analysis')
 println 'PASS: MR Job의 develop 수동 전체 분석만 유지하고 일반 MR 분석은 실행하지 않음'
 
-def commands = []
-script.metaClass.restoreTestResults = { String component -> true }
-script.metaClass.runFrontendCommands = { String command -> commands << command }
-script.metaClass.runAiCommands = { String command -> commands << command }
-script.binding.setVariable('dir', { String path, Closure body -> body() })
-script.binding.setVariable('sh', { Object command -> commands << command })
+def checked = []
+script.metaClass.runComponentChecks = { String component -> checked << component }
+environment.IS_SONAR_JOB = 'false'
+['backend', 'frontend', 'ai'].each { script.prepareSonarResults(it) }
+assert checked.isEmpty()
 environment.IS_SONAR_JOB = 'true'
 ['backend', 'frontend', 'ai'].each { script.prepareSonarResults(it) }
-assert commands.isEmpty()
-println 'PASS: 일치하는 MR 결과가 있으면 세 서비스 모두 테스트 재실행 없음'
-script.metaClass.restoreTestResults = { String component -> false }
-['backend', 'frontend', 'ai'].each { script.prepareSonarResults(it) }
-assert commands == ['./gradlew --no-daemon jacocoTestReport', 'npm run test:coverage', 'pytest -q --cov --cov-report=xml']
-println 'PASS: MR 결과가 없거나 복원 실패하면 해당 서비스 커버리지 테스트 재실행'
+assert checked == ['backend', 'frontend', 'ai']
+println 'PASS: SonarQube만 공통 전체 검사·결과 재사용 경로를 호출'
+
+// 실제 공통 함수가 검사 대상과 검사 절차를 쉘에 그대로 전달하는지 확인한다.
+def runner = new GroovyShell().parse(source)
+def bindings = []
+def commands = []
+runner.binding = new Binding([
+    withEnv: { List values, Closure body -> bindings << values; body() },
+    sh: { String command -> commands << command },
+    error: { Object message -> throw new IllegalStateException(message.toString()) }
+])
+['backend', 'frontend', 'ai'].each { runner.runComponentChecks(it) }
+assert bindings.collect { it[0] } == ['CHECK_COMPONENT=backend', 'CHECK_COMPONENT=frontend', 'CHECK_COMPONENT=ai']
+assert bindings.every { it[1] == "CHECK_POLICY_BODY=${runner.componentCheckScript()}" }
+assert commands.every { it == runner.componentCheckScript() }
+assert commands[0].contains('flock 9')
+assert commands[0].contains('spotlessCheck test --rerun build jacocoTestReport')
+assert commands[0].contains('npm run format:check && npm run lint && npm run test:coverage && npm run build')
+assert commands[0].contains('ruff check . && pytest -q --junitxml=test-results/pytest.xml --cov --cov-report=xml')
+println 'PASS: 세 서비스의 기존 전체 검사와 실패 판정을 유지'
+
+checked.clear()
+// 최신 SHA 보호는 jenkins-mr-head-tests.groovy에서 별도로 검증한다.
+script.metaClass.ensureLatestMrCommit = { -> }
+environment.IS_SONAR_JOB = 'false'
+environment.IS_DEPLOY_JOB = 'false'
+environment.CHECK_FRONTEND = 'true'
+environment.CHECK_AI = 'true'
+script.binding.setVariable('script', { Closure body -> body() })
+['Backend check', 'Frontend check', 'AI check'].each { stageName ->
+    def enabled = false
+    def stageBody = stages[stageName].rehydrate(new Object() {
+        def when(Closure condition) {
+            condition.delegate = new Object() {
+                def expression(Closure predicate) { enabled = predicate() }
+            }
+            condition.resolveStrategy = Closure.DELEGATE_FIRST
+            condition()
+        }
+        def steps(Closure action) { if (enabled) action() }
+        def post(Closure ignored) {}
+    }, script, script)
+    stageBody.resolveStrategy = Closure.DELEGATE_FIRST
+    stageBody()
+}
+assert checked == ['backend', 'frontend', 'ai']
+println 'PASS: 실제 MR 세 서비스 단계도 같은 전체 검사·결과 재사용 함수를 호출'

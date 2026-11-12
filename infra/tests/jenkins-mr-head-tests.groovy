@@ -73,13 +73,14 @@ def harness = { Map options = [:] ->
                 if (options.remoteError) throw new IllegalStateException('remote unavailable')
                 return options.containsKey('response') ? options.response : "${sha}\t${environment.MR_HEAD_REF}\n"
             }
+            if (command.startsWith('git diff --quiet ') && options.containsKey('changedPaths')) {
+                return options.changedPaths.any { command.endsWith(" -- ${it}") } ? 1 : 0
+            }
             if (input instanceof Map && input.returnStatus) return 1
             return ''
         }
     ])
-    pipelineScript.metaClass.publishTestResults = { String component -> }
-    pipelineScript.metaClass.runFrontendCommands = { String command -> commands << command }
-    pipelineScript.metaClass.runAiCommands = { String command -> commands << command }
+    pipelineScript.metaClass.runComponentChecks = { String component -> commands << "component-check:${component}".toString() }
     pipelineScript.metaClass.notifyMattermost = { String ignored -> }
     pipelineScript.run()
     [script: pipelineScript, env: environment, build: build, commands: commands,
@@ -159,7 +160,7 @@ println 'PASS: 빈 응답·다른 ref·잘못된 SHA·통신 오류를 최신으
     def test = harness(response: "${newerSha}\trefs/merge-requests/299/head\n")
     fails { runStage(test, stage) }
     assert test.build.result == 'ABORTED'
-    assert !test.commands.any { it.contains('./gradlew') || it.contains('npm run') ||
+    assert !test.commands.any { it.startsWith('component-check:') || it.contains('./gradlew') || it.contains('npm run') ||
         it.contains('ruff check') || it.contains('bash -n') }
     assert !test.statuses.contains('success')
 }
@@ -167,7 +168,7 @@ println 'PASS: Checkout 및 각 검사 시작에서 오래된 MR의 검사 명�
 
 def changedDuringCheck = harness()
 runStage(changedDuringCheck, 'Frontend check')
-assert changedDuringCheck.commands.any { it.contains('npm run') }
+assert changedDuringCheck.commands.contains('component-check:frontend')
 // 이벤트 값은 그대로인 상태에서 원격 응답만 바꿔 검사 중 새 Push를 재현한다.
 changedDuringCheck.script.binding.setVariable('sh', { Map input ->
     input.script == 'git rev-parse HEAD' ? sha : "${newerSha}\trefs/merge-requests/299/head\n"
@@ -184,3 +185,14 @@ assert latest.statuses == ['success']
 println 'PASS: 마지막에도 최신 SHA이면 기존 GitLab 성공 표시 유지'
 
 println '8 MR head guard scenarios passed (mocked Jenkins steps; no live pipeline).'
+
+def sharedCases = harness(changedPaths: ['ai/', 'ai/tests/fixtures/transform_cases.json'])
+runStage(sharedCases, 'Checkout')
+assert sharedCases.env.CHECK_BACKEND == 'true'
+assert sharedCases.env.CHECK_AI == 'true'
+assert sharedCases.env.CHECK_FRONTEND == 'false'
+def aiOnly = harness(changedPaths: ['ai/'])
+runStage(aiOnly, 'Checkout')
+assert aiOnly.env.CHECK_BACKEND == 'false'
+assert aiOnly.env.CHECK_AI == 'true'
+println 'PASS: 공유 변환 사례 변경은 backend 검사도 선택하고 일반 AI 변경은 기존 선택 유지'

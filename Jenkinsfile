@@ -109,7 +109,8 @@ pipeline {
                             env.CHECK_INFRA = 'true'
                         } else {
                             def changed = { String dir -> sh(returnStatus: true, script: "git diff --quiet origin/develop...HEAD -- ${dir}/") != 0 }
-                            env.CHECK_BACKEND = changed('backend') ? 'true' : 'false'
+                            def sharedCasesChanged = sh(returnStatus: true, script: 'git diff --quiet origin/develop...HEAD -- ai/tests/fixtures/transform_cases.json') != 0
+                            env.CHECK_BACKEND = (changed('backend') || sharedCasesChanged) ? 'true' : 'false'
                             env.CHECK_FRONTEND = changed('frontend') ? 'true' : 'false'
                             env.CHECK_AI = changed('ai') ? 'true' : 'false'
                             env.CHECK_INFRA = (changed('infra') || sh(returnStatus: true, script: 'git diff --quiet origin/develop...HEAD -- Jenkinsfile') != 0) ? 'true' : 'false'
@@ -130,16 +131,11 @@ pipeline {
             // 테스트의 Testcontainers가 docker.sock으로 테스트용 PostgreSQL을 띄운다. 주소는 compose의 TESTCONTAINERS_HOST_OVERRIDE.
             // --no-daemon: 빌드가 끝나면 gradle JVM을 바로 내려 Jenkins 컨테이너 메모리를 돌려준다.
             // 주의: MR 브랜치의 build.gradle이 docker.sock이 있는 이 컨테이너에서 실행된다(팀원 계정을 신뢰). 분리는 보안 후속.
-            // backend/ 가 안 바뀐 MR은 건너뛴다 (Checkout 단계의 CHECK_BACKEND).
+            // backend/와 백엔드가 읽는 공유 변환 사례가 안 바뀐 MR은 건너뛴다.
             when { expression { env.IS_DEPLOY_JOB != 'true' && env.IS_SONAR_JOB != 'true' && env.CHECK_BACKEND == 'true' } }
             steps {
                 script { ensureLatestMrCommit() }
-                dir('backend') {
-                    script {
-                        sh './gradlew --no-daemon spotlessCheck build jacocoTestReport'
-                    }
-                }
-                script { publishTestResults('backend') }
+                script { runComponentChecks('backend') }
             }
             post {
                 always {
@@ -158,9 +154,7 @@ pipeline {
             steps {
                 script {
                     ensureLatestMrCommit()
-                    def testCommand = 'npm run test:coverage'
-                    runFrontendCommands("npm run format:check && npm run lint && ${testCommand} && npm run build")
-                    publishTestResults('frontend')
+                    runComponentChecks('frontend')
                 }
             }
         }
@@ -170,9 +164,7 @@ pipeline {
             steps {
                 script {
                     ensureLatestMrCommit()
-                    def coverageOptions = ' --cov --cov-report=xml'
-                    runAiCommands("ruff check . && pytest -q --junitxml=test-results/pytest.xml${coverageOptions}")
-                    publishTestResults('ai')
+                    runComponentChecks('ai')
                 }
             }
             post {
@@ -201,7 +193,8 @@ pipeline {
                         test -f infra/ci/test_result_cache.py
                         docker run --rm --network none --memory 256m \
                             -e PYTHONDONTWRITEBYTECODE=1 \
-                            --mount "type=bind,src=$HOST_WS/infra/ci,dst=/work,readonly" -w /work \
+                            --mount "type=bind,src=$HOST_WS/infra/ci,dst=/work,readonly" \
+                            --mount "type=bind,src=$HOST_WS/Jenkinsfile,dst=/Jenkinsfile,readonly" -w /work \
                             python:3.11-slim python -m unittest discover -p 'test_*.py' -v
                     else
                         echo '검사 커밋에 infra/ci가 없습니다. 캐시 도입 전 코드이므로 캐시 회귀 검사는 대상이 아닙니다.'
@@ -548,90 +541,108 @@ def isManualSonarCheck() {
         env.CHECK_REF == 'origin/develop' && !env.gitlabActionType
 }
 
-def publishTestResults(String component) {
-    // Only reached after the service's full checks succeed. A cache problem must not fail an MR.
-    if (runTestResultCache('publish', component) != 0) {
-        echo "${component}: 검사 결과 보관 실패. 분석 Job에서 다시 검사합니다."
-    }
-}
-
 def prepareSonarResults(String component) {
-    if (env.IS_SONAR_JOB != 'true' || restoreTestResults(component)) {
-        return
-    }
-    if (component == 'backend') {
-        dir('backend') { sh './gradlew --no-daemon jacocoTestReport' }
-    } else if (component == 'frontend') {
-        runFrontendCommands('npm run test:coverage')
-    } else if (component == 'ai') {
-        runAiCommands('pytest -q --cov --cov-report=xml')
+    if (env.IS_SONAR_JOB == 'true') {
+        runComponentChecks(component)
     }
 }
 
-def restoreTestResults(String component) {
-    return runTestResultCache('restore', component) == 0
+// MR 검사와 SonarQube 모두 같은 전체 검사와 성공 결과를 사용한다.
+def runComponentChecks(String component) {
+    if (!(component in ['backend', 'frontend', 'ai'])) {
+        error "알 수 없는 검사 대상: ${component}"
+    }
+    def checkScript = componentCheckScript()
+    withEnv(["CHECK_COMPONENT=${component}", "CHECK_POLICY_BODY=${checkScript}"]) {
+        sh checkScript
+    }
 }
 
-def runTestResultCache(String action, String component) {
-    withEnv(["RESULT_ACTION=${action}", "RESULT_COMPONENT=${component}"]) {
-        return sh(returnStatus: true, script: '''
-            set -eu
+def componentCheckScript() {
+    return '''
+        set +x
+        set -eu
+        umask 077
+        COMPONENT="$CHECK_COMPONENT"
+        case "$COMPONENT" in backend|frontend|ai) ;; *) exit 2 ;; esac
+        HOST_WS=$(printf '%s' "$WORKSPACE" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
+        CACHE_DIR="${JENKINS_HOME:-/var/jenkins_home}/ci-results"
+        LOCK_DIR="${JENKINS_HOME:-/var/jenkins_home}/ci-locks"
+        mkdir -p "$CACHE_DIR" "$LOCK_DIR"
+        CACHE_HOST=$(printf '%s' "$CACHE_DIR" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
+        TREE=$(git rev-parse "HEAD:$COMPONENT")
+        if [ "$COMPONENT" = backend ]; then
+            # TransformCasesTests는 backend 밖의 AI 공유 fixture도 읽는다. 삭제·구형 커밋도 구분한다.
+            FIXTURE=$(git rev-parse HEAD:ai/tests/fixtures/transform_cases.json 2>/dev/null) || FIXTURE=missing
+            TREE=$(printf '%s %s' "$TREE" "$FIXTURE" | git hash-object --stdin)
+        fi
+        # 실제 검사 절차를 고정한다. 관련 없는 배포 처리 변경으로 성공 결과를 무효화하지 않는다.
+        PIPELINE=$(printf '%s' "${CHECK_POLICY_BODY:?}" | git hash-object --stdin)
+        COMMIT=$(git rev-parse HEAD)
+
+        cache_results() {
             if ! git cat-file -e HEAD:infra/ci/result_cache.py 2>/dev/null || [ ! -f infra/ci/result_cache.py ]; then
-                echo '검사 커밋에 결과 캐시 스크립트가 없습니다. 보관·복원 없이 진행합니다.'
-                exit 1
+                return 1
             fi
-            HOST_WS=$(printf '%s' "$WORKSPACE" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
-            CACHE_DIR="${JENKINS_HOME:-/var/jenkins_home}/ci-results"
-            mkdir -p "$CACHE_DIR"
-            CACHE_HOST=$(printf '%s' "$CACHE_DIR" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
-            TREE=$(git rev-parse "HEAD:$RESULT_COMPONENT")
-            PIPELINE=$(git rev-parse HEAD:Jenkinsfile)
-            COMMIT=$(git rev-parse HEAD)
-            if [ "$RESULT_COMPONENT" = backend ]; then
+            if [ "$COMPONENT" = backend ]; then
                 RUNTIME="$(java -version 2>&1) ${JAVA_TOOL_OPTIONS:-} ${GRADLE_OPTS:-}"
-                set -- --user "$(id -u):$(id -g)"
+                set -- "$1" --user "$(id -u):$(id -g)"
             else
-                if [ "$RESULT_COMPONENT" = frontend ]; then IMAGE=node:24.18.0-alpine; else IMAGE=python:3.11-slim; fi
-                RUNTIME=$(docker image inspect "$IMAGE" --format '{{.Id}}')
-                set --
+                if [ "$COMPONENT" = frontend ]; then IMAGE=node:24.18.0-alpine; else IMAGE=python:3.11-slim; fi
+                RUNTIME=$(docker image inspect "$IMAGE" --format '{{.Id}}' 2>/dev/null) || return 1
+                set -- "$1"
             fi
+            ACTION=$1
+            shift
             docker run --rm --network none --memory 256m "$@" \
                 -e BUILD_URL \
                 --mount "type=bind,src=$HOST_WS/infra/ci,dst=/script,readonly" \
-                --mount "type=bind,src=$HOST_WS/$RESULT_COMPONENT,dst=/work" \
+                --mount "type=bind,src=$HOST_WS/$COMPONENT,dst=/work" \
                 --mount "type=bind,src=$CACHE_HOST,dst=/cache" \
-                python:3.11-slim python /script/result_cache.py "$RESULT_ACTION" "$RESULT_COMPONENT" \
-                --tree "$TREE" --pipeline "$PIPELINE" --runtime "$RUNTIME" --commit "$COMMIT"
-        ''')
-    }
-}
+                python:3.11-slim python /script/result_cache.py "$ACTION" "$COMPONENT" \
+                --tree "$TREE" --pipeline "$PIPELINE" --runtime "full-checks-v2 $RUNTIME" --commit "$COMMIT"
+        }
 
-def runFrontendCommands(String commands) {
-    withEnv(["FRONTEND_COMMANDS=${commands}"]) {
-        sh '''
-            HOST_WS=$(printf '%s' "$WORKSPACE" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
-            docker run --rm --memory 2g \
-                -e CI=true \
-                -v "$HOST_WS/frontend:/app" -w /app \
-                -v axcore-npm-cache:/root/.npm \
-                node:24.18.0-alpine \
-                sh -c "npm ci --no-audit --no-fund && $FRONTEND_COMMANDS"
-        '''
-    }
-}
-
-def runAiCommands(String commands) {
-    withEnv(["AI_COMMANDS=${commands}"]) {
-        sh '''
-            HOST_WS=$(printf '%s' "$WORKSPACE" | sed 's#^/var/jenkins_home/#/home/ubuntu/axcore/jenkins-data/#')
-            docker run --rm --memory 1g \
-                -e CI=true \
-                -v "$HOST_WS/ai:/app" -w /app \
-                -v axcore-pip-cache:/root/.cache/pip \
-                python:3.11-slim \
-                sh -c "pip install -q -r requirements-dev.txt && $AI_COMMANDS"
-        '''
-    }
+        if cache_results restore; then
+            exit 0
+        fi
+        WAIT_STARTED=$(date +%s)
+        echo "$COMPONENT: 전체 검사 실행 슬롯 대기"
+        # 같은 구성 요소의 테스트만 직렬화한다. 특히 두 Gradle JVM이 Jenkins의 2 CPU/4 GiB를 나눠 쓰지 않는다.
+        # 프로세스 종료/취소 시 OS가 잠금을 해제한다. 배포와 Sonar 스캐너는 이 잠금을 잡지 않는다.
+        exec 9>"$LOCK_DIR/$COMPONENT.lock"
+        flock 9
+        echo "$COMPONENT: 실행 슬롯 획득 (잠금 대기 $(($(date +%s) - WAIT_STARTED))초)"
+        # 기다리는 동안 다른 Job이 같은 코드의 전체 검사를 끝냈을 수 있다.
+        if cache_results restore; then
+            exit 0
+        fi
+        echo "$COMPONENT: 전체 검사 시작"
+        CHECK_STARTED=$(date +%s)
+        case "$COMPONENT" in
+            backend)
+                # 캐시 미스면 공유 fixture 변경도 실제로 검사한다. 컴파일 등 다른 작업의 증분 처리는 유지한다.
+                (cd backend && ./gradlew --no-daemon spotlessCheck test --rerun build jacocoTestReport)
+                ;;
+            frontend)
+                docker run --rm --memory 2g -e CI=true \
+                    -v "$HOST_WS/frontend:/app" -w /app \
+                    -v axcore-npm-cache:/root/.npm node:24.18.0-alpine \
+                    sh -c 'npm ci --no-audit --no-fund && npm run format:check && npm run lint && npm run test:coverage && npm run build'
+                ;;
+            ai)
+                docker run --rm --memory 1g -e CI=true \
+                    -v "$HOST_WS/ai:/app" -w /app \
+                    -v axcore-pip-cache:/root/.cache/pip python:3.11-slim \
+                    sh -c 'pip install -q -r requirements-dev.txt && ruff check . && pytest -q --junitxml=test-results/pytest.xml --cov --cov-report=xml'
+                ;;
+        esac
+        echo "$COMPONENT: 전체 검사 성공 ($(($(date +%s) - CHECK_STARTED))초)"
+        # 위 전체 명령이 성공한 뒤에만 보관한다. 캐시 오류로 성공한 검사를 실패시키지는 않는다.
+        if ! cache_results publish; then
+            echo "$COMPONENT: 결과 보관 실패. 다음 Job은 전체 검사를 실행합니다."
+        fi
+    '''
 }
 
 def sonarGateRecipient() {

@@ -209,6 +209,8 @@ Jenkins 관리 → Nodes → Built-In Node → Configure에서 **Number of execu
 
 변경 후 Jenkins Build Queue와 Built-In Node에서 두 Job이 각각 executor 하나를 사용하는지 확인한다. 첫 동시 실행에서는 `docker stats --no-stream jenkins`와 호스트 메모리를 확인한다. Jenkins 컨테이너의 설정 상한은 CPU 2코어와 메모리 4GiB다.
 
+MR·SonarQube의 전체 검사는 동일 코드·실제 검사 절차·환경의 검증된 성공 결과를 양방향으로 재사용한다. 캐시 미스는 구성 요소별 `flock`을 얻은 뒤 캐시를 다시 확인하고, 여전히 미스면 기존 MR 전체 검사를 실행한다. 두 backend Gradle 테스트가 Jenkins의 2 CPU/4GiB 안에서 동시에 실행되는 것을 막으며, 배포와 Sonar 스캐너는 이 잠금을 사용하지 않는다. 세부 동작과 재검사 조건은 [검사 결과 재사용](sonarqube/README.md#mr-검사-결과-재사용)을 따른다. 이 Jenkinsfile 변경은 develop 반영 후 적용되며 현재 실행 중인 Job이나 서버 설정을 변경하지 않는다.
+
 ### SonarQube 배포와 코드 분석
 
 최초 편입과 별도 `axcore-sonarqube` Job 등록은 [SonarQube 운영 절차](sonarqube/README.md)를 따른다. 활성화된 `axcore-deploy`는 Git의 Compose 변경을 반영하고 SonarQube 준비 상태를 확인한다. 배포 성공 후 전체 SHA와 변경 서비스를 별도 Job에 비동기로 전달하며 커버리지 테스트·분석 완료를 기다리지 않는다. 수동으로 세 서비스를 모두 분석하려면 `RUN_SONARQUBE`를 선택한다.
