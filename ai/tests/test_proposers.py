@@ -918,3 +918,74 @@ def test_english_property_name_is_replaced_by_llm_label_only_when_not_korean():
     assert renamed("supplier tax id", "공급업체 사업자번호") == "공급업체 사업자번호"
     assert renamed("사업자번호", "공급업체 사업자번호") == "사업자번호"
     assert renamed("supplier tax id", None) == "supplier tax id"
+
+
+def test_event_table_pointing_to_a_primary_key_is_many_to_one_even_if_data_looks_one_to_one():
+    from app.models.candidate import (
+        Candidate,
+        Evidence,
+        LinkTypePayload,
+        ObjectTypePayload,
+    )
+    from app.proposers.links import ONE_NOTE, business_cardinality
+
+    ev = [Evidence(source_id="mes", locator="mes.downtime.wo_no", snippet="s")]
+
+    def object_type(code, category):
+        return Candidate(
+            candidate_id=f"OT-mes.{code.lower()}",
+            title="t",
+            payload=ObjectTypePayload(code=code, name=code, category=category),
+            reason="r",
+            evidence=ev,
+        )
+
+    def link_type(code, source, reason):
+        lt = Candidate(
+            candidate_id=f"LT-{code.lower()}",
+            title="t",
+            payload=LinkTypePayload(
+                code=code,
+                name="n",
+                source_type_code=source,
+                target_type_code="WORK_ORDER",
+                cardinality="ONE_TO_ONE",
+                description="d." + ONE_NOTE,
+            ),
+            reason="r",
+            evidence=ev,
+        )
+        rule = cand(
+            f"LR-{code.lower()}",
+            {
+                "kind": "LINK_RULE",
+                "code": code,
+                "link_type_code": code,
+                "pattern": "same_value",
+                "conditions": [
+                    {
+                        "source_property": f"{source}.wo_no",
+                        "target_property": "WORK_ORDER.wo_no",
+                    }
+                ],
+            },
+        ).model_copy(update={"reason": reason})
+        return [lt, rule]
+
+    items = [
+        object_type("DOWNTIME", "history"),
+        object_type("ASSET", "master"),
+        *link_type("DOWNTIME_TO_WO", "DOWNTIME", "대상 키: 작업지시 wo_no (기본키)"),
+        *link_type("ASSET_TO_WO", "ASSET", "대상 키: 작업지시 wo_no (기본키)"),
+        *link_type("LOT_TO_WO", "DOWNTIME", "대상 키: 작업지시 lot_no (유일값)"),
+    ]
+    out = {
+        c.payload.code: c.payload
+        for c in business_cardinality(items)
+        if c.payload.kind.value == "LINK_TYPE"
+    }
+    # 발생 기록이 기본키를 가리키면 N:1, 기준 정보나 기본키가 아닌 고유값은 그대로 1:1
+    assert out["DOWNTIME_TO_WO"].cardinality == "MANY_TO_ONE"
+    assert "(1:1)" not in out["DOWNTIME_TO_WO"].description
+    assert out["ASSET_TO_WO"].cardinality == "ONE_TO_ONE"
+    assert out["LOT_TO_WO"].cardinality == "ONE_TO_ONE"

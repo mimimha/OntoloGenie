@@ -1233,6 +1233,55 @@ def _how_text(rel: Relation, steps_by_column: list[tuple[list, list]]) -> str:
     return how
 
 
+ONE_NOTE = (
+    " 개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
+)
+# 발생 기록·거래 문서·상세 줄·현재 상태 표는 여러 행이 같은 대상을 가리키는 것이 업무상 자연스럽다
+MANY_SIDE = {"history", "transaction", "detail", "snapshot"}
+
+
+def business_cardinality(candidates: list[Candidate]) -> list[Candidate]:
+    """데이터에서 1:1로 보였어도 발생·거래·상세·현재 상태 표가 다른 표의 기본키를 가리키면 N:1로 바꾼다.
+
+    표 종류는 LLM 해석이 있으면 그 판단을 쓴다. 기준 정보 표(부서장·고정자산 설비)나 기본키가 아닌 고유값(제품 로트)은
+    1:1이 맞을 수 있어 그대로 둔다(정답셋 1:1 관계 4개 모두 이 경우).
+    """
+    category = {
+        c.payload.code: getattr(c.payload, "category", None)
+        for c in candidates
+        if c.payload.kind.value == "OBJECT_TYPE"
+    }
+    to_primary = {
+        c.payload.link_type_code
+        for c in candidates
+        if c.payload.kind.value == "LINK_RULE" and "(기본키)" in c.reason
+    }
+    out = []
+    for c in candidates:
+        payload = c.payload
+        if (
+            payload.kind.value == "LINK_TYPE"
+            and payload.cardinality == "ONE_TO_ONE"
+            and payload.code in to_primary
+            and category.get(payload.source_type_code) in MANY_SIDE
+        ):
+            description = payload.description.replace(
+                ONE_NOTE, " 개수 관계는 표 종류로 정함(여러 건이 한 대상을 가리킴)."
+            )
+            c = c.model_copy(
+                update={
+                    "payload": payload.model_copy(
+                        update={
+                            "cardinality": "MANY_TO_ONE",
+                            "description": description,
+                        }
+                    )
+                }
+            )
+        out.append(c)
+    return out
+
+
 def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
     out = []
     for rel in relations:
@@ -1247,7 +1296,7 @@ def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
         code = key.upper()  # 관계 유형 코드는 대문자. 후보 ID는 소문자 그대로 둔다
         cardinality = _cardinality(rel, tables)
         card_note = (
-            " 개수 관계는 데이터에서 관찰한 값(1:1). 업무상 한쪽이 여러 건일 수 있어 검토 필요."
+            ONE_NOTE
             if cardinality == "ONE_TO_ONE"
             else " 개수 관계는 데이터에서 관찰한 값."
         )
