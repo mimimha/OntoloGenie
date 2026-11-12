@@ -87,17 +87,41 @@ public class IssueStatusRepository {
                 .single();
     }
 
-    /** 이 검사가 문제를 마지막으로 조치완료·재검증대기로 바꾼 뒤에 시작했는지. 그 전에 시작한 검사는 고치기 전 자료를 읽었다. */
-    public boolean startedAfterLastFix(long issueId, long checkRunId) {
+    /**
+     * 이 검사가 문제를 마지막으로 조치완료·재검증대기로 바꾼 뒤의 자료를 읽었는지(Jira 376). 아래 둘을 모두 만족해야 한다.
+     *
+     * <ul>
+     *   <li>검사가 조치완료 표시 뒤에 시작했다. CDC 표는 플랫폼이 원천을 계속 따라가고, 옛 스냅샷의 다시 읽기는 더 새 값을 덮지 못하므로(V11) 이것으로
+     *       충분하다.
+     *   <li>검사의 데이터 기준({@code data_basis})에 든 FULL_COMPARE 표마다, 기준 수집 실행이 조치완료 표시 뒤에 시작했다.
+     *       FULL_COMPARE 표의 객체는 마지막 성공한 전체 읽기가 시작할 때의 원천 상태라서, 조치완료 뒤에 끝났더라도 그 전에 읽기 시작한 실행이면 고치기 전
+     *       자료다(수동 다시 읽기가 이미 읽고 저장 중인 실행에 합류한 경우). 기준 수집이 없으면 판단할 수 없어 만족하지 않는 것으로 본다.
+     * </ul>
+     *
+     * <p>재검증은 실행할 때 데이터 기준을 다시 잡아 저장하므로({@code CheckRunJob}), 부르는 쪽은 그 저장 뒤에 부른다.
+     */
+    public boolean readDataAfterLastFix(long issueId, long checkRunId) {
         return jdbc.sql(
                         """
-                        select coalesce(r.started_at >= (
-                            select max(h.changed_at)
+                        with fix as (
+                            select max(h.changed_at) as fixed_at
                             from issue_history h
                             where h.issue_id = :issueId
                               and h.to_status = 'FIXED_PENDING_REVERIFY'
-                        ), false)
-                        from check_run r
+                        )
+                        select coalesce(r.started_at >= fix.fixed_at, false)
+                           and not exists (
+                               select 1
+                               from jsonb_array_elements(
+                                        coalesce(r.data_basis -> 'resources', '[]'::jsonb)) basis
+                               join source_resource sr
+                                 on sr.id = (basis ->> 'sourceResourceId')::bigint
+                               left join sync_run s
+                                 on s.id = (basis ->> 'lastSuccessfulSyncRunId')::bigint
+                               where sr.sync_strategy = 'FULL_COMPARE'
+                                 and (s.started_at is null or s.started_at < fix.fixed_at)
+                           )
+                        from check_run r cross join fix
                         where r.id = :runId
                         """)
                 .param("issueId", issueId)

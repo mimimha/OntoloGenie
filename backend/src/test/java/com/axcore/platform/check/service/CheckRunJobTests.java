@@ -39,6 +39,7 @@ import com.axcore.platform.issue.service.IssueVerificationRecorder;
 import com.axcore.platform.source.service.CdcReloadJob;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -309,6 +310,49 @@ class CheckRunJobTests {
                 .containsEntry("manualTargetObjectIds", List.of(outside))
                 .containsEntry("targetFound", true)
                 .containsEntry("reason", CheckRunJob.MANUAL_LINK);
+    }
+
+    /** 문제별 판정을 넘길 때 검사가 실제로 읽은(실행 시점의) 데이터 기준이 이미 저장돼 있다. 되돌리기 판단이 그 기준을 읽는다(376). */
+    @Test
+    void reverificationStoresTheDataBasisItReadBeforeRecordingVerdicts() {
+        long rule = rule("{}");
+        long detected =
+                fixtures.insertRun(
+                        "MANUAL", "SUCCEEDED", accountId, "detected-" + UUID.randomUUID());
+        long issue = issueOn(new IssueTestFixtures(jdbc), detected, rule, woObject("WO1"));
+        long runId =
+                fixtures.insertQueuedRun(
+                        "REVERIFY",
+                        "{\"kind\": \"ISSUES\", \"linkMappingIds\": [%d], \"issueIds\": [%d]}"
+                                .formatted(rule, issue),
+                        basis(),
+                        accountId);
+        // 접수 뒤에 작업지시 표를 한 번 더 읽었다. 재검증은 실행할 때 이 수집을 기준으로 쓴다.
+        long newerSync =
+                fixtures.insertSync(dataSource, woResource, accountId, "SUCCEEDED", Instant.now());
+        List<String> basisAtRecord = new ArrayList<>();
+        IssueVerificationRecorder spy =
+                AopTestUtils.getUltimateTargetObject(reverificationRecorder);
+        doAnswer(
+                        invocation -> {
+                            basisAtRecord.add(
+                                    jdbc.sql(
+                                                    "select data_basis::text from check_run where id = :id")
+                                            .param("id", runId)
+                                            .query(String.class)
+                                            .single());
+                            return invocation.callRealMethod();
+                        })
+                .when(spy)
+                .record(eq(runId), any(), any());
+
+        assertThat(runner.runNext(job)).isTrue();
+
+        assertThat(runStatus(runId)).isEqualTo("SUCCEEDED");
+        assertThat(basisAtRecord).hasSize(1);
+        assertThat(basisAtRecord.getFirst())
+                .contains("\"lastSuccessfulSyncRunId\": " + newerSync)
+                .doesNotContain("\"lastSuccessfulSyncRunId\": " + woSync + "}");
     }
 
     @Test
