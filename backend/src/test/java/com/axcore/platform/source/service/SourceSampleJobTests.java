@@ -25,6 +25,7 @@ import com.axcore.platform.source.repository.SourcePreviewRepository;
 import com.axcore.platform.source.repository.SourcePreviewRepository.Preview;
 import com.axcore.platform.source.repository.SourceResourceRepository;
 import com.axcore.platform.source.repository.SourceTableReader;
+import com.axcore.platform.source.repository.SourceTableReader.Sample;
 import com.axcore.platform.source.repository.SourceTableReader.Table;
 import java.sql.SQLException;
 import java.time.Clock;
@@ -88,13 +89,14 @@ class SourceSampleJobTests {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("emp_no", "E001");
         values.put("label", null);
-        when(reader.sample(any(), eq(account), eq(selected), eq(1)))
-                .thenReturn(List.of(new SourceRow(values, Map.of())));
+        when(reader.sampleReadable(any(), eq(account), eq(selected), eq(1)))
+                .thenReturn(
+                        new Sample(selected.columns(), List.of(new SourceRow(values, Map.of()))));
         when(previews.finish(eq(PREVIEW_ID), any(), eq(NOW))).thenReturn(true);
 
         job.complete(PREVIEW_ID, job.run(PREVIEW_ID));
 
-        verify(reader).sample(any(), eq(account), eq(selected), eq(1));
+        verify(reader).sampleReadable(any(), eq(account), eq(selected), eq(1));
         var payload = ArgumentCaptor.forClass(String.class);
         verify(previews).finish(eq(PREVIEW_ID), payload.capture(), eq(NOW));
         var result = json.readTree(payload.getValue());
@@ -110,12 +112,13 @@ class SourceSampleJobTests {
     void retainsTheSameColumnNameInAnUnrelatedEmptyTable() throws SQLException {
         table("mes.line", List.of(column("name", true)));
         Table selected = new Table(RESOURCE_ID, "mes.line", List.of("name"), Set.of());
-        when(reader.sample(any(), eq(account), eq(selected), eq(1))).thenReturn(List.of());
+        when(reader.sampleReadable(any(), eq(account), eq(selected), eq(1)))
+                .thenReturn(new Sample(selected.columns(), List.of()));
 
         var result = job.run(PREVIEW_ID);
         assertThat(result.columns()).containsExactly("name");
         assertThat(result.rows()).isEmpty();
-        verify(reader).sample(any(SourceEndpoint.class), eq(account), eq(selected), eq(1));
+        verify(reader).sampleReadable(any(SourceEndpoint.class), eq(account), eq(selected), eq(1));
     }
 
     @Test
@@ -143,7 +146,7 @@ class SourceSampleJobTests {
     void describesTheSqlFailureWithoutExposingTheDriverMessage(String sqlState, String reason)
             throws SQLException {
         table("erp.employee", List.of(column("emp_no", true)));
-        when(reader.sample(any(), eq(account), any(), eq(1)))
+        when(reader.sampleReadable(any(), eq(account), any(), eq(1)))
                 .thenThrow(new SQLException("driver error with source values", sqlState));
 
         assertThatThrownBy(() -> job.run(PREVIEW_ID))

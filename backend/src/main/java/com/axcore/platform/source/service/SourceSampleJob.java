@@ -100,11 +100,12 @@ public class SourceSampleJob implements QueuedJobHandler<SourceSampleJob.Result>
         SourceAccount account = syncAccount(resource.getDataSourceId());
         var table = new Table(resource.getId(), resourceKey, selected, Set.of());
         try {
+            var sample = reader.sampleReadable(endpoint, account, table, preview.rowLimit());
             var rows =
-                    reader.sample(endpoint, account, table, preview.rowLimit()).stream()
-                            .map(row -> selected.stream().map(row.values()::get).toList())
+                    sample.rows().stream()
+                            .map(row -> sample.columns().stream().map(row.values()::get).toList())
                             .toList();
-            return new Result(selected, rows);
+            return new Result(sample.columns(), rows);
         } catch (SQLException e) {
             log.warn("원천 표본 읽기 실패 previewId={} sqlState={}", jobId, e.getSQLState());
             throw new QueuedJobFailure(SourceReadFailure.message(e));

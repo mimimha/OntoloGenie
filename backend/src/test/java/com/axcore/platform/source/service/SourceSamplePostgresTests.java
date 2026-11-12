@@ -61,37 +61,8 @@ class SourceSamplePostgresTests {
                         grant select on all tables in schema erp, mes to axc_sample_sync;
                         """)
                 .update();
-        long source =
-                jdbc.sql(
-                                """
-                        insert into data_source (code, name, source_kind, connection_config)
-                        values ('SOURCE_SAMPLE_TEST', '원천 표본', 'POSTGRES', cast(:config as jsonb))
-                        returning id
-                        """)
-                        .param(
-                                "config",
-                                """
-                        {"host":"%s","port":%d,"database":"%s"}
-                        """
-                                        .formatted(
-                                                postgres.getHost(),
-                                                postgres.getMappedPort(5432),
-                                                postgres.getDatabaseName()))
-                        .query(Long.class)
-                        .single();
-        long account =
-                jdbc.sql(
-                                """
-                        insert into account (login_id, display_name, password_hash, role_id, must_change_password)
-                        values (:login, '관리자', 'not-used', (select id from role where code = 'ADMIN'), false)
-                        returning id
-                        """)
-                        .param("login", "sample-" + UUID.randomUUID())
-                        .query(Long.class)
-                        .single();
-        credentials.store(
-                source, CredentialPurpose.SYNC, "axc_sample_sync", "sample-test-only", null);
-        var admin = new LoginAccount(account, "sample-admin", "ADMIN", false);
+        long source = registerSource("SOURCE_SAMPLE_TEST", "axc_sample_sync", "sample-test-only");
+        var admin = createAdmin();
         for (var fixture :
                 List.of(
                         new Fixture("erp.employee", "emp_name"),
@@ -125,6 +96,70 @@ class SourceSamplePostgresTests {
                     .doesNotContain("excluded-person-value", "\"" + fixture.excluded() + "\"");
             assertSampleAudit(accepted.previewId(), sampleValue);
         }
+    }
+
+    @Test
+    void samplesOnlyTheColumnsStillReadableWhenAQueuedRequestRuns() {
+        jdbc.sql(
+                        """
+                        create schema sample_acl;
+                        create table sample_acl.records (code text, label text);
+                        insert into sample_acl.records values ('E001', 'revoked-value');
+                        create role axc_sample_acl login password 'sample-acl-test-only';
+                        grant usage on schema sample_acl to axc_sample_acl;
+                        grant select (code, label) on sample_acl.records to axc_sample_acl;
+                        """)
+                .update();
+        long source = registerSource("SOURCE_SAMPLE_ACL", "axc_sample_acl", "sample-acl-test-only");
+        long resource = registerTable(source, new Fixture("sample_acl.records", "label"));
+        var accepted = requests.request(source, resource, 1, createAdmin());
+        jdbc.sql("revoke select (label) on sample_acl.records from axc_sample_acl").update();
+
+        assertThat(runner.runNext(job)).isTrue();
+
+        var result = results.get(accepted.previewId());
+        assertThat(result.status()).isEqualTo("SUCCEEDED");
+        assertThat(result.result())
+                .containsEntry("columns", List.of("code"))
+                .containsEntry("rows", List.of(List.of("E001")));
+    }
+
+    private long registerSource(String code, String username, String password) {
+        long source =
+                jdbc.sql(
+                                """
+                        insert into data_source (code, name, source_kind, connection_config)
+                        values (:code, '원천 표본', 'POSTGRES', cast(:config as jsonb))
+                        returning id
+                        """)
+                        .param("code", code)
+                        .param(
+                                "config",
+                                """
+                        {"host":"%s","port":%d,"database":"%s"}
+                        """
+                                        .formatted(
+                                                postgres.getHost(),
+                                                postgres.getMappedPort(5432),
+                                                postgres.getDatabaseName()))
+                        .query(Long.class)
+                        .single();
+        credentials.store(source, CredentialPurpose.SYNC, username, password, null);
+        return source;
+    }
+
+    private LoginAccount createAdmin() {
+        long account =
+                jdbc.sql(
+                                """
+                        insert into account (login_id, display_name, password_hash, role_id, must_change_password)
+                        values (:login, '관리자', 'not-used', (select id from role where code = 'ADMIN'), false)
+                        returning id
+                        """)
+                        .param("login", "sample-" + UUID.randomUUID())
+                        .query(Long.class)
+                        .single();
+        return new LoginAccount(account, "sample-admin", "ADMIN", false);
     }
 
     private void assertSampleAudit(long previewId, String sampleValue) {
