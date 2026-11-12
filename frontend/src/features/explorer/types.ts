@@ -1,5 +1,26 @@
 export type ObjectStatus = 'ACTIVE' | 'DELETED_AT_SOURCE'
 
+export type ObjectTypeOption = {
+  id: number
+  code: string
+  name: string
+}
+
+export type ObjectPropertyDefinition = {
+  id: number
+  code: string
+  name: string
+  dataType:
+    | 'STRING'
+    | 'INTEGER'
+    | 'DECIMAL'
+    | 'BOOLEAN'
+    | 'DATE'
+    | 'TIME'
+    | 'DATETIME'
+    | 'JSON'
+}
+
 // 076 권한 범위 객체 검색 응답의 객체 하나
 export type ObjectInstance = {
   id: number

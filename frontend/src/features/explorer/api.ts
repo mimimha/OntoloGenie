@@ -6,6 +6,8 @@ import type {
   ObjectInstanceDetail,
   ObjectLink,
   ObjectLinkGroup,
+  ObjectPropertyDefinition,
+  ObjectTypeOption,
 } from './types'
 
 export const OBJECT_PAGE_SIZE = 20
@@ -13,6 +15,7 @@ export const OBJECT_PAGE_SIZE = 20
 export type ObjectFilters = {
   q?: string
   objectTypeId?: number
+  propertyValues?: Record<string, string>
 }
 
 // 076 권한 범위 객체 검색
@@ -24,9 +27,24 @@ export function fetchObjects(filters: ObjectFilters, page = 0) {
   if (filters.objectTypeId) {
     params.set('objectTypeId', String(filters.objectTypeId))
   }
+  for (const [code, value] of Object.entries(filters.propertyValues ?? {})) {
+    params.set(`propertyValues[${code}]`, value)
+  }
   params.set('page', String(page))
   params.set('size', String(OBJECT_PAGE_SIZE))
   return apiGet<ObjectInstance[]>(`/objects?${params}`)
+}
+
+export async function fetchObjectTypes() {
+  const body = await apiGet<ObjectTypeOption[]>('/objects/types')
+  return body.data
+}
+
+export async function fetchObjectProperties(typeId: number) {
+  const body = await apiGet<ObjectPropertyDefinition[]>(
+    `/ontology/object-types/${typeId}/properties`,
+  )
+  return body.data
 }
 
 // 077 객체 상세 조회
