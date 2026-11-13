@@ -5,7 +5,7 @@
 
 import re
 
-from app.proposers.korean import josa
+from app.proposers.korean import josa, particle
 
 
 def _short(name: str) -> str:
@@ -178,6 +178,74 @@ def _link_rule_name(payload: dict, names: Names) -> tuple[str, str] | None:
     return title, lead
 
 
+_FULL = re.compile(r"일치율 100% \(([\d,]+)행 모두 연결\)")
+_PART = re.compile(r"일치율 (\S+) \(([\d,]+)/([\d,]+)행 연결, 값 종류 기준 (\S+)\)")
+
+
+def _link_rule_reason(reason: str, payload: dict, names: Names) -> str:
+    """연결 규칙 이유('대상 키: … · 비교: 값 그대로 · 일치율 100% (…)')를 현업이 읽는 문장으로 바꾼다.
+    무엇으로 무엇을 찾는지, 몇 행이 이어지는지, 승인하면 무엇이 되는지를 적는다. 모르는 조각은 그대로 둔다."""
+    made = _link_rule_name(payload, names)
+    link_type = payload.get("linkType") or {}
+    source = names.type(link_type.get("sourceTypeCode"))
+    target = names.type(link_type.get("targetTypeCode"))
+    if not made or not source or not target:
+        return reason
+    out = [made[1]]
+    for part in (p.strip() for p in reason.split(" · ")):
+        if not part:
+            continue
+        if part.startswith("대상 키:"):
+            if "기본키" not in part:
+                key = part.removeprefix("대상 키:").split(" (")[0].strip()
+                key = key.removeprefix(f"{target} ")  # '부서 부서명' → '부서명'
+                what = "컬럼 조합" if "+" in key else "컬럼"
+                out.append(
+                    f"{target}의 {josa(key, '은/는')} 기본키는 아니지만 값이 겹치지 않는 {what}입니다."
+                )
+        elif part == "비교: 값 그대로":
+            continue
+        elif part.startswith("비교: "):
+            out.append(f"비교 방법: {part.removeprefix('비교: ')}.")
+        elif full := _FULL.fullmatch(part):
+            out.append(
+                f"{source} {full[1]}행이 모두 {josa(target, '과/와')} 이어집니다."
+            )
+        elif some := _PART.fullmatch(part):
+            kinds = "" if some[4] == some[1] else f"(값 종류 기준 {some[4]})"
+            out.append(
+                f"{source} {some[3]}행 중 {some[2]}행({some[1]})이"
+                f" {josa(target, '과/와')} 이어집니다{kinds}."
+            )
+        elif part.startswith("적용 조건: "):
+            column, _, value = part.removeprefix("적용 조건: ").partition(" = ")
+            # 조건 컬럼은 출발 유형의 속성 이름으로 보인다(target_type → 정비 대상 종류)
+            source_code = link_type.get("sourceTypeCode")
+            ref = next(
+                (
+                    r
+                    for r, c in names.columns.items()
+                    if r.startswith(f"{source_code}.") and c == column
+                ),
+                f"{source_code}.{column}",
+            )
+            name = names.prop(ref)
+            out.append(f"{josa(name, '이/가')} {value}인 행에만 적용합니다.")
+        elif part == "불일치 값은 개인정보라 표시하지 않음":
+            out.append("이어지지 않은 값은 개인정보라 보여 주지 않습니다.")
+        elif part.startswith("불일치 예: "):
+            out.append(f"이어지지 않은 값 예: {part.removeprefix('불일치 예: ')}.")
+        else:
+            out.append(part if part.endswith(".") else f"{part}.")
+    pair = (
+        f"{source}끼리"
+        if source == target
+        else f"{josa(source, '과/와')} {josa(target, '이/가')}"
+    )
+    out.append(f"승인하면 {pair} 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.")
+    return " ".join(out)
+
+
 def _excerpt(evidence: dict, payload: dict, limit: int = 60) -> str:
     """언급이 든 문장. 줄·마침표에서 끊고, 길면 언급 앞뒤만 남긴다."""
     text = evidence.get("originalText") or ""
@@ -205,43 +273,68 @@ def _excerpt(evidence: dict, payload: dict, limit: int = 60) -> str:
     )
 
 
+def _observed(evidence: dict) -> str:
+    """메모에서 이 대상에 대해 확인된 관찰('정지·누유'). 부정('누유 없음')은 뺀다."""
+    words = [
+        o.get("text")
+        for o in evidence.get("observations") or []
+        if o.get("assertion", "AFFIRMED") == "AFFIRMED" and o.get("text")
+    ]
+    return "·".join(dict.fromkeys(words))
+
+
 def _document_name(
     payload: dict, evidence: dict, names: Names, choices: int
 ) -> tuple[str, str] | None:
+    """문서 연결 제목·이유. 현업이 읽게 메모 이름('10/29 야간 인수인계')과 대상 이름('1라인 3호 프레스(P103)')을 쓰고,
+    이유에는 왜 이 대상인지, 메모에 무엇이 적혔는지, 승인하면 무엇이 되는지를 적는다."""
     ref = payload.get("targetObjectRef") or ""
     if ":" not in ref:
         return None
     table, key = ref.split(":", 1)
-    items = evidence.get("items") or []
-    locator = items[0].get("locator", "") if items else ""
-    doc_table = locator.rsplit(".", 1)[0] if locator.count(".") >= 2 else ""
-    doc = names.table(doc_table) if doc_table else "문서"
-    target = names.table(table)
+    target = names.table(table)  # 대상 종류('설비')
+    label = (evidence.get("targetLabels") or {}).get(ref)
+    shown = f"{label}({key})" if label else f"{target} {key}"
+
+    def shown_josa(pair: str) -> str:
+        # '냉각탑(CT1)'의 조사는 괄호가 아니라 이름(냉각탑)에 맞춘다
+        return f"{shown}{particle(label, pair)}" if label else josa(shown, pair)
+
+    doc = evidence.get("documentLabel") or payload.get("documentId") or "문서"
     mention = payload.get("mentionText") or key
-    # 같은 문서 종류 이름이 줄마다 반복되지 않게 제목은 '문서 번호 → 대상'으로 쓴다
-    doc_id = payload.get("documentId") or doc
     excerpt = _excerpt(evidence, payload)
-    quote = f" · “{excerpt}”" if excerpt else ""
-    quoted = f"'{mention}'"
+    observed = _observed(evidence)
+    content = ""
+    if excerpt:
+        content = f" 메모 내용: “{excerpt}”"
+        if observed:
+            content += f" ({observed} 기록)"
     if choices > 1:
-        title = f"{doc_id} → {target} (후보 {choices}개)"
-        lead = f"본문 {quoted} 해당 {target} 후보 {choices}개{quote}"
-        # 원래 이유의 첫 문장은 같은 말이라 빼고 단서만 잇는다
+        title = f"{doc} → {target} 후보 {choices}개"
+        lead = (
+            f"메모의 '{mention}'에 맞는 {josa(target, '이/가')} {choices}개라"
+            " 하나로 정할 수 없습니다. 선택지에서 맞는 대상을 골라 주세요."
+        )
+        # 원래 이유의 단서(작성자 배치 라인)만 잇는다
         hint = evidence.get("reason") or ""
         hint = hint[hint.find("작성자") :] if "작성자" in hint else ""
-        return title, f"{lead} {hint}".strip()
-    title = f"{doc_id} → {target} {key}"
+        return title, f"{lead}{content} {hint}".strip()
+    title = f"{doc} → {shown}"
     alias = any(
         "이름·별명" in (c.get("label") or "")
         for c in evidence.get("confidenceItems") or []
     )
     if mention.strip().upper() == key.strip().upper():
-        lead = f"본문 기재 {quoted}"
+        why = f"메모에 {target} 번호 {josa(key, '이/가')} 그대로 적혀 있습니다."
     elif alias:
-        lead = f"본문 {quoted} → {target} {key} (명칭·별칭 일치)"
+        why = f"메모의 '{mention}'{particle(mention, '은/는')} {shown}의 이름·별칭과 맞습니다."
     else:
-        lead = f"본문 {quoted} → {target} {key} (다른 컬럼 값 일치)"
-    return title, lead + quote
+        why = f"메모의 '{mention}'{particle(mention, '은/는')} {target} {key}의 다른 값과 맞습니다."
+    effect = (
+        f" 승인하면 이 메모와 {shown_josa('이/가')} 이어져"
+        " 탐색 화면과 Agent에서 함께 찾을 수 있습니다."
+    )
+    return title, why + content + effect
 
 
 def readable(proposals: list[dict]) -> list[dict]:
@@ -293,6 +386,10 @@ def readable(proposals: list[dict]) -> list[dict]:
                     evidence[key] = _table_names(evidence[key], names)
                     if kind == "LINK_RULE":
                         evidence[key] = _column_names(evidence[key], payload, names)
+            if kind == "LINK_RULE" and evidence.get("reason"):
+                evidence["reason"] = _link_rule_reason(
+                    evidence["reason"], payload, names
+                )
         if made:
             title, lead = made
             payload["name"] = title
