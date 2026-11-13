@@ -18,7 +18,7 @@ import ObjectDetail from './ObjectDetail'
 import ObjectGraph from './ObjectGraph'
 import ObjectSearchBar from './ObjectSearchBar'
 import TypeRelations from './TypeRelations'
-import { formatObjectCode } from './format'
+import { formatObjectKey } from './format'
 import './explorer.css'
 
 // 유형 관계도는 그래프 라이브러리(React Flow)가 커서, 처음 화면에 그릴 때 따로 받아 온다.
@@ -141,7 +141,7 @@ function ExplorerPage() {
     listContent = objectPage.data.map((item) => (
       <ObjectCard
         key={item.id}
-        code={formatObjectCode(item.id)}
+        code={formatObjectKey(item)}
         name={item.displayName}
         typeLabel={item.objectTypeName}
         selected={item.id === selectedId}
