@@ -24,6 +24,35 @@ export function formatObjectCode(id: number) {
   return `#${id}`
 }
 
+// 원천 키 값을 ' / '로 잇는다. 권한으로 가린 값(null)은 빼고, 남는 값이 없으면 내부 번호다.
+// 대표 속성이 없으면 표시 이름도 원천 키 값을 이은 것이라 한 번만 보이도록 null이다.
+// sourceKey는 jsonb라 칼럼 순서가 표시 이름과 다를 수 있어 값 묶음으로 비교한다.
+export function formatObjectKey(object: {
+  id: number
+  displayName: string
+  sourceKey?: Record<string, unknown> | null
+}) {
+  const values = Object.values(object.sourceKey ?? {})
+    .filter((value) => value !== null && value !== undefined)
+    .map((value) => String(value))
+    .filter((value) => value.trim() !== '')
+  if (values.length === 0) {
+    const code = formatObjectCode(object.id)
+    return code === object.displayName ? null : code
+  }
+  return sameValues(values, object.displayName.split(' / '))
+    ? null
+    : values.join(' / ')
+}
+
+function sameValues(left: string[], right: string[]) {
+  const sortedRight = [...right].sort()
+  return (
+    left.length === right.length &&
+    [...left].sort().every((value, index) => value === sortedRight[index])
+  )
+}
+
 // 마지막 글자에 받침이 있으면 '과', 없으면 '와'를 붙인다. 한글로 끝나지 않으면 둘 다 보여 준다.
 export function withAndParticle(word: string) {
   const offset = word.charCodeAt(word.length - 1) - 0xac00

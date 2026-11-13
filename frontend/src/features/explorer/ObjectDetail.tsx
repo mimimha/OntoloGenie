@@ -7,7 +7,7 @@ import { createConversation } from '../agent/api'
 import type { AgentConversation, AgentEntryState } from '../agent/types'
 import { fetchObject } from './api'
 import EvidenceDialog from './EvidenceDialog'
-import { formatObjectCode, formatPropertyValue } from './format'
+import { formatObjectKey, formatPropertyValue } from './format'
 import { statusLabels } from './labels'
 import type { ObjectInstanceDetail } from './types'
 
@@ -89,7 +89,9 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
     <div className="explorer-object-detail">
       <div className="explorer-detail-actions">
         <p className="explorer-object-meta">
-          {object.objectTypeName} / {formatObjectCode(object.id)}
+          {[object.objectTypeName, formatObjectKey(object)]
+            .filter(Boolean)
+            .join(' / ')}
         </p>
         <Button
           variant="secondary"
