@@ -689,6 +689,20 @@ test('유형을 고르면 그 유형의 관계 이름표만 보여준다', async
   expect(graph.queryByText('생산 대상 수주 · 1건')).not.toBeInTheDocument()
 })
 
+test('키보드로 관계도를 지날 때는 유형 카드에만 멈춘다', async () => {
+  renderExplorerPage()
+
+  const graph = within(screen.getByRole('region', { name: '관계도' }))
+  await graph.findByRole('button', { name: '객체 유형 설비' })
+
+  // 카드를 감싼 칸과 선은 고를 수 없으므로 Tab 순서에 넣지 않는다.
+  expect(
+    document.querySelectorAll(
+      '.react-flow__node[tabindex], .react-flow__edge[tabindex]',
+    ),
+  ).toHaveLength(0)
+})
+
 test('유형 카드를 누르면 그 유형의 객체 목록과 관계를 보여준다', async () => {
   const user = userEvent.setup()
   renderExplorerPage()

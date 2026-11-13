@@ -16,7 +16,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import Button from '../../components/Button'
 import type { Route } from './edgeRoute'
-import { formatCount } from './format'
 import '@xyflow/react/dist/style.css'
 import {
   groupRelationLines,
@@ -26,6 +25,11 @@ import {
   TYPE_NODE_HEIGHT,
   TYPE_NODE_WIDTH,
 } from './modelGraphLayout'
+import {
+  LABEL_MAX_WIDTH,
+  placeRelationLabels,
+  relationLabelText,
+} from './relationLabels'
 import type {
   ModelEdge,
   ModelGraph as ModelGraphData,
@@ -91,11 +95,13 @@ type RelationEdgeData = {
   route?: Route
   // 이름표는 고른 유형에 붙은 선에만 보인다.
   showLabel: boolean
+  // 카드와 다른 이름표를 피해 정한 이름표 자리. 자기 유형 관계는 카드 위 고리에 적으므로 없다.
+  labelAt?: { x: number; y: number }
 }
 
 type RelationFlowEdge = Edge<RelationEdgeData, 'relation'>
 
-// 관계 선. 같은 출발·도착 유형 사이의 관계 이름을 선 가운데에 줄을 나눠 적는다.
+// 관계 선. 계산한 경로로 카드를 피해 그리고, 고른 유형의 선이면 같은 출발·도착 유형 사이의 관계 이름을 줄을 나눠 적는다.
 function RelationEdge({
   id,
   sourceX,
@@ -120,11 +126,13 @@ function RelationEdge({
     labelX = (sourceX + targetX) / 2
     labelY = sourceY - TYPE_NODE_HEIGHT / 2 - data.loopHeight / 2
     path = `M ${sourceX} ${sourceY} C ${sourceX + 24} ${sourceY}, ${sourceX + 24} ${labelY}, ${labelX} ${labelY} C ${targetX - 24} ${labelY}, ${targetX - 24} ${targetY}, ${targetX} ${targetY}`
-  } else if (data?.route && !data.route.fallback) {
+  } else {
     // 계산한 경로가 있으면 그 경로로 그린다. 길을 찾지 못한 선은 위의 곡선을 그대로 쓴다.
-    path = data.route.d
-    labelX = data.route.labelAt.x
-    labelY = data.route.labelAt.y
+    if (data?.route && !data.route.fallback) path = data.route.d
+    if (data?.labelAt) {
+      labelX = data.labelAt.x
+      labelY = data.labelAt.y
+    }
   }
 
   return (
@@ -132,15 +140,17 @@ function RelationEdge({
       <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />
       {data?.showLabel && (
         <EdgeLabelRenderer>
+          {/* 열 사이 간격에 들어가도록 폭을 제한하고 띄어쓰기 단위로 줄을 바꾼다(relationLabels의 크기 어림과 같은 규칙). */}
           <div
-            className="absolute rounded bg-white/90 px-1 text-center text-xs leading-tight whitespace-nowrap text-slate-600"
+            className="model-graph-edge-label absolute rounded bg-white/90 px-1 text-center text-xs leading-tight text-slate-600"
             style={{
+              maxWidth: LABEL_MAX_WIDTH,
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
             }}
           >
             {data.edges.map((edge) => (
               <span key={edge.id} className="block">
-                {`${edge.name} · ${formatCount(edge.activeLinkCount)}건`}
+                {relationLabelText(edge)}
               </span>
             ))}
           </div>
@@ -186,6 +196,12 @@ function ModelGraph({
     const routes = routeRelationLines(graph.nodes, lines, points)
     return { lines, points, routes }
   }, [graph])
+  // 이름표 자리는 고른 유형이 바뀔 때만 다시 정한다.
+  const labelPositions = useMemo(
+    () =>
+      placeRelationLabels(graph.nodes, lines, points, routes, selectedTypeId),
+    [graph.nodes, lines, points, routes, selectedTypeId],
+  )
 
   // 고른 유형과 그 유형에 연결된 유형이 모두 보이게 맞춘다. 고른 유형이 없으면 전체를 맞춘다.
   const fitSelection = useCallback(() => {
@@ -323,6 +339,7 @@ function ModelGraph({
         edges: line.edges,
         route: routes.get(line.key),
         showLabel: related,
+        labelAt: labelPositions.get(line.key),
         loopHeight:
           line.sourceTypeId === line.targetTypeId
             ? selfRelationHeight(lines, line.sourceTypeId)
@@ -365,6 +382,9 @@ function ModelGraph({
               nodesDraggable={false}
               nodesConnectable={false}
               elementsSelectable={false}
+              // Tab은 카드 버튼에만 멈춘다. 카드를 감싼 칸과 선은 이름 없이 초점만 받아 길을 잃게 한다.
+              nodesFocusable={false}
+              edgesFocusable={false}
               proOptions={{ hideAttribution: true }}
             >
               {/* 배율 버튼은 그림 위 오른쪽에 겹쳐 두어 그림 위에 버튼 줄이 생기지 않게 한다. */}

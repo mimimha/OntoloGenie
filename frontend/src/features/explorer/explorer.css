@@ -260,7 +260,8 @@
 .explorer-object-name,
 .explorer-panel-heading h2,
 .explorer-panel-body .explorer-detail-title,
-.model-graph-node {
+.model-graph-node,
+.model-graph-edge-label {
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
