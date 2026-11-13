@@ -26,6 +26,22 @@ import type {
 export const ANALYSIS_POLL_MS = 2000
 // 서버·네트워크 오류일 때 한 번의 확인에서 다시 묻는 횟수
 const ANALYSIS_RETRY_COUNT = 2
+// 마지막으로 진행 상태를 받은 뒤 이 시간 동안 계속 실패하면 더 묻지 않고 다시 확인 버튼을 둔다
+export const ANALYSIS_ERROR_LIMIT_MS = 150_000
+
+// 받아 둔 진행 상태가 있고, 그 뒤로 서버·네트워크 실패만 이 시간 넘게 이어졌다
+function failingTooLong(state: {
+  dataUpdatedAt: number
+  errorUpdatedAt: number
+  error: Error | null
+}) {
+  return (
+    state.dataUpdatedAt > 0 &&
+    state.error !== null &&
+    isTransientError(state.error) &&
+    state.errorUpdatedAt - state.dataUpdatedAt >= ANALYSIS_ERROR_LIMIT_MS
+  )
+}
 
 function isTransientError(error: Error) {
   return (
@@ -60,6 +76,7 @@ function CurrentAnalysis({
       const { data, error } = current.state
       if (data && !isAnalysisRunning(data.status)) return false
       if (error && !isTransientError(error)) return false
+      if (failingTooLong(current.state)) return false
       return ANALYSIS_POLL_MS
     },
     retry: (count, error) =>
@@ -67,6 +84,11 @@ function CurrentAnalysis({
   })
   const status = query.data?.status
   const previousStatus = useRef<AnalysisStatus>(undefined)
+  const pollingStopped = failingTooLong({
+    dataUpdatedAt: query.dataUpdatedAt,
+    errorUpdatedAt: query.errorUpdatedAt,
+    error: query.error,
+  })
 
   // 진행 중이던 분석이 끝나면 새 후보와 최근 분석 목록을 다시 불러온다.
   // 이미 끝난 분석을 열 때는 불러오던 목록을 다시 시작하지 않는다.
@@ -163,10 +185,23 @@ function CurrentAnalysis({
         {query.isError && (
           <p className="text-xs text-amber-700">
             {`진행 상태를 새로 확인하지 못했습니다. ${query.error.message}`}
-            {isTransientError(query.error) && isAnalysisRunning(run.status)
+            {isTransientError(query.error) &&
+            isAnalysisRunning(run.status) &&
+            !pollingStopped
               ? ' 잠시 뒤 다시 확인합니다.'
               : ''}
+            {pollingStopped && ' 계속 실패해 자동 확인을 멈췄습니다.'}
           </p>
+        )}
+        {pollingStopped && (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              void query.refetch()
+            }}
+          >
+            다시 확인
+          </Button>
         )}
       </>
     )
