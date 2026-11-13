@@ -21,13 +21,13 @@ API 076 `GET /api/v1/objects`에 선택 조건을 추가한다. 기존 요청·�
 GET /api/v1/objects?objectTypeId=123&propertyValues[status]=진행&propertyValues[line]=1라인&dateProperty=planned_start&from=2026-10-01&to=2026-10-31&page=0&size=20
 ```
 
-실제 URL에서는 대괄호·한글·DATETIME의 `+` 등을 URL 인코딩한다. 날짜는 0001~9999년 범위이며 DATETIME은 UTC로 환산한 날짜에 적용한다. 숫자는 자료형에 맞게 비교하므로 DECIMAL의 `1200`, `1200.00`, 숫자 문자열 저장 값은 동일하다. BOOLEAN은 `true`·`false`만 받는다. STRING은 공백을 포함한 정확한 값으로 비교하며, 빈 문자열과 값 없음(null·속성 누락)을 구분한다. JSON 속성의 일치 검색과 TIME의 기간 검색은 이번 범위에 포함하지 않는다.
+실제 URL에서는 대괄호·한글·DATETIME의 `+` 등을 URL 인코딩한다. 날짜는 0001~9999년 범위이며 DATETIME은 UTC로 환산한 날짜에 적용한다. 숫자는 자료형에 맞게 비교하므로 DECIMAL의 `1200`, `1200.00`, 숫자 문자열 저장 값은 동일하다. BOOLEAN은 `true`·`false`만 받는다. STRING은 공백을 포함한 정확한 값으로 비교하며, 빈 문자열과 값 없음(null·속성 누락)을 구분한다. 다만 정확히 같은 저장 값이 없고 공백만 다른 저장 값이 하나뿐이면 그 값으로 비교한다(S15P31C106-378). 예를 들어 `정비 중`으로 물으면 저장 값 `정비중`을 찾는다. 공백만 다른 저장 값이 여럿이면 어느 것인지 정할 수 없어 맞추지 않는다. JSON 속성의 일치 검색과 TIME의 기간 검색은 이번 범위에 포함하지 않는다.
 
 ## 검증과 권한
 
 업무 데이터 화면에서는 `GET /api/v1/objects/types`로 조회 가능한 유형을 받고, 유형 선택 후 API 026의 속성 목록을 불러온다. ‘속성 조건’에서 하나를 선택하고 ‘속성 값 · 정확 일치’에 값을 입력하면 `propertyValues[속성코드]`로 검색한다. 유형 변경과 초기화는 이전 속성 조건을 비운다. JSON 속성은 선택지에서 제외한다. API 026은 현재 ADMIN 전용이므로 조회 권한이 없는 계정에는 안내를 표시하며 기존 유형·검색어 검색은 유지한다.
 
-- 해당 유형에 정의되지 않은 속성, 잘못된 자료형·날짜·기간 역전, 유형 없는 조건, 경계 없는 기간은 `400 VALIDATION_FAILED`다.
+- 해당 유형에 정의되지 않은 속성, 잘못된 자료형·날짜·기간 역전, 유형 없는 조건, 경계 없는 기간은 `400 VALIDATION_FAILED`다. `dateProperty`가 없거나 날짜·시각 속성이 아니면 `reason`에 그 유형에서 기간으로 검색할 수 있는 속성(`코드(이름)`)을 함께 적는다. 볼 수 없는 민감 속성은 적지 않는다(S15P31C106-378).
 - 민감 속성을 볼 권한이 없으면 그 속성의 값·기간 조건을 `403 FORBIDDEN`으로 거절한다. 결과가 0건이어도 허용하지 않는다.
 - 볼 수 없는 유형과 존재하지 않는 유형은 기존 검색처럼 빈 목록과 0건을 반환한다. 이 경우 속성 존재 여부를 검사해 드러내지 않는다.
 - 검색어·조건·객체 상태·조회 권한을 목록과 `totalElements`에 함께 적용한 뒤 페이지를 나눈다.
@@ -38,4 +38,4 @@ GET /api/v1/objects?objectTypeId=123&propertyValues[status]=진행&propertyValue
 
 로컬 OpenAPI 3.1 변경 명세는 [object-search-filters.openapi.yaml](object-search-filters.openapi.yaml)이다. Notion API 076 원문은 연결 계정에서 접근되지 않아 수정하지 않았다. API 담당 정유림과 요청 형식을 검토하고 Notion 원본에 반영해야 한다.
 
-`ObjectSearchApiTests`에서 복합 속성·기간 조건, 페이지별 건수, DATE 경계, DATETIME 오프셋, 숫자·불리언·시간 비교, 잘못된 입력, 민감 속성 권한, 숨겨진 유형과 기존 검색을 확인한다.
+`ObjectSearchApiTests`에서 복합 속성·기간 조건, 페이지별 건수, DATE 경계, DATETIME 오프셋, 숫자·불리언·시간 비교, 잘못된 입력, 민감 속성 권한, 숨겨진 유형과 기존 검색을 확인한다. 공백만 다른 저장 값 맞추기와 기간 속성 안내도 같은 테스트에서 확인한다(378).

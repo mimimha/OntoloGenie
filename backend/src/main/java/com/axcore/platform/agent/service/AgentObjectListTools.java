@@ -63,14 +63,15 @@ public class AgentObjectListTools {
 
     /**
      * total은 조건에 맞는 전체 건수이고 objects는 그중 이번 쪽(최대 20건)이다. 076처럼 권한 범위 안에서만 센다. properties는 그 유형에서 조건에
-     * 쓸 수 있는 속성이다.
+     * 쓸 수 있는 속성이다. unmatchedValues는 저장 값 종류에서 맞는 값을 찾지 못한 속성 조건이다(속성 코드 → 넣은 값, 378).
      */
     public record ObjectList(
             long total,
             int page,
             boolean hasNext,
             List<AgentQueryTools.ObjectSummary> objects,
-            List<PropertyItem> properties) {}
+            List<PropertyItem> properties,
+            Map<String, String> unmatchedValues) {}
 
     /**
      * API 076. 원천에서 삭제된 객체는 다루지 않는다(사용 중인 객체만). 잘못된 조건(없는 속성, 자료형에 맞지 않는 값, 거꾸로 된 기간)은 실패로 기록하고
@@ -82,8 +83,9 @@ public class AgentObjectListTools {
                     "객체 유형 하나에서 속성 값·기간 조건에 맞는 객체 목록(최대 20건)과 전체 건수(total)를 조회한다. \"정지 중인 설비\", \"10월"
                             + " 작업지시\"처럼 종류 전체를 조건으로 물을 때 쓴다. 유형 ID는 모델 요약의 id를 쓴다. 조건에 쓸 속성 코드는"
                             + " 결과의 properties에서, 값은 properties의 values(저장된 값 종류)에서 고른다. 모르면 조건 없이 먼저"
-                            + " 조회한다. 값은 저장된 값과 똑같아야 맞으므로 values에 있는 값 그대로 쓰고, 사용자의 말과 뜻이 가장 가까운 값을"
-                            + " 고른다(예: \"진행 중\" → \"진행\"). 맞는 값이 없으면 조건으로 거르지 않고 그런 값이 없다고 말한다. total이 objects"
+                            + " 조회한다. 값은 values에 있는 값 그대로 쓰고, 사용자의 말과 뜻이 가장 가까운 값을 고른다(예: \"진행 중\" →"
+                            + " \"진행\"). 띄어쓰기만 다른 값은 서버가 저장된 값으로 맞춘다. unmatchedValues에 나온 조건은 저장된 값에 없는"
+                            + " 값이니 values에서 다시 고르고, 맞는 값이 없으면 조건으로 거르지 않고 그런 값이 없다고 말한다. total이 objects"
                             + " 수보다 많으면 일부만 받은 것이니 전체 건수와 일부만 보여 준다는 것을 함께 말한다.")
     public Map<String, Object> objectList(
             @ToolParam(description = "객체 유형 ID(모델 요약의 id)") Long objectTypeId,
@@ -165,7 +167,8 @@ public class AgentObjectListTools {
                                     pageNumber,
                                     found.hasNext(),
                                     rows,
-                                    properties),
+                                    properties,
+                                    unmatchedValues(properties, propertyValues)),
                             found.getTotalElements() == 0
                                     ? AgentResultCategory.NO_DATA
                                     : AgentResultCategory.FOUND,
@@ -190,6 +193,44 @@ public class AgentObjectListTools {
                                         property.dataType(),
                                         samples.get(property.code())))
                 .toList();
+    }
+
+    /**
+     * 넣은 조건 값이 저장 값 종류에 없으면 알려 준다(378). 076은 똑같은 값이 없을 때 띄어쓰기만 다른 저장 값이 하나면 그 값으로 거르므로 같은 기준으로 본다.
+     * 띄어쓰기만 다른 값이 여럿이거나 하나도 없으면 맞추지 못한 값이다. 값 종류를 모르는 속성(문자 속성이 아니거나 종류가 많음)은 판단하지 않는다.
+     */
+    private static Map<String, String> unmatchedValues(
+            List<PropertyItem> properties, Map<String, String> requested) {
+        if (requested == null || requested.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> unmatched = new LinkedHashMap<>();
+        requested.forEach(
+                (code, value) ->
+                        properties.stream()
+                                .filter(property -> property.code().equals(code))
+                                .map(PropertyItem::values)
+                                .filter(Objects::nonNull)
+                                .findFirst()
+                                .filter(stored -> !matchesStored(stored, value))
+                                .ifPresent(stored -> unmatched.put(code, value)));
+        return unmatched;
+    }
+
+    private static boolean matchesStored(List<String> stored, String value) {
+        if (value == null || stored.contains(value)) {
+            return true;
+        }
+        String compact = withoutSpaces(value);
+        return stored.stream().filter(candidate -> withoutSpaces(candidate).equals(compact)).count()
+                == 1;
+    }
+
+    private static String withoutSpaces(String value) {
+        return value.codePoints()
+                .filter(c -> !Character.isWhitespace(c) && !Character.isSpaceChar(c))
+                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                .toString();
     }
 
     private static PropertyDataType dataTypeOf(List<PropertyItem> properties, String code) {

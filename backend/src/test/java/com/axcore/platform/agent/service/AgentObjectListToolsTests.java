@@ -165,6 +165,42 @@ class AgentObjectListToolsTests {
     }
 
     @Test
+    void marksConditionValuesThatNoStoredValueMatches() {
+        givenProperties(
+                property(EQUIPMENT, "status", "상태", PropertyDataType.STRING),
+                property(EQUIPMENT, "line", "라인", PropertyDataType.STRING),
+                property(EQUIPMENT, "zone", "구역", PropertyDataType.STRING));
+        when(values.stringValues(ASKER, EQUIPMENT, AgentObjectListTools.MAX_VALUES))
+                .thenReturn(
+                        Map.of(
+                                "status", List.of("가동", "정비중"),
+                                "zone", List.of("A 구역", "A구 역")));
+        when(objects.search(eq(ASKER), any())).thenReturn(new PageImpl<>(List.of()));
+
+        // 띄어쓰기만 다른 저장 값이 하나면 076이 맞추므로 표시하지 않는다.
+        ObjectList spaced =
+                (ObjectList)
+                        tools.objectList(
+                                        EQUIPMENT, Map.of("status", "정비 중"), null, null, null, null)
+                                .get("data");
+        assertThat(spaced.unmatchedValues()).isEmpty();
+
+        // 저장 값에 없는 값, 띄어쓰기만 다른 값이 여럿인 값은 표시한다. 값 종류를 모르는 속성(line)은 판단하지 않는다.
+        ObjectList unmatched =
+                (ObjectList)
+                        tools.objectList(
+                                        EQUIPMENT,
+                                        Map.of("status", "정지", "zone", "A구역", "line", "9라인"),
+                                        null,
+                                        null,
+                                        null,
+                                        null)
+                                .get("data");
+        assertThat(unmatched.unmatchedValues())
+                .containsOnly(Map.entry("status", "정지"), Map.entry("zone", "A구역"));
+    }
+
+    @Test
     void answersNoDataWithoutDataAsOfWhenNothingMatches() {
         givenProperties();
         when(objects.search(eq(ASKER), any())).thenReturn(new PageImpl<>(List.of()));

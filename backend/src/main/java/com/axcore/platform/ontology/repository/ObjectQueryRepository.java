@@ -454,6 +454,32 @@ public class ObjectQueryRepository {
         }
     }
 
+    /**
+     * 한 유형의 문자 속성에서 공백을 빼면 value와 같은 저장 값을 값 순서로 limit건까지 돌려준다(378). "정비 중"으로 물어도 저장 값 "정비중"을 찾기 위해
+     * 쓴다. 공백 비교는 PostgreSQL 정규식 하나로 해 저장 값과 입력 값에 같은 기준을 쓴다.
+     */
+    public List<String> findSpacingVariants(
+            long typeId, String code, String value, Status status, int limit) {
+        return jdbc.sql(
+                        """
+                        select distinct oi.properties ->> :code as stored
+                        from object_instance oi
+                        where oi.object_type_id = :typeId
+                          and oi.status = :status
+                          and regexp_replace(oi.properties ->> :code, '\\s', '', 'g')
+                              = regexp_replace(:value, '\\s', '', 'g')
+                        order by stored
+                        limit :limit
+                        """)
+                .param("typeId", typeId)
+                .param("code", code)
+                .param("value", value)
+                .param("status", status.name())
+                .param("limit", limit)
+                .query(String.class)
+                .list();
+    }
+
     public Optional<DetailRow> findDetail(
             long id,
             Collection<Long> visibleTypeIds,
