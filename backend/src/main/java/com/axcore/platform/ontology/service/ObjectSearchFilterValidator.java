@@ -31,6 +31,8 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class ObjectSearchFilterValidator {
+    private static final String UNKNOWN_PROPERTY = "선택한 객체 유형에 정의된 속성 코드를 지정해 주세요.";
+
     private final PropertyDefinitionRepository properties;
 
     public SearchFilters validate(ObjectSearchRequest request, DataAccess access) {
@@ -38,8 +40,9 @@ public class ObjectSearchFilterValidator {
             return new SearchFilters(List.of(), null);
         }
         long typeId = request.objectTypeId();
+        List<PropertyDefinition> defined = properties.findByObjectTypeIdOrderById(typeId);
         Map<String, PropertyDefinition> definitions =
-                properties.findByObjectTypeIdOrderById(typeId).stream()
+                defined.stream()
                         .collect(
                                 Collectors.toMap(PropertyDefinition::getCode, Function.identity()));
         var values = new ArrayList<PropertyFilter>();
@@ -48,7 +51,13 @@ public class ObjectSearchFilterValidator {
                         (code, value) -> {
                             String field = "propertyValues[" + code + "]";
                             PropertyDefinition property =
-                                    requireProperty(definitions, code, typeId, access, field);
+                                    requireProperty(
+                                            definitions,
+                                            code,
+                                            typeId,
+                                            access,
+                                            field,
+                                            UNKNOWN_PROPERTY);
                             values.add(
                                     new PropertyFilter(
                                             code,
@@ -58,13 +67,19 @@ public class ObjectSearchFilterValidator {
 
         PeriodFilter period = null;
         if (request.dateProperty() != null || request.from() != null || request.to() != null) {
+            String hint = periodPropertiesHint(defined, typeId, access);
             PropertyDefinition property =
                     requireProperty(
-                            definitions, request.dateProperty(), typeId, access, "dateProperty");
+                            definitions,
+                            request.dateProperty(),
+                            typeId,
+                            access,
+                            "dateProperty",
+                            UNKNOWN_PROPERTY + hint);
             PropertyDataType type = property.getDataType();
-            if (type != PropertyDataType.DATE && type != PropertyDataType.DATETIME) {
+            if (!isPeriodType(type)) {
                 throw BusinessException.invalidField(
-                        "dateProperty", "DATE 또는 DATETIME 속성만 기간으로 검색할 수 있습니다.");
+                        "dateProperty", "DATE 또는 DATETIME 속성만 기간으로 검색할 수 있습니다." + hint);
             }
             if (request.from() == null && request.to() == null) {
                 throw BusinessException.invalidField("from", "기간의 시작 또는 끝을 지정해 주세요.");
@@ -79,15 +94,40 @@ public class ObjectSearchFilterValidator {
         return new SearchFilters(List.copyOf(values), period);
     }
 
+    /**
+     * 기간 속성을 잘못 고른 오류에 그 유형에서 고를 수 있는 날짜·시각 속성을 붙인다(378). Agent가 오류만 보고 다시 고를 수 있게 하기 위해서다. 볼 수 없는
+     * 민감 속성은 넣지 않는다.
+     */
+    private static String periodPropertiesHint(
+            List<PropertyDefinition> defined, long typeId, DataAccess access) {
+        List<String> candidates =
+                defined.stream()
+                        .filter(property -> isPeriodType(property.getDataType()))
+                        .filter(
+                                property ->
+                                        property.getSensitivity() != PropertySensitivity.RESTRICTED
+                                                || access.canViewRestricted(typeId))
+                        .map(property -> property.getCode() + "(" + property.getName() + ")")
+                        .toList();
+        return candidates.isEmpty()
+                ? " 이 유형에는 기간으로 검색할 수 있는 속성이 없습니다."
+                : " 기간으로 검색할 수 있는 속성: " + String.join(", ", candidates);
+    }
+
+    private static boolean isPeriodType(PropertyDataType type) {
+        return type == PropertyDataType.DATE || type == PropertyDataType.DATETIME;
+    }
+
     private static PropertyDefinition requireProperty(
             Map<String, PropertyDefinition> definitions,
             String code,
             long typeId,
             DataAccess access,
-            String field) {
+            String field,
+            String unknownReason) {
         PropertyDefinition property = definitions.get(code);
         if (code == null || code.isBlank() || property == null) {
-            throw BusinessException.invalidField(field, "선택한 객체 유형에 정의된 속성 코드를 지정해 주세요.");
+            throw BusinessException.invalidField(field, unknownReason);
         }
         if (property.getSensitivity() == PropertySensitivity.RESTRICTED
                 && !access.canViewRestricted(typeId)) {
