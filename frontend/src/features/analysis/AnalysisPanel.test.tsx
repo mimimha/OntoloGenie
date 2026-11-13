@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
@@ -10,6 +10,7 @@ import { resetProposalMocks } from '../../mocks/proposalHandlers'
 import { resetSourceMocks } from '../../mocks/sourceHandlers'
 import ProposalsPage from '../review/ProposalsPage'
 import SourcesPage from '../sources/SourcesPage'
+import { ANALYSIS_ERROR_LIMIT_MS, ANALYSIS_POLL_MS } from './AnalysisPanel'
 
 afterEach(() => {
   resetSourceMocks()
@@ -516,6 +517,43 @@ test('진행 확인이 계속 실패해도 받은 결과는 두고 안내 줄만
     timeout: 5000,
   })
 }, 20000)
+
+test('서버가 오래 계속 실패하면 진행 확인을 멈춘다', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  try {
+    let calls = 0
+    server.use(
+      http.get('/api/v1/analyses/61', () => {
+        calls += 1
+        return calls === 1
+          ? HttpResponse.json({ data: analysisRun('RUNNING') })
+          : badGateway()
+      }),
+    )
+    renderRules('/admin/rules?analysis=61')
+    await screen.findByRole('region', { name: '이번 분석' })
+
+    // 받은 진행 상태 뒤로 실패만 이 시간 넘게 이어지면 멈추고 다시 확인 버튼을 둔다
+    await act(() =>
+      vi.advanceTimersByTimeAsync(ANALYSIS_ERROR_LIMIT_MS + 30_000),
+    )
+    const stopped = calls
+    expect(stopped).toBeGreaterThan(10)
+    await act(() => vi.advanceTimersByTimeAsync(ANALYSIS_POLL_MS * 10))
+    expect(calls).toBe(stopped)
+    const current = screen.getByRole('region', { name: '이번 분석' })
+    expect(current).toHaveTextContent('계속 실패해 자동 확인을 멈췄습니다.')
+    expect(current).not.toHaveTextContent('잠시 뒤 다시 확인합니다.')
+    // 다시 확인을 누르면 한 번 더 묻는다
+    await act(async () => {
+      within(current).getByRole('button', { name: '다시 확인' }).click()
+    })
+    await act(() => vi.advanceTimersByTimeAsync(5_000))
+    expect(calls).toBeGreaterThan(stopped)
+  } finally {
+    vi.useRealTimers()
+  }
+}, 30000)
 
 test('이미 끝난 분석을 열면 불러오던 후보 목록을 다시 요청하지 않는다', async () => {
   const requested: string[] = []

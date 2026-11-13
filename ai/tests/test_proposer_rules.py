@@ -624,7 +624,9 @@ def test_rule_text_uses_property_names_for_renamed_columns():
     )
 
     assert rule["evidence"]["reason"] == (
-        "대상 키: 공급업체 마스터 공급업체 ID (기본키) · 비교: 값 그대로 · 일치율 100% (135행 모두 연결)"
+        "자재·상품 품목 마스터의 기본 공급업체로 공급업체 마스터를 찾습니다."
+        " 자재·상품 품목 마스터 135행이 모두 공급업체 마스터와 이어집니다."
+        " 승인하면 자재·상품 품목 마스터와 공급업체 마스터가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다."
     )
     assert rule["payload"]["description"] == (
         "연결 기준: 자재·상품 품목 마스터 기본 공급업체 = 공급업체 마스터 공급업체 ID"
@@ -665,3 +667,43 @@ def test_hashed_codes_are_not_shown_in_titles(tmp_path):
     assert TYPE_CODE.fullmatch(rule.payload.code)
     # 영문 표 이름은 지금처럼 코드를 보인다(시연 데이터 제목 그대로)
     assert to_code("work_order") == "WORK_ORDER"
+
+
+def test_relation_codes_that_differ_only_by_separator_get_numbered(tmp_path):
+    # item-cd와 item_cd는 대문자 코드로 바꾸면 같아진다. 관계 유형 코드가 겹치면 반영이 실패한다
+    codes = [f"IT{i:03d}" for i in range(1, 31)]
+    write_table(
+        tmp_path,
+        "erp",
+        "item",
+        ["item_cd"],
+        {
+            "item_cd": ("varchar(10)", codes),
+            "item_nm": ("varchar(20)", [f"품목{i}" for i in range(30)]),
+        },
+    )
+    write_table(
+        tmp_path,
+        "erp",
+        "orders",
+        ["order_no"],
+        {
+            "order_no": ("varchar(10)", [f"O{i:03d}" for i in range(30)]),
+            "item-cd": ("varchar(10)", codes),
+            "item_cd": ("varchar(10)", list(reversed(codes))),
+        },
+    )
+    link_types = [
+        c for c in propose_links(tmp_path) if c.payload.kind.value == "LINK_TYPE"
+    ]
+    link_codes = [c.payload.code for c in link_types]
+    assert len(link_codes) == len(set(link_codes))
+    assert all(TYPE_CODE.fullmatch(code) for code in link_codes)
+
+
+def test_numbered_relation_code_stays_within_backend_length():
+    from app.proposers.links import _numbered
+
+    code = _numbered("A" * 100, 2)
+    assert len(code) == 100 and code.endswith("_2")
+    assert TYPE_CODE.fullmatch(code)

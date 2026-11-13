@@ -43,6 +43,7 @@ paths:
           description: >-
             속성 코드와 일치 값. propertyValues[status]=진행 형태로 전달한다.
             JSON 속성은 지원하지 않는다. 숫자는 숫자 값으로, DATETIME은 순간으로 비교한다.
+            STRING은 정확히 같은 저장 값이 없고 공백만 다른 저장 값이 하나뿐이면 그 값으로 비교한다(378).
           schema: { type: object, additionalProperties: { type: string } }
           example: { status: 진행, line: 1라인 }
         - name: dateProperty
@@ -86,7 +87,10 @@ paths:
                       totalElements: { type: integer, format: int64 }
                       hasNext: { type: boolean }
         "400":
-          description: VALIDATION_FAILED — 유형·속성·자료형·기간 조건 오류. details.field와 reason 제공
+          description: >-
+            VALIDATION_FAILED — 유형·속성·자료형·기간 조건 오류. details.field와 reason 제공.
+            dateProperty 오류의 reason에는 그 유형에서 기간으로 검색할 수 있는 속성(코드(이름))을 함께 적는다.
+            볼 수 없는 민감 속성은 적지 않는다(378).
         "401":
           description: 인증 필요
         "403":

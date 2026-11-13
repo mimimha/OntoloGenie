@@ -33,7 +33,7 @@ test('객체 목록 API로 받은 객체를 보여준다', async () => {
   expect(screen.getByText('불러오는 중…')).toBeInTheDocument()
   expect(await screen.findByText('프레스 3호기')).toBeInTheDocument()
   expect(screen.getByText('6건')).toBeInTheDocument()
-  expect(screen.getByText('#301')).toBeInTheDocument()
+  expect(screen.getByText('PR-03')).toBeInTheDocument()
   expect(
     within(screen.getByRole('region', { name: '객체 목록' })).getAllByText(
       '설비',
@@ -46,6 +46,66 @@ test('객체 목록 API로 받은 객체를 보여준다', async () => {
   ).toBeInTheDocument()
 })
 
+test('대표 속성이 없어 이름이 원천 키인 객체는 키를 한 번만 보여 준다', async () => {
+  server.use(
+    http.get('/api/v1/objects', () =>
+      HttpResponse.json({
+        data: [
+          {
+            id: 1401,
+            objectTypeId: 2,
+            objectTypeName: '작업지시',
+            displayName: 'JB2610-0141',
+            properties: {},
+            restrictedPropertyCodes: [],
+            status: 'ACTIVE',
+            sourceMappingId: 22,
+            sourceKey: { wo_no: 'JB2610-0141' },
+            firstCollectedAt: '2026-10-01T00:00:00Z',
+          },
+        ],
+        meta: { page: 0, size: 20, totalElements: 1, hasNext: false },
+      }),
+    ),
+  )
+  renderExplorerPage()
+
+  const list = within(await screen.findByRole('region', { name: '객체 목록' }))
+  expect(await list.findByText('JB2610-0141')).toBeInTheDocument()
+  expect(list.getAllByText('JB2610-0141')).toHaveLength(1)
+  expect(list.queryByText('#1401')).not.toBeInTheDocument()
+})
+
+test('원천 키가 모두 가려진 객체는 null 대신 내부 번호를 한 번만 보여 준다', async () => {
+  server.use(
+    http.get('/api/v1/objects', () =>
+      HttpResponse.json({
+        data: [
+          {
+            id: 1402,
+            objectTypeId: 2,
+            objectTypeName: '작업지시',
+            displayName: '#1402',
+            properties: {},
+            restrictedPropertyCodes: [],
+            status: 'ACTIVE',
+            sourceMappingId: 22,
+            sourceKey: { wo_no: null },
+            firstCollectedAt: '2026-10-01T00:00:00Z',
+          },
+        ],
+        meta: { page: 0, size: 20, totalElements: 1, hasNext: false },
+      }),
+    ),
+  )
+  renderExplorerPage()
+
+  const list = within(await screen.findByRole('region', { name: '객체 목록' }))
+  expect(await list.findByText('#1402')).toBeInTheDocument()
+  expect(list.getAllByText('#1402')).toHaveLength(1)
+  expect(list.queryByText(/null/)).not.toBeInTheDocument()
+})
+
 test('객체를 고르면 상세 API로 받은 정보를 보여준다', async () => {
   const user = userEvent.setup()
   renderExplorerPage()
@@ -55,7 +115,7 @@ test('객체를 고르면 상세 API로 받은 정보를 보여준다', async ()
   expect(
     await screen.findByRole('heading', { name: '프레스 3호기' }),
   ).toBeInTheDocument()
-  expect(screen.getByText('설비 / #301')).toBeInTheDocument()
+  expect(screen.getByText('설비 / PR-03')).toBeInTheDocument()
   expect(
     screen.getByText('MES · mes.equipment · 원천 레코드'),
   ).toBeInTheDocument()
@@ -1617,7 +1677,7 @@ test('주소에 객체 번호가 있으면 그 객체 상세를 연다', async (
   expect(
     await screen.findByRole('heading', { name: '프레스 3호기' }),
   ).toBeInTheDocument()
-  expect(screen.getByText('설비 / #301')).toBeInTheDocument()
+  expect(screen.getByText('설비 / PR-03')).toBeInTheDocument()
 })
 
 function CurrentSearch() {

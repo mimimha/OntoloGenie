@@ -45,6 +45,7 @@
     "llmSkipReason": "LLM 설정 없음",
     "llmCalls": 0,
     "llmFailedCalls": 0,
+    "llmSkippedCalls": 0,
     "llmCredits": 0.0,
     "llmRejectedLinks": 0,
     "llmCrossLinks": 0,
@@ -57,7 +58,7 @@
       "linkRules": 0,
       "linkTypes": 0
     },
-    "modelSummarySkipReason": "내부 토큰 없음",
+    "modelSummarySkipReason": null,
     "changeBasis": null,
     "changeCounts": null,
     "missingColumns": {},
@@ -205,9 +206,9 @@
       },
       "evidence": {
         "candidateId": "OT-erp.attendance",
-        "fingerprint": "a5f334a94826e50c",
+        "fingerprint": "61a7f3bd408c23ea",
         "title": "객체 유형 ATTENDANCE (근태)",
-        "reason": "분류: 발생 기록 (기본키에 일자 컬럼 work_date 포함) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (기본키에 일자 컬럼 work_date 포함)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -789,13 +790,14 @@
             },
             "transformSteps": []
           }
-        ]
+        ],
+        "displayPropertyCode": "dept_name"
       },
       "evidence": {
         "candidateId": "OT-erp.department",
-        "fingerprint": "5c9cd175bdc52b8d",
+        "fingerprint": "283e7ab4b3334233",
         "title": "객체 유형 DEPARTMENT (부서)",
-        "reason": "분류: 기준 정보 (타 테이블 1개에서 참조) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 기준 정보 (다른 표 1개가 참조)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -1240,9 +1242,9 @@
       },
       "evidence": {
         "candidateId": "OT-erp.employee",
-        "fingerprint": "440e94abea64ca85",
+        "fingerprint": "bcd6eade81e1ae58",
         "title": "객체 유형 EMPLOYEE (직원)",
-        "reason": "분류: 기준 정보 (타 테이블 3개에서 참조) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 기준 정보 (다른 표 3개가 참조)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -1786,7 +1788,7 @@
             "isIdentifier": false,
             "isRequired": true,
             "unit": null,
-            "sensitivity": "RESTRICTED",
+            "sensitivity": "NORMAL",
             "sourceColumn": {
               "sourceId": "ERP_MAIN",
               "table": "fixed_asset",
@@ -1880,13 +1882,14 @@
             },
             "transformSteps": []
           }
-        ]
+        ],
+        "displayPropertyCode": "asset_name"
       },
       "evidence": {
         "candidateId": "OT-erp.fixed_asset",
-        "fingerprint": "d5f3706f936dcbd4",
+        "fingerprint": "3eb2ceefb9c8a61c",
         "title": "객체 유형 FIXED_ASSET (고정자산)",
-        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 acquired_on 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 acquired_on 보유)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -2065,13 +2068,17 @@
           {
             "code": "asset_type",
             "title": "속성 FIXED_ASSET.asset_type",
-            "reason": "자료형: 문자 (varchar(20)) · 빈 값 없음 · 개인정보 (값이 사람 이름 모양)",
+            "reason": "자료형: 문자 (varchar(20)) · 빈 값 없음",
             "items": [
               {
                 "sourceId": "ERP_MAIN",
                 "locator": "erp.fixed_asset.asset_type",
-                "snippet": "값 8/8, 서로 다른 값 3, 예 ['***']",
-                "values": [],
+                "snippet": "값 8/8, 서로 다른 값 3, 예 ['기계장치', '차량', '공구']",
+                "values": [
+                  "기계장치",
+                  "차량",
+                  "공구"
+                ],
                 "verified": true
               }
             ],
@@ -2099,8 +2106,12 @@
                 {
                   "sourceId": "ERP_MAIN",
                   "locator": "erp.fixed_asset.asset_type",
-                  "snippet": "값 8/8, 서로 다른 값 3, 예 ['***']",
-                  "values": [],
+                  "snippet": "값 8/8, 서로 다른 값 3, 예 ['기계장치', '차량', '공구']",
+                  "values": [
+                    "기계장치",
+                    "차량",
+                    "공구"
+                  ],
                   "verified": true
                 }
               ],
@@ -2545,13 +2556,14 @@
             },
             "transformSteps": []
           }
-        ]
+        ],
+        "displayPropertyCode": "account_name"
       },
       "evidence": {
         "candidateId": "OT-erp.gl_account",
-        "fingerprint": "94bfb5435f1e1645",
+        "fingerprint": "2ad6a876c2b88448",
         "title": "객체 유형 GL_ACCOUNT (회계 계정)",
-        "reason": "분류: 기준 정보 (타 테이블 1개에서 참조) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 기준 정보 (다른 표 1개가 참조)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -3081,9 +3093,9 @@
       },
       "evidence": {
         "candidateId": "OT-erp.goods_receipt",
-        "fingerprint": "9d005282dbc974ed",
+        "fingerprint": "3026e17c673f67af",
         "title": "객체 유형 GOODS_RECEIPT (입고)",
-        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 gr_date 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 gr_date 보유)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -3876,13 +3888,14 @@
             },
             "transformSteps": []
           }
-        ]
+        ],
+        "displayPropertyCode": "item_name"
       },
       "evidence": {
         "candidateId": "OT-erp.item",
-        "fingerprint": "a416ad484b9ceecf",
+        "fingerprint": "2ec0be33854662ce",
         "title": "객체 유형 ITEM (품목)",
-        "reason": "분류: 기준 정보 (타 테이블 9개에서 참조) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 기준 정보 (다른 표 9개가 참조)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -4659,9 +4672,9 @@
       },
       "evidence": {
         "candidateId": "OT-erp.journal_entry",
-        "fingerprint": "aa7c8b52904529f1",
+        "fingerprint": "783e62fd93c435ab",
         "title": "객체 유형 JOURNAL_ENTRY (분개)",
-        "reason": "분류: 현재 상태 (복합 기본키 entry_no, line_no 기준) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 현재 상태 (복합 기본키 entry_no, line_no 기준)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -5383,9 +5396,9 @@
       },
       "evidence": {
         "candidateId": "OT-erp.purchase_invoice",
-        "fingerprint": "1b8792980c4b6ade",
+        "fingerprint": "77509d26eddd1bd9",
         "title": "객체 유형 PURCHASE_INVOICE (매입 전표)",
-        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 invoice_date, paid_date 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 invoice_date, paid_date 보유)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -6103,9 +6116,9 @@
       },
       "evidence": {
         "candidateId": "OT-erp.purchase_order",
-        "fingerprint": "98e974fb5f4b7ebd",
+        "fingerprint": "2c90126415ce5198",
         "title": "객체 유형 PURCHASE_ORDER (구매 발주)",
-        "reason": "분류: 거래 문서 (상태 컬럼 status, 일자 컬럼 2개 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 거래 문서 (상태 컬럼 status, 일자 컬럼 2개 보유)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -6799,9 +6812,9 @@
       },
       "evidence": {
         "candidateId": "OT-erp.purchase_order_line",
-        "fingerprint": "f4fcc4ecf8f2df88",
+        "fingerprint": "958a1a27cd22df53",
         "title": "객체 유형 PURCHASE_ORDER_LINE (구매 발주 상세)",
-        "reason": "분류: 문서 상세 줄 (복합 기본키 po_no, line_no 중 po_no 상위 참조, line_no 순번) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 문서 상세 줄 (복합 기본키 po_no, line_no 중 po_no 상위 참조, line_no 순번)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -7455,9 +7468,9 @@
       },
       "evidence": {
         "candidateId": "OT-erp.sales_invoice",
-        "fingerprint": "5313cfe7240dff8c",
+        "fingerprint": "37fab5ef1be5356b",
         "title": "객체 유형 SALES_INVOICE (매출 전표)",
-        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 invoice_date, collected_date 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 invoice_date, collected_date 보유)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -8158,9 +8171,9 @@
       },
       "evidence": {
         "candidateId": "OT-erp.sales_order",
-        "fingerprint": "1c1ac35001a33c03",
+        "fingerprint": "fafc186811ad6f26",
         "title": "객체 유형 SALES_ORDER (수주)",
-        "reason": "분류: 거래 문서 (상태 컬럼 status, 일자 컬럼 2개 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 거래 문서 (상태 컬럼 status, 일자 컬럼 2개 보유)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -8781,9 +8794,9 @@
       },
       "evidence": {
         "candidateId": "OT-erp.sales_order_line",
-        "fingerprint": "973b44baa94aef2f",
+        "fingerprint": "b962e1257174b65c",
         "title": "객체 유형 SALES_ORDER_LINE (수주 상세)",
-        "reason": "분류: 문서 상세 줄 (복합 기본키 so_no, line_no 중 so_no 상위 참조, line_no 순번) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 문서 상세 줄 (복합 기본키 so_no, line_no 중 so_no 상위 참조, line_no 순번)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -9358,9 +9371,9 @@
       },
       "evidence": {
         "candidateId": "OT-erp.shipment",
-        "fingerprint": "147d707b778524f0",
+        "fingerprint": "4e165a4217b2f858",
         "title": "객체 유형 SHIPMENT (출하)",
-        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 ship_date 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 ship_date 보유)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -10000,9 +10013,9 @@
       },
       "evidence": {
         "candidateId": "OT-erp.stock",
-        "fingerprint": "5c2e291f7fba2601",
+        "fingerprint": "728f18f324828e38",
         "title": "객체 유형 STOCK (창고별 재고)",
-        "reason": "분류: 현재 상태 (복합 기본키 warehouse, item_code 기준) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 현재 상태 (복합 기본키 warehouse, item_code 기준)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -10639,13 +10652,14 @@
             },
             "transformSteps": []
           }
-        ]
+        ],
+        "displayPropertyCode": "vendor_name"
       },
       "evidence": {
         "candidateId": "OT-erp.vendor",
-        "fingerprint": "04ae68791b9eea55",
+        "fingerprint": "212f86e56dc9c30b",
         "title": "객체 유형 VENDOR (거래처)",
-        "reason": "분류: 기준 정보 (타 테이블 5개에서 참조) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 기준 정보 (다른 표 5개가 참조)",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -11306,9 +11320,9 @@
       },
       "evidence": {
         "candidateId": "OT-mes.defect",
-        "fingerprint": "5614d577dfd3ac21",
+        "fingerprint": "e195e438406a492d",
         "title": "객체 유형 DEFECT (불량 기록)",
-        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 detected_at 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 detected_at 보유)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -12092,9 +12106,9 @@
       },
       "evidence": {
         "candidateId": "OT-mes.die",
-        "fingerprint": "594d1966f90f84ca",
+        "fingerprint": "f3f69e887be7a0d5",
         "title": "객체 유형 DIE (금형)",
-        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 last_pm_at 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 last_pm_at 보유)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -12810,9 +12824,9 @@
       },
       "evidence": {
         "candidateId": "OT-mes.downtime",
-        "fingerprint": "3a07c3251fd10f73",
+        "fingerprint": "3ea70d337a72e659",
         "title": "객체 유형 DOWNTIME (설비 비가동)",
-        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 started_at, ended_at 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 started_at, ended_at 보유)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -13530,13 +13544,14 @@
             },
             "transformSteps": []
           }
-        ]
+        ],
+        "displayPropertyCode": "name"
       },
       "evidence": {
         "candidateId": "OT-mes.equipment",
-        "fingerprint": "282fd32ef999fc5e",
+        "fingerprint": "d5d73f26f798dfee",
         "title": "객체 유형 EQUIPMENT (설비)",
-        "reason": "분류: 기준 정보 (타 테이블 7개에서 참조) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 기준 정보 (다른 표 7개가 참조)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -14220,9 +14235,9 @@
       },
       "evidence": {
         "candidateId": "OT-mes.handover_note",
-        "fingerprint": "b9f475e5c8dfbe2c",
+        "fingerprint": "c74c94c8a2dfa07e",
         "title": "객체 유형 HANDOVER_NOTE (교대 인수인계 메모)",
-        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 shift_date, written_at 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 shift_date, written_at 보유)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -14848,9 +14863,9 @@
       },
       "evidence": {
         "candidateId": "OT-mes.inspection",
-        "fingerprint": "f0e4a9e55eea87a0",
+        "fingerprint": "a984fde3a29f570d",
         "title": "객체 유형 INSPECTION (품질 검사)",
-        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 inspected_at 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 inspected_at 보유)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -15669,7 +15684,7 @@
             "isIdentifier": false,
             "isRequired": true,
             "unit": null,
-            "sensitivity": "NORMAL",
+            "sensitivity": "RESTRICTED",
             "sourceColumn": {
               "sourceId": "MES_MAIN",
               "table": "maintenance_order",
@@ -15716,9 +15731,9 @@
       },
       "evidence": {
         "candidateId": "OT-mes.maintenance_order",
-        "fingerprint": "9c4c7788fae3e439",
+        "fingerprint": "e19702707c50b7a7",
         "title": "객체 유형 MAINTENANCE_ORDER (정비 지시)",
-        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 planned_date, completed_at 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 planned_date, completed_at 보유)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -16211,15 +16226,13 @@
           {
             "code": "technician",
             "title": "속성 MAINTENANCE_ORDER.technician",
-            "reason": "자료형: 문자 (varchar(50)) · 빈 값 없음",
+            "reason": "자료형: 문자 (varchar(50)) · 빈 값 없음 · 개인정보 (값이 사람 이름 모양)",
             "items": [
               {
                 "sourceId": "MES_MAIN",
                 "locator": "mes.maintenance_order.technician",
-                "snippet": "값 15/15, 서로 다른 값 2, 예 ['보전팀', '***']",
-                "values": [
-                  "보전팀"
-                ],
+                "snippet": "값 15/15, 서로 다른 값 2, 예 ['***']",
+                "values": [],
                 "verified": true
               }
             ],
@@ -16247,10 +16260,8 @@
                 {
                   "sourceId": "MES_MAIN",
                   "locator": "mes.maintenance_order.technician",
-                  "snippet": "값 15/15, 서로 다른 값 2, 예 ['보전팀', '***']",
-                  "values": [
-                    "보전팀"
-                  ],
+                  "snippet": "값 15/15, 서로 다른 값 2, 예 ['***']",
+                  "values": [],
                   "verified": true
                 }
               ],
@@ -16541,9 +16552,9 @@
       },
       "evidence": {
         "candidateId": "OT-mes.material_issue",
-        "fingerprint": "7e1d39f96023c3f3",
+        "fingerprint": "d4417732354bd3e5",
         "title": "객체 유형 MATERIAL_ISSUE (자재 투입)",
-        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 issued_at 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 issued_at 보유)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -17233,9 +17244,9 @@
       },
       "evidence": {
         "candidateId": "OT-mes.production_result",
-        "fingerprint": "13ca6addbbb3fd6d",
+        "fingerprint": "ad08e03b55000afe",
         "title": "객체 유형 PRODUCTION_RESULT (공정 실적)",
-        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 started_at, ended_at 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (참조하는 테이블 없음, 일자 컬럼 started_at, ended_at 보유)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -18063,13 +18074,14 @@
             },
             "transformSteps": []
           }
-        ]
+        ],
+        "displayPropertyCode": "op_name"
       },
       "evidence": {
         "candidateId": "OT-mes.routing",
-        "fingerprint": "4b9852c25a7cf7b8",
+        "fingerprint": "b050424a9a0fbff0",
         "title": "객체 유형 ROUTING (제품별 공정)",
-        "reason": "분류: 문서 상세 줄 (복합 기본키 product_code, op_seq 중 product_code 상위 참조, op_seq 순번) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 문서 상세 줄 (복합 기본키 product_code, op_seq 중 product_code 상위 참조, op_seq 순번)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -18678,9 +18690,9 @@
       },
       "evidence": {
         "candidateId": "OT-mes.sensor_reading",
-        "fingerprint": "d7d814cbff339cac",
+        "fingerprint": "a82381b2a74e245a",
         "title": "객체 유형 SENSOR_READING (설비 센서 측정)",
-        "reason": "분류: 발생 기록 (기본키에 일자 컬럼 measured_at 포함) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 발생 기록 (기본키에 일자 컬럼 measured_at 포함)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -19308,9 +19320,9 @@
       },
       "evidence": {
         "candidateId": "OT-mes.work_order",
-        "fingerprint": "812a32b30ede7d35",
+        "fingerprint": "7862953ce50a17a5",
         "title": "객체 유형 WORK_ORDER (작업지시)",
-        "reason": "분류: 거래 문서 (상태 컬럼 status, 일자 컬럼 4개 보유) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 거래 문서 (상태 컬럼 status, 일자 컬럼 4개 보유)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -20364,9 +20376,9 @@
       },
       "evidence": {
         "candidateId": "OT-mes.work_order_operation",
-        "fingerprint": "dd65de565a1c4973",
+        "fingerprint": "e9f3dd345e51d65b",
         "title": "객체 유형 WORK_ORDER_OPERATION (작업지시 공정별 배정)",
-        "reason": "분류: 문서 상세 줄 (복합 기본키 wo_no, op_seq 중 wo_no 상위 참조, op_seq 순번) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 문서 상세 줄 (복합 기본키 wo_no, op_seq 중 wo_no 상위 참조, op_seq 순번)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -20862,9 +20874,9 @@
       },
       "evidence": {
         "candidateId": "OT-mes.worker",
-        "fingerprint": "dea34791f4019140",
+        "fingerprint": "f99a475786bb01b3",
         "title": "객체 유형 WORKER (현장 작업자)",
-        "reason": "분류: 기준 정보 (타 테이블 3개에서 참조) · 명칭: 테이블 주석 기준",
+        "reason": "분류: 기준 정보 (다른 표 3개가 참조)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -21314,9 +21326,9 @@
       },
       "evidence": {
         "candidateId": "LR-attendance_emp_no_to_employee",
-        "fingerprint": "f62e974e37b4300a",
+        "fingerprint": "07ab286fec701817",
         "title": "근태 → 직원 (사번)",
-        "reason": "대상 키: 직원 emp_no (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "근태의 사번으로 직원을 찾습니다. 근태 1,660행이 모두 직원과 이어집니다. 승인하면 근태와 직원이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21386,9 +21398,9 @@
       },
       "evidence": {
         "candidateId": "LR-department_manager_emp_no_to_employee",
-        "fingerprint": "a16c2f518ec1aa19",
+        "fingerprint": "dfb08c2508659f50",
         "title": "부서 → 직원 (부서장 사번)",
-        "reason": "대상 키: 직원 emp_no (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "부서의 부서장 사번으로 직원을 찾습니다. 부서 8행이 모두 직원과 이어집니다. 승인하면 부서와 직원이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21458,9 +21470,9 @@
       },
       "evidence": {
         "candidateId": "LR-employee_dept_code_to_department",
-        "fingerprint": "1d97b12c2736d1ae",
+        "fingerprint": "2d255b63a1e5aa2b",
         "title": "직원 → 부서 (소속 부서 코드)",
-        "reason": "대상 키: 부서 dept_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "직원의 소속 부서 코드로 부서를 찾습니다. 직원 25행이 모두 부서와 이어집니다. 승인하면 직원과 부서가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21523,16 +21535,16 @@
           "name": "고정자산 → 설비",
           "sourceTypeCode": "FIXED_ASSET",
           "targetTypeCode": "EQUIPMENT",
-          "cardinality": "ONE_TO_ONE",
-          "description": "고정자산에서 설비 참조 · 데이터상 1:1, 업무상 1:N 여부 확인 필요"
+          "cardinality": "MANY_TO_ONE",
+          "description": "고정자산에서 설비 참조"
         },
         "name": "고정자산 → 설비 (생산 설비이면 현장 시스템의 설비 코드)"
       },
       "evidence": {
         "candidateId": "LR-fixed_asset_equipment_code_to_equipment",
-        "fingerprint": "aaaf8b8bd13a3bf1",
+        "fingerprint": "9a544d76c6b9f227",
         "title": "고정자산 → 설비 (생산 설비이면 현장 시스템의 설비 코드)",
-        "reason": "대상 키: 설비 code (기본키) · 비교: 원값 · 일치율 값 83% / 행 83% · 불일치 예: P2O1",
+        "reason": "고정자산의 생산 설비이면 현장 시스템의 설비 코드로 설비를 찾습니다. 고정자산 6행 중 5행(83%)이 설비와 이어집니다. 이어지지 않은 값 예: P2O1. 승인하면 고정자산과 설비가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21602,9 +21614,9 @@
       },
       "evidence": {
         "candidateId": "LR-goods_receipt_po_no_to_purchase_order",
-        "fingerprint": "23d9faa3e23a1fcf",
+        "fingerprint": "4d914ade5adc1d86",
         "title": "입고 → 구매 발주 (근거 발주 번호)",
-        "reason": "대상 키: 구매 발주 po_no (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "입고의 근거 발주 번호로 구매 발주를 찾습니다. 입고 36행이 모두 구매 발주와 이어집니다. 승인하면 입고와 구매 발주가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21674,9 +21686,9 @@
       },
       "evidence": {
         "candidateId": "LR-goods_receipt_item_code_to_item",
-        "fingerprint": "022cbf918d8f39cf",
+        "fingerprint": "03543f6458b9f41d",
         "title": "입고 → 품목 (입고 품번)",
-        "reason": "대상 키: 품목 item_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "입고의 입고 품번으로 품목을 찾습니다. 입고 36행이 모두 품목과 이어집니다. 승인하면 입고와 품목이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21746,9 +21758,9 @@
       },
       "evidence": {
         "candidateId": "LR-goods_receipt_inspector_to_department",
-        "fingerprint": "f1f3df92a9efc2ce",
+        "fingerprint": "2af0a3b7c7b59b22",
         "title": "입고 → 부서 (검수 담당)",
-        "reason": "대상 키: 부서 dept_name (유일값) · 비교: 원값 · 일치율 100%",
+        "reason": "입고의 검수 담당으로 부서를 찾습니다. 부서의 부서명은 기본키는 아니지만 값이 겹치지 않는 컬럼입니다. 입고 36행이 모두 부서와 이어집니다. 승인하면 입고와 부서가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21817,9 +21829,9 @@
       },
       "evidence": {
         "candidateId": "LR-journal_entry_account_code_to_gl_account",
-        "fingerprint": "375001c23582eefc",
+        "fingerprint": "a1932fe03ac63312",
         "title": "분개 → 회계 계정 (계정 코드)",
-        "reason": "대상 키: 회계 계정 account_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "분개의 계정 코드로 회계 계정을 찾습니다. 분개 53행이 모두 회계 계정과 이어집니다. 승인하면 분개와 회계 계정이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21889,9 +21901,9 @@
       },
       "evidence": {
         "candidateId": "LR-journal_entry_vendor_code_to_vendor",
-        "fingerprint": "693f842f33103cee",
+        "fingerprint": "4be826b85d0a4d0c",
         "title": "분개 → 거래처 (관련 거래처 코드)",
-        "reason": "대상 키: 거래처 vendor_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "분개의 관련 거래처 코드로 거래처를 찾습니다. 분개 53행이 모두 거래처와 이어집니다. 승인하면 분개와 거래처가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -21961,9 +21973,9 @@
       },
       "evidence": {
         "candidateId": "LR-purchase_invoice_vendor_code_to_vendor",
-        "fingerprint": "29d19a09d5a8e384",
+        "fingerprint": "a8b5a83768d81c9a",
         "title": "매입 전표 → 거래처 (공급 거래처 코드)",
-        "reason": "대상 키: 거래처 vendor_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "매입 전표의 공급 거래처 코드로 거래처를 찾습니다. 매입 전표 9행이 모두 거래처와 이어집니다. 승인하면 매입 전표와 거래처가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22033,9 +22045,9 @@
       },
       "evidence": {
         "candidateId": "LR-purchase_order_vendor_code_to_vendor",
-        "fingerprint": "24141f5c8a76ff5f",
+        "fingerprint": "0ebc50e0a7ae0a25",
         "title": "구매 발주 → 거래처 (공급 거래처 코드)",
-        "reason": "대상 키: 거래처 vendor_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "구매 발주의 공급 거래처 코드로 거래처를 찾습니다. 구매 발주 27행이 모두 거래처와 이어집니다. 승인하면 구매 발주와 거래처가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22105,9 +22117,9 @@
       },
       "evidence": {
         "candidateId": "LR-purchase_order_buyer_to_department",
-        "fingerprint": "51d20c61a6e1725a",
+        "fingerprint": "4f9d617cd1a9ba81",
         "title": "구매 발주 → 부서 (구매 담당)",
-        "reason": "대상 키: 부서 dept_name (유일값) · 비교: 원값 · 일치율 100%",
+        "reason": "구매 발주의 구매 담당으로 부서를 찾습니다. 부서의 부서명은 기본키는 아니지만 값이 겹치지 않는 컬럼입니다. 구매 발주 27행이 모두 부서와 이어집니다. 승인하면 구매 발주와 부서가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22169,16 +22181,16 @@
           "name": "구매 발주 상세 → 구매 발주",
           "sourceTypeCode": "PURCHASE_ORDER_LINE",
           "targetTypeCode": "PURCHASE_ORDER",
-          "cardinality": "ONE_TO_ONE",
-          "description": "구매 발주 상세에서 구매 발주 참조 · 데이터상 1:1, 업무상 1:N 여부 확인 필요"
+          "cardinality": "MANY_TO_ONE",
+          "description": "구매 발주 상세에서 구매 발주 참조"
         },
         "name": "구매 발주 상세 → 구매 발주 (발주 번호)"
       },
       "evidence": {
         "candidateId": "LR-purchase_order_line_po_no_to_purchase_order",
-        "fingerprint": "cd4afca45b2ceb9c",
+        "fingerprint": "ac0e258045ffc2a9",
         "title": "구매 발주 상세 → 구매 발주 (발주 번호)",
-        "reason": "대상 키: 구매 발주 po_no (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "구매 발주 상세의 발주 번호로 구매 발주를 찾습니다. 구매 발주 상세 27행이 모두 구매 발주와 이어집니다. 승인하면 구매 발주 상세와 구매 발주가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22248,9 +22260,9 @@
       },
       "evidence": {
         "candidateId": "LR-purchase_order_line_item_code_to_item",
-        "fingerprint": "7db900c4d9042328",
+        "fingerprint": "88094eded50377c2",
         "title": "구매 발주 상세 → 품목 (발주 품번)",
-        "reason": "대상 키: 품목 item_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "구매 발주 상세의 발주 품번으로 품목을 찾습니다. 구매 발주 상세 27행이 모두 품목과 이어집니다. 승인하면 구매 발주 상세와 품목이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22320,9 +22332,9 @@
       },
       "evidence": {
         "candidateId": "LR-sales_invoice_customer_code_to_vendor",
-        "fingerprint": "714159900a38fea4",
+        "fingerprint": "ad1477fb187f36f2",
         "title": "매출 전표 → 거래처 (청구 고객 코드)",
-        "reason": "대상 키: 거래처 vendor_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "매출 전표의 청구 고객 코드로 거래처를 찾습니다. 매출 전표 9행이 모두 거래처와 이어집니다. 승인하면 매출 전표와 거래처가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22392,9 +22404,9 @@
       },
       "evidence": {
         "candidateId": "LR-sales_order_customer_code_to_vendor",
-        "fingerprint": "3ce97aec61ea6f13",
+        "fingerprint": "69cdc0d54cf46b64",
         "title": "수주 → 거래처 (주문 고객 코드)",
-        "reason": "대상 키: 거래처 vendor_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "수주의 주문 고객 코드로 거래처를 찾습니다. 수주 88행이 모두 거래처와 이어집니다. 승인하면 수주와 거래처가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22464,9 +22476,9 @@
       },
       "evidence": {
         "candidateId": "LR-sales_order_sales_rep_to_department",
-        "fingerprint": "8780775d304d5a84",
+        "fingerprint": "09e36c1a8544fb1e",
         "title": "수주 → 부서 (영업 담당)",
-        "reason": "대상 키: 부서 dept_name (유일값) · 비교: 원값 · 일치율 100%",
+        "reason": "수주의 영업 담당으로 부서를 찾습니다. 부서의 부서명은 기본키는 아니지만 값이 겹치지 않는 컬럼입니다. 수주 88행이 모두 부서와 이어집니다. 승인하면 수주와 부서가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22535,9 +22547,9 @@
       },
       "evidence": {
         "candidateId": "LR-sales_order_line_so_no_to_sales_order",
-        "fingerprint": "e5496580ec8031be",
+        "fingerprint": "e3ab44595cb6ec71",
         "title": "수주 상세 → 수주 (수주 번호)",
-        "reason": "대상 키: 수주 so_no (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "수주 상세의 수주 번호로 수주를 찾습니다. 수주 상세 141행이 모두 수주와 이어집니다. 승인하면 수주 상세와 수주가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22607,9 +22619,9 @@
       },
       "evidence": {
         "candidateId": "LR-sales_order_line_item_code_to_item",
-        "fingerprint": "1551aabc41331b25",
+        "fingerprint": "0c67f84fe8fd3ccc",
         "title": "수주 상세 → 품목 (주문 품번)",
-        "reason": "대상 키: 품목 item_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "수주 상세의 주문 품번으로 품목을 찾습니다. 수주 상세 141행이 모두 품목과 이어집니다. 승인하면 수주 상세와 품목이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22679,9 +22691,9 @@
       },
       "evidence": {
         "candidateId": "LR-shipment_so_no_to_sales_order",
-        "fingerprint": "1d4eadbdfe8932d3",
+        "fingerprint": "ae30638433d1b5a8",
         "title": "출하 → 수주 (근거 수주 번호)",
-        "reason": "대상 키: 수주 so_no (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "출하의 근거 수주 번호로 수주를 찾습니다. 출하 162행이 모두 수주와 이어집니다. 승인하면 출하와 수주가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22751,9 +22763,9 @@
       },
       "evidence": {
         "candidateId": "LR-shipment_item_code_to_item",
-        "fingerprint": "c0d6d207ddbd5d29",
+        "fingerprint": "d0e282bc227ca83b",
         "title": "출하 → 품목 (출하 품번)",
-        "reason": "대상 키: 품목 item_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "출하의 출하 품번으로 품목을 찾습니다. 출하 162행이 모두 품목과 이어집니다. 승인하면 출하와 품목이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22823,9 +22835,9 @@
       },
       "evidence": {
         "candidateId": "LR-inspection_lot_no_to_shipment",
-        "fingerprint": "2f84f94caf40246b",
+        "fingerprint": "12f477d7c7e8ab4c",
         "title": "품질 검사 → 출하 (검사 제품 로트)",
-        "reason": "대상 키: 출하 lot_no (유일값) · 비교: 원값 · 일치율 100%",
+        "reason": "품질 검사의 검사 제품 로트로 출하를 찾습니다. 출하의 출하 제품 로트는 기본키는 아니지만 값이 겹치지 않는 컬럼입니다. 품질 검사 161행이 모두 출하와 이어집니다. 승인하면 품질 검사와 출하가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -22888,16 +22900,16 @@
           "name": "창고별 재고 → 품목",
           "sourceTypeCode": "STOCK",
           "targetTypeCode": "ITEM",
-          "cardinality": "ONE_TO_ONE",
-          "description": "창고별 재고에서 품목 참조 · 데이터상 1:1, 업무상 1:N 여부 확인 필요"
+          "cardinality": "MANY_TO_ONE",
+          "description": "창고별 재고에서 품목 참조"
         },
         "name": "창고별 재고 → 품목 (품번)"
       },
       "evidence": {
         "candidateId": "LR-stock_item_code_to_item",
-        "fingerprint": "d1c231bfc08d291c",
+        "fingerprint": "231cc43a0614b6d4",
         "title": "창고별 재고 → 품목 (품번)",
-        "reason": "대상 키: 품목 item_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "창고별 재고의 품번으로 품목을 찾습니다. 창고별 재고 10행이 모두 품목과 이어집니다. 승인하면 창고별 재고와 품목이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -22967,9 +22979,9 @@
       },
       "evidence": {
         "candidateId": "LR-defect_wo_no_to_work_order",
-        "fingerprint": "e2fe1e123efbd759",
+        "fingerprint": "20f027f9e0790c2f",
         "title": "불량 기록 → 작업지시 (작업지시 번호)",
-        "reason": "대상 키: 작업지시 wo_no (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "불량 기록의 작업지시 번호로 작업지시를 찾습니다. 불량 기록 424행이 모두 작업지시와 이어집니다. 승인하면 불량 기록과 작업지시가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23036,7 +23048,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "연결 기준: 불량 기록 발생 공정 = 부서 부서 코드 (비교: op_seq는 숫자만 남기기, dept_code는 숫자만 남기기 (예: '10' → 'DP10'))",
+        "description": "연결 기준: 불량 기록 발생 공정 = 부서 부서 코드 (비교: 발생 공정은 숫자만 남기기, 부서 코드는 숫자만 남기기 (예: '10' ↔ 'DP10'))",
         "linkType": {
           "code": "DEFECT_OP_SEQ_TO_DEPARTMENT",
           "name": "불량 기록 → 부서",
@@ -23049,9 +23061,9 @@
       },
       "evidence": {
         "candidateId": "LR-defect_op_seq_to_department",
-        "fingerprint": "4f9de3749ba98d3b",
+        "fingerprint": "3a70ebdfe5220237",
         "title": "불량 기록 → 부서 (발생 공정)",
-        "reason": "대상 키: 부서 dept_code (기본키) · 비교: op_seq는 숫자만 남기기, dept_code는 숫자만 남기기 (예: '10' → 'DP10') · 일치율 100%",
+        "reason": "불량 기록의 발생 공정으로 부서를 찾습니다. 비교 방법: 발생 공정은 숫자만 남기기, 부서 코드는 숫자만 남기기 (예: '10' ↔ 'DP10'). 불량 기록 424행이 모두 부서와 이어집니다. 승인하면 불량 기록과 부서가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23124,9 +23136,9 @@
       },
       "evidence": {
         "candidateId": "LR-defect_equipment_code_to_equipment",
-        "fingerprint": "577a61e74bf2810d",
+        "fingerprint": "e64e3ab142011037",
         "title": "불량 기록 → 설비 (발생 설비 코드)",
-        "reason": "대상 키: 설비 code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "불량 기록의 발생 설비 코드로 설비를 찾습니다. 불량 기록 424행이 모두 설비와 이어집니다. 승인하면 불량 기록과 설비가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23196,9 +23208,9 @@
       },
       "evidence": {
         "candidateId": "LR-defect_detected_by_to_worker",
-        "fingerprint": "4a7d0b3a06714752",
+        "fingerprint": "6c1122bc771231b4",
         "title": "불량 기록 → 현장 작업자 (발견 작업자 번호)",
-        "reason": "대상 키: 현장 작업자 id (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "불량 기록의 발견 작업자 번호로 현장 작업자를 찾습니다. 불량 기록 424행이 모두 현장 작업자와 이어집니다. 승인하면 불량 기록과 현장 작업자가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23261,16 +23273,16 @@
           "name": "금형 → 품목",
           "sourceTypeCode": "DIE",
           "targetTypeCode": "ITEM",
-          "cardinality": "ONE_TO_ONE",
-          "description": "금형에서 품목 참조 · 데이터상 1:1, 업무상 1:N 여부 확인 필요"
+          "cardinality": "MANY_TO_ONE",
+          "description": "금형에서 품목 참조"
         },
         "name": "금형 → 품목 (생산 제품 코드)"
       },
       "evidence": {
         "candidateId": "LR-die_product_code_to_item",
-        "fingerprint": "407040a42ce4d364",
+        "fingerprint": "82afeeab05099c84",
         "title": "금형 → 품목 (생산 제품 코드)",
-        "reason": "대상 키: 품목 item_code (기본키) · 비교: 원값 · 일치율 값 83% / 행 83% · 불일치 예: BRK-990T",
+        "reason": "금형의 생산 제품 코드로 품목을 찾습니다. 금형 6행 중 5행(83%)이 품목과 이어집니다. 이어지지 않은 값 예: BRK-990T. 승인하면 금형과 품목이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23340,9 +23352,9 @@
       },
       "evidence": {
         "candidateId": "LR-downtime_equipment_code_to_equipment",
-        "fingerprint": "b2784a5f007324ec",
+        "fingerprint": "7c54a38cb333cf8b",
         "title": "설비 비가동 → 설비 (멈춘 설비 코드)",
-        "reason": "대상 키: 설비 code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "설비 비가동의 멈춘 설비 코드로 설비를 찾습니다. 설비 비가동 32행이 모두 설비와 이어집니다. 승인하면 설비 비가동과 설비가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23405,16 +23417,16 @@
           "name": "설비 비가동 → 작업지시",
           "sourceTypeCode": "DOWNTIME",
           "targetTypeCode": "WORK_ORDER",
-          "cardinality": "ONE_TO_ONE",
-          "description": "설비 비가동에서 작업지시 참조 · 데이터상 1:1, 업무상 1:N 여부 확인 필요"
+          "cardinality": "MANY_TO_ONE",
+          "description": "설비 비가동에서 작업지시 참조"
         },
         "name": "설비 비가동 → 작업지시 (당시 작업지시)"
       },
       "evidence": {
         "candidateId": "LR-downtime_wo_no_to_work_order",
-        "fingerprint": "4bce632aabf81f2e",
+        "fingerprint": "aafb50768026d24b",
         "title": "설비 비가동 → 작업지시 (당시 작업지시)",
-        "reason": "대상 키: 작업지시 wo_no (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "설비 비가동의 당시 작업지시로 작업지시를 찾습니다. 설비 비가동 5행이 모두 작업지시와 이어집니다. 승인하면 설비 비가동과 작업지시가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23484,9 +23496,9 @@
       },
       "evidence": {
         "candidateId": "LR-handover_note_author_id_to_worker",
-        "fingerprint": "b4955e5752af69c7",
+        "fingerprint": "9f9a46b59282271e",
         "title": "교대 인수인계 메모 → 현장 작업자 (작성 작업자 번호)",
-        "reason": "대상 키: 현장 작업자 id (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "교대 인수인계 메모의 작성 작업자 번호로 현장 작업자를 찾습니다. 교대 인수인계 메모 60행이 모두 현장 작업자와 이어집니다. 승인하면 교대 인수인계 메모와 현장 작업자가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23556,9 +23568,9 @@
       },
       "evidence": {
         "candidateId": "LR-inspection_wo_no_to_work_order",
-        "fingerprint": "c99d2cac8e9dc264",
+        "fingerprint": "22834c353b370ac3",
         "title": "품질 검사 → 작업지시 (작업지시 번호)",
-        "reason": "대상 키: 작업지시 wo_no (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "품질 검사의 작업지시 번호로 작업지시를 찾습니다. 품질 검사 161행이 모두 작업지시와 이어집니다. 승인하면 품질 검사와 작업지시가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23628,9 +23640,9 @@
       },
       "evidence": {
         "candidateId": "LR-maintenance_order_technician_to_department",
-        "fingerprint": "170370cc52690f8b",
+        "fingerprint": "c9f351c2a4b22d19",
         "title": "정비 지시 → 부서 (담당 부서)",
-        "reason": "대상 키: 부서 dept_name (유일값) · 비교: 원값 · 일치율 값 50% / 행 87% · 불일치 예: ***",
+        "reason": "정비 지시의 담당 부서로 부서를 찾습니다. 부서의 부서명은 기본키는 아니지만 값이 겹치지 않는 컬럼입니다. 정비 지시 15행 중 13행(86%)이 부서와 이어집니다(값 종류 기준 50%). 이어지지 않은 값은 개인정보라 보여 주지 않습니다. 승인하면 정비 지시와 부서가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23699,9 +23711,9 @@
       },
       "evidence": {
         "candidateId": "LR-material_issue_wo_no_to_work_order",
-        "fingerprint": "f81cb8b9705dc779",
+        "fingerprint": "3f1cadd22a9b0b8a",
         "title": "자재 투입 → 작업지시 (작업지시 번호)",
-        "reason": "대상 키: 작업지시 wo_no (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "자재 투입의 작업지시 번호로 작업지시를 찾습니다. 자재 투입 150행이 모두 작업지시와 이어집니다. 승인하면 자재 투입과 작업지시가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23771,9 +23783,9 @@
       },
       "evidence": {
         "candidateId": "LR-material_issue_item_code_to_item",
-        "fingerprint": "052dcbafa3396acf",
+        "fingerprint": "ae210895cd36d372",
         "title": "자재 투입 → 품목 (투입 자재 품번)",
-        "reason": "대상 키: 품목 item_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "자재 투입의 투입 자재 품번으로 품목을 찾습니다. 자재 투입 150행이 모두 품목과 이어집니다. 승인하면 자재 투입과 품목이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23843,9 +23855,9 @@
       },
       "evidence": {
         "candidateId": "LR-production_result_wo_no_to_work_order",
-        "fingerprint": "4b25d74a79e8041d",
+        "fingerprint": "82be61ecaf4faf0d",
         "title": "공정 실적 → 작업지시 (작업지시 번호)",
-        "reason": "대상 키: 작업지시 wo_no (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "공정 실적의 작업지시 번호로 작업지시를 찾습니다. 공정 실적 640행이 모두 작업지시와 이어집니다. 승인하면 공정 실적과 작업지시가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -23912,7 +23924,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "연결 기준: 공정 실적 공정 순서 = 부서 부서 코드 (비교: op_seq는 숫자만 남기기, dept_code는 숫자만 남기기 (예: '10' → 'DP10'))",
+        "description": "연결 기준: 공정 실적 공정 순서 = 부서 부서 코드 (비교: 공정 순서는 숫자만 남기기, 부서 코드는 숫자만 남기기 (예: '10' ↔ 'DP10'))",
         "linkType": {
           "code": "PRODUCTION_RESULT_OP_SEQ_TO_DEPARTMENT",
           "name": "공정 실적 → 부서",
@@ -23925,9 +23937,9 @@
       },
       "evidence": {
         "candidateId": "LR-production_result_op_seq_to_department",
-        "fingerprint": "858ce7b4cefec781",
+        "fingerprint": "14c83cd043ad9058",
         "title": "공정 실적 → 부서 (공정 순서)",
-        "reason": "대상 키: 부서 dept_code (기본키) · 비교: op_seq는 숫자만 남기기, dept_code는 숫자만 남기기 (예: '10' → 'DP10') · 일치율 100%",
+        "reason": "공정 실적의 공정 순서로 부서를 찾습니다. 비교 방법: 공정 순서는 숫자만 남기기, 부서 코드는 숫자만 남기기 (예: '10' ↔ 'DP10'). 공정 실적 640행이 모두 부서와 이어집니다. 승인하면 공정 실적과 부서가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24000,9 +24012,9 @@
       },
       "evidence": {
         "candidateId": "LR-production_result_equipment_code_to_equipment",
-        "fingerprint": "8b80164ddc3dd453",
+        "fingerprint": "8c939cfa05d5a335",
         "title": "공정 실적 → 설비 (작업 설비 코드)",
-        "reason": "대상 키: 설비 code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "공정 실적의 작업 설비 코드로 설비를 찾습니다. 공정 실적 640행이 모두 설비와 이어집니다. 승인하면 공정 실적과 설비가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24072,9 +24084,9 @@
       },
       "evidence": {
         "candidateId": "LR-production_result_worker_id_to_worker",
-        "fingerprint": "b3351723d428c778",
+        "fingerprint": "0dd69f7e56fb73c9",
         "title": "공정 실적 → 현장 작업자 (작업자 번호)",
-        "reason": "대상 키: 현장 작업자 id (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "공정 실적의 작업자 번호로 현장 작업자를 찾습니다. 공정 실적 640행이 모두 현장 작업자와 이어집니다. 승인하면 공정 실적과 현장 작업자가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24144,9 +24156,9 @@
       },
       "evidence": {
         "candidateId": "LR-routing_product_code_to_item",
-        "fingerprint": "b7e2704892eb6a33",
+        "fingerprint": "a020a84c33c740fe",
         "title": "제품별 공정 → 품목 (제품 코드)",
-        "reason": "대상 키: 품목 item_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "제품별 공정의 제품 코드로 품목을 찾습니다. 제품별 공정 21행이 모두 품목과 이어집니다. 승인하면 제품별 공정과 품목이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24216,9 +24228,9 @@
       },
       "evidence": {
         "candidateId": "LR-sensor_reading_equipment_code_to_equipment",
-        "fingerprint": "771e99a15b5b37c8",
+        "fingerprint": "38c83ed029d61c81",
         "title": "설비 센서 측정 → 설비 (설비 코드)",
-        "reason": "대상 키: 설비 code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "설비 센서 측정의 설비 코드로 설비를 찾습니다. 설비 센서 측정 615행이 모두 설비와 이어집니다. 승인하면 설비 센서 측정과 설비가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24288,9 +24300,9 @@
       },
       "evidence": {
         "candidateId": "LR-work_order_product_code_to_item",
-        "fingerprint": "d5ba4617ffc4e5c8",
+        "fingerprint": "5a148980742656e0",
         "title": "작업지시 → 품목 (생산 제품 코드)",
-        "reason": "대상 키: 품목 item_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "작업지시의 생산 제품 코드로 품목을 찾습니다. 작업지시 139행이 모두 품목과 이어집니다. 승인하면 작업지시와 품목이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24360,9 +24372,9 @@
       },
       "evidence": {
         "candidateId": "LR-work_order_die_drawing_code_to_die",
-        "fingerprint": "594a40c6123e947c",
+        "fingerprint": "774c802a1a6caf4d",
         "title": "작업지시 → 금형 (사용 금형 도면 번호)",
-        "reason": "대상 키: 금형 drawing_code (유일값) · 비교: 원값 · 일치율 100%",
+        "reason": "작업지시의 사용 금형 도면 번호로 금형을 찾습니다. 금형의 금형 도면 번호는 기본키는 아니지만 값이 겹치지 않는 컬럼입니다. 작업지시 139행이 모두 금형과 이어집니다. 승인하면 작업지시와 금형이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24429,7 +24441,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "연결 기준: 작업지시 주문 참조 번호 = 수주 수주 번호 (비교: so_ref는 숫자만 남기기, so_no는 숫자만 남기기 (예: '2607001' → 'OD-2607-001'))",
+        "description": "연결 기준: 작업지시 주문 참조 번호 = 수주 수주 번호 (비교: 주문 참조 번호는 숫자만 남기기, 수주 번호는 숫자만 남기기 (예: '2607001' ↔ 'OD-2607-001'))",
         "linkType": {
           "code": "WORK_ORDER_SO_REF_TO_SALES_ORDER",
           "name": "작업지시 → 수주",
@@ -24442,9 +24454,9 @@
       },
       "evidence": {
         "candidateId": "LR-work_order_so_ref_to_sales_order",
-        "fingerprint": "34ef72dbe55c9b6d",
+        "fingerprint": "97bff093e0c3ae61",
         "title": "작업지시 → 수주 (주문 참조 번호)",
-        "reason": "대상 키: 수주 so_no (기본키) · 비교: so_ref는 숫자만 남기기, so_no는 숫자만 남기기 (예: '2607001' → 'OD-2607-001') · 일치율 값 98% / 행 98% · 불일치 예: 2609970, 2609971",
+        "reason": "작업지시의 주문 참조 번호로 수주를 찾습니다. 비교 방법: 주문 참조 번호는 숫자만 남기기, 수주 번호는 숫자만 남기기 (예: '2607001' ↔ 'OD-2607-001'). 작업지시 136행 중 134행(98%)이 수주와 이어집니다(값 종류 기준 97%). 이어지지 않은 값 예: 2609970, 2609971. 승인하면 작업지시와 수주가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24514,9 +24526,9 @@
       },
       "evidence": {
         "candidateId": "LR-work_order_operation_wo_no_to_work_order",
-        "fingerprint": "f1d238e600fc7995",
+        "fingerprint": "05cd626582de0ba9",
         "title": "작업지시 공정별 배정 → 작업지시 (작업지시 번호)",
-        "reason": "대상 키: 작업지시 wo_no (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "작업지시 공정별 배정의 작업지시 번호로 작업지시를 찾습니다. 작업지시 공정별 배정 571행이 모두 작업지시와 이어집니다. 승인하면 작업지시 공정별 배정과 작업지시가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24586,9 +24598,9 @@
       },
       "evidence": {
         "candidateId": "LR-work_order_operation_equipment_code_to_equipment",
-        "fingerprint": "f56424a422d75a21",
+        "fingerprint": "1ee940ce9d04df4f",
         "title": "작업지시 공정별 배정 → 설비 (배정 설비 코드)",
-        "reason": "대상 키: 설비 code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "작업지시 공정별 배정의 배정 설비 코드로 설비를 찾습니다. 작업지시 공정별 배정 571행이 모두 설비와 이어집니다. 승인하면 작업지시 공정별 배정과 설비가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24654,7 +24666,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "연결 기준: 현장 작업자 작업자 번호 = 직원 사번 (비교: id는 4자리로 0 채우기 → 앞에 'GP' 붙이기 (예: '24' → 'GP0024'))",
+        "description": "연결 기준: 현장 작업자 작업자 번호 = 직원 사번 (비교: 작업자 번호는 4자리로 0 채우기 → 앞에 'GP' 붙이기 (예: '24' ↔ 'GP0024'))",
         "linkType": {
           "code": "WORKER_ID_TO_EMPLOYEE",
           "name": "현장 작업자 → 직원",
@@ -24667,9 +24679,9 @@
       },
       "evidence": {
         "candidateId": "LR-worker_id_to_employee",
-        "fingerprint": "da47788416c261c9",
+        "fingerprint": "6cbb142614ca99db",
         "title": "현장 작업자 → 직원 (작업자 번호)",
-        "reason": "대상 키: 직원 emp_no (기본키) · 비교: id는 4자리로 0 채우기 → 앞에 'GP' 붙이기 (예: '24' → 'GP0024') · 일치율 값 94% / 행 94% · 불일치 예: 57",
+        "reason": "현장 작업자의 작업자 번호로 직원을 찾습니다. 비교 방법: 작업자 번호는 4자리로 0 채우기 → 앞에 'GP' 붙이기 (예: '24' ↔ 'GP0024'). 현장 작업자 16행 중 15행(93%)이 직원과 이어집니다. 이어지지 않은 값 예: 57. 승인하면 현장 작업자와 직원이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24738,7 +24750,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "연결 기준: 현장 작업자 숙련도 = 고정자산 자산 번호 (비교: skill_level은 4자리로 0 채우기 → 앞에 'FA-' 붙이기 (예: '1' → 'FA-0001'))",
+        "description": "연결 기준: 현장 작업자 숙련도 = 고정자산 자산 번호 (비교: 숙련도는 4자리로 0 채우기 → 앞에 'FA-' 붙이기 (예: '1' ↔ 'FA-0001'))",
         "linkType": {
           "code": "WORKER_SKILL_LEVEL_TO_FIXED_ASSET",
           "name": "현장 작업자 → 고정자산",
@@ -24751,9 +24763,9 @@
       },
       "evidence": {
         "candidateId": "LR-worker_skill_level_to_fixed_asset",
-        "fingerprint": "255ad366c7100008",
+        "fingerprint": "a5ad6e31c0655bf2",
         "title": "현장 작업자 → 고정자산 (숙련도)",
-        "reason": "대상 키: 고정자산 asset_no (기본키) · 비교: skill_level은 4자리로 0 채우기 → 앞에 'FA-' 붙이기 (예: '1' → 'FA-0001') · 일치율 100%",
+        "reason": "현장 작업자의 숙련도로 고정자산을 찾습니다. 비교 방법: 숙련도는 4자리로 0 채우기 → 앞에 'FA-' 붙이기 (예: '1' ↔ 'FA-0001'). 현장 작업자 16행이 모두 고정자산과 이어집니다. 승인하면 현장 작업자와 고정자산이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -24833,9 +24845,9 @@
       },
       "evidence": {
         "candidateId": "LR-goods_receipt_po_no_item_code_to_purchase_order_line",
-        "fingerprint": "1527d0560b8befb4",
+        "fingerprint": "2d844a84096a79fd",
         "title": "입고 → 구매 발주 상세 (근거 발주 번호·입고 품번)",
-        "reason": "대상 키: 구매 발주 상세 po_no + item_code (유일값) · 비교: 원값 · 일치율 100%",
+        "reason": "입고의 근거 발주 번호·입고 품번으로 구매 발주 상세를 찾습니다. 구매 발주 상세의 발주 번호 + 발주 품번은 기본키는 아니지만 값이 겹치지 않는 컬럼 조합입니다. 입고 36행이 모두 구매 발주 상세와 이어집니다. 승인하면 입고와 구매 발주 상세가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -24904,9 +24916,9 @@
       },
       "evidence": {
         "candidateId": "LR-shipment_so_no_item_code_to_sales_order_line",
-        "fingerprint": "6784e49f7f7c74ca",
+        "fingerprint": "c1274310ba1f429b",
         "title": "출하 → 수주 상세 (근거 수주 번호·출하 품번)",
-        "reason": "대상 키: 수주 상세 so_no + item_code (유일값) · 비교: 원값 · 일치율 100%",
+        "reason": "출하의 근거 수주 번호·출하 품번으로 수주 상세를 찾습니다. 수주 상세의 수주 번호 + 주문 품번은 기본키는 아니지만 값이 겹치지 않는 컬럼 조합입니다. 출하 162행이 모두 수주 상세와 이어집니다. 승인하면 출하와 수주 상세가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -24975,9 +24987,9 @@
       },
       "evidence": {
         "candidateId": "LR-goods_receipt_warehouse_item_code_to_stock",
-        "fingerprint": "9f2c9fbd130a111e",
+        "fingerprint": "96efc3f18e349e7b",
         "title": "입고 → 창고별 재고 (입고 창고·입고 품번)",
-        "reason": "대상 키: 창고별 재고 warehouse + item_code (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "입고의 입고 창고·입고 품번으로 창고별 재고를 찾습니다. 입고 36행이 모두 창고별 재고와 이어집니다. 승인하면 입고와 창고별 재고가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "ERP_MAIN",
@@ -25039,16 +25051,16 @@
           "name": "불량 기록 → 작업지시 공정별 배정",
           "sourceTypeCode": "DEFECT",
           "targetTypeCode": "WORK_ORDER_OPERATION",
-          "cardinality": "ONE_TO_ONE",
-          "description": "불량 기록에서 작업지시 공정별 배정 참조 · 데이터상 1:1, 업무상 1:N 여부 확인 필요"
+          "cardinality": "MANY_TO_ONE",
+          "description": "불량 기록에서 작업지시 공정별 배정 참조"
         },
         "name": "불량 기록 → 작업지시 공정별 배정 (작업지시 번호·발생 공정)"
       },
       "evidence": {
         "candidateId": "LR-defect_wo_no_op_seq_to_work_order_operation",
-        "fingerprint": "23b3655535c108e0",
+        "fingerprint": "fd4d2890102c8ddb",
         "title": "불량 기록 → 작업지시 공정별 배정 (작업지시 번호·발생 공정)",
-        "reason": "대상 키: 작업지시 공정별 배정 wo_no + op_seq (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "불량 기록의 작업지시 번호·발생 공정으로 작업지시 공정별 배정을 찾습니다. 불량 기록 424행이 모두 작업지시 공정별 배정과 이어집니다. 승인하면 불량 기록과 작업지시 공정별 배정이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25117,9 +25129,9 @@
       },
       "evidence": {
         "candidateId": "LR-production_result_wo_no_op_seq_to_work_order_operation",
-        "fingerprint": "c4544688cea9db86",
+        "fingerprint": "aadf78ed41d3846b",
         "title": "공정 실적 → 작업지시 공정별 배정 (작업지시 번호·공정 순서)",
-        "reason": "대상 키: 작업지시 공정별 배정 wo_no + op_seq (기본키) · 비교: 원값 · 일치율 100%",
+        "reason": "공정 실적의 작업지시 번호·공정 순서로 작업지시 공정별 배정을 찾습니다. 공정 실적 640행이 모두 작업지시 공정별 배정과 이어집니다. 승인하면 공정 실적과 작업지시 공정별 배정이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25185,7 +25197,7 @@
           }
         ],
         "sourceFilter": null,
-        "description": "연결 기준: 작업지시 주문 참조 번호·생산 제품 코드 = 수주 상세 수주 번호·주문 품번 (비교: so_ref는 숫자만 남기기, so_no는 숫자만 남기기 (예: '2607001|RNF-320L' → 'OD-2607-001|RNF-320L'))",
+        "description": "연결 기준: 작업지시 주문 참조 번호·생산 제품 코드 = 수주 상세 수주 번호·주문 품번 (비교: 주문 참조 번호는 숫자만 남기기, 수주 번호는 숫자만 남기기 (예: '2607001|RNF-320L' ↔ 'OD-2607-001|RNF-320L'))",
         "linkType": {
           "code": "WORK_ORDER_SO_REF_PRODUCT_CODE_TO_SALES_ORDER_LINE",
           "name": "작업지시 → 수주 상세",
@@ -25198,9 +25210,9 @@
       },
       "evidence": {
         "candidateId": "LR-work_order_so_ref_product_code_to_sales_order_line",
-        "fingerprint": "b5ce7127be1b3840",
+        "fingerprint": "835c27eb44df68ad",
         "title": "작업지시 → 수주 상세 (주문 참조 번호·생산 제품 코드)",
-        "reason": "대상 키: 수주 상세 so_no + item_code (유일값) · 비교: so_ref는 숫자만 남기기, so_no는 숫자만 남기기 (예: '2607001|RNF-320L' → 'OD-2607-001|RNF-320L') · 일치율 값 98% / 행 98%",
+        "reason": "작업지시의 주문 참조 번호·생산 제품 코드로 수주 상세를 찾습니다. 수주 상세의 수주 번호 + 주문 품번은 기본키는 아니지만 값이 겹치지 않는 컬럼 조합입니다. 비교 방법: 주문 참조 번호는 숫자만 남기기, 수주 번호는 숫자만 남기기 (예: '2607001|RNF-320L' ↔ 'OD-2607-001|RNF-320L'). 작업지시 136행 중 134행(98%)이 수주 상세와 이어집니다. 이어지지 않은 값 예: 2609970|RNF-320L, 2609971|RNF-320R. 승인하면 작업지시와 수주 상세가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25265,9 +25277,9 @@
       },
       "evidence": {
         "candidateId": "LR-routing_equipment_kind_to_equipment",
-        "fingerprint": "d47d84368c6ff9f8",
+        "fingerprint": "dbe2d8648e0d1406",
         "title": "제품별 공정 → 설비 (필요한 설비 종류)",
-        "reason": "대상 키: 설비 kind (키 아님) · 비교: 원값 · 일치율 100%",
+        "reason": "제품별 공정의 필요한 설비 종류로 설비를 찾습니다. 설비의 설비 종류는 기본키는 아니지만 값이 겹치지 않는 컬럼입니다. 제품별 공정 21행이 모두 설비와 이어집니다. 승인하면 제품별 공정과 설비가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25333,16 +25345,16 @@
           "name": "정비 지시 → 금형",
           "sourceTypeCode": "MAINTENANCE_ORDER",
           "targetTypeCode": "DIE",
-          "cardinality": "ONE_TO_ONE",
-          "description": "정비 지시에서 금형 참조 · 적용 조건: target_type = 금형 · 데이터상 1:1, 업무상 1:N 여부 확인 필요"
+          "cardinality": "MANY_TO_ONE",
+          "description": "정비 지시에서 금형 참조 · 적용 조건: target_type = 금형"
         },
         "name": "정비 지시 → 금형 (정비 대상 코드)"
       },
       "evidence": {
         "candidateId": "LR-maintenance_order_target_code_to_die_when_target_type",
-        "fingerprint": "520771580e33f856",
+        "fingerprint": "4553423691d0d493",
         "title": "정비 지시 → 금형 (정비 대상 코드)",
-        "reason": "대상 키: 금형 die_code (기본키) · 비교: 원값 · 일치율 100% · 적용 조건: target_type = 금형",
+        "reason": "정비 지시의 정비 대상 코드로 금형을 찾습니다. 정비 지시 2행이 모두 금형과 이어집니다. 정비 대상 구분이 금형인 행에만 적용합니다. 승인하면 정비 지시와 금형이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25413,9 +25425,9 @@
       },
       "evidence": {
         "candidateId": "LR-maintenance_order_target_code_to_equipment_when_target_type",
-        "fingerprint": "d1d0532d57ba4bb0",
+        "fingerprint": "69c152b1769a2055",
         "title": "정비 지시 → 설비 (정비 대상 코드)",
-        "reason": "대상 키: 설비 code (기본키) · 비교: 원값 · 일치율 100% · 적용 조건: target_type = 설비",
+        "reason": "정비 지시의 정비 대상 코드로 설비를 찾습니다. 정비 지시 13행이 모두 설비와 이어집니다. 정비 대상 구분이 설비인 행에만 적용합니다. 승인하면 정비 지시와 설비가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25468,9 +25480,9 @@
       },
       "evidence": {
         "candidateId": "LT-defect_wo_no_op_seq_to_routing_via_work_order",
-        "fingerprint": "158a0d721e52527c",
+        "fingerprint": "0b7d8c568afd5c52",
         "title": "불량 기록 → 제품별 공정",
-        "reason": "대상 키: 제품별 공정 product_code + op_seq (기본키) · 비교: 원값 · 일치율 100% · 경유: 작업지시 (wo_no → product_code)",
+        "reason": "대상 키: 제품별 공정 product_code + op_seq (기본키) · 비교: 값 그대로 · 일치율 100% (424행 모두 연결) · 경유: 작업지시 (wo_no → product_code)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25518,9 +25530,9 @@
       },
       "evidence": {
         "candidateId": "LT-production_result_wo_no_op_seq_to_routing_via_work_order",
-        "fingerprint": "4ed78585a2f1d48f",
+        "fingerprint": "fbf09f3df2bb1d03",
         "title": "공정 실적 → 제품별 공정",
-        "reason": "대상 키: 제품별 공정 product_code + op_seq (기본키) · 비교: 원값 · 일치율 100% · 경유: 작업지시 (wo_no → product_code)",
+        "reason": "대상 키: 제품별 공정 product_code + op_seq (기본키) · 비교: 값 그대로 · 일치율 100% (640행 모두 연결) · 경유: 작업지시 (wo_no → product_code)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25568,9 +25580,9 @@
       },
       "evidence": {
         "candidateId": "LT-work_order_operation_wo_no_op_seq_to_routing_via_work_order",
-        "fingerprint": "fda0b98d903f5c93",
+        "fingerprint": "ec3f40d6ac18b324",
         "title": "작업지시 공정별 배정 → 제품별 공정",
-        "reason": "대상 키: 제품별 공정 product_code + op_seq (기본키) · 비교: 원값 · 일치율 100% · 경유: 작업지시 (wo_no → product_code)",
+        "reason": "대상 키: 제품별 공정 product_code + op_seq (기본키) · 비교: 값 그대로 · 일치율 100% (571행 모두 연결) · 경유: 작업지시 (wo_no → product_code)",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25618,7 +25630,7 @@
       },
       "evidence": {
         "candidateId": "LT-DOC-ABOUT_LOT",
-        "fingerprint": "11d18b5a5ebcf777",
+        "fingerprint": "028179391a06fcdf",
         "title": "교대 인수인계 메모의 출하 연결",
         "reason": "교대 인수인계 메모 2건 · 출하 기재 2건 · 일치 2건",
         "items": [
@@ -25665,7 +25677,7 @@
       },
       "evidence": {
         "candidateId": "LT-DOC-ABOUT_WORK_ORDER",
-        "fingerprint": "4bb21fafb50dd538",
+        "fingerprint": "e73b3254a96a6266",
         "title": "교대 인수인계 메모의 작업지시 연결",
         "reason": "교대 인수인계 메모 11건 · 작업지시 기재 13건 · 일치 13건",
         "items": [
@@ -25719,7 +25731,7 @@
       },
       "evidence": {
         "candidateId": "LT-DOC-MENTIONS_EQUIPMENT",
-        "fingerprint": "fbded87b3357b2f7",
+        "fingerprint": "a2d28d79f2e977bb",
         "title": "교대 인수인계 메모의 설비 연결",
         "reason": "교대 인수인계 메모 17건 · 설비 기재 19건 · 일치 19건",
         "items": [
@@ -25773,7 +25785,7 @@
       },
       "evidence": {
         "candidateId": "LT-DOC-REFERS_MAINTENANCE",
-        "fingerprint": "a19554d5ad4d3ee5",
+        "fingerprint": "11d57981bdd926ce",
         "title": "교대 인수인계 메모의 정비 지시 연결",
         "reason": "교대 인수인계 메모 5건 · 정비 지시 기재 5건 · 일치 5건",
         "items": [
@@ -25825,13 +25837,13 @@
         "mentionText": "P201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "HN-260804-D → 설비 P201"
+        "name": "8/4 주간 인수인계 → 2라인 1호 프레스(P201)"
       },
       "evidence": {
-        "candidateId": "DL-HN-260804-D-e1",
+        "candidateId": "DL-HN-260804-D-P201-1",
         "fingerprint": "f31e966cf4208a37",
-        "title": "HN-260804-D → 설비 P201",
-        "reason": "본문 기재 'P201' · “오후 3시쯤 P201 진동이 평소보다 커서 점검 요청함.”",
+        "title": "8/4 주간 인수인계 → 2라인 1호 프레스(P201)",
+        "reason": "메모에 설비 번호 P201이 그대로 적혀 있습니다. 메모 내용: “오후 3시쯤 P201 진동이 평소보다 커서 점검 요청함.” 승인하면 이 메모와 2라인 1호 프레스(P201)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25864,7 +25876,11 @@
         "llmJudgement": null,
         "originalText": "[8/4 주간 → 8/4 야간 인수인계] 작성 52\n오후 3시쯤 P201 진동이 평소보다 커서 점검 요청함.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "8/4 주간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P201": "2라인 1호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -25879,13 +25895,13 @@
         "mentionText": "JB2608-0103",
         "targetObjectRef": "mes.work_order:JB2608-0103",
         "expressionKind": "OBSERVED",
-        "name": "HN-260805-N → 작업지시 JB2608-0103"
+        "name": "8/5 야간 인수인계 → 작업지시 JB2608-0103"
       },
       "evidence": {
-        "candidateId": "DL-HN-260805-N-e1",
+        "candidateId": "DL-HN-260805-N-JB2608-0103-1",
         "fingerprint": "fea200c90cd241a2",
-        "title": "HN-260805-N → 작업지시 JB2608-0103",
-        "reason": "본문 기재 'JB2608-0103' · “JB2608-0103 잔량 1,100개는 주간조에 넘김.”",
+        "title": "8/5 야간 인수인계 → 작업지시 JB2608-0103",
+        "reason": "메모에 작업지시 번호 JB2608-0103이 그대로 적혀 있습니다. 메모 내용: “JB2608-0103 잔량 1,100개는 주간조에 넘김.” 승인하면 이 메모와 작업지시 JB2608-0103이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25918,7 +25934,8 @@
         "llmJudgement": null,
         "originalText": "[8/5 야간 → 8/6 주간 인수인계] 작성 24\nJB2608-0103 잔량 1,100개는 주간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "8/5 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -25933,13 +25950,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "HN-260808-N → 설비 P103"
+        "name": "8/8 야간 인수인계 → 1라인 3호 프레스(P103)"
       },
       "evidence": {
-        "candidateId": "DL-HN-260808-N-e1",
+        "candidateId": "DL-HN-260808-N-P103-1",
         "fingerprint": "814c61b63e65ff48",
-        "title": "HN-260808-N → 설비 P103",
-        "reason": "본문 기재 'P103' · “P103 진동 이상 없음.”",
+        "title": "8/8 야간 인수인계 → 1라인 3호 프레스(P103)",
+        "reason": "메모에 설비 번호 P103이 그대로 적혀 있습니다. 메모 내용: “P103 진동 이상 없음.” 승인하면 이 메모와 1라인 3호 프레스(P103)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -25972,7 +25989,11 @@
         "llmJudgement": null,
         "originalText": "[8/8 야간 → 8/9 주간 인수인계] 작성 57\n2라인 1호 소음은 금형 문제인 듯.\nP103 진동 이상 없음.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "8/8 야간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P103": "1라인 3호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -25987,13 +26008,13 @@
         "mentionText": "JB2608-0129",
         "targetObjectRef": "mes.work_order:JB2608-0129",
         "expressionKind": "OBSERVED",
-        "name": "HN-260820-N → 작업지시 JB2608-0129"
+        "name": "8/20 야간 인수인계 → 작업지시 JB2608-0129"
       },
       "evidence": {
-        "candidateId": "DL-HN-260820-N-e1",
+        "candidateId": "DL-HN-260820-N-JB2608-0129-1",
         "fingerprint": "93357d510b3c0365",
-        "title": "HN-260820-N → 작업지시 JB2608-0129",
-        "reason": "본문 기재 'JB2608-0129' · “JB2608-0129 잔량 1,900개는 주간조에 넘김.”",
+        "title": "8/20 야간 인수인계 → 작업지시 JB2608-0129",
+        "reason": "메모에 작업지시 번호 JB2608-0129가 그대로 적혀 있습니다. 메모 내용: “JB2608-0129 잔량 1,900개는 주간조에 넘김.” 승인하면 이 메모와 작업지시 JB2608-0129가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26026,7 +26047,8 @@
         "llmJudgement": null,
         "originalText": "[8/20 야간 → 8/21 주간 인수인계] 작성 24\nJB2608-0129 잔량 1,900개는 주간조에 넘김.\nJB2608-0130 잔량 900개는 주간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "8/20 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26041,13 +26063,13 @@
         "mentionText": "JB2608-0130",
         "targetObjectRef": "mes.work_order:JB2608-0130",
         "expressionKind": "OBSERVED",
-        "name": "HN-260820-N → 작업지시 JB2608-0130"
+        "name": "8/20 야간 인수인계 → 작업지시 JB2608-0130"
       },
       "evidence": {
-        "candidateId": "DL-HN-260820-N-e2",
+        "candidateId": "DL-HN-260820-N-JB2608-0130-1",
         "fingerprint": "eb9f320db795b50c",
-        "title": "HN-260820-N → 작업지시 JB2608-0130",
-        "reason": "본문 기재 'JB2608-0130' · “JB2608-0130 잔량 900개는 주간조에 넘김.”",
+        "title": "8/20 야간 인수인계 → 작업지시 JB2608-0130",
+        "reason": "메모에 작업지시 번호 JB2608-0130이 그대로 적혀 있습니다. 메모 내용: “JB2608-0130 잔량 900개는 주간조에 넘김.” 승인하면 이 메모와 작업지시 JB2608-0130이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26080,7 +26102,8 @@
         "llmJudgement": null,
         "originalText": "[8/20 야간 → 8/21 주간 인수인계] 작성 24\nJB2608-0129 잔량 1,900개는 주간조에 넘김.\nJB2608-0130 잔량 900개는 주간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "8/20 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26095,13 +26118,13 @@
         "mentionText": "P101",
         "targetObjectRef": "mes.equipment:P101",
         "expressionKind": "OBSERVED",
-        "name": "HN-260821-N → 설비 P101"
+        "name": "8/21 야간 인수인계 → 1라인 1호 프레스(P101)"
       },
       "evidence": {
-        "candidateId": "DL-HN-260821-N-e1",
+        "candidateId": "DL-HN-260821-N-P101-1",
         "fingerprint": "43155f87e351a506",
-        "title": "HN-260821-N → 설비 P101",
-        "reason": "본문 기재 'P101' · “P101 이음 발생.”",
+        "title": "8/21 야간 인수인계 → 1라인 1호 프레스(P101)",
+        "reason": "메모에 설비 번호 P101이 그대로 적혀 있습니다. 메모 내용: “P101 이음 발생.” 승인하면 이 메모와 1라인 1호 프레스(P101)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26134,7 +26157,11 @@
         "llmJudgement": null,
         "originalText": "[8/21 야간 → 8/22 주간 인수인계] 작성 57\nP101 이음 발생.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "8/21 야간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P101": "1라인 1호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26149,13 +26176,13 @@
         "mentionText": "JB2608-0147",
         "targetObjectRef": "mes.work_order:JB2608-0147",
         "expressionKind": "OBSERVED",
-        "name": "HN-260829-D → 작업지시 JB2608-0147"
+        "name": "8/29 주간 인수인계 → 작업지시 JB2608-0147"
       },
       "evidence": {
-        "candidateId": "DL-HN-260829-D-e1",
+        "candidateId": "DL-HN-260829-D-JB2608-0147-1",
         "fingerprint": "f79193036753ca30",
-        "title": "HN-260829-D → 작업지시 JB2608-0147",
-        "reason": "본문 기재 'JB2608-0147' · “JB2608-0147 잔량 700개는 야간조에 넘김.”",
+        "title": "8/29 주간 인수인계 → 작업지시 JB2608-0147",
+        "reason": "메모에 작업지시 번호 JB2608-0147이 그대로 적혀 있습니다. 메모 내용: “JB2608-0147 잔량 700개는 야간조에 넘김.” 승인하면 이 메모와 작업지시 JB2608-0147이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26188,7 +26215,8 @@
         "llmJudgement": null,
         "originalText": "[8/29 주간 → 8/29 야간 인수인계] 작성 6\nJB2608-0147 잔량 700개는 야간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "8/29 주간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26203,13 +26231,13 @@
         "mentionText": "P101",
         "targetObjectRef": "mes.equipment:P101",
         "expressionKind": "OBSERVED",
-        "name": "HN-260831-N → 설비 P101"
+        "name": "8/31 야간 인수인계 → 1라인 1호 프레스(P101)"
       },
       "evidence": {
-        "candidateId": "DL-HN-260831-N-e1",
+        "candidateId": "DL-HN-260831-N-P101-1",
         "fingerprint": "5d61bf4968b056f5",
-        "title": "HN-260831-N → 설비 P101",
-        "reason": "본문 기재 'P101' · “P101 누유 없음.”",
+        "title": "8/31 야간 인수인계 → 1라인 1호 프레스(P101)",
+        "reason": "메모에 설비 번호 P101이 그대로 적혀 있습니다. 메모 내용: “P101 누유 없음.” 승인하면 이 메모와 1라인 1호 프레스(P101)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26242,7 +26270,11 @@
         "llmJudgement": null,
         "originalText": "[8/31 야간 → 9/1 주간 인수인계] 작성 38\nP101 누유 없음.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "8/31 야간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P101": "1라인 1호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26257,13 +26289,13 @@
         "mentionText": "RP-26-005",
         "targetObjectRef": "mes.maintenance_order:RP-26-005",
         "expressionKind": "OBSERVED",
-        "name": "HN-260906-N → 정비 지시 RP-26-005"
+        "name": "9/6 야간 인수인계 → 정비 지시 RP-26-005"
       },
       "evidence": {
-        "candidateId": "DL-HN-260906-N-e1",
+        "candidateId": "DL-HN-260906-N-RP-26-005-1",
         "fingerprint": "b679c7fed66ebacc",
-        "title": "HN-260906-N → 정비 지시 RP-26-005",
-        "reason": "본문 기재 'RP-26-005' · “RP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.”",
+        "title": "9/6 야간 인수인계 → 정비 지시 RP-26-005",
+        "reason": "메모에 정비 지시 번호 RP-26-005가 그대로 적혀 있습니다. 메모 내용: “RP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.” 승인하면 이 메모와 정비 지시 RP-26-005가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26296,7 +26328,8 @@
         "llmJudgement": null,
         "originalText": "[9/6 야간 → 9/7 주간 인수인계] 작성 48\nRP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.\nP201 이음 발생.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/6 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26311,13 +26344,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "HN-260906-N → 설비 P103"
+        "name": "9/6 야간 인수인계 → 1라인 3호 프레스(P103)"
       },
       "evidence": {
-        "candidateId": "DL-HN-260906-N-e2",
+        "candidateId": "DL-HN-260906-N-P103-1",
         "fingerprint": "a432b245216ee57d",
-        "title": "HN-260906-N → 설비 P103",
-        "reason": "본문 기재 'P103' · “RP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.”",
+        "title": "9/6 야간 인수인계 → 1라인 3호 프레스(P103)",
+        "reason": "메모에 설비 번호 P103이 그대로 적혀 있습니다. 메모 내용: “RP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.” 승인하면 이 메모와 1라인 3호 프레스(P103)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26350,7 +26383,11 @@
         "llmJudgement": null,
         "originalText": "[9/6 야간 → 9/7 주간 인수인계] 작성 48\nRP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.\nP201 이음 발생.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/6 야간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P103": "1라인 3호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26365,13 +26402,13 @@
         "mentionText": "P201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "HN-260906-N → 설비 P201"
+        "name": "9/6 야간 인수인계 → 2라인 1호 프레스(P201)"
       },
       "evidence": {
-        "candidateId": "DL-HN-260906-N-e3",
+        "candidateId": "DL-HN-260906-N-P201-1",
         "fingerprint": "2fc1bc88a99d014f",
-        "title": "HN-260906-N → 설비 P201",
-        "reason": "본문 기재 'P201' · “P201 이음 발생.”",
+        "title": "9/6 야간 인수인계 → 2라인 1호 프레스(P201)",
+        "reason": "메모에 설비 번호 P201이 그대로 적혀 있습니다. 메모 내용: “P201 이음 발생.” 승인하면 이 메모와 2라인 1호 프레스(P201)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26404,7 +26441,11 @@
         "llmJudgement": null,
         "originalText": "[9/6 야간 → 9/7 주간 인수인계] 작성 48\nRP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.\nP201 이음 발생.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/6 야간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P201": "2라인 1호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26419,13 +26460,13 @@
         "mentionText": "p201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "HN-260909-D → 설비 P201"
+        "name": "9/9 주간 인수인계 → 2라인 1호 프레스(P201)"
       },
       "evidence": {
-        "candidateId": "DL-HN-260909-D-e1",
+        "candidateId": "DL-HN-260909-D-p201-1",
         "fingerprint": "2e3a0396ad392f1e",
-        "title": "HN-260909-D → 설비 P201",
-        "reason": "본문 기재 'p201' · “p201 온도 경고 2회.”",
+        "title": "9/9 주간 인수인계 → 2라인 1호 프레스(P201)",
+        "reason": "메모에 설비 번호 P201이 그대로 적혀 있습니다. 메모 내용: “p201 온도 경고 2회.” 승인하면 이 메모와 2라인 1호 프레스(P201)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26458,7 +26499,11 @@
         "llmJudgement": null,
         "originalText": "[9/9 주간 → 9/9 야간 인수인계] 작성 31\np201 온도 경고 2회.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/9 주간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P201": "2라인 1호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26473,13 +26518,13 @@
         "mentionText": "p201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "HN-260909-N → 설비 P201"
+        "name": "9/9 야간 인수인계 → 2라인 1호 프레스(P201)"
       },
       "evidence": {
-        "candidateId": "DL-HN-260909-N-e1",
+        "candidateId": "DL-HN-260909-N-p201-1",
         "fingerprint": "9ad171a73de9bd86",
-        "title": "HN-260909-N → 설비 P201",
-        "reason": "본문 기재 'p201' · “p201 온도 경고 2회.”",
+        "title": "9/9 야간 인수인계 → 2라인 1호 프레스(P201)",
+        "reason": "메모에 설비 번호 P201이 그대로 적혀 있습니다. 메모 내용: “p201 온도 경고 2회.” 승인하면 이 메모와 2라인 1호 프레스(P201)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26512,7 +26557,11 @@
         "llmJudgement": null,
         "originalText": "[9/9 야간 → 9/10 주간 인수인계] 작성 74\np201 온도 경고 2회.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/9 야간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P201": "2라인 1호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26527,13 +26576,13 @@
         "mentionText": "JB2609-0115",
         "targetObjectRef": "mes.work_order:JB2609-0115",
         "expressionKind": "OBSERVED",
-        "name": "HN-260910-N → 작업지시 JB2609-0115"
+        "name": "9/10 야간 인수인계 → 작업지시 JB2609-0115"
       },
       "evidence": {
-        "candidateId": "DL-HN-260910-N-e1",
+        "candidateId": "DL-HN-260910-N-JB2609-0115-1",
         "fingerprint": "335219b076636965",
-        "title": "HN-260910-N → 작업지시 JB2609-0115",
-        "reason": "본문 기재 'JB2609-0115' · “JB2609-0115 잔량 900개는 주간조에 넘김.”",
+        "title": "9/10 야간 인수인계 → 작업지시 JB2609-0115",
+        "reason": "메모에 작업지시 번호 JB2609-0115가 그대로 적혀 있습니다. 메모 내용: “JB2609-0115 잔량 900개는 주간조에 넘김.” 승인하면 이 메모와 작업지시 JB2609-0115가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26566,7 +26615,8 @@
         "llmJudgement": null,
         "originalText": "[9/10 야간 → 9/11 주간 인수인계] 작성 74\n1라인 2호기 쪽에서 이상한 소리 남. 확인 바람.\nJB2609-0115 잔량 900개는 주간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/10 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26581,13 +26631,13 @@
         "mentionText": "RP-26-007",
         "targetObjectRef": "mes.maintenance_order:RP-26-007",
         "expressionKind": "OBSERVED",
-        "name": "HN-260911-N → 정비 지시 RP-26-007"
+        "name": "9/11 야간 인수인계 → 정비 지시 RP-26-007"
       },
       "evidence": {
-        "candidateId": "DL-HN-260911-N-e1",
+        "candidateId": "DL-HN-260911-N-RP-26-007-1",
         "fingerprint": "4907bccae871dde5",
-        "title": "HN-260911-N → 정비 지시 RP-26-007",
-        "reason": "본문 기재 'RP-26-007' · “RP-26-007 윤활 배관 점검·보충 이후 1라인 블랭킹기 이상 없음.”",
+        "title": "9/11 야간 인수인계 → 정비 지시 RP-26-007",
+        "reason": "메모에 정비 지시 번호 RP-26-007이 그대로 적혀 있습니다. 메모 내용: “RP-26-007 윤활 배관 점검·보충 이후 1라인 블랭킹기 이상 없음.” 승인하면 이 메모와 정비 지시 RP-26-007이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26620,7 +26670,8 @@
         "llmJudgement": null,
         "originalText": "[9/11 야간 → 9/12 주간 인수인계] 작성 48\nRP-26-007 윤활 배관 점검·보충 이후 1라인 블랭킹기 이상 없음.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/11 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26635,13 +26686,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "HN-260914-D → 설비 P103"
+        "name": "9/14 주간 인수인계 → 1라인 3호 프레스(P103)"
       },
       "evidence": {
-        "candidateId": "DL-HN-260914-D-e1",
+        "candidateId": "DL-HN-260914-D-P103-1",
         "fingerprint": "e07b2faa7814fcc1",
-        "title": "HN-260914-D → 설비 P103",
-        "reason": "본문 기재 'P103' · “P103 이음 발생.”",
+        "title": "9/14 주간 인수인계 → 1라인 3호 프레스(P103)",
+        "reason": "메모에 설비 번호 P103이 그대로 적혀 있습니다. 메모 내용: “P103 이음 발생.” 승인하면 이 메모와 1라인 3호 프레스(P103)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26674,7 +26725,11 @@
         "llmJudgement": null,
         "originalText": "[9/14 주간 → 9/14 야간 인수인계] 작성 72\nP103 이음 발생.\nP101 누유 없음.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/14 주간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P103": "1라인 3호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26689,13 +26744,13 @@
         "mentionText": "P101",
         "targetObjectRef": "mes.equipment:P101",
         "expressionKind": "OBSERVED",
-        "name": "HN-260914-D → 설비 P101"
+        "name": "9/14 주간 인수인계 → 1라인 1호 프레스(P101)"
       },
       "evidence": {
-        "candidateId": "DL-HN-260914-D-e2",
+        "candidateId": "DL-HN-260914-D-P101-1",
         "fingerprint": "273d0908f43bc344",
-        "title": "HN-260914-D → 설비 P101",
-        "reason": "본문 기재 'P101' · “P101 누유 없음.”",
+        "title": "9/14 주간 인수인계 → 1라인 1호 프레스(P101)",
+        "reason": "메모에 설비 번호 P101이 그대로 적혀 있습니다. 메모 내용: “P101 누유 없음.” 승인하면 이 메모와 1라인 1호 프레스(P101)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26728,7 +26783,11 @@
         "llmJudgement": null,
         "originalText": "[9/14 주간 → 9/14 야간 인수인계] 작성 72\nP103 이음 발생.\nP101 누유 없음.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/14 주간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P101": "1라인 1호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26743,13 +26802,13 @@
         "mentionText": "P201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "HN-260916-D → 설비 P201"
+        "name": "9/16 주간 인수인계 → 2라인 1호 프레스(P201)"
       },
       "evidence": {
-        "candidateId": "DL-HN-260916-D-e1",
+        "candidateId": "DL-HN-260916-D-P201-1",
         "fingerprint": "430bcb0c4acd55d1",
-        "title": "HN-260916-D → 설비 P201",
-        "reason": "본문 기재 'P201' · “P201 누유 없음.”",
+        "title": "9/16 주간 인수인계 → 2라인 1호 프레스(P201)",
+        "reason": "메모에 설비 번호 P201이 그대로 적혀 있습니다. 메모 내용: “P201 누유 없음.” 승인하면 이 메모와 2라인 1호 프레스(P201)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26782,7 +26841,11 @@
         "llmJudgement": null,
         "originalText": "[9/16 주간 → 9/16 야간 인수인계] 작성 27\nP201 누유 없음.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/16 주간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P201": "2라인 1호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26797,13 +26860,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "HN-260916-N → 설비 P103"
+        "name": "9/16 야간 인수인계 → 1라인 3호 프레스(P103)"
       },
       "evidence": {
-        "candidateId": "DL-HN-260916-N-e1",
+        "candidateId": "DL-HN-260916-N-P103-1",
         "fingerprint": "e4b5e12c5d06a3a2",
-        "title": "HN-260916-N → 설비 P103",
-        "reason": "본문 기재 'P103' · “P103 누유 없음.”",
+        "title": "9/16 야간 인수인계 → 1라인 3호 프레스(P103)",
+        "reason": "메모에 설비 번호 P103이 그대로 적혀 있습니다. 메모 내용: “P103 누유 없음.” 승인하면 이 메모와 1라인 3호 프레스(P103)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26836,7 +26899,11 @@
         "llmJudgement": null,
         "originalText": "[9/16 야간 → 9/17 주간 인수인계] 작성 48\nP103 누유 없음.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/16 야간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P103": "1라인 3호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26851,13 +26918,13 @@
         "mentionText": "JB2609-0121",
         "targetObjectRef": "mes.work_order:JB2609-0121",
         "expressionKind": "OBSERVED",
-        "name": "HN-260917-D → 작업지시 JB2609-0121"
+        "name": "9/17 주간 인수인계 → 작업지시 JB2609-0121"
       },
       "evidence": {
-        "candidateId": "DL-HN-260917-D-e1",
+        "candidateId": "DL-HN-260917-D-JB2609-0121-1",
         "fingerprint": "9083cb75290f289d",
-        "title": "HN-260917-D → 작업지시 JB2609-0121",
-        "reason": "본문 기재 'JB2609-0121' · “JB2609-0121 잔량 2,000개는 야간조에 넘김.”",
+        "title": "9/17 주간 인수인계 → 작업지시 JB2609-0121",
+        "reason": "메모에 작업지시 번호 JB2609-0121이 그대로 적혀 있습니다. 메모 내용: “JB2609-0121 잔량 2,000개는 야간조에 넘김.” 승인하면 이 메모와 작업지시 JB2609-0121이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26890,7 +26957,8 @@
         "llmJudgement": null,
         "originalText": "[9/17 주간 → 9/17 야간 인수인계] 작성 45\nJB2609-0121 잔량 2,000개는 야간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/17 주간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26905,13 +26973,13 @@
         "mentionText": "JB2609-0125",
         "targetObjectRef": "mes.work_order:JB2609-0125",
         "expressionKind": "OBSERVED",
-        "name": "HN-260918-N → 작업지시 JB2609-0125"
+        "name": "9/18 야간 인수인계 → 작업지시 JB2609-0125"
       },
       "evidence": {
-        "candidateId": "DL-HN-260918-N-e1",
+        "candidateId": "DL-HN-260918-N-JB2609-0125-1",
         "fingerprint": "1b9af1bc26be4ad4",
-        "title": "HN-260918-N → 작업지시 JB2609-0125",
-        "reason": "본문 기재 'JB2609-0125' · “JB2609-0125 잔량 400개는 주간조에 넘김.”",
+        "title": "9/18 야간 인수인계 → 작업지시 JB2609-0125",
+        "reason": "메모에 작업지시 번호 JB2609-0125가 그대로 적혀 있습니다. 메모 내용: “JB2609-0125 잔량 400개는 주간조에 넘김.” 승인하면 이 메모와 작업지시 JB2609-0125가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26944,7 +27012,8 @@
         "llmJudgement": null,
         "originalText": "[9/18 야간 → 9/19 주간 인수인계] 작성 57\nJB2609-0125 잔량 400개는 주간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/18 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -26959,13 +27028,13 @@
         "mentionText": "P201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "HN-260930-D → 설비 P201"
+        "name": "9/30 주간 인수인계 → 2라인 1호 프레스(P201)"
       },
       "evidence": {
-        "candidateId": "DL-HN-260930-D-e1",
+        "candidateId": "DL-HN-260930-D-P201-1",
         "fingerprint": "05b6709ef7c98fee",
-        "title": "HN-260930-D → 설비 P201",
-        "reason": "본문 기재 'P201' · “P201 누유 없음.”",
+        "title": "9/30 주간 인수인계 → 2라인 1호 프레스(P201)",
+        "reason": "메모에 설비 번호 P201이 그대로 적혀 있습니다. 메모 내용: “P201 누유 없음.” 승인하면 이 메모와 2라인 1호 프레스(P201)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -26998,7 +27067,11 @@
         "llmJudgement": null,
         "originalText": "[9/30 주간 → 9/30 야간 인수인계] 작성 27\nP201 누유 없음.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "9/30 주간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P201": "2라인 1호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27013,13 +27086,13 @@
         "mentionText": "RP-26-005",
         "targetObjectRef": "mes.maintenance_order:RP-26-005",
         "expressionKind": "OBSERVED",
-        "name": "HN-261006-D → 정비 지시 RP-26-005"
+        "name": "10/6 주간 인수인계 → 정비 지시 RP-26-005"
       },
       "evidence": {
-        "candidateId": "DL-HN-261006-D-e1",
+        "candidateId": "DL-HN-261006-D-RP-26-005-1",
         "fingerprint": "a046f94e82059063",
-        "title": "HN-261006-D → 정비 지시 RP-26-005",
-        "reason": "본문 기재 'RP-26-005' · “RP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.”",
+        "title": "10/6 주간 인수인계 → 정비 지시 RP-26-005",
+        "reason": "메모에 정비 지시 번호 RP-26-005가 그대로 적혀 있습니다. 메모 내용: “RP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.” 승인하면 이 메모와 정비 지시 RP-26-005가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27052,7 +27125,8 @@
         "llmJudgement": null,
         "originalText": "[10/6 주간 → 10/6 야간 인수인계] 작성 27\nRP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/6 주간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27067,13 +27141,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "HN-261006-D → 설비 P103"
+        "name": "10/6 주간 인수인계 → 1라인 3호 프레스(P103)"
       },
       "evidence": {
-        "candidateId": "DL-HN-261006-D-e2",
+        "candidateId": "DL-HN-261006-D-P103-1",
         "fingerprint": "54e738bbc272f45d",
-        "title": "HN-261006-D → 설비 P103",
-        "reason": "본문 기재 'P103' · “RP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.”",
+        "title": "10/6 주간 인수인계 → 1라인 3호 프레스(P103)",
+        "reason": "메모에 설비 번호 P103이 그대로 적혀 있습니다. 메모 내용: “RP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.” 승인하면 이 메모와 1라인 3호 프레스(P103)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27106,7 +27180,11 @@
         "llmJudgement": null,
         "originalText": "[10/6 주간 → 10/6 야간 인수인계] 작성 27\nRP-26-005 윤활 배관 점검·보충 이후 P103 이상 없음.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/6 주간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P103": "1라인 3호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27121,13 +27199,13 @@
         "mentionText": "JB2610-0117",
         "targetObjectRef": "mes.work_order:JB2610-0117",
         "expressionKind": "OBSERVED",
-        "name": "HN-261009-N → 작업지시 JB2610-0117"
+        "name": "10/9 야간 인수인계 → 작업지시 JB2610-0117"
       },
       "evidence": {
-        "candidateId": "DL-HN-261009-N-e1",
+        "candidateId": "DL-HN-261009-N-JB2610-0117-1",
         "fingerprint": "676a0ccd9efee308",
-        "title": "HN-261009-N → 작업지시 JB2610-0117",
-        "reason": "본문 기재 'JB2610-0117' · “JB2610-0117 잔량 800개는 주간조에 넘김.”",
+        "title": "10/9 야간 인수인계 → 작업지시 JB2610-0117",
+        "reason": "메모에 작업지시 번호 JB2610-0117이 그대로 적혀 있습니다. 메모 내용: “JB2610-0117 잔량 800개는 주간조에 넘김.” 승인하면 이 메모와 작업지시 JB2610-0117이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27160,7 +27238,8 @@
         "llmJudgement": null,
         "originalText": "[10/9 야간 → 10/10 주간 인수인계] 작성 74\nJB2610-0117 잔량 800개는 주간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/9 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27175,13 +27254,13 @@
         "mentionText": "LT261017-1",
         "targetObjectRef": "erp.shipment:DL2610-0036",
         "expressionKind": "OBSERVED",
-        "name": "HN-261014-N → 출하 DL2610-0036"
+        "name": "10/14 야간 인수인계 → 출하 DL2610-0036"
       },
       "evidence": {
-        "candidateId": "DL-HN-261014-N-e1",
+        "candidateId": "DL-HN-261014-N-LT261017-1-1",
         "fingerprint": "dbc4bd4fada940c1",
-        "title": "HN-261014-N → 출하 DL2610-0036",
-        "reason": "본문 'LT261017-1' → 출하 DL2610-0036 (다른 컬럼 값 일치) · “LT261017-1 출하 전 외관 확인 완료.”",
+        "title": "10/14 야간 인수인계 → 출하 DL2610-0036",
+        "reason": "메모의 'LT261017-1'은 출하 DL2610-0036의 다른 값과 맞습니다. 메모 내용: “LT261017-1 출하 전 외관 확인 완료.” 승인하면 이 메모와 출하 DL2610-0036이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27214,7 +27293,8 @@
         "llmJudgement": null,
         "originalText": "[10/14 야간 → 10/15 주간 인수인계] 작성 38\nLT261017-1 출하 전 외관 확인 완료.\nJB2610-0125 잔량 400개는 주간조에 넘김.\n1호기 소음 계속됨. 금형 교체 후에도 비슷함.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/14 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27229,13 +27309,13 @@
         "mentionText": "JB2610-0125",
         "targetObjectRef": "mes.work_order:JB2610-0125",
         "expressionKind": "OBSERVED",
-        "name": "HN-261014-N → 작업지시 JB2610-0125"
+        "name": "10/14 야간 인수인계 → 작업지시 JB2610-0125"
       },
       "evidence": {
-        "candidateId": "DL-HN-261014-N-e2",
+        "candidateId": "DL-HN-261014-N-JB2610-0125-1",
         "fingerprint": "a105d68a02c830db",
-        "title": "HN-261014-N → 작업지시 JB2610-0125",
-        "reason": "본문 기재 'JB2610-0125' · “JB2610-0125 잔량 400개는 주간조에 넘김.”",
+        "title": "10/14 야간 인수인계 → 작업지시 JB2610-0125",
+        "reason": "메모에 작업지시 번호 JB2610-0125가 그대로 적혀 있습니다. 메모 내용: “JB2610-0125 잔량 400개는 주간조에 넘김.” 승인하면 이 메모와 작업지시 JB2610-0125가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27268,7 +27348,8 @@
         "llmJudgement": null,
         "originalText": "[10/14 야간 → 10/15 주간 인수인계] 작성 38\nLT261017-1 출하 전 외관 확인 완료.\nJB2610-0125 잔량 400개는 주간조에 넘김.\n1호기 소음 계속됨. 금형 교체 후에도 비슷함.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/14 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27283,13 +27364,13 @@
         "mentionText": "P201",
         "targetObjectRef": "mes.equipment:P201",
         "expressionKind": "OBSERVED",
-        "name": "HN-261015-D → 설비 P201"
+        "name": "10/15 주간 인수인계 → 2라인 1호 프레스(P201)"
       },
       "evidence": {
-        "candidateId": "DL-HN-261015-D-e1",
+        "candidateId": "DL-HN-261015-D-P201-1",
         "fingerprint": "c699bd839c5b0d98",
-        "title": "HN-261015-D → 설비 P201",
-        "reason": "본문 기재 'P201' · “교대 직후 P201 이음이 들려서 가동 멈추고 확인함.”",
+        "title": "10/15 주간 인수인계 → 2라인 1호 프레스(P201)",
+        "reason": "메모에 설비 번호 P201이 그대로 적혀 있습니다. 메모 내용: “교대 직후 P201 이음이 들려서 가동 멈추고 확인함.” 승인하면 이 메모와 2라인 1호 프레스(P201)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27322,7 +27403,11 @@
         "llmJudgement": null,
         "originalText": "[10/15 주간 → 10/15 야간 인수인계] 작성 52\n1호기 진동 있음. 볼트 재체결 했는데 지켜봐야 함.\n교대 직후 P201 이음이 들려서 가동 멈추고 확인함.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/15 주간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P201": "2라인 1호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27337,13 +27422,13 @@
         "mentionText": "JB2610-0131",
         "targetObjectRef": "mes.work_order:JB2610-0131",
         "expressionKind": "OBSERVED",
-        "name": "HN-261017-D → 작업지시 JB2610-0131"
+        "name": "10/17 주간 인수인계 → 작업지시 JB2610-0131"
       },
       "evidence": {
-        "candidateId": "DL-HN-261017-D-e1",
+        "candidateId": "DL-HN-261017-D-JB2610-0131-1",
         "fingerprint": "ef284c350758b8b6",
-        "title": "HN-261017-D → 작업지시 JB2610-0131",
-        "reason": "본문 기재 'JB2610-0131' · “JB2610-0131 잔량 300개는 야간조에 넘김.”",
+        "title": "10/17 주간 인수인계 → 작업지시 JB2610-0131",
+        "reason": "메모에 작업지시 번호 JB2610-0131이 그대로 적혀 있습니다. 메모 내용: “JB2610-0131 잔량 300개는 야간조에 넘김.” 승인하면 이 메모와 작업지시 JB2610-0131이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27376,7 +27461,8 @@
         "llmJudgement": null,
         "originalText": "[10/17 주간 → 10/17 야간 인수인계] 작성 79\nJB2610-0131 잔량 300개는 야간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/17 주간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27391,13 +27477,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "HN-261019-D → 설비 P103"
+        "name": "10/19 주간 인수인계 → 1라인 3호 프레스(P103)"
       },
       "evidence": {
-        "candidateId": "DL-HN-261019-D-e1",
+        "candidateId": "DL-HN-261019-D-P103-1",
         "fingerprint": "ade74b57b0f331c0",
-        "title": "HN-261019-D → 설비 P103",
-        "reason": "본문 기재 'P103' · “점심 직후 P103 이음이 들려서 가동 멈추고 확인함.”",
+        "title": "10/19 주간 인수인계 → 1라인 3호 프레스(P103)",
+        "reason": "메모에 설비 번호 P103이 그대로 적혀 있습니다. 메모 내용: “점심 직후 P103 이음이 들려서 가동 멈추고 확인함.” 승인하면 이 메모와 1라인 3호 프레스(P103)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27430,7 +27516,11 @@
         "llmJudgement": null,
         "originalText": "[10/19 주간 → 10/19 야간 인수인계] 작성 52\n점심 직후 P103 이음이 들려서 가동 멈추고 확인함.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/19 주간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P103": "1라인 3호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27445,13 +27535,13 @@
         "mentionText": "LT261024-1",
         "targetObjectRef": "erp.shipment:DL2610-0050",
         "expressionKind": "OBSERVED",
-        "name": "HN-261024-D → 출하 DL2610-0050"
+        "name": "10/24 주간 인수인계 → 출하 DL2610-0050"
       },
       "evidence": {
-        "candidateId": "DL-HN-261024-D-e1",
+        "candidateId": "DL-HN-261024-D-LT261024-1-1",
         "fingerprint": "f7a7a11d46d8d43e",
-        "title": "HN-261024-D → 출하 DL2610-0050",
-        "reason": "본문 'LT261024-1' → 출하 DL2610-0050 (다른 컬럼 값 일치) · “LT261024-1 출하 전 외관 확인 완료.”",
+        "title": "10/24 주간 인수인계 → 출하 DL2610-0050",
+        "reason": "메모의 'LT261024-1'은 출하 DL2610-0050의 다른 값과 맞습니다. 메모 내용: “LT261024-1 출하 전 외관 확인 완료.” 승인하면 이 메모와 출하 DL2610-0050이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27484,7 +27574,8 @@
         "llmJudgement": null,
         "originalText": "[10/24 주간 → 10/24 야간 인수인계] 작성 31\nLT261024-1 출하 전 외관 확인 완료.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/24 주간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27499,13 +27590,13 @@
         "mentionText": "JB2610-0139",
         "targetObjectRef": "mes.work_order:JB2610-0139",
         "expressionKind": "OBSERVED",
-        "name": "HN-261024-N → 작업지시 JB2610-0139"
+        "name": "10/24 야간 인수인계 → 작업지시 JB2610-0139"
       },
       "evidence": {
-        "candidateId": "DL-HN-261024-N-e1",
+        "candidateId": "DL-HN-261024-N-JB2610-0139-1",
         "fingerprint": "a03e86ff0709c56a",
-        "title": "HN-261024-N → 작업지시 JB2610-0139",
-        "reason": "본문 기재 'JB2610-0139' · “JB2610-0139 잔량 1,100개는 주간조에 넘김.”",
+        "title": "10/24 야간 인수인계 → 작업지시 JB2610-0139",
+        "reason": "메모에 작업지시 번호 JB2610-0139가 그대로 적혀 있습니다. 메모 내용: “JB2610-0139 잔량 1,100개는 주간조에 넘김.” 승인하면 이 메모와 작업지시 JB2610-0139가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27538,7 +27629,8 @@
         "llmJudgement": null,
         "originalText": "[10/24 야간 → 10/25 주간 인수인계] 작성 24\nJB2610-0139 잔량 1,100개는 주간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/24 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27553,13 +27645,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "HN-261028-D → 설비 P103"
+        "name": "10/28 주간 인수인계 → 1라인 3호 프레스(P103)"
       },
       "evidence": {
-        "candidateId": "DL-HN-261028-D-e1",
+        "candidateId": "DL-HN-261028-D-P103-1",
         "fingerprint": "e3de2a38fcd2ef2b",
-        "title": "HN-261028-D → 설비 P103",
-        "reason": "본문 기재 'P103' · “P103 진동 상한 넘음.”",
+        "title": "10/28 주간 인수인계 → 1라인 3호 프레스(P103)",
+        "reason": "메모에 설비 번호 P103이 그대로 적혀 있습니다. 메모 내용: “P103 진동 상한 넘음.” 승인하면 이 메모와 1라인 3호 프레스(P103)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27592,7 +27684,11 @@
         "llmJudgement": null,
         "originalText": "[10/28 주간 → 10/28 야간 인수인계] 작성 31\nP103 진동 상한 넘음.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/28 주간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P103": "1라인 3호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27607,13 +27703,13 @@
         "mentionText": "P101",
         "targetObjectRef": "mes.equipment:P101",
         "expressionKind": "OBSERVED",
-        "name": "HN-261029-D → 설비 P101"
+        "name": "10/29 주간 인수인계 → 1라인 1호 프레스(P101)"
       },
       "evidence": {
-        "candidateId": "DL-HN-261029-D-e1",
+        "candidateId": "DL-HN-261029-D-P101-1",
         "fingerprint": "c03c2f4babeba2b6",
-        "title": "HN-261029-D → 설비 P101",
-        "reason": "본문 기재 'P101' · “P101 누유 없음.”",
+        "title": "10/29 주간 인수인계 → 1라인 1호 프레스(P101)",
+        "reason": "메모에 설비 번호 P101이 그대로 적혀 있습니다. 메모 내용: “P101 누유 없음.” 승인하면 이 메모와 1라인 1호 프레스(P101)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27646,7 +27742,11 @@
         "llmJudgement": null,
         "originalText": "[10/29 주간 → 10/29 야간 인수인계] 작성 31\nP101 누유 없음.\nRP-26-011 유압 펌프 필터 교체 이후 1라인 블랭킹기 압력 저하 없음.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/29 주간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P101": "1라인 1호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27661,13 +27761,13 @@
         "mentionText": "RP-26-011",
         "targetObjectRef": "mes.maintenance_order:RP-26-011",
         "expressionKind": "OBSERVED",
-        "name": "HN-261029-D → 정비 지시 RP-26-011"
+        "name": "10/29 주간 인수인계 → 정비 지시 RP-26-011"
       },
       "evidence": {
-        "candidateId": "DL-HN-261029-D-e2",
+        "candidateId": "DL-HN-261029-D-RP-26-011-1",
         "fingerprint": "c6af1d1d867da9ef",
-        "title": "HN-261029-D → 정비 지시 RP-26-011",
-        "reason": "본문 기재 'RP-26-011' · “RP-26-011 유압 펌프 필터 교체 이후 1라인 블랭킹기 압력 저하 없음.”",
+        "title": "10/29 주간 인수인계 → 정비 지시 RP-26-011",
+        "reason": "메모에 정비 지시 번호 RP-26-011이 그대로 적혀 있습니다. 메모 내용: “RP-26-011 유압 펌프 필터 교체 이후 1라인 블랭킹기 압력 저하 없음.” 승인하면 이 메모와 정비 지시 RP-26-011이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27700,7 +27800,8 @@
         "llmJudgement": null,
         "originalText": "[10/29 주간 → 10/29 야간 인수인계] 작성 31\nP101 누유 없음.\nRP-26-011 유압 펌프 필터 교체 이후 1라인 블랭킹기 압력 저하 없음.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/29 주간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27715,13 +27816,13 @@
         "mentionText": "RP-26-041",
         "targetObjectRef": "mes.maintenance_order:RP-26-041",
         "expressionKind": "OBSERVED",
-        "name": "HN-261029-N → 정비 지시 RP-26-041"
+        "name": "10/29 야간 인수인계 → 정비 지시 RP-26-041"
       },
       "evidence": {
-        "candidateId": "DL-HN-261029-N-e1",
+        "candidateId": "DL-HN-261029-N-RP-26-041-1",
         "fingerprint": "97d4456231a619dc",
-        "title": "HN-261029-N → 정비 지시 RP-26-041",
-        "reason": "본문 기재 'RP-26-041' · “RP-26-041 정비 진행 중.”",
+        "title": "10/29 야간 인수인계 → 정비 지시 RP-26-041",
+        "reason": "메모에 정비 지시 번호 RP-26-041이 그대로 적혀 있습니다. 메모 내용: “RP-26-041 정비 진행 중.” 승인하면 이 메모와 정비 지시 RP-26-041이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27754,7 +27855,8 @@
         "llmJudgement": null,
         "originalText": "[10/29 야간 → 10/30 주간 인수인계] 작성 57\n새벽 3시쯤 3호기 슬라이드 유압 누유로 정지. RP-26-041 정비 진행 중.\nJB2610-0141 성형은 P103 정지로 중단, 잔량 3,200개.\nJB2610-0138 잔량 2,400개는 주간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/29 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27769,13 +27871,13 @@
         "mentionText": "JB2610-0141",
         "targetObjectRef": "mes.work_order:JB2610-0141",
         "expressionKind": "OBSERVED",
-        "name": "HN-261029-N → 작업지시 JB2610-0141"
+        "name": "10/29 야간 인수인계 → 작업지시 JB2610-0141"
       },
       "evidence": {
-        "candidateId": "DL-HN-261029-N-e2",
+        "candidateId": "DL-HN-261029-N-JB2610-0141-1",
         "fingerprint": "4cb5e5b28642ee90",
-        "title": "HN-261029-N → 작업지시 JB2610-0141",
-        "reason": "본문 기재 'JB2610-0141' · “JB2610-0141 성형은 P103 정지로 중단, 잔량 3,200개.”",
+        "title": "10/29 야간 인수인계 → 작업지시 JB2610-0141",
+        "reason": "메모에 작업지시 번호 JB2610-0141이 그대로 적혀 있습니다. 메모 내용: “JB2610-0141 성형은 P103 정지로 중단, 잔량 3,200개.” 승인하면 이 메모와 작업지시 JB2610-0141이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27808,7 +27910,8 @@
         "llmJudgement": null,
         "originalText": "[10/29 야간 → 10/30 주간 인수인계] 작성 57\n새벽 3시쯤 3호기 슬라이드 유압 누유로 정지. RP-26-041 정비 진행 중.\nJB2610-0141 성형은 P103 정지로 중단, 잔량 3,200개.\nJB2610-0138 잔량 2,400개는 주간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/29 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27823,13 +27926,13 @@
         "mentionText": "P103",
         "targetObjectRef": "mes.equipment:P103",
         "expressionKind": "OBSERVED",
-        "name": "HN-261029-N → 설비 P103"
+        "name": "10/29 야간 인수인계 → 1라인 3호 프레스(P103)"
       },
       "evidence": {
-        "candidateId": "DL-HN-261029-N-e3",
+        "candidateId": "DL-HN-261029-N-P103-1",
         "fingerprint": "a6bbf29fa636e564",
-        "title": "HN-261029-N → 설비 P103",
-        "reason": "본문 기재 'P103' · “JB2610-0141 성형은 P103 정지로 중단, 잔량 3,200개.”",
+        "title": "10/29 야간 인수인계 → 1라인 3호 프레스(P103)",
+        "reason": "메모에 설비 번호 P103이 그대로 적혀 있습니다. 메모 내용: “JB2610-0141 성형은 P103 정지로 중단, 잔량 3,200개.” 승인하면 이 메모와 1라인 3호 프레스(P103)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27862,7 +27965,11 @@
         "llmJudgement": null,
         "originalText": "[10/29 야간 → 10/30 주간 인수인계] 작성 57\n새벽 3시쯤 3호기 슬라이드 유압 누유로 정지. RP-26-041 정비 진행 중.\nJB2610-0141 성형은 P103 정지로 중단, 잔량 3,200개.\nJB2610-0138 잔량 2,400개는 주간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/29 야간 인수인계",
+        "targetLabels": {
+          "mes.equipment:P103": "1라인 3호 프레스"
+        }
       },
       "aiConfidence": 0.95,
       "options": []
@@ -27877,13 +27984,13 @@
         "mentionText": "JB2610-0138",
         "targetObjectRef": "mes.work_order:JB2610-0138",
         "expressionKind": "OBSERVED",
-        "name": "HN-261029-N → 작업지시 JB2610-0138"
+        "name": "10/29 야간 인수인계 → 작업지시 JB2610-0138"
       },
       "evidence": {
-        "candidateId": "DL-HN-261029-N-e4",
+        "candidateId": "DL-HN-261029-N-JB2610-0138-1",
         "fingerprint": "a88a650880ba47f9",
-        "title": "HN-261029-N → 작업지시 JB2610-0138",
-        "reason": "본문 기재 'JB2610-0138' · “JB2610-0138 잔량 2,400개는 주간조에 넘김.”",
+        "title": "10/29 야간 인수인계 → 작업지시 JB2610-0138",
+        "reason": "메모에 작업지시 번호 JB2610-0138이 그대로 적혀 있습니다. 메모 내용: “JB2610-0138 잔량 2,400개는 주간조에 넘김.” 승인하면 이 메모와 작업지시 JB2610-0138이 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다.",
         "items": [
           {
             "sourceId": "MES_MAIN",
@@ -27916,7 +28023,8 @@
         "llmJudgement": null,
         "originalText": "[10/29 야간 → 10/30 주간 인수인계] 작성 57\n새벽 3시쯤 3호기 슬라이드 유압 누유로 정지. RP-26-041 정비 진행 중.\nJB2610-0141 성형은 P103 정지로 중단, 잔량 3,200개.\nJB2610-0138 잔량 2,400개는 주간조에 넘김.\n",
         "observations": [],
-        "times": []
+        "times": [],
+        "documentLabel": "10/29 야간 인수인계"
       },
       "aiConfidence": 0.95,
       "options": []

@@ -1,5 +1,5 @@
 type ObjectCardProps = {
-  code: string
+  code: string | null
   name: string
   typeLabel: string
   selected: boolean
@@ -21,7 +21,7 @@ function ObjectCard({
       className="explorer-object-row"
     >
       <span className="explorer-object-meta">
-        <span>{code}</span>
+        {code && <span>{code}</span>}
         <span>{typeLabel}</span>
       </span>
       <span className="explorer-object-name">{name}</span>

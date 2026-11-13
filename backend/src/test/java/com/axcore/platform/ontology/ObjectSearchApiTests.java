@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -251,6 +253,109 @@ class ObjectSearchApiTests {
                                 .with(actor("VIEWER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.totalElements").value(1));
+    }
+
+    @Test
+    void matchesStoredTextThatDiffersOnlyInSpacingWhenItIsTheOnlyOne() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long single = type(tag, null);
+        property(single, "state", "STRING", "NORMAL", null);
+        object(single, tag + " a", "{\"state\":\"정비중\"}");
+        object(single, tag + " b", "{\"state\":\"정비중\"}");
+        object(single, tag + " c", "{\"state\":\"가동\"}");
+        for (String asked : new String[] {"정비 중", " 정비중 ", "정비중"}) {
+            mvc.perform(
+                            get(PATH)
+                                    .param("objectTypeId", Long.toString(single))
+                                    .param("propertyValues[state]", asked)
+                                    .with(actor("ADMIN")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.meta.totalElements").value(2));
+        }
+
+        // 똑같은 저장 값이 있으면 공백만 다른 값은 섞지 않는다.
+        long exact = type(tag + "-exact", null);
+        property(exact, "state", "STRING", "NORMAL", null);
+        long spaced = object(exact, tag + " spaced", "{\"state\":\"정비 중\"}");
+        long compact = object(exact, tag + " compact", "{\"state\":\"정비중\"}");
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(exact))
+                                .param("propertyValues[state]", "정비 중")
+                                .with(actor("ADMIN")))
+                .andExpect(jsonPath("$.data[*].id").value(contains((int) spaced)));
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(exact))
+                                .param("propertyValues[state]", "정비중")
+                                .with(actor("ADMIN")))
+                .andExpect(jsonPath("$.data[*].id").value(contains((int) compact)));
+
+        // 공백만 다른 저장 값이 여럿이면 어느 것인지 정할 수 없어 맞추지 않는다.
+        long ambiguous = type(tag + "-ambiguous", null);
+        property(ambiguous, "state", "STRING", "NORMAL", null);
+        object(ambiguous, tag + " left", "{\"state\":\"정 비중\"}");
+        object(ambiguous, tag + " right", "{\"state\":\"정비 중\"}");
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(ambiguous))
+                                .param("propertyValues[state]", "정비중")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.totalElements").value(0));
+    }
+
+    @Test
+    void periodPropertyErrorsListPropertiesTheActorCanSearchByPeriod() throws Exception {
+        String tag = UUID.randomUUID().toString();
+        long typeId = type(tag, tag);
+        allowViewer(tag);
+        property(typeId, "state", "STRING", "NORMAL", null);
+        property(typeId, "planned_start", "DATE", "NORMAL", null);
+        property(typeId, "started_at", "DATETIME", "NORMAL", null);
+        property(typeId, "paid_on", "DATE", "RESTRICTED", null);
+        for (String dateProperty : new String[] {"", "unknown", "state"}) {
+            mvc.perform(
+                            get(PATH)
+                                    .param("objectTypeId", Long.toString(typeId))
+                                    .param("dateProperty", dateProperty)
+                                    .param("from", "2026-10-01")
+                                    .with(actor("VIEWER")))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.details.field").value("dateProperty"))
+                    .andExpect(
+                            jsonPath("$.error.details.reason")
+                                    .value(
+                                            containsString(
+                                                    "기간으로 검색할 수 있는 속성: planned_start(planned_start),"
+                                                            + " started_at(started_at)")))
+                    // 볼 수 없는 민감 속성은 이름도 알려 주지 않는다.
+                    .andExpect(
+                            jsonPath("$.error.details.reason")
+                                    .value(not(containsString("paid_on"))));
+        }
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(typeId))
+                                .param("from", "2026-10-01")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.error.details.reason")
+                                .value(containsString("paid_on(paid_on)")));
+
+        long noPeriod = type(tag + "-no-period", null);
+        property(noPeriod, "state", "STRING", "NORMAL", null);
+        mvc.perform(
+                        get(PATH)
+                                .param("objectTypeId", Long.toString(noPeriod))
+                                .param("dateProperty", "state")
+                                .param("from", "2026-10-01")
+                                .with(actor("ADMIN")))
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        jsonPath("$.error.details.reason")
+                                .value(containsString("이 유형에는 기간으로 검색할 수 있는 속성이 없습니다.")));
     }
 
     @Test

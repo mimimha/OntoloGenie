@@ -7,6 +7,7 @@ import com.axcore.platform.auth.service.MaskedProperties;
 import com.axcore.platform.global.error.BusinessException;
 import com.axcore.platform.global.error.CommonErrorCode;
 import com.axcore.platform.global.security.LoginAccount;
+import com.axcore.platform.ontology.domain.PropertyDataType;
 import com.axcore.platform.ontology.dto.ObjectDetailResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkEvidenceResponse;
 import com.axcore.platform.ontology.dto.ObjectLinkGroupResponse;
@@ -19,9 +20,12 @@ import com.axcore.platform.ontology.dto.ObjectSearchResponse;
 import com.axcore.platform.ontology.repository.ObjectQueryRepository;
 import com.axcore.platform.ontology.repository.ObjectQueryRepository.DetailRow;
 import com.axcore.platform.ontology.repository.ObjectQueryRepository.ObjectRow;
+import com.axcore.platform.ontology.repository.ObjectQueryRepository.PropertyFilter;
+import com.axcore.platform.ontology.repository.ObjectQueryRepository.SearchFilters;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,6 +42,9 @@ public class ObjectQueryService
         implements ObjectSearchQuery, ObjectDetailQuery, ObjectEvidenceQuery {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
+
+    /** 공백만 다른 저장 값은 하나인지만 알면 된다. 같은 값이 섞여 있어도 판단할 수 있게 넉넉히 읽는다. */
+    private static final int MAX_SPACING_VARIANTS = 10;
 
     private final DataAccessPolicy dataAccessPolicy;
     private final ObjectQueryRepository objects;
@@ -76,14 +83,41 @@ public class ObjectQueryService
 
         String q = request.q();
         String exactPattern = q == null || q.isBlank() ? null : SearchPattern.exact(q);
+        SearchFilters filters = filterValidator.validate(request, access);
+        if (!filters.values().isEmpty()) {
+            filters = matchStoredSpacing(filters, request.objectTypeId(), status);
+        }
         return objects.search(
                         visibleTypeIds,
                         maskedTypes(access, visibleTypeIds),
                         status,
                         exactPattern,
-                        filterValidator.validate(request, access),
+                        filters,
                         page)
                 .map(row -> toResponse(row, access));
+    }
+
+    /**
+     * 문자 조건 값과 똑같은 저장 값이 없고 공백만 다른 저장 값이 하나뿐이면 그 값으로 거른다(378). "정비 중"으로 물으면 저장 값 "정비중"을 찾는다. 같은 값이
+     * 있으면 그대로 두고, 공백만 다른 값이 여럿이면 어느 것인지 정할 수 없어 그대로 둔다(0건).
+     */
+    private SearchFilters matchStoredSpacing(SearchFilters filters, long typeId, Status status) {
+        List<PropertyFilter> matched = new ArrayList<>();
+        for (PropertyFilter filter : filters.values()) {
+            if (filter.type() != PropertyDataType.STRING) {
+                matched.add(filter);
+                continue;
+            }
+            List<String> stored =
+                    objects.findSpacingVariants(
+                            typeId, filter.code(), filter.value(), status, MAX_SPACING_VARIANTS);
+            boolean replace = stored.size() == 1 && !stored.contains(filter.value());
+            matched.add(
+                    replace
+                            ? new PropertyFilter(filter.code(), filter.type(), stored.getFirst())
+                            : filter);
+        }
+        return new SearchFilters(List.copyOf(matched), filters.period());
     }
 
     @Override

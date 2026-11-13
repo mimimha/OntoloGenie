@@ -89,6 +89,10 @@ def to_api(candidate: Candidate) -> dict:
         evidence["originalText"] = mask_keep_length(candidate.document.original_text)
         evidence["observations"] = camel_keys(data["document"]["observations"])
         evidence["times"] = camel_keys(data["document"]["times"])
+        if candidate.document.document_label:
+            evidence["documentLabel"] = candidate.document.document_label
+        if candidate.document.target_labels:
+            evidence["targetLabels"] = dict(candidate.document.target_labels)
     options = [
         {
             "optionNo": o["option_no"],
