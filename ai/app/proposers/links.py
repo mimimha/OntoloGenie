@@ -1509,13 +1509,27 @@ def _relation_keys(relations: list[Relation], tables: Tables) -> list[str]:
     return out
 
 
+def _numbered(code: str, n: int) -> str:
+    """겹친 관계 유형 코드에 번호를 붙인다. 백엔드 코드 길이(100자)를 넘지 않게 앞을 줄인다."""
+    suffix = f"_{n}"
+    return code[: 100 - len(suffix)] + suffix
+
+
 def to_candidates(relations: list[Relation], tables: Tables) -> list[Candidate]:
     out = []
+    used_codes: set[str] = set()
     for rel, key in zip(relations, _relation_keys(relations, tables)):
         s_table, t_table = rel.source[0].table, rel.target[0].table
         s_code, t_code = tables.code(s_table), tables.code(t_table)
-        # 관계 유형 코드는 대문자(백엔드 규칙에 맞게 바꿈). 후보 ID는 원래 이름 그대로 둔다
+        # 관계 유형 코드는 대문자(백엔드 규칙에 맞게 바꿈). 후보 ID는 원래 이름 그대로 둔다.
+        # 하이픈·밑줄만 다른 컬럼 이름은 같은 코드가 되므로 겹치면 번호를 붙인다
         code = to_code(key)
+        if code in used_codes:
+            n = 2
+            while (numbered := _numbered(code, n)) in used_codes:
+                n += 1
+            code = numbered
+        used_codes.add(code)
         cardinality = _cardinality(rel, tables)
         card_note = (
             ONE_NOTE
