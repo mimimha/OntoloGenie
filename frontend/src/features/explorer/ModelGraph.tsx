@@ -30,6 +30,7 @@ import {
   placeRelationLabels,
   relationLabelText,
 } from './relationLabels'
+import { createRefitCheck } from './resizeRefit'
 import type {
   ModelEdge,
   ModelGraph as ModelGraphData,
@@ -262,14 +263,19 @@ function ModelGraph({
     fitSelection()
     // 스크롤바가 생기고 없어지는 정도(약 15px)의 작은 변화로는 다시 맞추지 않는다.
     // 그래야 사용자가 직접 확대·이동한 화면이 유지된다. 확장·창 크기 변경처럼 크게 바뀔 때만 맞춘다.
-    let last = { width: element.clientWidth, height: element.clientHeight }
+    const shouldRefit = createRefitCheck(
+      { width: element.clientWidth, height: element.clientHeight },
+      RESIZE_REFIT_PX,
+    )
     const observer = new ResizeObserver(() => {
-      const size = { width: element.clientWidth, height: element.clientHeight }
-      const changed =
-        Math.abs(size.width - last.width) >= RESIZE_REFIT_PX ||
-        Math.abs(size.height - last.height) >= RESIZE_REFIT_PX
-      last = size
-      if (changed) fitSelection()
+      if (
+        shouldRefit({
+          width: element.clientWidth,
+          height: element.clientHeight,
+        })
+      ) {
+        fitSelection()
+      }
     })
     observer.observe(element)
     return () => observer.disconnect()
@@ -375,7 +381,9 @@ function ModelGraph({
                 flow.current = instance
                 fitSelection()
               }}
-              fitView
+              // 유형을 고른 채 다시 그릴 때는 React Flow 자체 전체 맞춤을 끈다.
+              // 켜 두면 onInit의 고른 유형 맞춤과 실행 순서가 정해져 있지 않아 전체 맞춤으로 덮일 수 있다.
+              fitView={selectedTypeId === null}
               fitViewOptions={{ padding: 0.15 }}
               minZoom={0.3}
               maxZoom={1.5}

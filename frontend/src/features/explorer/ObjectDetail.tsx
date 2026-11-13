@@ -108,9 +108,12 @@ function ObjectDetailContent({ objectId }: ObjectDetailContentProps) {
       {askMutation.isError && (
         <p className="mb-3 text-sm text-red-600">대화를 만들지 못했어요.</p>
       )}
-      <StatusBadge tone={object.status === 'ACTIVE' ? 'success' : 'warning'}>
-        {statusLabels[object.status]}
-      </StatusBadge>
+      {/* 원천 상태 배지라서, 원천이 없는 플랫폼 객체에는 붙이지 않는다. */}
+      {object.sourceSystemName && (
+        <StatusBadge tone={object.status === 'ACTIVE' ? 'success' : 'warning'}>
+          {statusLabels[object.status]}
+        </StatusBadge>
+      )}
 
       <dl className="explorer-detail-times">
         <dt className="text-slate-500">기준 시점</dt>

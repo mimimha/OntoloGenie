@@ -88,6 +88,35 @@ test('권한으로 가린 속성은 권한 없음, 값이 없는 속성은 -로 
   expect(maintenanceNote.nextElementSibling).toHaveTextContent('-')
 })
 
+test('원천이 없는 플랫폼 객체에는 원천에 있음 배지를 붙이지 않는다', async () => {
+  server.use(
+    http.get('/api/v1/objects/301', () =>
+      HttpResponse.json({
+        data: {
+          id: 301,
+          objectTypeId: 3,
+          objectTypeName: '설비',
+          displayName: '프레스 3호기',
+          properties: {},
+          propertyNames: {},
+          restrictedPropertyCodes: [],
+          status: 'ACTIVE',
+          sourceSystemName: null,
+          sourceResourceKey: null,
+          firstCollectedAt: '2026-10-26T09:00:00+09:00',
+        },
+      }),
+    ),
+  )
+  const user = userEvent.setup()
+  renderExplorerPage()
+
+  await user.click(await screen.findByRole('button', { name: /프레스 3호기/ }))
+
+  expect(await screen.findByText('플랫폼 객체')).toBeInTheDocument()
+  expect(screen.queryByText('원천에 있음')).not.toBeInTheDocument()
+})
+
 test('속성 표시 이름이 없으면 속성 코드를 보여준다', async () => {
   server.use(
     http.get('/api/v1/objects/301', () =>

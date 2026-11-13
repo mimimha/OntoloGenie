@@ -126,6 +126,67 @@ test('고른 유형의 이름표는 카드와 다른 이름표를 가리지 않�
   }
 })
 
+test('이름표는 자기 유형 관계 고리 자리와 위·아래로 들어오는 화살표를 가리지 않는다', () => {
+  // 설비(1)는 자기 유형 관계가 있어 카드 위에 고리 자리가 있고,
+  // 바로 아래 유형(3)으로 가는 선은 카드 위쪽 면으로 들어간다.
+  const three = nodes.slice(0, 3)
+  const lines = groupRelationLines([
+    edge(1, 1, 1),
+    edge(2, 2, 1),
+    edge(3, 1, 3),
+  ])
+  const points = new Map([
+    [1, { x: 300, y: 100 }],
+    [2, { x: 40, y: 120 }],
+    [3, { x: 300, y: 300 }],
+  ])
+  const routes = routeRelationLines(three, lines, points)
+
+  const placed = placeRelationLabels(three, lines, points, routes, 1)
+
+  const loopTop = points.get(1)!.y
+  const loop = {
+    left: points.get(1)!.x,
+    top: loopTop,
+    right: points.get(1)!.x + TYPE_NODE_WIDTH,
+    bottom: loopTop + selfRelationHeight(lines, 1),
+  }
+  // 화살표 머리: 선 끝에서 마지막 구간을 따라 12px, 선 양옆 5px
+  const arrows = [...routes.values()]
+    .filter((route) => !route.fallback)
+    .map((route) => {
+      const end = route.points.at(-1)!
+      const before = route.points.at(-2)!
+      const dx = Math.sign(end.x - before.x)
+      const dy = Math.sign(end.y - before.y)
+      return {
+        left: Math.min(end.x, end.x - dx * 12) - (dx === 0 ? 5 : 0),
+        right: Math.max(end.x, end.x - dx * 12) + (dx === 0 ? 5 : 0),
+        top: Math.min(end.y, end.y - dy * 12) - (dy === 0 ? 5 : 0),
+        bottom: Math.max(end.y, end.y - dy * 12) + (dy === 0 ? 5 : 0),
+      }
+    })
+  expect(
+    [...routes.values()].some(
+      (route) => !route.fallback && route.points.at(-1)!.y === 300,
+    ),
+  ).toBe(true)
+
+  for (const line of lines) {
+    const center = placed.get(line.key)
+    if (!center) continue
+    const size = estimateLabelSize(line.edges.map(relationLabelText))
+    const label = {
+      left: center.x - size.width / 2,
+      top: center.y - size.height / 2,
+      right: center.x + size.width / 2,
+      bottom: center.y + size.height / 2,
+    }
+    expect(overlaps(label, loop)).toBe(false)
+    for (const arrow of arrows) expect(overlaps(label, arrow)).toBe(false)
+  }
+})
+
 test('유형을 고르지 않으면 이름표 자리를 계산하지 않는다', () => {
   const lines = groupRelationLines([edge(1, 2, 1)])
   const points = layoutTypeGraph(nodes, lines)
