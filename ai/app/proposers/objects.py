@@ -323,9 +323,7 @@ def classify(
         )
     return (
         "master",
-        f"타 테이블 {len(in_tables)}개에서 참조"
-        if in_tables
-        else "기타 분류 조건 미해당",
+        f"다른 표 {len(in_tables)}개가 참조" if in_tables else "기타 분류 조건 미해당",
     )
 
 

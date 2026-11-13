@@ -624,7 +624,9 @@ def test_rule_text_uses_property_names_for_renamed_columns():
     )
 
     assert rule["evidence"]["reason"] == (
-        "대상 키: 공급업체 마스터 공급업체 ID (기본키) · 비교: 값 그대로 · 일치율 100% (135행 모두 연결)"
+        "자재·상품 품목 마스터의 기본 공급업체로 공급업체 마스터를 찾습니다."
+        " 자재·상품 품목 마스터 135행이 모두 공급업체 마스터와 이어집니다."
+        " 승인하면 자재·상품 품목 마스터와 공급업체 마스터가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다."
     )
     assert rule["payload"]["description"] == (
         "연결 기준: 자재·상품 품목 마스터 기본 공급업체 = 공급업체 마스터 공급업체 ID"

@@ -119,8 +119,11 @@ def test_link_rule_link_type_and_document_link_get_korean_titles():
 
     assert rule["payload"]["name"] == "작업지시 → 수주 (수주 참조 번호)"
     assert rule["evidence"]["title"] == rule["payload"]["name"]
-    # 연결 규칙 이유는 그대로 둔다
-    assert rule["evidence"]["reason"] == "값이 이어진다."
+    # 연결 규칙 이유는 무엇으로 무엇을 찾는지와 승인 효과를 문장으로 잇는다(모르는 조각은 그대로)
+    assert rule["evidence"]["reason"] == (
+        "작업지시의 수주 참조 번호로 수주를 찾습니다. 값이 이어진다."
+        " 승인하면 작업지시와 수주가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다."
+    )
     assert rule["payload"]["description"] == (
         "연결 기준: 작업지시 수주 참조 번호 = 수주 수주 번호"
     )
@@ -137,8 +140,12 @@ def test_link_rule_link_type_and_document_link_get_korean_titles():
         "교대 인수인계 메모 11건 · 작업지시 기재 13건 · 일치 13건"
     )
 
+    # 메모 이름이 없으면 문서 번호, 대상 이름이 없으면 종류와 번호로 보인다
     assert document["payload"]["name"] == "HN-260820-N → 작업지시 JB2608-0129"
-    assert document["evidence"]["reason"] == "본문 기재 'JB2608-0129'"
+    assert document["evidence"]["reason"] == (
+        "메모에 작업지시 번호 JB2608-0129가 그대로 적혀 있습니다."
+        " 승인하면 이 메모와 작업지시 JB2608-0129가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다."
+    )
 
 
 def test_unknown_object_keeps_its_code():
@@ -173,13 +180,15 @@ def test_held_document_link_keeps_reason_and_does_not_pick_first_option():
     )
     doc["options"] = [{"optionNo": 1}, {"optionNo": 2}]
     out = readable(items)[5]
-    assert out["payload"]["name"].endswith("(후보 2개)")
+    assert out["payload"]["name"].endswith("후보 2개")
     assert "EQ-01" not in out["payload"]["name"]
-    assert out["evidence"]["reason"].startswith("본문 '2호기' 해당")
+    assert out["evidence"]["reason"].startswith(
+        "메모의 '2호기'에 맞는 equipment가 2개라 하나로 정할 수 없습니다."
+    )
     assert "작성자(작업자 24) 배치 라인 확인 필요" in out["evidence"]["reason"]
     # 원래 이유의 첫 문장은 빼고 단서만 잇는다
-    assert "하나로 정할 수 없다" not in out["evidence"]["reason"]
-    assert "후보 2개" in out["evidence"]["reason"]
+    assert "하나로 정할 수 없다." not in out["evidence"]["reason"]
+    assert "선택지에서 맞는 대상을 골라 주세요" in out["evidence"]["reason"]
 
 
 def test_document_link_shows_alias_and_memo_excerpt():
@@ -200,13 +209,25 @@ def test_document_link_shows_alias_and_memo_excerpt():
     doc["evidence"]["confidenceItems"] = [
         {"label": "글의 설비 이름·별명을 설비 목록과 맞춤", "weight": 0.8}
     ]
+    doc["evidence"]["documentLabel"] = "8/20 야간 인수인계"
+    doc["evidence"]["targetLabels"] = {"mes.equipment:P103": "1라인 3호 프레스"}
+    doc["evidence"]["observations"] = [
+        {"text": "진동", "assertion": "AFFIRMED"},
+        {"text": "누유", "assertion": "NEGATED"},
+    ]
     out = readable(items)[5]
-    assert out["payload"]["name"] == "HN-260820-N → equipment P103"
+    # 문서 번호(HN-…)·코드만 보이지 않게 메모 이름과 대상 이름을 쓴다
+    assert out["payload"]["name"] == "8/20 야간 인수인계 → 1라인 3호 프레스(P103)"
     reason = out["evidence"]["reason"]
     assert reason.startswith(
-        "본문 '1라인 3호 프레스' → equipment P103 (명칭·별칭 일치)"
+        "메모의 '1라인 3호 프레스'는 1라인 3호 프레스(P103)의 이름·별칭과 맞습니다."
     )
-    assert " · “새벽 2시쯤 1라인 3호 프레스 진동이" in reason
+    # 메모에 무엇이 적혔는지(부정한 관찰은 빼고), 승인하면 무엇이 되는지
+    assert " 메모 내용: “새벽 2시쯤 1라인 3호 프레스 진동이" in reason
+    assert "(진동 기록)" in reason and "누유" not in reason
+    assert reason.endswith(
+        "승인하면 이 메모와 1라인 3호 프레스(P103)가 이어져 탐색 화면과 Agent에서 함께 찾을 수 있습니다."
+    )
 
 
 def test_lot_number_found_through_another_column_says_so():
@@ -216,8 +237,8 @@ def test_lot_number_found_through_another_column_says_so():
         {"targetObjectRef": "erp.shipment:DL2610-0036", "mentionText": "LT261017-1"}
     )
     out = readable(items)[5]
-    assert out["evidence"]["reason"] == (
-        "본문 'LT261017-1' → shipment DL2610-0036 (다른 컬럼 값 일치)"
+    assert out["evidence"]["reason"].startswith(
+        "메모의 'LT261017-1'은 shipment DL2610-0036의 다른 값과 맞습니다."
     )
 
 
@@ -284,7 +305,9 @@ def test_descriptions_and_reasons_use_object_names_not_table_keys():
         "작업지시에서 수주 참조 · 적용 조건: status = OPEN · "
         "데이터상 1:1, 업무상 1:N 여부 확인 필요"
     )
-    assert evidence["reason"] == "대상 키: 수주 수주 번호 (기본키) · 일치율 100%"
+    # 표 코드(erp.sales_order)는 남지 않고 문장으로 바뀐다
+    assert "erp.sales_order" not in evidence["reason"]
+    assert evidence["reason"].startswith("작업지시의 수주 참조 번호로 수주를 찾습니다.")
     assert evidence["holdReason"] == "작업지시 경유 관계"
 
 
@@ -409,3 +432,51 @@ def test_property_name_prefers_korean_column_over_unit_comment():
     assert property_name("emp_no", "사번") == "사번"
     assert property_name("qty", "수량 (EA)") == "수량"
     assert property_name("receipt_no", None) == "receipt_no"
+
+
+def test_link_rule_reason_reads_as_sentences():
+    items = proposals()
+    rule = items[3]
+    rule["evidence"]["reason"] = (
+        "대상 키: erp.sales_order so_no (유일값) · 비교: so_ref는 숫자만 남김 (예: 'SO-1' → '1')"
+        " · 일치율 98% (134/136행 연결, 값 종류 기준 97%) · 불일치 예: 2609970"
+    )
+    reason = readable(items)[3]["evidence"]["reason"]
+    assert reason.startswith("작업지시의 수주 참조 번호로 수주를 찾습니다.")
+    assert "수주의 수주 번호는 기본키는 아니지만 값이 겹치지 않는 컬럼입니다." in reason
+    assert "비교 방법: 수주 참조 번호는 숫자만 남김" in reason
+    assert (
+        "작업지시 136행 중 134행(98%)이 수주와 이어집니다(값 종류 기준 97%)." in reason
+    )
+    assert "이어지지 않은 값 예: 2609970." in reason
+    # 시스템 말투(대상 키·일치율·불일치 예)는 남기지 않는다
+    for jargon in ("대상 키", "일치율", "불일치 예", " · "):
+        assert jargon not in reason
+
+
+def test_target_name_with_final_consonant_gets_right_particle():
+    items = proposals()
+    doc = items[5]
+    doc["payload"].update(
+        {"targetObjectRef": "mes.equipment:CT1", "mentionText": "CT1"}
+    )
+    doc["evidence"]["targetLabels"] = {"mes.equipment:CT1": "냉각탑"}
+    reason = readable(items)[5]["evidence"]["reason"]
+    # 조사는 괄호가 아니라 이름(냉각탑)에 맞춘다
+    assert "이 메모와 냉각탑(CT1)이 이어져" in reason
+
+
+def test_link_rule_reason_handles_self_link_condition_and_masked_values():
+    items = proposals()
+    rule = items[3]
+    rule["payload"]["linkType"]["targetTypeCode"] = rule["payload"]["linkType"][
+        "sourceTypeCode"
+    ]
+    rule["evidence"]["reason"] = (
+        "일치율 100% (8행 모두 연결) · 적용 조건: so_ref = A"
+        " · 불일치 값은 개인정보라 표시하지 않음"
+    )
+    reason = readable(items)[3]["evidence"]["reason"]
+    assert "승인하면 작업지시끼리 이어져" in reason
+    assert "수주 참조 번호가 A인 행에만 적용합니다." in reason
+    assert "이어지지 않은 값은 개인정보라 보여 주지 않습니다." in reason

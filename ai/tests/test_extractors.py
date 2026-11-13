@@ -335,3 +335,50 @@ def test_shift_date_with_time_part_still_gives_shift_start(tmp_path):
     assert docs["N1"].start is not None  # 시각까지 든 날짜도 읽는다
     assert docs["N2"].start is None  # 못 읽는 날짜는 시각 계산만 건너뛴다
     assert pd.notna(docs["N2"].text)
+
+
+def test_document_links_carry_memo_label_and_target_names(data):
+    # 화면 제목이 'HN-… → 설비 P103' 대신 '10/29 야간 인수인계 → 1라인 3호 프레스(P103)'처럼 보이게 한다
+    from app.extractors.notes import document_label, load_target_names
+
+    names = load_target_names(data)
+    assert names["mes.equipment:P103"] == "1라인 3호 프레스"
+    # 이름 컬럼이 없는 표(작업지시)는 번호로 보인다
+    assert not any(ref.startswith("mes.work_order:") for ref in names)
+
+    docs = {d.doc_id: d for d in load_documents(data)}
+    note = next(d for d in docs.values() if d.source_kind == "note" and d.start)
+    label = document_label(note)
+    assert label.endswith("인수인계") and str(note.start.day) in label
+    maint = next(d for d in docs.values() if d.source_kind == "maint")
+    assert document_label(maint) == f"정비 지시 {maint.doc_id} 메모"
+
+
+def test_target_names_skip_other_things_names_and_person_names(tmp_path):
+    from test_links_general import write_table
+
+    from app.extractors.notes import load_target_names
+
+    # 정비 지시에 담당자 이름 칸만 있으면 대상 이름으로 쓰지 않는다
+    write_table(
+        tmp_path,
+        "mes",
+        "maintenance_order",
+        ["mo_no"],
+        {
+            "mo_no": ("varchar(10)", ["RP-1"]),
+            "technician_name": ("varchar(10)", ["홍길동"]),
+        },
+    )
+    # 설비 이름 칸이어도 사람 이름 모양 값은 싣지 않는다
+    write_table(
+        tmp_path,
+        "mes",
+        "equipment",
+        ["code"],
+        {
+            "code": ("varchar(10)", ["P1", "P2"]),
+            "name": ("varchar(20)", ["1라인 1호 프레스", "김철수"]),
+        },
+    )
+    assert load_target_names(tmp_path) == {"mes.equipment:P1": "1라인 1호 프레스"}

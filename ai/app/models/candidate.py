@@ -259,6 +259,9 @@ class DocumentContext(BaseModel):
     original_text: str = Field(min_length=1)
     observations: list[Observation] = Field(default_factory=list)
     times: list[TimeExpression] = Field(default_factory=list)
+    # 화면 제목용 이름. 메모는 '10/29 야간 인수인계', 대상은 원천의 이름 컬럼 값('1라인 3호 프레스'). 없으면 번호로 보인다
+    document_label: str | None = None
+    target_labels: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _spans_in_text(self) -> "DocumentContext":

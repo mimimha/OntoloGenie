@@ -19,14 +19,14 @@ from app.extractors.equipment import (
     looks_like_equipment,
     resolve,
 )
-from app.extractors.identifiers import find, load_dictionary
+from app.extractors.identifiers import KEY_COLUMNS, find, load_dictionary
 from app.llm.client import (
     LLMClient,
     create_llm_client,
     token_credits,
 )
 from app.llm.outage import Outage
-from app.llm.privacy import mask_keep_length
+from app.llm.privacy import is_person_column, looks_like_name, mask_keep_length
 from app.models.candidate import (
     Candidate,
     CandidateOption,
@@ -608,7 +608,56 @@ def _times(extraction: DocumentExtraction, shown: str) -> list[TimeExpression]:
     ]
 
 
-def to_candidates(doc: Document, extraction: DocumentExtraction) -> list[Candidate]:
+def _name_column(table: str, columns: list[str]) -> str | None:
+    """대상 이름으로 쓸 컬럼. 그 표 자신의 이름(name, {표}_name, {표}_nm)만 쓴다.
+    customer_name·technician_name처럼 다른 것(사람·거래처)의 이름은 대상 이름이 아니라 쓰지 않는다."""
+    own = {"name", f"{table}_name", f"{table}_nm"}
+    return next(
+        (c for c in columns if c.lower() in own and not is_person_column(c)), None
+    )
+
+
+def document_label(doc: Document) -> str | None:
+    """화면 제목에 쓸 메모 이름. 인수인계는 '10/29 야간 인수인계', 정비 기록은 '정비 지시 RP-26-041 메모'."""
+    if doc.source_kind == "note" and doc.start and doc.shift:
+        return f"{doc.start.month}/{doc.start.day} {doc.shift} 인수인계"
+    if doc.source_kind == "maint":
+        return f"정비 지시 {doc.doc_id} 메모"
+    return None
+
+
+def load_target_names(root: Path) -> dict[str, str]:
+    """문서 연결 대상(원천 표:키) → 원천의 이름 컬럼 값. 예: mes.equipment:P103 → 1라인 3호 프레스.
+
+    이름 컬럼이 없는 표(작업지시 등)는 넣지 않아 번호로 보인다.
+    """
+    out: dict[str, str] = {}
+    for ref in KEY_COLUMNS:
+        source, table, _ = ref.split(".")
+        folder = Path(root) / source
+        if not (folder / f"{table}.csv").exists():
+            continue
+        reader = CsvSourceReader(source, folder)
+        schema = reader.read_schema(table)
+        pk = schema.primary_key
+        name = _name_column(table, [c.name for c in schema.columns])
+        if not pk or name is None:
+            continue
+        # 키와 이름 두 컬럼만 읽는다
+        rows = reader.read_rows(table, columns=[pk[0], name])
+        for key, value in zip(rows[pk[0]].astype(str), rows[name].fillna("")):
+            value = str(value).strip()
+            # 사람 이름 모양 값은 제목에 싣지 않는다(번호로 보인다)
+            if value and value != key and not looks_like_name(value):
+                out[f"{source}.{table}:{key}"] = mask_keep_length(value)
+    return out
+
+
+def to_candidates(
+    doc: Document,
+    extraction: DocumentExtraction,
+    target_names: dict[str, str] | None = None,
+) -> list[Candidate]:
     """설비·작업지시·정비·로트 언급마다 DOCUMENT_LINK 후보. 대상 후보가 여럿이면 선택지로 두고 보류.
 
     후보 ID는 (문서, 언급 글자, 같은 글자 중 몇 번째)라 재분석에서 LLM 답 순서가 바뀌어도 같다.
@@ -696,6 +745,10 @@ def to_candidates(doc: Document, extraction: DocumentExtraction) -> list[Candida
                     original_text=shown,
                     observations=_observations(e.id, extraction, by_id, shown),
                     times=times,
+                    document_label=document_label(doc),
+                    target_labels={
+                        r: target_names[r] for r in refs if r in (target_names or {})
+                    },
                 ),
             )
         )
@@ -792,10 +845,11 @@ def document_links(
     answers, failed, calls = (
         ask_llm(docs, llm, equipment) if llm and docs else ({}, [], [])
     )
+    names = load_target_names(root) if docs else {}
     out = []
     for doc in docs:
         extraction, _ = extract(doc, dictionary, equipment, answers.get(doc.doc_id))
-        out += to_candidates(doc, extraction)
+        out += to_candidates(doc, extraction, names)
     return len(docs), _one_per_target(out), calls, failed
 
 
@@ -831,11 +885,12 @@ def run(
     dictionary = load_dictionary(root)
     equipment = _equipment(root)
     answers, failed, calls = ask_llm(docs, llm, equipment) if llm else ({}, [], [])
+    names = load_target_names(root) if docs else {}
     extractions, candidates, dropped = [], [], {}
     for doc in docs:
         extraction, lost = extract(doc, dictionary, equipment, answers.get(doc.doc_id))
         extractions.append(extraction)
-        candidates += to_candidates(doc, extraction)
+        candidates += to_candidates(doc, extraction, names)
         if lost:
             dropped[doc.doc_id] = lost
     return {
