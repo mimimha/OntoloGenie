@@ -62,7 +62,7 @@ function writeData<T>(body: ApiResponse<T> | undefined) {
   return body.data
 }
 
-async function allPages<T>(
+export async function allPages<T>(
   fetchPage: (page: number) => Promise<ApiResponse<T[]>>,
 ) {
   const values: T[] = []

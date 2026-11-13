@@ -17,10 +17,10 @@
 
 관련 요청이 발생하면 아래 **프로젝트 로컬 Skill의 `SKILL.md`를 실제로 읽고 사용**한다. 동일 이름의 다른 Skill 대신 아래 경로를 선택한다. 상세 Workflow를 시작할 때 모두 import하거나 로드하지 않는다.
 
-| 요청 | Skill 경로 | 공통 문서 |
+| 요청 | Skill 경로 | Workflow |
 | --- | --- | --- |
-| Commit Message 작성·실제 Commit | `.claude/skills/commit/SKILL.md` | `.ai/workflows/commit.md`, `.ai/rules/git.md` |
-| MR 설명·검토 준비·원격 생성 또는 수정 | `.claude/skills/merge-request/SKILL.md` | `.ai/workflows/merge-request.md`, `.ai/rules/git.md` |
-| 코드·변경사항·MR 리뷰 | `.claude/skills/code-review/SKILL.md` | `.ai/workflows/code-review.md`, `.ai/rules/code.md`, `.ai/rules/architecture.md`, `.ai/rules/testing.md` |
-| 기능 구현·버그 수정·코드 변경 | `.claude/skills/implement/SKILL.md` | `.ai/workflows/implement.md`, `.ai/rules/code.md`, `.ai/rules/architecture.md`, `.ai/rules/testing.md`, `.ai/references.md` |
-| Jira 이슈 초안·생성·수정 | `.claude/skills/jira-issue/SKILL.md` | `.ai/workflows/jira-issue.md`, `.ai/rules/jira.md`, `.ai/references.md` |
+| Commit Message 작성·실제 Commit | `.claude/skills/commit/SKILL.md` | `.ai/workflows/commit.md` |
+| MR 설명·검토 준비·원격 생성 또는 수정 | `.claude/skills/merge-request/SKILL.md` | `.ai/workflows/merge-request.md` |
+| 코드·변경사항·MR 리뷰 | `.claude/skills/code-review/SKILL.md` | `.ai/workflows/code-review.md` |
+| 기능 구현·버그 수정·코드 변경 | `.claude/skills/implement/SKILL.md` | `.ai/workflows/implement.md` |
+| Jira 이슈 초안·생성·수정 | `.claude/skills/jira-issue/SKILL.md` | `.ai/workflows/jira-issue.md` |

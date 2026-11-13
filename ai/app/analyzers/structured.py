@@ -8,12 +8,14 @@ import json
 import re
 import sys
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
+from functools import cached_property
 from pathlib import Path
 
 import pandas as pd
 
 from app.analyzers.table_profiler import profile_table
+from app.models.source import TableSchema
 from app.rules.transforms import (
     TransformError,
     TransformOp,
@@ -62,6 +64,22 @@ class ColumnAnalysis:
     sample_values: list[str]
     is_key_candidate: bool
     is_personal: bool
+    # 원천.표와 컬럼 이름. 컬럼 이름에 마침표가 있을 수 있어(spec.size, 중복 헤더 code.1) ref를 다시 쪼개지 않는다
+    table: str = ""
+    column: str = ""
+
+    def __post_init__(self):
+        if not self.column:
+            self.table, self.column = split_ref(self.ref)
+
+
+def split_ref(ref: str) -> tuple[str, str]:
+    """'원천.표.컬럼' → ('원천.표', '컬럼'). 컬럼 이름 속 마침표는 컬럼 쪽에 둔다."""
+    parts = ref.split(".", 2)
+    if len(parts) < 3:
+        table, _, column = ref.rpartition(".")
+        return table, column
+    return f"{parts[0]}.{parts[1]}", parts[2]
 
 
 @dataclass
@@ -95,6 +113,13 @@ class StructuredAnalysis:
     tables: dict[str, list[ColumnAnalysis]]
     table_keys: dict[str, list[TableKey]]
     links: list[LinkCandidate]
+    # 읽은 원천 표와 표 정의. 객체·관계 제안과 근거 확인이 CSV를 다시 읽지 않게 함께 넘긴다
+    frames: dict[str, pd.DataFrame] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    schemas: dict[str, TableSchema] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
 
 def value_pattern(value: str) -> str:
@@ -114,6 +139,7 @@ def value_pattern(value: str) -> str:
 def analyze_sources(root: Path) -> StructuredAnalysis:
     """root 아래 폴더 하나를 원천 하나로 보고(erp, mes, maint …) 모든 표를 분석한다."""
     frames: dict[str, pd.DataFrame] = {}
+    schemas: dict[str, TableSchema] = {}
     tables: dict[str, list[ColumnAnalysis]] = {}
     table_keys: dict[str, list[TableKey]] = {}
     for folder in sorted(p for p in Path(root).iterdir() if p.is_dir()):
@@ -125,9 +151,12 @@ def analyze_sources(root: Path) -> StructuredAnalysis:
             df = reader.read_rows(table)
             key = f"{folder.name}.{table}"
             frames[key] = df
+            schemas[key] = schema
             tables[key] = _analyze_table(key, schema, df)
             table_keys[key] = _table_keys(schema, df, tables[key])
-    return StructuredAnalysis(tables, table_keys, _find_links(frames, tables))
+    return StructuredAnalysis(
+        tables, table_keys, _find_links(frames, tables), frames, schemas
+    )
 
 
 def _analyze_table(key, schema, df) -> list[ColumnAnalysis]:
@@ -163,6 +192,8 @@ def _analyze_table(key, schema, df) -> list[ColumnAnalysis]:
                 and profile.row_count > 1
                 and unique_ratio >= MIN_KEY_UNIQUE_RATIO,
                 is_personal=personal,
+                table=key,
+                column=meta.name,
             )
         )
     return result
@@ -185,21 +216,25 @@ def _table_keys(schema, df, columns: list[ColumnAnalysis]) -> list[TableKey]:
             )
         ]
     return [
-        TableKey([name], "observed", int(df[name].duplicated().sum()))
+        TableKey([c.column], "observed", int(df[c.column].duplicated().sum()))
         for c in columns
         if c.is_key_candidate and _is_code_like(c)
-        for name in [c.ref.rsplit(".", 1)[1]]
     ]
 
 
 def _is_link_target(
     column: ColumnAnalysis, table_columns: list[ColumnAnalysis]
 ) -> bool:
-    """연결 도착 컬럼: 한 컬럼 기본키가 있으면 그것만, 없을 때만 값으로 찾은 키 후보(작은 표의 우연한 고유값 방지)."""
+    """연결 도착 컬럼: 한 컬럼 기본키가 있으면 그것만, 없을 때만 값으로 찾은 키 후보(작은 표의 우연한 고유값 방지).
+    값으로 찾은 후보는 중복이 하나도 없을 때만 쓴다. 중복이 있으면 한 대상으로 정할 수 없다."""
     declared = [c for c in table_columns if c.is_declared_key]
     if declared:
         return len(declared) == 1 and column is declared[0] and _is_code_like(column)
-    return column.is_key_candidate and _is_code_like(column)
+    return (
+        column.is_key_candidate
+        and column.duplicate_count == 0
+        and _is_code_like(column)
+    )
 
 
 def _is_code_like(column: ColumnAnalysis) -> bool:
@@ -213,23 +248,21 @@ def _is_code_like(column: ColumnAnalysis) -> bool:
 
 def _find_links(frames, tables) -> list[LinkCandidate]:
     columns = {c.ref: c for cols in tables.values() for c in cols}
-    targets = [
-        c
+    targets = [c for c in columns.values() if _is_link_target(c, tables[c.table])]
+    # 컬럼마다 값과 변환 결과를 한 번만 만든다(표가 늘면 비교 쌍이 제곱으로 는다)
+    values = {
+        c.ref: ColumnValues(_values(frames, c))
         for c in columns.values()
-        if _is_link_target(c, tables[c.ref.rsplit(".", 1)[0]])
-    ]
+        if _is_code_like(c)
+    }
     links = []
     for source in columns.values():
         if not _is_code_like(source) or source.distinct_count == 0:
             continue
-        source_table = source.ref.rsplit(".", 1)[0]
-        source_values = _values(frames, source.ref)
         for target in targets:
-            if target.ref.rsplit(".", 1)[0] == source_table:
+            if target.table == source.table:
                 continue
-            link = _best_link(
-                source, target, source_values, _values(frames, target.ref)
-            )
+            link = _best_link(source, target, values[source.ref], values[target.ref])
             if link:
                 links.append(link)
     return _drop_reverse_duplicates(_prefer_direct_links(links))
@@ -243,30 +276,91 @@ def _prefer_direct_links(links: list[LinkCandidate]) -> list[LinkCandidate]:
     return [l for l in links if l.rule_type == "same_value" or l.from_ref not in direct]
 
 
-def _values(frames, ref: str) -> list[str]:
-    table, column = ref.rsplit(".", 1)
-    return frames[table][column].dropna().astype(str).tolist()
+def _values(frames, column: ColumnAnalysis) -> list[str]:
+    return frames[column.table][column.column].dropna().astype(str).tolist()
+
+
+def _steps_key(steps: list[TransformStep]) -> tuple:
+    return tuple((s.op.value, repr(s.arg)) for s in steps)
+
+
+class ColumnValues:
+    """한 컬럼의 값(빈 값 제외, 문자열)과 변환 결과. 같은 컬럼이 다른 컬럼 여럿과 비교되어 변환을 한 번만 한다."""
+
+    def __init__(self, values: list[str]):
+        self.values = list(values)
+        self.distinct = sorted(set(self.values))
+        self.distinct_set = set(self.distinct)
+        self._converted: dict[tuple, dict[str, str | None]] = {}
+        self._groups: dict[tuple, dict[str, int]] = {}
+        self._targets: dict[tuple, dict | None] = {}
+
+    def converted(self, steps: list[TransformStep]) -> dict[str, str | None]:
+        """서로 다른 값 → 변환 값. 변환에 실패하면 None."""
+        key = _steps_key(steps)
+        if key not in self._converted:
+            out = {}
+            for value in self.distinct:
+                try:
+                    out[value] = apply_steps(steps, value)
+                except TransformError:
+                    out[value] = None
+            self._converted[key] = out
+        return self._converted[key]
+
+    def groups(self, steps: list[TransformStep]) -> dict[str, int]:
+        """변환 값 → 그 값이 되는 서로 다른 원래 값 수(변환 실패는 뺌)."""
+        key = _steps_key(steps)
+        if key not in self._groups:
+            counts = Counter(v for v in self.converted(steps).values() if v is not None)
+            self._groups[key] = dict(counts)
+        return self._groups[key]
+
+    def target_map(self, steps: list[TransformStep]) -> dict | None:
+        """도착 쪽 변환 값 → 원래 값(_transform_targets)."""
+        key = _steps_key(steps)
+        if key not in self._targets:
+            self._targets[key] = _transform_targets(steps, self.distinct)
+        return self._targets[key]
+
+    @cached_property
+    def shape(self) -> tuple[str, int] | None:
+        return _shape(self.distinct)
+
+    @cached_property
+    def common_prefix(self) -> str | None:
+        return _common_prefix(self.distinct)
+
+    @cached_property
+    def has_digit(self) -> bool:
+        return any(ch.isdigit() for v in self.distinct for ch in v)
+
+    @cached_property
+    def digits_only_ratio(self) -> float:
+        if not self.distinct:
+            return 0.0
+        return sum(v.isdigit() for v in self.distinct) / len(self.distinct)
+
+
+def _as_values(values) -> ColumnValues:
+    return values if isinstance(values, ColumnValues) else ColumnValues(values)
 
 
 def _best_link(source, target, source_values, target_values) -> LinkCandidate | None:
-    distinct_source = sorted(set(source_values))
+    """source_values·target_values는 값 목록 또는 ColumnValues(여러 번 비교할 때 변환을 다시 하지 않게)."""
+    src, tgt = _as_values(source_values), _as_values(target_values)
+    distinct_source = src.distinct
+    if not distinct_source:
+        return None
     best = None
-    for rule_type, src_steps, tgt_steps in _transform_options(
-        distinct_source, sorted(set(target_values))
-    ):
-        target_map = _transform_targets(tgt_steps, target_values)
+    for rule_type, src_steps, tgt_steps in _transform_options(src, tgt):
+        target_map = tgt.target_map(tgt_steps)
         if target_map is None:
             continue
-        matched, unmatched = [], []
-        for value in distinct_source:
-            try:
-                converted = apply_steps(src_steps, value)
-            except TransformError:
-                converted = None
-            (matched if converted in target_map else unmatched).append(
-                (value, target_map.get(converted))
-            )
-        coverage = len(matched) / len(distinct_source)
+        # 이어지는 값 수는 변환 값 묶음과 도착 값의 교집합으로 센다(쌍마다 값을 하나씩 돌지 않게)
+        groups = src.groups(src_steps)
+        hit = sum(groups[k] for k in groups.keys() & target_map.keys())
+        coverage = hit / len(distinct_source)
         better = (
             best is None
             or coverage > best[0] + 1e-9
@@ -276,10 +370,17 @@ def _best_link(source, target, source_values, target_values) -> LinkCandidate | 
             )
         )
         if better:
-            best = (coverage, rule_type, src_steps, tgt_steps, matched, unmatched)
-    if best is None or best[0] < MIN_COVERAGE or len(best[4]) < MIN_MATCHED:
+            best = (coverage, rule_type, src_steps, tgt_steps, target_map, hit)
+    if best is None or best[0] < MIN_COVERAGE or best[5] < MIN_MATCHED:
         return None
-    coverage, rule_type, src_steps, tgt_steps, matched, unmatched = best
+    coverage, rule_type, src_steps, tgt_steps, target_map, _ = best
+    converted_values = src.converted(src_steps)
+    matched, unmatched = [], []
+    for value in distinct_source:
+        converted = converted_values[value]
+        (matched if converted in target_map else unmatched).append(
+            (value, target_map.get(converted))
+        )
     merged = defaultdict(list)
     for value, target_value in matched:
         merged[target_value].append(value)
@@ -346,17 +447,18 @@ def _common_prefix(values: list[str]) -> str | None:
     return prefixes.pop() if len(prefixes) == 1 else None
 
 
-def _transform_options(source_values, target_values):
-    """시도해 볼 변환 조합. 모두 FN-MAP-05 허용 목록 안의 단계로만 만든다."""
+def _transform_options(source, target):
+    """시도해 볼 변환 조합. 모두 FN-MAP-05 허용 목록 안의 단계로만 만든다. source·target: 값 목록 또는 ColumnValues."""
+    source, target = _as_values(source), _as_values(target)
     step = TransformStep
     yield "same_value", [], []
     clean = [step(op=TransformOp.TRIM), step(op=TransformOp.UPPER)]
     yield "transform", clean, clean
-    if _digits_comparison_makes_sense(source_values, target_values):
+    if _digits_comparison_makes_sense(source, target):
         digits = [step(op=TransformOp.EXTRACT_NUMBER)]
         yield "transform", digits, digits
-    target_shape = _shape(target_values)
-    source_prefix = _common_prefix(source_values)
+    target_shape = target.shape
+    source_prefix = source.common_prefix
     if target_shape and source_prefix is not None:
         prefix, width = target_shape
         steps = (
@@ -370,12 +472,15 @@ def _transform_options(source_values, target_values):
         yield "transform", steps, []
 
 
-def _digits_comparison_makes_sense(source_values, target_values) -> bool:
-    """숫자만 비교는 출발 값이 대부분 숫자뿐이거나 일부가 도착 값과 똑같을 때만 시도한다(CU0001·FA-0001 우연 일치 방지)."""
-    if not source_values or not any(ch.isdigit() for v in target_values for ch in v):
+def _digits_comparison_makes_sense(source, target) -> bool:
+    """숫자만 비교는 출발 값이 대부분 숫자뿐이거나 일부가 도착 값과 똑같을 때만 시도한다(CU0001·FA-0001 우연 일치 방지).
+    source·target: 값 목록 또는 ColumnValues."""
+    source, target = _as_values(source), _as_values(target)
+    if not source.distinct or not target.has_digit:
         return False
-    digits_only = sum(v.isdigit() for v in source_values) / len(source_values)
-    return digits_only >= 0.5 or bool(set(source_values) & set(target_values))
+    return source.digits_only_ratio >= 0.5 or not source.distinct_set.isdisjoint(
+        target.distinct_set
+    )
 
 
 def _step_dict(s: TransformStep) -> dict:
@@ -430,7 +535,12 @@ def main(argv=None) -> int:
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(
-            json.dumps(asdict(analysis), ensure_ascii=False, indent=2), encoding="utf-8"
+            json.dumps(
+                asdict(replace(analysis, frames={}, schemas={})),
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
         )
     return 0
 

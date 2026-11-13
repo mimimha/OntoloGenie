@@ -4,7 +4,7 @@
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.models.extraction import EntityType
@@ -27,11 +27,19 @@ class Hit:
     end: int
     text: str
     ref: str  # 예: mes.work_order:JB2610-0141
+    # 같은 값이 원천 여러 행에 있으면 그 행들 (예: 같은 로트를 실은 출하 여러 건). 하나면 [ref]
+    candidates: list[str] = field(default_factory=list)
 
 
-def load_dictionary(root: Path) -> dict[str, tuple[EntityType, str]]:
-    """대문자 값 → (유형, 원천 표:원래 값)."""
-    out = {}
+Dictionary = dict[str, tuple[EntityType, str | list[str]]]
+
+
+def load_dictionary(root: Path) -> Dictionary:
+    """대문자 값 → (유형, 원천 표:키 목록). 같은 값이 여러 행에 있으면 행마다 모은다(덮어쓰지 않는다).
+
+    같은 값이 다른 유형의 컬럼에도 있으면 KEY_COLUMNS에서 앞에 둔 유형을 쓴다.
+    """
+    out: dict[str, tuple[EntityType, list[str]]] = {}
     for ref, etype in KEY_COLUMNS.items():
         source, table, column = ref.split(".")
         folder = Path(root) / source
@@ -47,16 +55,23 @@ def load_dictionary(root: Path) -> dict[str, tuple[EntityType, str]]:
         rows = rows.dropna(subset=[column])
         for value, key in zip(rows[column].astype(str), rows[pk[0]].astype(str)):
             # 값이 기본키가 아니면 그 값이 든 행의 기본키로 객체를 가리킨다 (예: 로트 → 출하 번호)
-            if CODE_LIKE.fullmatch(value):
-                out[value.upper()] = (etype, f"{source}.{table}:{key}")
+            if not CODE_LIKE.fullmatch(value):
+                continue
+            ref = f"{source}.{table}:{key}"
+            found_type, refs = out.setdefault(value.upper(), (etype, []))
+            if found_type == etype and ref not in refs:
+                refs.append(ref)
     return out
 
 
-def find(text: str, dictionary: dict[str, tuple[EntityType, str]]) -> list[Hit]:
+def find(text: str, dictionary: Dictionary) -> list[Hit]:
     hits = []
     for token in re.finditer(r"[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9]", text):
         key = token.group(0).upper()
         if key in dictionary:
-            etype, ref = dictionary[key]
-            hits.append(Hit(etype, token.start(), token.end(), token.group(0), ref))
+            etype, refs = dictionary[key]
+            refs = [refs] if isinstance(refs, str) else list(refs)
+            hits.append(
+                Hit(etype, token.start(), token.end(), token.group(0), refs[0], refs)
+            )
     return hits

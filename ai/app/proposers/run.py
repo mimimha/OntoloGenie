@@ -34,7 +34,7 @@ def generate(root: Path) -> tuple[list[Candidate], list[Candidate]]:
     """(내보낼 후보, 근거를 원천에서 확인하지 못해 뺀 후보)."""
     analysis = analyze_sources(root)
     candidates = propose_objects(root, analysis) + propose_links(root, analysis)
-    return verify(root, candidates)
+    return verify(root, candidates, analysis.frames)
 
 
 def api_result(kept: list[Candidate]) -> dict:

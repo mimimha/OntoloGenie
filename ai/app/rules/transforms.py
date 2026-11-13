@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from enum import Enum
@@ -21,7 +23,6 @@ class TransformOp(str, Enum):
 
 
 TEXT_ARG_OPS = {TransformOp.STRIP_PREFIX, TransformOp.ADD_PREFIX}
-DATE_FORMATS = ["%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d", "%Y%m%d"]
 
 
 class TransformError(ValueError):
@@ -48,9 +49,47 @@ class TransformStep(BaseModel):
         return self
 
 
+# 백엔드 검사(ValueTransformer.java)와 같은 결과를 내야 규칙 시험 적용과 AI 비교가 어긋나지 않는다.
+# Java String.strip()이 지우는 공백: Character.isWhitespace (줄바꿈 없는 공백 U+00A0·U+2007·U+202F는 안 지움)
+_JAVA_SPACE_CONTROLS = set("\t\n\x0b\x0c\r\x1c\x1d\x1e\x1f")
+_NO_BREAK_SPACES = {"\u00a0", "\u2007", "\u202f"}
+# str 정규식의 \d는 유니코드 Nd(Java BigInteger·BigDecimal이 받는 숫자)
+_INTEGER = re.compile(r"[+-]?\d+")
+# Java new BigDecimal(String): 부호, 숫자와 소수점, 지수. NaN·Infinity·'1_000'·안쪽 공백은 받지 않는다
+_DECIMAL = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?")
+# Java DateTimeFormatter(uuuu-MM-dd 등, STRICT): 연 4자리·월 2자리·일 2자리 ASCII 숫자만. '2026-1-5'는 실패
+_DATES = [
+    (
+        re.compile(rf"[0-9]{{4}}{re.escape(sep)}[0-9]{{2}}{re.escape(sep)}[0-9]{{2}}"),
+        f"%Y{sep}%m{sep}%d",
+    )
+    for sep in ("-", ".", "/", "")
+]
+
+
+def _is_java_whitespace(ch: str) -> bool:
+    if ch in _JAVA_SPACE_CONTROLS:
+        return True
+    return unicodedata.category(ch) in ("Zs", "Zl", "Zp") and ch not in _NO_BREAK_SPACES
+
+
+def java_strip(value: str) -> str:
+    start, end = 0, len(value)
+    while start < end and _is_java_whitespace(value[start]):
+        start += 1
+    while end > start and _is_java_whitespace(value[end - 1]):
+        end -= 1
+    return value[start:end]
+
+
+def _is_decimal_digit(ch: str) -> bool:
+    """Java Character.isDigit: 유니코드 Nd만. '²'·'①'은 숫자가 아니다(파이썬 isdigit은 숫자로 봄)."""
+    return unicodedata.category(ch) == "Nd"
+
+
 def apply_step(step: TransformStep, value: str) -> str:
     if step.op == TransformOp.TRIM:
-        return value.strip()
+        return java_strip(value)
     if step.op == TransformOp.UPPER:
         return value.upper()
     if step.op == TransformOp.STRIP_PREFIX:
@@ -59,29 +98,43 @@ def apply_step(step: TransformStep, value: str) -> str:
     if step.op == TransformOp.ADD_PREFIX:
         return step.arg + value
     if step.op == TransformOp.PAD_ZEROS:
-        return value.zfill(step.arg) if value.isdigit() else value
+        if value and all(_is_decimal_digit(ch) for ch in value):
+            return "0" * max(0, step.arg - len(value)) + value
+        return value
     if step.op == TransformOp.EXTRACT_NUMBER:
         # 숫자와 소수점만 남긴다. 예: '600톤' → '600', 'OD-2608-012' → '2608012'
-        number = "".join(ch for ch in value if ch.isdigit() or ch == ".")
-        if not any(ch.isdigit() for ch in number):
+        number = "".join(ch for ch in value if _is_decimal_digit(ch) or ch == ".")
+        if not any(_is_decimal_digit(ch) for ch in number):
             raise TransformError(f"숫자가 없습니다: {value!r}")
         return number
     if step.op == TransformOp.TO_INTEGER:
+        # Java new BigInteger(value.strip()): 부호 하나 + 숫자만. 파이썬 int가 받는 '1_000'·앞뒤 줄바꿈 없는 공백은 실패
+        text = java_strip(value)
         try:
-            return str(int(value.strip()))
+            if not _INTEGER.fullmatch(text):
+                raise ValueError(text)
+            return str(int(text))
         except ValueError as error:
             raise TransformError(f"정수가 아닙니다: {value!r}") from error
     if step.op == TransformOp.TO_DECIMAL:
+        text = java_strip(value)
         try:
-            return str(Decimal(value.strip()))
+            if not _DECIMAL.fullmatch(text):
+                raise InvalidOperation(text)
+            number = Decimal(text)
         except InvalidOperation as error:
             raise TransformError(f"소수가 아닙니다: {value!r}") from error
+        # BigDecimal에는 -0이 없다('-0' → '0', '-0.00' → '0.00'). toString과 str(Decimal)은 같은 표기 규칙이다
+        return str(number.copy_abs() if number.is_zero() else number)
     if step.op == TransformOp.TO_DATE:
-        for fmt in DATE_FORMATS:
-            try:
-                return datetime.strptime(value.strip(), fmt).date().isoformat()
-            except ValueError:
+        text = java_strip(value)
+        for pattern, fmt in _DATES:
+            if not pattern.fullmatch(text):
                 continue
+            try:
+                return datetime.strptime(text, fmt).date().isoformat()
+            except ValueError:
+                continue  # STRICT: 2026-02-30 같은 없는 날짜는 실패
         raise TransformError(f"날짜 형식이 아닙니다: {value!r}")
     if step.op == TransformOp.MAP_VALUE:
         if value not in step.arg:

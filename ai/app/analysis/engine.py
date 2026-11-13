@@ -252,6 +252,8 @@ def _analyze(
     kept, dropped = generate(root)
     kept = [c for c in kept if _tables_of(c) & scope]
     llm_calls, llm_failed, credits, llm_rejected, llm_cross = 0, 0, 0.0, 0, 0
+    # LLM이 연속으로 응답하지 않아 부르지 않고 건너뛴 호출 수. 부른 수·실패 수에는 넣지 않는다
+    llm_skipped = 0
     over_limit = None
     cross_tables = (
         None  # 예상 크레딧을 셀 때 만든 원천 분석을 시스템 간 연결에서 다시 쓴다
@@ -268,8 +270,9 @@ def _analyze(
             llm = None
     if llm is not None and kept:
         kept, report = interpret(root, kept, llm, only=scope)
-        llm_calls, credits = report["tables"], report["credits_used"]
-        llm_failed = len(report["failed"])
+        llm_calls, credits = report["calls"], report["credits_used"]
+        llm_skipped = report["skipped"]
+        llm_failed = len(report["failed"]) - llm_skipped
         _log_llm_failures(request.run_id, "표 의미 해석", report["failed"])
         llm_rejected = len(report["rejected_links"])
         # 규칙이 못 이은 시스템 간 참조 컬럼은 LLM에게 묻고 값으로 확인한다(보류로만 낸다)
@@ -278,7 +281,8 @@ def _analyze(
         kept += cross_kept
         dropped += cross_dropped
         llm_calls += cross_report["calls"]
-        llm_failed += len(cross_report["failed"])
+        llm_skipped += cross_report["skipped"]
+        llm_failed += len(cross_report["failed"]) - cross_report["skipped"]
         _log_llm_failures(request.run_id, "시스템 간 연결", cross_report["failed"])
         credits += cross_report["credits_used"]
         llm_cross = len([c for c in cross_kept if c.payload.kind.value == "LINK_RULE"])
@@ -286,12 +290,14 @@ def _analyze(
     if scope & NOTE_TABLES:
         # LLM이 있으면 설비 별명·증상·부정·추정도 뽑는다(10개 문서씩 한 번 호출)
         documents, links, calls, failed = document_links(root, llm)
+        skipped = sum(bool(f.get("skipped")) for f in failed)
         llm_calls += len(calls)
-        llm_failed += len(failed)
+        llm_skipped += skipped
+        llm_failed += len(failed) - skipped
         _log_llm_failures(request.run_id, "메모 추출", failed)
         credits += sum(call["credits"] for call in calls)
     # 표 후보와 같이 원천 위치를 다시 확인해 근거에 verified를 채운다
-    notes_kept, notes_dropped = verify(root, links + document_link_types(links))
+    notes_kept, notes_dropped = verify(root, links + document_link_types(links, root))
     kept += notes_kept
     dropped += notes_dropped
 
@@ -309,6 +315,7 @@ def _analyze(
         "llmSkipReason": over_limit or _llm_skip_reason(llm, llm_calls, llm_failed),
         "llmCalls": llm_calls,
         "llmFailedCalls": llm_failed,
+        "llmSkippedCalls": llm_skipped,
         "llmCredits": round(credits, 2),
         # 규칙도 보류로 두고 LLM도 업무상 맞지 않다고 봐서 보내지 않은 관계 수
         "llmRejectedLinks": llm_rejected,
@@ -322,6 +329,7 @@ def _analyze(
 LLM_HTTP_STATUS = re.compile(r"요청 실패 \(HTTP (\d{3})\)")
 LLM_NO_ANSWER = re.compile(r"응답이 없습니다: (\w+)")
 LLM_ERROR_KINDS = (
+    ("남은 호출을 건너뜀", "LLM 끊김"),  # app/llm/outage.py
     ("접속하지 못했습니다", "접속 실패"),
     ("JSON이 아닌", "JSON 아님"),
     ("글자가 없습니다", "빈 응답"),

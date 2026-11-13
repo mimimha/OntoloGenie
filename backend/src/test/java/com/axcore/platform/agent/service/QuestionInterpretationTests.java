@@ -79,6 +79,8 @@ class QuestionInterpretationTests {
                                         List.of(301))));
 
         assertThat(read.referenceObjects()).containsExactly(AgentReferenceObject.idOnly(301L));
+        // 360 전 답변에는 속성 조건이 없다.
+        assertThat(read.propertyValues()).isEmpty();
     }
 
     @Test
@@ -156,6 +158,161 @@ class QuestionInterpretationTests {
                                 "clarification", saved.toClarification()));
 
         assertThat(read).isEqualTo(saved);
+    }
+
+    @Test
+    void readsBackSavedPropertyValues() {
+        QuestionInterpretation saved = inProgressWorkOrders();
+
+        QuestionInterpretation read =
+                QuestionInterpretation.fromAnswerMeta(Map.of("conditions", saved.toConditions()));
+
+        // 목록 질문의 속성 조건도 답변에 남겨 다음 질문이 잇는다(360).
+        assertThat(saved.toConditions()).containsEntry("propertyValues", List.of("진행 중"));
+        assertThat(read).isEqualTo(saved);
+    }
+
+    @Test
+    void followUpNarrowingListKeepsKindAndUsesGivenPropertyValues() {
+        // "그중 1라인만": 해석이 유지할 값과 새 값을 함께 적는다(360).
+        QuestionInterpretation narrowed = propertyOnly("진행 중", "1라인");
+
+        QuestionInterpretation continued = narrowed.continueFrom(inProgressWorkOrders());
+
+        assertThat(continued.kinds()).containsExactly("작업지시");
+        assertThat(continued.purpose()).isEqualTo("작업지시 목록");
+        assertThat(continued.propertyValues()).containsExactly("진행 중", "1라인");
+        assertThat(continued.hasPeriod()).isFalse();
+        assertThat(continued.missing()).isEmpty();
+    }
+
+    @Test
+    void followUpWithoutPropertyValuesKeepsPreviousOnes() {
+        QuestionInterpretation october =
+                new QuestionInterpretation(
+                        null,
+                        List.of(),
+                        LocalDate.parse("2026-10-01"),
+                        LocalDate.parse("2026-10-31"),
+                        List.of(),
+                        null);
+
+        QuestionInterpretation continued = october.continueFrom(inProgressWorkOrders());
+
+        assertThat(continued.propertyValues()).containsExactly("진행 중");
+        assertThat(continued.from()).isEqualTo(LocalDate.parse("2026-10-01"));
+    }
+
+    @Test
+    void followUpAskingNewKindDropsPreviousPropertyValues() {
+        QuestionInterpretation equipment =
+                new QuestionInterpretation(
+                        "설비 목록", List.of(), null, null, List.of(), null, List.of("설비"));
+
+        QuestionInterpretation continued = equipment.continueFrom(inProgressWorkOrders());
+
+        // "진행 중"은 작업지시의 조건이라 설비 목록에 잇지 않는다.
+        assertThat(continued.kinds()).containsExactly("설비");
+        assertThat(continued.propertyValues()).isEmpty();
+    }
+
+    @Test
+    void replyToClarificationAddsPropertyValues() {
+        QuestionInterpretation asked =
+                new QuestionInterpretation(
+                        "비가동 이력",
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        List.of(),
+                        QuestionScope.BUSINESS,
+                        List.of("가이드 마모"));
+        QuestionInterpretation reply =
+                new QuestionInterpretation(
+                        null,
+                        List.of("P103"),
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        List.of(),
+                        QuestionScope.BUSINESS,
+                        List.of("야간"));
+
+        // 되묻기의 답은 새로 알려 준 값만 담으므로 이전 속성 조건에 더한다.
+        assertThat(reply.fillFrom(asked).propertyValues()).containsExactly("가이드 마모", "야간");
+    }
+
+    @Test
+    void followUpAskingNewTargetDropsPreviousPropertyValues() {
+        QuestionInterpretation guideWear =
+                new QuestionInterpretation(
+                        "가이드 마모 비가동 이력",
+                        List.of("PR-03"),
+                        null,
+                        null,
+                        List.of(PR03),
+                        null,
+                        List.of(),
+                        QuestionScope.BUSINESS,
+                        List.of("가이드 마모"));
+        QuestionInterpretation other =
+                new QuestionInterpretation(null, List.of("P104"), null, null, List.of(), null);
+
+        // 대상만 바꿔 물으면 이전 대상의 조건은 잇지 않는다(정책 3.6). 목적은 이어 쓴다.
+        QuestionInterpretation continued = other.continueFrom(guideWear);
+
+        assertThat(continued.targets()).containsExactly("P104");
+        assertThat(continued.propertyValues()).isEmpty();
+    }
+
+    @Test
+    void keepsPropertyValuesWhenServerSettlesTargets() {
+        QuestionInterpretation asked = inProgressWorkOrders();
+        AgentReferenceObject found = new AgentReferenceObject(301L, "PR-03", "설비");
+
+        // 서버가 대상을 찾아 바꿔도 속성 조건은 그대로다.
+        assertThat(asked.withReferenceObjects(List.of(found)).propertyValues())
+                .containsExactly("진행 중");
+        assertThat(asked.withTargets(List.of("PR-03"), List.of(found)).propertyValues())
+                .containsExactly("진행 중");
+    }
+
+    @Test
+    void replyToClarificationDoesNotRepeatValueWrittenWithDifferentSpacing() {
+        QuestionInterpretation reply = propertyOnly("진행중", "1라인");
+
+        // 띄어쓰기만 다른 값은 같은 조건이라 한 번만 남긴다(360 리뷰).
+        assertThat(reply.fillFrom(inProgressWorkOrders()).propertyValues())
+                .containsExactly("진행 중", "1라인");
+    }
+
+    private static QuestionInterpretation inProgressWorkOrders() {
+        return new QuestionInterpretation(
+                "작업지시 목록",
+                List.of(),
+                null,
+                null,
+                List.of(),
+                null,
+                List.of("작업지시"),
+                QuestionScope.BUSINESS,
+                List.of("진행 중"));
+    }
+
+    private static QuestionInterpretation propertyOnly(String... values) {
+        return new QuestionInterpretation(
+                null,
+                List.of(),
+                null,
+                null,
+                List.of(),
+                null,
+                List.of(),
+                QuestionScope.BUSINESS,
+                List.of(values));
     }
 
     @Test

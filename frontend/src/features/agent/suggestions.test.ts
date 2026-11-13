@@ -4,12 +4,14 @@ import { suggestedQuestions } from './suggestions'
 const PRESS = { id: 301, name: '프레스 3호기', typeName: '설비' }
 const REASSIGNMENT_PLAN =
   'P103에 배정된 남은 작업을 다른 설비로 옮기는 재배정 계획을 만들어줘'
-// 역할과 관계없이 앞에 오는 세 문장. 배포 시연 데이터의 코드로 쓴다.
+// 역할과 관계없이 앞에 오는 두 문장. 배포 시연 데이터의 코드로 쓴다.
 const COMMON = [
   'P103에 연결된 비가동 기록 보여줘',
   'P103에 연결된 정보는 뭐가 있어?',
-  'JB2610-0138 작업지시 진행 상황 알려줘',
 ]
+const WORK_ORDER_PROGRESS = 'JB2610-0138 작업지시 진행 상황 알려줘'
+// 목록 질문(360). 목록 조회 도구(359)가 들어와 다시 넣었다.
+const IN_PROGRESS_WORK_ORDERS = '진행 중인 작업지시 목록 보여줘'
 
 test('참고 객체가 없으면 조회만 하는 역할에는 시연 데이터로 답할 수 있는 다섯 문장을 보여 준다', () => {
   for (const role of ['VIEWER', 'MAINTENANCE'] as const) {
@@ -17,8 +19,9 @@ test('참고 객체가 없으면 조회만 하는 역할에는 시연 데이터�
 
     expect(questions.map((question) => question.text)).toEqual([
       ...COMMON,
-      'P101 상세 정보 알려줘',
-      'JB2610-0141 작업지시 상세 알려줘',
+      WORK_ORDER_PROGRESS,
+      IN_PROGRESS_WORK_ORDERS,
+      '지금 정비 중인 설비 있어?',
     ])
     expect(questions[0]).toEqual({
       label: 'P103 비가동',
@@ -30,14 +33,30 @@ test('참고 객체가 없으면 조회만 하는 역할에는 시연 데이터�
 test('참고 객체가 없으면 계획 권한이 있는 역할에는 재배정 계획 문장을 넣는다', () => {
   expect(suggestedQuestions(null, 'PLANNER').map((q) => q.text)).toEqual([
     ...COMMON,
-    'P101 상세 정보 알려줘',
+    WORK_ORDER_PROGRESS,
+    IN_PROGRESS_WORK_ORDERS,
     REASSIGNMENT_PLAN,
   ])
   expect(suggestedQuestions(null, 'ADMIN').map((q) => q.text)).toEqual([
     ...COMMON,
+    IN_PROGRESS_WORK_ORDERS,
     'FA-0006 장부가와 취득가 알려줘',
     REASSIGNMENT_PLAN,
   ])
+})
+
+test('모든 역할에 목록 질문을 하나 이상 추천한다', () => {
+  for (const role of [
+    'VIEWER',
+    'MAINTENANCE',
+    'PLANNER',
+    'ADMIN',
+    null,
+  ] as const) {
+    expect(suggestedQuestions(null, role).map((q) => q.text)).toContain(
+      IN_PROGRESS_WORK_ORDERS,
+    )
+  }
 })
 
 test('고정자산(재무) 질문은 그 데이터를 볼 수 있는 관리자에게만 추천한다', () => {
@@ -48,11 +67,11 @@ test('고정자산(재무) 질문은 그 데이터를 볼 수 있는 관리자�
   }
 })
 
-test('기본 문장에는 답하지 못하는 질문(종류 전체 목록, 범위 없는 기간)을 넣지 않는다', () => {
-  // 2026-11-11 배포 확인: 종류 전체 목록은 "아직 조회할 수 없습니다", "최근"은 기간을 되묻는다.
+test('기본 문장에는 매번 되묻는 질문(범위 없는 기간)을 넣지 않는다', () => {
+  // 2026-11-11 배포 확인: "최근"은 기간을 되묻는다.
   for (const role of ['VIEWER', 'MAINTENANCE', 'PLANNER', 'ADMIN'] as const) {
     for (const { text } of suggestedQuestions(null, role)) {
-      expect(text).not.toMatch(/최근|현재 .*중인|설비별/)
+      expect(text).not.toMatch(/최근/)
     }
   }
 })

@@ -8,6 +8,7 @@ import json
 import re
 from collections import Counter
 
+from app.llm.privacy import mask_keep_length
 from app.models.candidate import Candidate
 from app.proposers.readable import readable
 
@@ -84,7 +85,8 @@ def to_api(candidate: Candidate) -> dict:
         "llmJudgement": candidate.llm_judgement,
     }
     if candidate.document is not None:
-        evidence["originalText"] = candidate.document.original_text
+        # 이름·전화 자리는 같은 글자 수의 *로 가려 저장한다(원문 위치는 그대로)
+        evidence["originalText"] = mask_keep_length(candidate.document.original_text)
         evidence["observations"] = camel_keys(data["document"]["observations"])
         evidence["times"] = camel_keys(data["document"]["times"])
     options = [

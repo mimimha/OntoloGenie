@@ -50,6 +50,7 @@ test.each([
   ['/audit', '실행 이력'],
   ['/admin/history', '정의·규칙 이력'],
   ['/admin/sources', '데이터 연결'],
+  ['/admin/object-types', '객체 유형'],
   ['/admin/rules', '연결 규칙'],
   ['/admin/accounts', '계정·권한'],
 ])('주소 %s로 바로 들어오면 %s 화면을 보여준다', async (path, title) => {

@@ -460,12 +460,12 @@ test('참고 객체 없이 시작하면 역할에 맞는 기본 추천 질문을
   ).toBeNull()
   await user.click(
     await screen.findByRole('button', {
-      name: 'JB2610-0141 상세',
+      name: '정비 중 설비',
     }),
   )
 
   expect(screen.getByLabelText('업무 질문')).toHaveValue(
-    'JB2610-0141 작업지시 상세 알려줘',
+    '지금 정비 중인 설비 있어?',
   )
   expect(screen.queryByRole('button', { name: /재배정 계획/ })).toBeNull()
 })

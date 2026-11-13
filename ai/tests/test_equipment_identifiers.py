@@ -41,3 +41,26 @@ def test_identifiers_point_to_row_keys(data):
         "erp.shipment:DL"
     )  # 로트 값이 아니라 출하 행의 키
     assert hits["p103"].type.value == "EQUIPMENT"
+
+
+def test_same_key_value_in_several_rows_keeps_every_row(tmp_path):
+    # 같은 로트를 출하 두 건에 나눠 실으면 예전에는 마지막 행만 남아 그 출하에만 이어졌다
+    from tests.test_links_general import write_table
+
+    write_table(
+        tmp_path,
+        "erp",
+        "shipment",
+        ["ship_no"],
+        {
+            "ship_no": ("varchar(10)", ["DL-1", "DL-2", "DL-3"]),
+            "lot_no": ("varchar(12)", ["LT2610-01", "LT2610-01", "LT2610-02"]),
+        },
+    )
+
+    dictionary = load_dictionary(tmp_path)
+    hits = {h.text: h for h in find("LT2610-01, LT2610-02 확인", dictionary)}
+
+    assert hits["LT2610-01"].candidates == ["erp.shipment:DL-1", "erp.shipment:DL-2"]
+    assert hits["LT2610-02"].candidates == ["erp.shipment:DL-3"]
+    assert hits["LT2610-02"].ref == "erp.shipment:DL-3"

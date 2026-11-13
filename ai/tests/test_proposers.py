@@ -989,3 +989,97 @@ def test_event_table_pointing_to_a_primary_key_is_many_to_one_even_if_data_looks
     assert "(1:1)" not in out["DOWNTIME_TO_WO"].description
     assert out["ASSET_TO_WO"].cardinality == "ONE_TO_ONE"
     assert out["LOT_TO_WO"].cardinality == "ONE_TO_ONE"
+
+
+def test_llm_prompt_masks_table_description_note_and_comments(result):
+    from app.models.candidate import Candidate
+    from app.proposers.semantics import build_prompt
+
+    prop = next(
+        Candidate.model_validate(c)
+        for c in result["candidates"]
+        if c["candidate_id"].startswith("P-mes.work_order.")
+    )
+    prop = prop.model_copy(
+        update={
+            "payload": prop.payload.model_copy(
+                update={"description": "작성자 (김 대리 010-1234-5678)"}
+            )
+        }
+    )
+    schema = TableSchema(
+        source_id="mes",
+        name="work_order",
+        description="작업지시 (담당 홍길동님 010.2222.3333)",
+        note="문의 이영희 책임 kim@example.com",
+    )
+
+    prompt = build_prompt("mes.work_order", schema, [], [prop], [])
+
+    for secret in ("김 대리", "1234", "홍길동", "2222", "이영희", "kim@example.com"):
+        assert secret not in prompt, secret
+    assert "표 참고: 문의 *** 책임 ***" in prompt
+
+
+class _UsageLLM:
+    """답마다 사용량을 남기는 가짜 LLM. answer가 예외면 사용량을 남긴 뒤 던진다(형식 틀린 답)."""
+
+    model = "gpt-6-luna"
+
+    def __init__(self, answer):
+        self.answer = answer
+        self.last_usage = None
+        self.prompts = []
+
+    def complete_json(self, prompt):
+        self.prompts.append(prompt)
+        result = self.answer(len(self.prompts))
+        if isinstance(result, Exception):
+            if not isinstance(result, TypeError):
+                self.last_usage = {"input_tokens": 1000, "output_tokens": 200}
+            raise result
+        self.last_usage = {"input_tokens": 1000, "output_tokens": 200}
+        return result
+
+
+def test_llm_credits_count_answers_in_wrong_format(data, result):
+    from app.llm.client import LLMError
+    from app.models.candidate import Candidate
+    from app.proposers.semantics import interpret
+
+    candidates = [Candidate.model_validate(c) for c in result["candidates"]]
+    answers = [LLMError("GMS가 JSON이 아닌 답을 보냈습니다: x"), {"bad": 1}]
+
+    llm = _UsageLLM(lambda n: answers[n - 1])
+    _, report = interpret(
+        data / "data-t3", candidates, llm, only={"mes.worker", "mes.work_order"}
+    )
+
+    # 형식이 틀린 답 두 번도 쓴 토큰(입력 1,000·출력 200 = 2크레딧씩)은 센다
+    assert len(report["failed"]) == 2
+    assert report["credits_used"] == 4.0
+
+
+def test_llm_outage_or_unexpected_error_does_not_stop_semantics(data, result):
+    from app.llm.client import LLMError
+    from app.models.candidate import Candidate
+    from app.proposers.semantics import interpret, prepare
+
+    candidates = [Candidate.model_validate(c) for c in result["candidates"]]
+    tables = [t for t, *_ in prepare(data / "data-t3", candidates)]
+    assert len(tables) >= 5
+
+    # 첫 표에서 예상하지 못한 오류가 나도 그 표만 실패로 두고, 연속 3번 응답이 없으면 남은 표는 부르지 않는다
+    def answer(n):
+        if n == 1:
+            return TypeError("예상하지 못한 답")
+        return LLMError("GMS 응답이 없습니다: TimeoutError")
+
+    llm = _UsageLLM(answer)
+    merged, report = interpret(data / "data-t3", candidates, llm)
+
+    assert len(llm.prompts) == 4
+    assert len(report["failed"]) == len(tables)
+    assert report["failed"][0] == {"table": tables[0], "error": "예상하지 못한 답"}
+    assert all("남은 호출을 건너뜀" in f["error"] for f in report["failed"][4:])
+    assert len(merged) == len(candidates)

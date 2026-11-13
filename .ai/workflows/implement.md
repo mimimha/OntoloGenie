@@ -1,6 +1,6 @@
 # Implement Workflow
 
-먼저 [AI 협업 규칙](../rules/ai-collaboration.md), [코드 규칙](../rules/code.md), [아키텍처 규칙](../rules/architecture.md), [테스트 규칙](../rules/testing.md), [기준 문서](../references.md)를 읽는다. API 변경이 있으면 [API 규칙](../rules/api.md)을, DB Schema·Entity·Migration·Repository·SQL 변경이 있으면 [DB 규칙](../rules/database.md)을, 인프라·배포 설정 변경이 있으면 [인프라 규칙](../rules/infra.md)을 함께 읽는다.
+먼저 [코드 규칙](../rules/code.md), [아키텍처 규칙](../rules/architecture.md), [테스트 규칙](../rules/testing.md), [기준 문서](../references.md)를 읽는다. [AI 협업 규칙](../rules/ai-collaboration.md)은 아직 읽지 않았을 때만 읽는다. API 변경이 있으면 [API 규칙](../rules/api.md)을, DB Schema·Entity·Migration·Repository·SQL 변경이 있으면 [DB 규칙](../rules/database.md)을, 인프라·배포 설정 변경이 있으면 [인프라 규칙](../rules/infra.md)을 함께 읽는다.
 
 ## 실행 순서
 
@@ -19,7 +19,7 @@
    - API를 바꿨으면 API 명세서 수정이 필요하다고 보고하거나 함께 수정한다.
    - DB를 바꿨으면 ERD 수정이 필요하다고 보고하거나 함께 수정한다. Migration은 새 버전 파일로 추가한다.
    - 개발 가이드에 영향이 있으면 저장소·Notion 가이드와 관련 `.ai/rules/`를 함께 고친다.
-8. 검증한다. 포맷 적용과 테스트는 [테스트 규칙](../rules/testing.md)과 프로젝트 설정에 있는 명령으로 실행한다. 실패하면 원인을 확인하고 고친다. 검증을 약화하거나 테스트를 Skip해서 통과시키지 않는다.
+8. 검증한다. 포맷 적용과 테스트는 [테스트 규칙](../rules/testing.md)과 프로젝트 설정에 있는 명령으로 실행한다. 작업 중에는 바꾼 부분과 관련된 테스트만 실행하고, 구현을 마칠 때 전체 검증 명령을 한 번 실행한다. 실패하면 원인을 확인하고 고친다. 검증을 약화하거나 테스트를 Skip해서 통과시키지 않는다.
 9. 결과를 보고한다. [AI 협업 규칙](../rules/ai-collaboration.md)의 결과 보고 항목에 더해, Jira 완료 기준 중 충족한 항목과 남은 항목을 구분한다.
 
 ## 작업 경계
