@@ -1,161 +1,251 @@
-# AI 기반 온톨로지 레이어 구축 및 운영 플랫폼
+# OntoloGenie · 온톨로지니
 
-> 서로 다른 업무 시스템의 데이터를 하나의 의미 체계로 연결하고, AI가 근거를 바탕으로 정보를 조회하고 승인된 업무 Action을 실행할 수 있도록 하는 플랫폼
+### 흩어진 업무 데이터를 연결하고, 근거를 확인하며 AI와 일하는 플랫폼
 
-**SSAFY 기업연계 프로젝트 | 협력기업: 에이엑스코어 | 개발 진행 중**
+ERP·MES·현장 메모에 나뉜 제조 데이터를 **객체와 관계로 연결**합니다. 사용자는 관계 그래프로 업무 맥락을 탐색하고, AI에게 자연어로 질문하며, 권한과 업무 조건을 검증한 뒤 재배정 계획을 생성할 수 있습니다.
 
-## 1. 프로젝트 소개
+**SSAFY 기업연계 프로젝트 · 협력기업 에이엑스코어 · 6인 팀**
 
-ERP, MES, 현장 메모처럼 서로 다른 시스템에 저장된 데이터는 식별자와 표현 방식이 달라 하나의 업무 맥락으로 파악하기 어렵습니다. 기존의 단순 조회나 대시보드에서 나아가, 데이터 간 의미적 관계를 정의하고 실제 업무 실행까지 연결하는 **온톨로지 기반 운영 플랫폼**을 개발합니다.
+![설비 P103을 중심으로 작업지시·공정 실적·비가동 기록을 연결해 탐색하는 OntoloGenie](docs/images/screenshots/03-explorer-equipment-no-cursor.png)
 
-제조 현장(프레스 공정)의 ERP·MES와 현장 메모를 대상으로 합니다. 시연용 원천 데이터는 기업 예시 데이터의 구조를 참고해 팀이 새로 만들었습니다([ai/data](ai/data)).
+[서비스](https://ontologenie.com) · [프로젝트 소개](#프로젝트-소개) · [주요 기능과 화면](#주요-기능과-화면) · [시스템 구조](#시스템-구조) · [기술 스택](#기술-스택) · [로컬 실행](#로컬-실행) · [팀 구성](#팀-구성)
 
-### 핵심 목표
+## 프로젝트 소개
 
-- **데이터 통합:** 원천 시스템의 스키마와 식별자 차이를 분석하고 업무 객체 간 관계를 연결합니다.
-- **온톨로지 관리:** 객체 유형, 속성, 관계 유형, 원천 매핑, 연결 규칙, Action 정의를 메타데이터로 관리합니다.
-- **AI 제안과 사람의 승인:** AI가 객체·속성·관계·연결 규칙 후보를 근거 및 신뢰도와 함께 제안하고, 관리자가 검토한 후 반영합니다.
-- **안전한 업무 실행:** AI Agent는 허용된 조회 Tool과 Action만 사용하며, 데이터 변경은 Action Handler의 유효성·권한 검증 및 감사 기록을 거칩니다.
+### 어떤 문제를 해결하나요?
 
-### 범위
+설비 하나가 멈춰도 관련 정보를 찾으려면 여러 시스템을 확인해야 합니다. MES의 설비·작업지시, ERP의 수주·자산, 현장의 정비 메모는 같은 대상을 서로 다른 식별자와 표현으로 기록하기 때문입니다.
 
-- AI는 원천 데이터를 분석해 객체·속성·관계 후보와 ERP·MES 사이의 연결 규칙 후보를 제안합니다. 과거 데이터를 바탕으로 한 추론 제안도 포함합니다.
-- 정형 데이터뿐 아니라 현장 메모 같은 비정형 자료에서도 정보를 추출합니다.
-- 원천 데이터의 정합성 오류는 플랫폼이 찾아서 원천 시스템 측에 전달합니다. 실제 수정은 원천 시스템 담당 업체가 합니다.
-- 원천 시스템은 읽기만 합니다. 플랫폼에서 만든 결과(예: 재배정 계획)는 플랫폼 안에 저장합니다.
-- 실제 운영 중인 ERP·MES 환경을 가정해 설계합니다. 원천 DB 부하와 개인정보 보호를 고려합니다.
+OntoloGenie는 이 데이터를 `설비`, `작업지시`, `수주` 같은 업무 객체로 표현하고, 객체 사이의 관계를 정의하는 **온톨로지 레이어**를 제공합니다. 데이터가 어디에서 왔고 어떤 규칙으로 연결됐는지 확인하면서, 조회부터 업무 계획 생성까지 이어갈 수 있습니다.
 
-## 2. 주요 기능
-
-기능은 최종 시나리오 기준으로 묶었습니다. 기능별 상세와 담당은 [기능 명세서](https://app.notion.com/p/3ffbdf14d2d88041be0ef1898eda8a60)에서 관리합니다.
-
-| 시나리오 | 내용 | 주요 기능 | 범위 |
-| --- | --- | --- | --- |
-| S1 | 원천 데이터 연결과 AI 분석 | 원천 DB 연결 등록·확인, 분석 범위 지정, 정형·비정형 분석, 후보와 근거·신뢰도 생성 | MVP |
-| S2 | 제안 검토·정합성 확인·온톨로지 적용 | 후보 검토, 규칙 시험 적용, 승인·거절·보류, 승인 즉시 반영, 정의 직접 편집 | MVP |
-| S3 | 객체 탐색과 Agent 업무 조회 | 객체 검색·상세·관계 탐색, 자연어 질문, 출처와 기준 시점을 담은 답변 | MVP |
-| S4 | 작업지시 재배정 계획 생성 | 재배정 대상 조회, 대체 설비 검토, Action 검증 후 계획 저장 | MVP |
-| S5 | 정합성 문제 확인과 재검증 | 문제 목록·근거, 원천 측 전달 기록, 수정 자료 수집, 변경분 재분석·재검증 | MVP |
-| S6 | 원천 변경에 따른 모델 확장 | 원천에 새로 생긴 테이블·컬럼을 모델에 반영 | 보류 |
-| S7 | 계정·권한 관리 | 로그인, 계정·역할 확인과 변경, 전체 실행 이력 조회 | MVP |
-| 공통 | 수집·감사 | 원천 수집 배치(주기·수동 실행), Action 정의 관리, 동작·감사 기록 | MVP |
-
-사용자 역할은 `ADMIN`, `PLANNER`, `MAINTENANCE`, `VIEWER` 4개입니다. MVP에서 `MAINTENANCE`는 `VIEWER`와 권한이 같습니다. 권한 코드와 역할별 부여는 Flyway 초기 데이터에 있습니다.
-
-## 3. 시스템 구성
-
-```text
-                     사용자 (브라우저)
-                            | HTTPS
-                            v
-              nginx ---- React (사용자 화면 · 관리자 화면)
-                            | /api
-                            v
-   +------------------ Spring Boot ------------------+
-   |  원천 연결 · 온톨로지 정의 · 원천 매핑            |   분석 요청
-   |  제안 검토 · 승인 반영 · 정합성 검사              | -------------> FastAPI (AI 분석·제안) --> LLM
-   |  Action Dispatcher / Handler · 감사 기록         | <-------------   후보 + 근거 + 신뢰도
-   |  인증 · 권한                                     |
-   |  AI Agent (Spring AI) ---------------------------+---> LLM
-   +--------------------------------------------------+
-            | 읽기·쓰기                    | 읽기 전용 (연결 확인 · 표본)
-            v                              v
-   플랫폼 DB (PostgreSQL)             원천 ERP · MES (PostgreSQL)
-            ^                              ^
-            | upsert                       | WAL (로그 기반 CDC)
-            |                              v
-            +-- 수집 배치 <-- Kafka <-- Kafka Connect(Debezium)
-```
-
-- **원천 연결:** 원천 ERP·MES의 PostgreSQL에 직접 접속합니다. 플랫폼은 조회 전용 계정, Debezium은 CDC 복제 계정을 씁니다. 원천에는 변경 이력 테이블·트리거를 만들지 않습니다. 별도의 REST API는 두지 않습니다.
-- **수집 배치:** 별도 컨테이너에서 Kafka 토픽의 원천 변경 이벤트를 계속 읽어 반영합니다. 매핑이 바뀐 테이블과 뷰는 전체를 읽어 저장된 값과 비교합니다.
-- **AI 분석:** FastAPI는 분석·제안 결과를 Spring Boot에 돌려줄 뿐 플랫폼 DB에 직접 쓰지 않습니다.
-- **AI Agent:** Spring Boot 안에서 Spring AI로 구현합니다. Agent가 쓸 수 있는 Tool은 조회와 재배정 계획 생성으로 제한합니다.
-
-### 설계 원칙
-
-1. **메타모델과 인스턴스를 구분합니다.** 예를 들어 `설비`는 객체 유형이고, 원천에서 읽어 온 개별 설비는 그 유형의 객체 인스턴스입니다.
-2. **AI의 제안은 자동 반영하지 않습니다.** 후보는 검토 대상으로 저장하고, 관리자가 승인하면 즉시 온톨로지에 반영합니다.
-3. **Action 정의와 실행 코드를 분리합니다.** `ActionDefinition`은 실행 가능한 업무의 메타데이터이고, `ActionHandler`는 실제 비즈니스 로직을 수행합니다.
-4. **Agent가 데이터 변경 로직을 우회하지 않도록 합니다.** 변경성 요청은 Action Dispatcher와 Handler를 통해 실행하고 실행 결과를 감사 기록으로 남깁니다.
-5. **원천 시스템은 바꾸지 않습니다.** 원천 DB는 읽기만 하고, 원천에서 사라진 행도 지우지 않고 상태로 표시합니다.
-6. **플랫폼 DB에 쓰는 곳을 제한합니다.** 쓰기는 Spring Boot(Handler)와 수집 배치만 합니다.
-
-### CI/CD
-
-```text
-기능 브랜치 → MR → develop 병합 → GitLab Webhook → Jenkins
-  → 바뀐 서비스만 빌드 → Docker 이미지 생성 → Docker Compose 배포 → 헬스체크
-```
-
-Jenkins Job 2개가 같은 `Jenkinsfile`을 씁니다. `axcore-mr-check`는 MR을 검사하고, `axcore-deploy`는 develop 병합 시 바뀐 서비스(backend·AI·frontend)만 배포합니다. 결과는 GitLab 커밋 상태와 Mattermost DM으로 알립니다.
-
-## 4. 주요 데이터 모델
-
-[온톨로지 MVP ERD (v2)](https://app.notion.com/p/402bdf14d2d880048f4fd8ee1f1d540b) 기준입니다(2026-10-26 확정). 실제 테이블의 원본은 [Flyway migration](backend/src/main/resources/db/migration)입니다. 모든 테이블은 PostgreSQL 스키마 `platform` 하나에 두고, 단일 ID PK는 `bigint`를 사용합니다. Spring Session·Spring Batch 테이블은 아래 목록에 넣지 않습니다.
-
-**온톨로지 테이블 (19개)**
-
-| 구분 | 테이블 | 설명 |
-| --- | --- | --- |
-| 정의 | `object_type`, `property_definition`, `link_type` | 객체 유형, 속성, 관계 유형 |
-| 원천 | `data_source`, `data_source_credential`, `source_resource`, `source_column` | 원천 시스템, 암호화된 접속 정보, 원천의 표·문서, 컬럼 목록 |
-| 원천 작업 | `source_connection_check`, `source_preview` | 연결 검사, 표본 조회 |
-| 매핑 | `object_source_mapping`, `property_source_mapping` | 원천 행·컬럼을 객체·속성으로 바꾸는 방법 |
-| 연결 규칙 | `link_mapping`, `link_mapping_condition` | 객체끼리 연결하는 규칙. 바뀔 때마다 새 개정본으로 보관 |
-| 인스턴스 | `object_instance`, `object_link` | 실제 객체와 객체 간 연결 |
-| Action | `action_definition` | 실행 가능한 업무, 입력 형식, 권한, Handler, 확인 창 여부 |
-| 수집 | `sync_run`, `sync_run_resource`, `cdc_offset` | 원천 수집 실행 기록, 표별 진행, CDC 소비 위치 |
-
-**운영 테이블 (23개)**
-
-| 영역 | 내용 |
+| 업무에서 필요한 것 | OntoloGenie의 접근 |
 | --- | --- |
-| 계정·권한 | 계정, 역할, 권한, 역할별 데이터 범위 |
-| 분석 실행 | AI 분석 실행과 대상 |
-| 제안·검토 | 제안 항목, 개정, 후보, 검토 결정, 보류 건 |
-| 정합성 | 검사 실행·결과, 정합성 문제와 재검증·이력 |
-| 실행·감사 | Action·Agent 조회·작업 실행 기록, 변경 전후 기록 |
-| Agent | 대화, 메시지 |
-| 재배정 계획 | 재배정 계획과 계획 항목 |
+| 여러 시스템에 흩어진 정보 확인 | 원천 행·컬럼을 공통 객체·속성에 매핑 |
+| 서로 다른 코드와 명칭 연결 | AI가 연결·변환 규칙을 제안하고 관리자가 검토 |
+| 특정 설비와 관련된 업무 파악 | 객체·관계 그래프와 상세 정보로 탐색 |
+| 자연어 질문에 대한 근거 있는 답변 | 허용된 조회 Tool의 결과와 출처를 바탕으로 AI가 답변 |
+| 조회 후 실제 업무 처리 | 서버 검증을 거치는 Action으로 플랫폼 안에 계획 저장 |
 
-> 메모 원문 저장 방식, AI별 Action 구분, API의 ID 표현은 아직 정하지 않았습니다. ERD 문서의 미정 항목에서 관리합니다.
+대상 도메인은 **제조 현장의 프레스 공정**입니다. 시연용 ERP·MES와 현장 메모는 기업 예시 데이터의 구조를 참고해 팀이 새로 만든 데이터입니다. 데이터 구성과 정답셋은 [AI 데이터셋 문서](ai/docs/dataset.md)에서 확인할 수 있습니다.
 
-## 5. 기술 스택
+### 업무 흐름
 
-| 영역 | 기술 | 상태 |
-| --- | --- | --- |
-| Backend | Java 21, Spring Boot 4.1, Spring Data JPA, Flyway, Spring Security(세션 인증), Spring Session JDBC | 확정 |
-| Batch | Spring Batch 6 (별도 컨테이너) | 확정 |
-| 원천 CDC | Debezium 3.6 (Kafka Connect), Kafka 4.2 (KRaft 단일 노드), Redpanda Console | 확정 (2026-10-30). 인프라 기동 2026-11-02 |
-| AI Agent | Spring AI 2.x | 확정 |
-| AI 분석·제안 | Python, FastAPI, Pydantic, pytest, Ruff | 확정 |
-| LLM | SSAFY GMS 제공 모델 | AI 분석·제안에 사용. Agent 모델은 미정 |
-| Frontend | React, TypeScript, ESLint, Prettier | 확정 |
-| Database | PostgreSQL 18 | 확정 |
-| API 문서 | OpenAPI 3.1, Swagger | 확정 |
-| Infra | AWS Lightsail, Docker Compose, nginx, Let's Encrypt, Jenkins | 확정 |
-| 협업 | SSAFY GitLab(모노레포), Jira, Notion | 확정 |
-| 모니터링 | Spring Boot Actuator, Prometheus, Grafana Alloy, Loki, Grafana | 확정 |
-| 배포 알림 | Mattermost DM | 확정 |
+1. **연결** — 원천 DB를 등록하고 접속 가능 여부와 읽을 수 있는 표·컬럼을 확인합니다.
+2. **분석·검토** — AI가 객체 유형·속성·매핑·관계 후보를 제안하면 관리자가 근거와 검사 결과를 검토합니다.
+3. **반영·수집** — 승인한 정의와 규칙을 반영하고 원천 데이터를 객체·관계로 수집합니다.
+4. **탐색·질문** — 관계 그래프로 데이터를 살펴보거나 AI에게 대상·원인·영향을 질문합니다.
+5. **실행·추적** — 허용된 Action으로 재배정 계획을 생성하고 실행 결과와 감사 이력을 확인합니다.
 
-캐시(Redis)는 쓰지 않습니다. Kafka는 원천 변경 수집(CDC)에만 쓰고, 오래 걸리는 작업은 지금처럼 DB의 실행 기록 테이블로 넘깁니다. 백엔드 세부 스택은 [개발 가이드 6.2](docs/development-guide.md#62-백엔드-기술-스택)에 있습니다.
+## 주요 기능과 화면
 
-## 6. 사용자 시나리오 (예시)
+아래 이미지는 **2026년 11월 19일 배포 서비스에서 촬영한 실제 화면**입니다. AI 응답과 데이터 수치는 촬영 당시의 시연 데이터 기준입니다.
 
-설비가 고장 나 작업이 멈췄을 때, 생산 계획 담당자가 Agent에게 재배정을 요청하는 흐름입니다(시나리오 S4).
+### 1. 객체와 관계를 따라가는 업무 데이터 탐색
 
-**질문:** “고장 난 설비에 걸려 있는 작업지시를 다른 설비로 옮길 수 있는지 확인하고, 가능하면 재배정 계획을 만들어 줘.”
+객체 유형, ID·이름, 속성 조건으로 대상을 검색합니다. 선택한 객체의 관계 그래프와 상세 정보를 함께 보고, 연결된 기록으로 탐색을 이어갈 수 있습니다. 상세 화면에서는 원본·연결 근거, 수집 정보, 실행 이력을 확인하고 선택한 객체를 AI 질문의 맥락으로 전달합니다.
 
-1. AI Agent가 온톨로지 조회 Tool로 해당 설비의 작업지시와 관련 수주·공정을 찾습니다.
-2. 공정 조건을 만족하는 대체 설비를 찾아, 근거와 함께 재배정 계획을 제안합니다.
-3. 사용자가 요청하면 Agent가 재배정 계획 생성 Action을 호출합니다.
-4. Backend가 실행 권한, 설비 조건, 작업지시 상태를 검증합니다.
-5. Action Handler가 계획을 플랫폼 DB에 저장하고 감사 기록을 남깁니다. 원천 MES의 배정은 바꾸지 않습니다.
+<details>
+<summary>설비에서 연결된 비가동 기록으로 탐색하기</summary>
 
-## 7. 팀 구성
+![설비 P103에 연결된 비가동 기록을 왼쪽 목록으로 펼친 화면](docs/images/screenshots/04-explorer-related-data.png)
 
-| 이름 | 영역 | 주요 책임 |
+설비를 선택한 상태에서 관계를 누르면 해당 관계로 연결된 객체 목록을 보여줍니다.
+
+</details>
+
+### 2. 조회 근거를 보여주는 AI 업무 도우미
+
+자연어 질문을 해석하고, 필요한 객체·관계·실행 이력을 조회한 뒤 답변합니다. 대상이 모호하면 되묻고, 후속 질문에서는 앞선 업무 조건과 대상을 이어받습니다. 사용자는 답변 아래에서 **출처, 조회 상태, 기준 시점**을 확인하고 관련 객체로 이동할 수 있습니다.
+
+**질문 예시:** “P103 설비의 비가동 원인과 영향을 받는 작업지시를 핵심만 요약해줘.”
+
+![P103의 비가동 원인과 영향 작업지시를 요약한 실제 AI 답변](docs/images/screenshots/08-agent-answer.png)
+
+**후속 질문 예시:** “그 작업지시를 P101과 P201에서 진행할 수 있는지 설비 조건을 표로 비교해줘. 계획 생성 없이 비교만 해줘.”
+
+![앞선 작업지시의 문맥을 이어 P101과 P201의 설비 조건을 비교한 표 응답](docs/images/screenshots/10-agent-followup-comparison.png)
+
+<details>
+<summary>답변의 출처와 조회 상태 확인하기</summary>
+
+![AI 답변의 출처 및 조회 상태를 펼쳐 관련 객체 링크를 확인하는 화면](docs/images/screenshots/09-agent-sources.png)
+
+조회 결과를 확인할 수 없는 경우와 기준 시점이 없는 경우도 답변·메타데이터에서 구분합니다. 이 비교 화면에서는 재배정 계획을 생성하지 않았습니다.
+
+</details>
+
+### 3. AI 제안 검토와 온톨로지 관리
+
+AI 분석 결과를 곧바로 활성 데이터로 반영하지 않습니다. 객체 유형·속성·매핑·관계 후보의 근거와 신뢰도를 확인하고, 시험 적용·정합성 검사를 거쳐 승인·거절·보류를 결정합니다. 승인된 내용은 온톨로지에 반영하며 개정 및 검토 이력을 남깁니다.
+
+![후보 목록에서 승인된 객체 속성의 연결·변환 규칙을 확인하는 관리 화면](docs/images/screenshots/14-connection-rules.png)
+
+원천 행의 식별 키와 속성 매핑, 관계의 연결·변환 규칙도 관리합니다. 반영 후 발견된 정합성 문제는 처리 이력과 재검증 결과를 함께 추적합니다.
+
+<details>
+<summary>원천 데이터와 업무 객체의 매핑 확인하기</summary>
+
+![ERP의 부서 테이블과 부서 객체 유형 사이의 키 컬럼 및 원천 매핑을 확인하는 화면](docs/images/screenshots/13-source-mapping.png)
+
+원천의 표·컬럼을 업무 객체·속성에 연결하고, 수집 이력에서 최초 적재와 후속 수집 결과를 확인할 수 있습니다.
+
+</details>
+
+### 4. 검증된 Action으로 재배정 계획 생성
+
+설비 고장으로 영향을 받는 작업지시를 찾고 대체 설비 조건을 검토한 뒤, `CREATE_REASSIGNMENT_PLAN` Action으로 계획을 생성합니다. 서버가 실행 권한·입력 형식·대상 범위·업무 조건·필요한 확인 여부를 검사합니다.
+
+![AI 대화에 저장된 재배정 계획 생성 결과와 계획 상세·목록 링크](docs/images/screenshots/05-agent-existing-action.png)
+
+**재배정 계획은 플랫폼 DB에 저장하며, 원천 MES의 실제 설비 배정을 변경하지 않습니다.** 위 이미지는 기존 대화에 저장된 실행 결과를 촬영한 화면입니다.
+
+<details>
+<summary>Action 정의와 Agent 사용 범위 확인하기</summary>
+
+![Action 정의 목록에서 데이터 변경 여부와 사용 상태 및 Agent 사용 가능 범위를 확인하는 화면](docs/images/screenshots/15-action-definitions.png)
+
+Action의 정의와 실행 Handler를 분리합니다. Agent에는 현재 사용 가능하고, Handler가 구현되어 있으며, 사용자에게 실행 권한이 있는 업무 Action만 제공합니다. 계정·정의 관리 같은 관리 작업은 Agent에 제공하지 않습니다.
+
+</details>
+
+### 5. 원천 변경 수집과 운영 이력 관리
+
+| 기능 | 구현 내용 |
+| --- | --- |
+| 원천 연결 | 접속 검사, 읽기 범위 확인, 표본 조회, 원천 자격 증명 암호화 |
+| 데이터 수집 | 최초 전체 적재, Debezium·Kafka 기반 변경 수집, 전체 다시 읽기 및 예약 수집 |
+| 정합성 관리 | 미연결·중복·조건 위반 검사, 문제 처리 이력, 수정 후 재검증 |
+| 실행·감사 | Action·Agent 조회·배치 실행 결과와 변경 전후 기록 조회 |
+| 계정·권한 | 세션 인증, 역할별 접근 및 데이터 범위 검사, 계정·역할 관리 |
+
+## 시스템 구조
+
+```mermaid
+flowchart TB
+    User[사용자] --> Nginx[nginx · HTTPS]
+    Nginx --> Web[React 웹]
+    Nginx --> API[Spring Boot · API]
+    Web -->|API 요청| API
+    API -->|업무 데이터 · 세션 · 실행 기록| DB[(플랫폼 PostgreSQL)]
+    API -->|분석 요청| AI[FastAPI · AI 분석 서비스]
+    AI -->|분석 결과 전달| API
+    API --> Agent[Spring AI · 업무 Agent]
+    Agent --> LLM[LLM · GMS]
+    AI --> LLM
+    API -->|읽기 전용 조회| Source[(ERP · MES 원천 DB)]
+    AI -->|읽기 전용 분석| Source
+    Source -->|WAL 변경 이벤트| CDC[Debezium · Kafka Connect]
+    CDC --> Kafka[Kafka]
+    Kafka --> Batch[Spring Boot · Batch]
+    Source -->|최초 적재 · 전체 다시 읽기| Batch
+    Batch -->|객체 · 관계 · 소비 위치 반영| DB
+```
+
+- **API 서버**는 인증·권한, 온톨로지와 검토, 객체 조회, Agent, Action 실행을 담당합니다.
+- **AI 분석 서비스**는 원천을 분석해 후보를 생성하고 내부 API로 결과를 전달합니다. 플랫폼 업무 DB에 직접 쓰지 않습니다.
+- **Batch 컨테이너**는 수집·검사 등 작업을 처리합니다. API와 같은 백엔드 코드를 사용하되 `batch` 프로필로 분리합니다.
+- **업무 Agent**는 Spring Boot 안에서 실행되며 허용된 조회 Tool과 업무 Action을 사용합니다.
+
+### 주요 설계 결정
+
+| 결정 | 이유와 적용 방식 |
+| --- | --- |
+| 메타모델과 객체 인스턴스 분리 | 객체 유형·속성·관계를 정의하고 원천 데이터를 그 정의에 맞춰 표현합니다. |
+| AI 제안과 승인 반영 분리 | 후보·개정·검사 결과를 검토하고, 승인과 반영을 하나의 트랜잭션으로 처리합니다. |
+| CDC 반영과 체크포인트를 함께 저장 | 객체 반영에 실패한 작업이 소비 위치만 전진시키지 않도록 합니다. |
+| Action 실행의 공통 검증 | 같은 요청 ID의 중복 실행을 방지하고, 실행·차단·실패 결과를 감사 기록으로 남깁니다. |
+| 조회 근거와 업무 상태를 답변에 포함 | 답변의 출처, 조회 상태, 기준 시점과 실제 실행 결과를 구분해 제공합니다. |
+
+세부 동작: [CDC 소비](docs/cdc-consumer.md) · [제안 승인·반영](docs/review-decision-execution.md) · [Agent 응답 정책](docs/agent-response-policy.md) · [개발 가이드](docs/development-guide.md)
+
+### CI/CD와 관측
+
+팀 개발 환경은 **GitLab → Jenkins → Docker Compose** 흐름으로 운영합니다. MR 검증과 `develop` 병합 후 배포를 분리하고, 변경된 서비스의 이미지를 빌드해 배포·헬스체크를 수행합니다. Actuator·Prometheus로 상태와 지표를, Alloy·Loki·Grafana로 로그를 확인합니다. 상세 설정은 [인프라 문서](infra/README.md)에 있습니다.
+
+## 기술 스택
+
+실제 의존성·설정 파일 기준입니다.
+
+| 영역 | 기술 |
+| --- | --- |
+| Frontend | React 19, TypeScript, Vite, React Router, TanStack Query, React Flow, Tailwind CSS |
+| Backend | Java 21, Spring Boot 4.1, Spring Data JPA, JdbcClient, Flyway |
+| 인증·권한 | Spring Security, Spring Session JDBC, 세션·CSRF 기반 인증 |
+| AI Agent | Spring AI 2.0, GMS의 OpenAI 호환 API, Tool Calling |
+| AI 분석 | Python 3.11, FastAPI, Pydantic, pandas, psycopg |
+| 데이터·배치 | PostgreSQL 18, Spring Batch, Debezium 3.6, Kafka 4.2 |
+| 테스트·품질 | JUnit, Mockito, Testcontainers, pytest, Ruff, Vitest, Testing Library, MSW, ESLint, Prettier, Spotless |
+| 배포·관측 | AWS Lightsail, Docker Compose, nginx, Let's Encrypt, Jenkins, Actuator, Prometheus, Grafana, Alloy, Loki |
+
+## 저장소 구조
+
+```text
+.
+├── backend/       # 업무 API · AI Agent · Action · 수집/검사 배치
+├── ai/            # AI 분석 서비스 · 시연 데이터 · 정답셋 · 평가
+├── frontend/      # 사용자/관리자 React 화면
+├── infra/         # 배포 · 원천 DB · CDC · 모니터링 설정
+├── docs/          # 개발 가이드 · 기능 설계 · README 화면 캡처
+├── .ai/           # 팀 AI 협업 규칙과 작업 절차
+├── .gitlab/       # Merge Request 템플릿
+└── Jenkinsfile    # 검증·배포 파이프라인
+```
+
+## 로컬 실행
+
+필요 환경은 **Node.js 24, JDK 21, Python 3.11**입니다. 백엔드의 Testcontainers 실행과 DB 통합 테스트에는 실행 중인 Docker가 필요합니다. 아래 명령은 각각 저장소 루트에서 시작합니다.
+
+### Frontend · 백엔드 없이 화면 확인
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+`http://localhost:5173`에서 확인합니다. 개발 모드에서는 **MSW의 가짜 API**를 사용하므로 실제 원천 조회·LLM·업무 실행을 검증하는 환경과 구분됩니다. 개발용 로그인과 자세한 설정은 [Frontend README](frontend/README.md)에 있습니다.
+
+### Backend · 임시 PostgreSQL로 API 실행
+
+Windows PowerShell:
+
+```powershell
+cd backend
+.\gradlew.bat bootTestRun --args='--spring.profiles.active=api'
+```
+
+macOS·Linux에서는 `./gradlew bootTestRun --args='--spring.profiles.active=api'`를 사용합니다. Testcontainers가 PostgreSQL을 준비하고 Flyway 마이그레이션을 적용합니다.
+
+Agent LLM, 최초 관리자, 내부 서비스 인증 및 원천 자격 증명 설정은 [backend/.env.example](backend/.env.example)을 참고해 **프로세스 환경변수로 주입**합니다. 기본 설정에서는 Agent LLM이 비활성화되어 있으며, 원천 DB·Kafka·AI 연동은 별도 구성이 필요합니다. `api`는 웹 서버, `batch`는 작업 실행 프로필입니다.
+
+### AI 분석 서비스
+
+Windows PowerShell:
+
+```powershell
+cd ai
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
+```
+
+`http://127.0.0.1:8000/health`에서 상태를 확인합니다. 실제 분석에는 LLM·백엔드·원천 연결 설정이 필요합니다. 환경변수는 [ai/.env.example](ai/.env.example), 서비스 연동은 [AI README](ai/README.md)에 정리되어 있습니다.
+
+### 검증 명령
+
+각 서비스 폴더에서 실행합니다. AI 테스트·정적 검사 도구는 `ai/requirements-dev.txt`로 설치합니다.
+
+| 대상 | 명령 |
+| --- | --- |
+| Frontend | `npm run lint` · `npm test -- --run` · `npm run build` |
+| Backend | `./gradlew build` — 전체 테스트와 Spotless 포맷 검사 포함. Windows는 `.\gradlew.bat build` |
+| AI | 개발 의존성 설치 후 `python -m pytest` · `ruff check .` · `ruff format --check app tests main.py` |
+
+LLM API 키, DB 비밀번호, 내부 인증 토큰 등 실제 비밀값은 커밋하지 않습니다. 환경 설정 예시는 값의 형식을 안내하기 위한 파일입니다.
+
+## 팀 구성
+
+| 이름 | 담당 영역 | 주요 책임 |
 | --- | --- | --- |
 | 김산이 | Backend | Action 실행·검증, 권한, 감사 기록, 수집 배치 |
 | 이주헌 | Backend | 온톨로지 정의, 원천 매핑, 연결 규칙, 정합성 검사·문제 관리 |
@@ -164,69 +254,14 @@ Jenkins Job 2개가 같은 `Jenkinsfile`을 씁니다. `axcore-mr-check`는 MR�
 | 장민화 | AI Agent · Frontend | AI Agent, 사용자 화면 |
 | 손주연 | Frontend · Infra | 관리자 화면, 서버·배포 환경 |
 
-## 8. 개발 계획
+## 관련 문서
 
-- [x] 최종 시나리오와 기능 명세 정리
-- [x] 온톨로지 ERD 확정 (v2)
-- [x] 팀 개발 가이드 확정
-- [x] 메인 서버 HTTPS·Jenkins 구성
-- [ ] 공통 개발 기반 구축
-- [ ] 인증·계정·권한 관리
-- [ ] 원천 연결·AI 분석 및 제안 생성
-- [ ] 온톨로지 정의·원천 매핑 관리
-- [ ] 제안 검토·정합성 검사·승인 반영
-- [ ] 원천 수집·정합성 문제·재검증
-- [ ] 객체 탐색·상세 조회
-- [ ] 업무 Agent·대화 관리
-- [ ] Action 실행·작업지시 재배정 계획
-- [ ] 감사·실행 이력 추적
-- [ ] 시연 데이터·통합 검증·산출물
-
-각 항목은 Jira 프로젝트 `S15P31C106`의 에픽으로 관리합니다.
-
-## 9. 저장소 구조와 실행 방법
-
-```text
-/
-├── backend/       # Spring Boot 백엔드 (API 서버·수집 배치 공용)
-├── ai/            # FastAPI AI 분석 서비스, 시연 데이터·정답셋
-├── frontend/      # React 웹 화면
-├── docs/          # 개발 가이드, 기획 자료, 기능별 설계 메모
-├── infra/         # 배포 설정 (nginx, certbot, Jenkins, PostgreSQL, 모니터링, 원천 DB·CDC)
-├── .gitlab/       # MR 템플릿
-├── .ai/           # AI 도구 공통 규칙
-└── Jenkinsfile    # Jenkins 파이프라인
-```
-
-AI 서비스와 프론트엔드 실행 방법은 [ai/README.md](ai/README.md), [frontend/README.md](frontend/README.md)에 있습니다.
-
-**Backend 실행** (`backend/`, JDK 21·Docker 필요)
-
-```bash
-./gradlew build                                                   # 빌드·테스트·포맷 검사
-./gradlew bootTestRun --args='--spring.profiles.active=api'       # 로컬 DB 없이 실행 (Testcontainers)
-```
-
-실행 모드는 프로필로 고릅니다. `api`는 웹 서버, `batch`는 수집 배치 컨테이너입니다. 필요한 환경변수는 [backend/.env.example](backend/.env.example)에 있습니다.
-
-LLM API Key, DB 비밀번호 같은 민감 정보는 저장소에 커밋하지 않습니다. 서버 `.env`와 Jenkins Credentials로만 관리하고, `.env.example`에는 변수 이름과 설명만 둡니다.
-
-## 10. 문서 안내
-
-| 문서 | 위치 |
+| 문서 | 내용 |
 | --- | --- |
-| 개발 가이드 (브랜치·Commit·MR·코드 규칙) | [docs/development-guide.md](docs/development-guide.md) |
-| 인프라 설정 | [infra/README.md](infra/README.md) |
-| AI 서비스·데이터셋 | [ai/README.md](ai/README.md) |
-| 프론트엔드 | [frontend/README.md](frontend/README.md) |
-| 시스템 구조 | [Notion](https://app.notion.com/p/3f1bdf14d2d88111b3f1d420ead2dce1) |
-| 최종 시나리오 | [Notion](https://app.notion.com/p/3ffbdf14d2d88054aba3d559f0f989d6) |
-| 기능 명세서 (최종본) | [Notion](https://app.notion.com/p/3ffbdf14d2d88041be0ef1898eda8a60) |
-| ERD | [Notion](https://app.notion.com/p/3ffbdf14d2d880fc95bafcb1c85df893) |
-| API 명세서 | [Notion](https://app.notion.com/p/3ffbdf14d2d88087a083ec2d51922bcc) |
-
-작업을 시작하기 전에 개발 가이드의 브랜치·Commit·MR 규칙(2~4절)을 확인합니다.
-
----
-
-> 본 저장소의 README는 개발 진행에 따라 실제 구현 범위, 실행 방법 및 시연 결과를 지속적으로 갱신합니다.
+| [개발 가이드](docs/development-guide.md) | 팀 컨벤션, 인증·권한, 계층 구조, 데이터·작업 처리 규칙 |
+| [AI 서비스](ai/README.md) · [분석 연동](ai/docs/api-internal.md) | 분석 엔진, 백엔드 내부 API 계약, 실행 방법 |
+| [AI 제안 평가](ai/docs/evaluation.md) · [Agent 모델 평가](docs/agent-model-evaluation.md) | 데이터셋, 평가 기준, 실험 결과와 한계 |
+| [Agent 응답 정책](docs/agent-response-policy.md) | 질문 해석, 되묻기, 조회·답변·실행 정책 |
+| [원천 변경 통합 검증 기록](docs/integration-verification-241.md) | 수집·재분석·재검증의 기존 시나리오 검증 기록 |
+| [Frontend](frontend/README.md) · [인프라](infra/README.md) | 화면 개발과 배포 환경 상세 |
+| [팀 기준 문서 안내](.ai/references.md) | Notion 기능 명세서·API 명세서·ERD 및 Jira 위치 |
