@@ -8,6 +8,8 @@ ERP·MES·현장 메모에 나뉜 제조 데이터를 **객체와 관계로 연�
 
 ![설비 P103을 중심으로 작업지시·공정 실적·비가동 기록을 연결해 탐색하는 OntoloGenie](docs/images/screenshots/03-explorer-equipment-no-cursor.png)
 
+[최종 발표자료 보기 (PDF · 53장)](docs/presentation.pdf)
+
 [서비스](https://ontologenie.com) · [프로젝트 소개](#프로젝트-소개) · [주요 기능과 화면](#주요-기능과-화면) · [시스템 구조](#시스템-구조) · [기술 스택](#기술-스택) · [로컬 실행](#로컬-실행) · [팀 구성](#팀-구성)
 
 ## 프로젝트 소개
